@@ -1,0 +1,9 @@
+[submodule "Pathfinder/vendor/GLFW"]
+	path = Pathfinder/vendor/GLFW
+	url = https://github.com/glfw/glfw.git
+[submodule "Pathfinder/vendor/volk"]
+	path = Pathfinder/vendor/volk
+	url = https://github.com/zeux/volk.git
+[submodule "Pathfinder/vendor/glm"]
+	path = Pathfinder/vendor/glm
+	url = https://github.com/g-truc/glm.git

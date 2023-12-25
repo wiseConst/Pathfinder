@@ -30,3 +30,11 @@
 *.exe
 *.out
 *.app
+*.idea
+
+# Folders
+Intermediate
+Binaries
+cmake-build-debug
+cmake-build-release
+.idea
