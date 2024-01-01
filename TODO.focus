@@ -1,0 +1,6 @@
+// 2023-present FAST MULTITHREADED MODERN VULKAN RENDERER
+
+1) Vulkan CPU-side allocator for non-dispatchable objects 
+https://registry.khronos.org/vulkan/specs/1.2-extensions/html/vkspec.html#memory-allocation
+
+2)

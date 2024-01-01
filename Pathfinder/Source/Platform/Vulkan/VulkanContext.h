@@ -9,11 +9,13 @@
 namespace Pathfinder
 {
 
+class VulkanDevice;
+
 class VulkanContext final : public GraphicsContext
 {
   public:
     VulkanContext() noexcept;
-    ~VulkanContext() override = default;
+    ~VulkanContext() override;
 
     static FORCEINLINE NODISCARD VulkanContext& Get()
     {
@@ -21,17 +23,21 @@ class VulkanContext final : public GraphicsContext
         return static_cast<VulkanContext&>(*s_Instance);
     }
 
-    void Destroy() final override;
+    FORCEINLINE const auto& GetDevice() const { return m_Device; }
+    FORCEINLINE const auto& GetInstance() const { return m_VulkanInstance; }
 
   private:
     VkInstance m_VulkanInstance               = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
 
+    Unique<VulkanDevice> m_Device;
+
+    void Destroy() final override;
     void CreateInstance();
     void CreateDebugMessenger();
 
-    VkBool32 CheckVulkanAPISupport() const;
-    VkBool32 CheckVulkanValidationSupport() const;
+    bool CheckVulkanAPISupport() const;
+    bool CheckVulkanValidationSupport() const;
     std::vector<const char*> GetRequiredExtensions() const;
 };
 

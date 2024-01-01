@@ -3,6 +3,7 @@
 
 #include "Core.h"
 #include "Renderer/RendererAPI.h"
+#include "Layers/LayerQueue.h"
 
 namespace Pathfinder
 {
@@ -19,7 +20,7 @@ struct CommandLineArguments final
 
 struct ApplicationSpecification final
 {
-    ERendererAPI RendererAPI = ERendererAPI::RENDERER_API_NONE;
+    ERendererAPI RendererAPI = ERendererAPI::RENDERER_API_VULKAN;
     uint32_t Width           = 1280;
     uint32_t Height          = 720;
     std::string_view Title   = "Pathfinder";
@@ -34,7 +35,14 @@ class Application : private Unmovable, private Uncopyable
 
     void Run();
 
-    FORCEINLINE void Close() { m_bIsRunning = false; }
+    FORCEINLINE void PushLayer(Unique<Layer> layer)
+    {
+        PFR_ASSERT(m_LayerQueue, "Layer queue is not valid!");
+        m_LayerQueue->Push(std::move(layer));
+    }
+
+    FORCEINLINE static void Close() { s_bIsRunning = false; }
+
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE const auto& GetWindow() const { return m_Window; }
     NODISCARD FORCEINLINE static const auto& Get()
@@ -46,10 +54,11 @@ class Application : private Unmovable, private Uncopyable
   private:
     Unique<Window> m_Window;
     Unique<GraphicsContext> m_GraphicsContext;
+    Unique<LayerQueue> m_LayerQueue;
 
     inline static Application* s_Instance = nullptr;
     ApplicationSpecification m_Specification;
-    bool m_bIsRunning = false;
+    static inline bool s_bIsRunning = false;
 
     void OnEvent(Event& e);
 };

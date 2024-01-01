@@ -3,6 +3,8 @@
 
 #include "Window.h"
 #include "Renderer/GraphicsContext.h"
+#include "Renderer/Renderer.h"
+
 #include "Events/Events.h"
 #include "Events/WindowEvent.h"
 #include "Events/KeyEvent.h"
@@ -15,28 +17,37 @@ namespace Pathfinder
 Application::Application(const ApplicationSpecification& appSpec) noexcept : m_Specification(appSpec)
 {
     s_Instance   = this;
-    m_bIsRunning = true;
+    s_bIsRunning = true;
 
-    Logger::Initialize();
+    Logger::Init();
     RendererAPI::Set(m_Specification.RendererAPI);
+    m_LayerQueue = MakeUnique<LayerQueue>();
 
     m_GraphicsContext = GraphicsContext::Create(m_Specification.RendererAPI);
     m_Window = Window::Create({PFR_BIND_FN(Application::OnEvent), m_Specification.Title, m_Specification.Width, m_Specification.Height});
+
+    Renderer::Init();
 }
 
 void Application::Run()
 {
+    m_LayerQueue->Init();
+
     LOG_ERROR("Hi world! %f", 0.5f);
-    while (m_Window->IsRunning() && m_bIsRunning)
+    while (m_Window->IsRunning() && s_bIsRunning)
     {
         Timer t = {};
         if (!m_Window->IsMinimized())
         {
+            Renderer::Begin();
+
             m_Window->BeginFrame();
+            m_Window->SetClearColor(glm::vec3(0.15f));
 
             // std::string title = std::string("PATHFINDER x64 ") + std::to_string(t.GetElapsedMilliseconds());
             //  m_Window->SetWindowTitle(title.data());
 
+            Renderer::Flush();
             m_Window->SwapBuffers();
         }
 
@@ -46,23 +57,65 @@ void Application::Run()
 
 void Application::OnEvent(Event& e)
 {
-    LOG_TRACE("%s", e.Format().data());
+    // LOG_TRACE("%s", e.Format().data());
+
+    m_LayerQueue->OnEvent(e);
 
     EventDispatcher dispatcher(e);
     dispatcher.Dispatch<KeyButtonPressedEvent>(
-        [this](KeyButtonPressedEvent& e)
+        [this](const auto& event)
         {
-            if (e.GetKey() == 256)
+            const auto key = event.GetKey();
+
+            // if (key == EKey::KEY_ESCAPE)
+            // {
+            //     Close();
+            // }
+
+            if (key == EKey::KEY_F1)
             {
-                Close();
+                m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_WINDOWED);
+
+                return true;
             }
+            if (key == EKey::KEY_F2)
+            {
+                m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN);
+
+                return true;
+            }
+            if (key == EKey::KEY_F3)
+            {
+                m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE);
+
+                return true;
+            }
+
+            if (key == EKey::KEY_F4)
+            {
+                m_Window->SetVSync(true);
+
+                return true;
+            }
+
+            if (key == EKey::KEY_F5)
+            {
+                m_Window->SetVSync(false);
+
+                return true;
+            }
+
+            return false;
         });
 }
 
 Application::~Application()
 {
-    m_Window->Destroy();
-    m_GraphicsContext->Destroy();
+    m_LayerQueue.reset();
+
+    Renderer::Shutdown();
+    m_Window.reset();
+    m_GraphicsContext.reset();
 
     Logger::Shutdown();
     s_Instance = nullptr;

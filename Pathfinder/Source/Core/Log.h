@@ -54,7 +54,7 @@ class Logger final : private Uncopyable, private Unmovable
     Logger() noexcept = default;
     ~Logger()         = default;
 
-    static void Initialize();
+    static void Init();
     static void Shutdown();
 
     template <typename... Args>

@@ -1,6 +1,8 @@
 #include "PathfinderPCH.h"
 #include "VulkanContext.h"
 
+#include "VulkanDevice.h"
+
 #include "Core/Application.h"
 #include "Core/Window.h"
 
@@ -13,12 +15,22 @@ VulkanContext::VulkanContext() noexcept
 
     CreateInstance();
     CreateDebugMessenger();
+
+    m_Device = MakeUnique<VulkanDevice>(m_VulkanInstance);
+}
+
+VulkanContext::~VulkanContext()
+{
+    Destroy();
 }
 
 void VulkanContext::CreateInstance()
 {
     PFR_ASSERT(volkInitialize() == VK_SUCCESS, "Failed to initialize volk( meta-loader for Vulkan )!");
-    PFR_ASSERT(CheckVulkanAPISupport() == VK_SUCCESS, "Vulkan is not supported!");
+    PFR_ASSERT(CheckVulkanAPISupport(), "Vulkan is not supported!");
+
+    if constexpr (VK_FORCE_VALIDATION || s_bEnableValidationLayers)
+        PFR_ASSERT(CheckVulkanValidationSupport(), "Validation layers aren't supported!");
 
     uint32_t supportedApiVersionFromDLL = 0;
     {
@@ -47,15 +59,25 @@ void VulkanContext::CreateInstance()
     instanceCI.enabledExtensionCount     = static_cast<uint32_t>(enabledInstanceExtensions.size());
     instanceCI.ppEnabledExtensionNames   = enabledInstanceExtensions.data();
 
+    if constexpr (VK_FORCE_VALIDATION || s_bEnableValidationLayers)
+    {
+        instanceCI.enabledLayerCount   = static_cast<uint32_t>(s_InstanceLayers.size());
+        instanceCI.ppEnabledLayerNames = s_InstanceLayers.data();
+    }
+
     PFR_ASSERT(vkCreateInstance(&instanceCI, nullptr, &m_VulkanInstance) == VK_SUCCESS, "Failed to create vulkan instance!");
     volkLoadInstanceOnly(m_VulkanInstance);
+
+#if PFR_DEBUG && VK_LOG_INFO
+    LOG_INFO("Using vulkan version: %u.%u.%u.%u", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
+             VK_API_VERSION_MAJOR(supportedApiVersionFromDLL), VK_API_VERSION_MINOR(supportedApiVersionFromDLL),
+             VK_API_VERSION_PATCH(supportedApiVersionFromDLL));
+#endif
 }
 
 void VulkanContext::CreateDebugMessenger()
 {
     if constexpr (!s_bEnableValidationLayers && !VK_FORCE_VALIDATION) return;
-
-    PFR_ASSERT(CheckVulkanValidationSupport() == VK_SUCCESS, "Validation layers aren't supported!");
 
     VkDebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
     debugMessengerCreateInfo.messageSeverity =
@@ -70,7 +92,7 @@ void VulkanContext::CreateDebugMessenger()
                "Failed to create debug messenger!");
 }
 
-VkBool32 VulkanContext::CheckVulkanAPISupport() const
+bool VulkanContext::CheckVulkanAPISupport() const
 {
     uint32_t extensionCount = 0;
     {
@@ -86,10 +108,10 @@ VkBool32 VulkanContext::CheckVulkanAPISupport() const
 
 #if VK_LOG_INFO && PFR_DEBUG
     LOG_INFO("List of supported vulkan INSTANCE extensions. (%u)", extensionCount);
-    for (const auto& ext : extensions)
+    for (const auto& [extensionName, specVersion] : extensions)
     {
-        LOG_TRACE(" %s, version: %u.%u.%u", ext.extensionName, VK_API_VERSION_MAJOR(ext.specVersion), VK_API_VERSION_MINOR(ext.specVersion),
-                  VK_API_VERSION_PATCH(ext.specVersion));
+        LOG_TRACE(" %s, version: %u.%u.%u", extensionName, VK_API_VERSION_MAJOR(specVersion), VK_API_VERSION_MINOR(specVersion),
+                  VK_API_VERSION_PATCH(specVersion));
     }
 #endif
 
@@ -118,18 +140,55 @@ VkBool32 VulkanContext::CheckVulkanAPISupport() const
         if (!bIsSupported) return false;
     }
 
-    return VK_SUCCESS;
+    return true;
 }
 
-VkBool32 VulkanContext::CheckVulkanValidationSupport() const
+bool VulkanContext::CheckVulkanValidationSupport() const
 {
+    uint32_t layerCount = 0;
+    {
+        const auto result = vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+        PFR_ASSERT(result == VK_SUCCESS && layerCount != 0, "Can't retrieve number of supported vulkan instance layers.");
+    }
 
-    return 0;
+    std::vector<VkLayerProperties> availableLayers(layerCount);
+    {
+        const auto result = vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+        PFR_ASSERT(result == VK_SUCCESS && layerCount != 0, "Can't retrieve supported vulkan instance layers.");
+    }
+
+#if VK_LOG_INFO && PFR_DEBUG
+    LOG_INFO("List of supported vulkan INSTANCE layers. (%u)", layerCount);
+    for (const auto& [layerName, specVersion, implementationVersion, description] : availableLayers)
+    {
+        LOG_TRACE("%s", description);
+        LOG_TRACE("%s, version: %u.%u.%u", layerName, VK_API_VERSION_MAJOR(specVersion), VK_API_VERSION_MINOR(specVersion),
+                  VK_API_VERSION_PATCH(specVersion));
+    }
+#endif
+
+    for (const auto& requestedLayer : s_InstanceLayers)
+    {
+        bool bIsSupported = false;
+        for (const auto& availableLayer : availableLayers)
+        {
+            if (strcmp(availableLayer.layerName, requestedLayer) == 0)
+            {
+                bIsSupported = true;
+                break;
+            }
+        }
+
+        if (!bIsSupported) return false;
+    }
+
+    return true;
 }
 
 std::vector<const char*> VulkanContext::GetRequiredExtensions() const
 {
     auto extensions = Window::GetWSIExtensions();
+    extensions.insert(extensions.end(), s_InstanceExtensions.begin(), s_InstanceExtensions.end());
 
     if constexpr (s_bEnableValidationLayers || VK_FORCE_VALIDATION) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     return extensions;
@@ -137,6 +196,12 @@ std::vector<const char*> VulkanContext::GetRequiredExtensions() const
 
 void VulkanContext::Destroy()
 {
+    m_Device->WaitDeviceOnFinish();
+    m_Device->Destroy();
+
+    if constexpr (VK_FORCE_VALIDATION || s_bEnableValidationLayers)
+        vkDestroyDebugUtilsMessengerEXT(m_VulkanInstance, m_DebugMessenger, nullptr);
+
     vkDestroyInstance(m_VulkanInstance, nullptr);
     volkFinalize();
 }

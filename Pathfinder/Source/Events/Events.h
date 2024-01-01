@@ -24,7 +24,10 @@ enum class EEventType : uint8_t
 };
 
 #define DECLARE_STATIC_EVENT_TYPE(type)                                                                                                    \
-    FORCEINLINE static EEventType GetStaticType() { return EEventType::EVENT_TYPE_##type; }
+    FORCEINLINE static EEventType GetStaticType()                                                                                          \
+    {                                                                                                                                      \
+        return EEventType::EVENT_TYPE_##type;                                                                                              \
+    }
 
 class Event : private Uncopyable, private Unmovable
 {
@@ -33,6 +36,7 @@ class Event : private Uncopyable, private Unmovable
     NODISCARD virtual std::string Format() const = 0;
 
     FORCEINLINE EEventType GetType() const { return m_EventType; }
+    FORCEINLINE bool IsHandled() const { return m_bIsHandled; }
 
   protected:
     Event(const std::string& name, const EEventType eventType) : m_Name(name), m_EventType(eventType) {}
@@ -56,8 +60,7 @@ class EventDispatcher final : private Uncopyable, private Unmovable
     {
         if (m_Event.GetType() != T::GetStaticType() || m_Event.m_bIsHandled) return;
 
-        func(static_cast<T&>(m_Event));
-        m_Event.m_bIsHandled = true;
+        m_Event.m_bIsHandled = func(static_cast<T&>(m_Event));
     }
 
   private:

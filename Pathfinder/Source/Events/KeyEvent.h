@@ -2,6 +2,7 @@
 #define KEYEVENT_H
 
 #include "Events.h"
+#include "Core/Keys.h"
 
 namespace Pathfinder
 {
@@ -22,7 +23,7 @@ class KeyButtonPressedEvent final : public Event
         return formatted;
     }
 
-    FORCEINLINE auto GetKey() const { return m_Key; }
+    FORCEINLINE EKey GetKey() const { return static_cast<EKey>(m_Key); }
 
   private:
     int32_t m_Key      = 0;
@@ -45,7 +46,7 @@ class KeyButtonRepeatedEvent final : public Event
         return formatted;
     }
 
-    FORCEINLINE auto GetKey() const { return m_Key; }
+    FORCEINLINE EKey GetKey() const { return static_cast<EKey>(m_Key); }
 
   private:
     int32_t m_Key      = 0;
@@ -68,7 +69,7 @@ class KeyButtonReleasedEvent final : public Event
         return formatted;
     }
 
-    FORCEINLINE auto GetKey() const { return m_Key; }
+    FORCEINLINE EKey GetKey() const { return static_cast<EKey>(m_Key); }
 
   private:
     int32_t m_Key      = 0;

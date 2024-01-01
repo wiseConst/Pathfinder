@@ -35,6 +35,11 @@
 # Folders
 Intermediate
 Binaries
+Build
+build
 cmake-build-debug
 cmake-build-release
 .idea
+
+# Misc
+*.log

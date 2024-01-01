@@ -3,8 +3,12 @@
 
 #include "PlatformDetection.h"
 #include "Inheritance.h"
+
 #include <memory>
 #include <string_view>
+
+#include "Math.h"
+#include "Log.h"
 
 #if PFR_WINDOWS
 #define DEBUGBREAK() __debugbreak()
@@ -25,7 +29,6 @@
 #if PFR_RELEASE
 #define PFR_ASSERT(x, msg) (x)
 #elif PFR_DEBUG
-#include "Log.h"
 #define PFR_ASSERT(x, msg)                                                                                                                 \
     {                                                                                                                                      \
         if (!(x))                                                                                                                          \
@@ -50,6 +53,8 @@
 
 namespace Pathfinder
 {
+
+template <typename T> using Weak = std::weak_ptr<T>;
 
 template <typename T> using Unique = std::unique_ptr<T>;
 

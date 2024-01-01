@@ -7,3 +7,15 @@
 [submodule "Pathfinder/vendor/glm"]
 	path = Pathfinder/vendor/glm
 	url = https://github.com/g-truc/glm.git
+[submodule "Pathfinder/vendor/fastgltf"]
+	path = Pathfinder/vendor/fastgltf
+	url = https://github.com/spnda/fastgltf
+[submodule "Pathfinder/vendor/stb"]
+	path = Pathfinder/vendor/stb
+	url = https://github.com/nothings/stb.git
+[submodule "Pathfinder/vendor/meshoptimizer"]
+	path = Pathfinder/vendor/meshoptimizer
+	url = https://github.com/zeux/meshoptimizer.git
+[submodule "Pathfinder/vendor/vma"]
+	path = Pathfinder/vendor/vma
+	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git

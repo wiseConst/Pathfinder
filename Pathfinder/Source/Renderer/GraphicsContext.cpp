@@ -12,10 +12,10 @@ Unique<GraphicsContext> GraphicsContext::Create(const ERendererAPI rendererApi)
 
     switch (rendererApi)
     {
-        case ERendererAPI::RENDERER_API_NONE: break;
         case ERendererAPI::RENDERER_API_VULKAN: return MakeUnique<VulkanContext>();
     }
 
+    PFR_ASSERT(false, "Unknown RendererAPI!");
     return nullptr;
 }
 

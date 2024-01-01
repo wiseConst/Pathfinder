@@ -13,8 +13,6 @@ class GraphicsContext : private Uncopyable, private Unmovable
     GraphicsContext() noexcept = default;
     virtual ~GraphicsContext() { s_Instance = nullptr; }
 
-    virtual void Destroy() = 0;
-
     template <typename T> NODISCARD FORCEINLINE static T& Get()
     {
         PFR_ASSERT(s_Instance, "Graphics context instance is not valid!");
@@ -30,6 +28,8 @@ class GraphicsContext : private Uncopyable, private Unmovable
 
   protected:
     static inline GraphicsContext* s_Instance = nullptr;
+
+    virtual void Destroy() = 0;
 };
 
 }  // namespace Pathfinder

@@ -5,7 +5,6 @@ project(${PROJECT_NAME})
 file(GLOB_RECURSE CORE_SOURCES "Source/*.h" "Source/*.cpp")
 source_group("Source" FILES ${CORE_SOURCES})
 
-
 add_executable(${PROJECT_NAME} ${CORE_SOURCES})
 
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/${CMAKE_BUILD_TYPE}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/${PROJECT_NAME}")

@@ -20,9 +20,13 @@ source_group("Source/Platform/Vulkan" FILES ${PLATFORM_VULKAN_SOURCES})
 file(GLOB_RECURSE RENDERER_SOURCES ${CORE_DIR}/Renderer/*.h ${CORE_DIR}/Renderer/*.cpp)
 source_group("Source/Renderer" FILES ${RENDERER_SOURCES})
 
+file(GLOB_RECURSE LAYERS_SOURCES ${CORE_DIR}/Layers/*.h ${CORE_DIR}/Layer/*.cpp)
+source_group("Source/Layers" FILES ${LAYERS_SOURCES})
+
 set(ALL_FILES
         ${CORE_SOURCES}
         ${EVENTS_SOURCES}
+        ${LAYERS_SOURCES}
         ${PLATFORM_SOURCES}
         ${PLATFORM_GLFW_SOURCES}
         ${PLATFORM_VULKAN_SOURCES}
@@ -57,6 +61,42 @@ endif ()
 add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/volk)
 target_link_libraries(${PROJECT_NAME} PRIVATE volk)
 target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vendor/volk)
+
+# glm
+add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/glm)
+target_link_libraries(${PROJECT_NAME} PRIVATE glm)
+target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glm)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# fastgltf
+add_subdirectory(vendor/fastgltf)
+
 
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(-DPFR_DEBUG=1)

@@ -6,7 +6,7 @@ namespace Pathfinder
 
 static bool s_bIsLoggerInitialized = false;
 
-void Logger::Initialize()
+void Logger::Init()
 {
     if (!s_bIsLoggerInitialized)
     {

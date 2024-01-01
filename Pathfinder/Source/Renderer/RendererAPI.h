@@ -8,22 +8,24 @@ namespace Pathfinder
 
 enum class ERendererAPI : uint8_t
 {
-    RENDERER_API_NONE   = 0,
-    RENDERER_API_VULKAN = 1
+    RENDERER_API_VULKAN = 0,
 };
 
-class RendererAPI
+class RendererAPI : private Uncopyable, private Unmovable
 {
   public:
     static FORCEINLINE const auto& Get() { return s_RendererAPI; }
-    static FORCEINLINE void Set(ERendererAPI rendererApi)
+    static FORCEINLINE void Set(const ERendererAPI rendererApi)
     {
-        if (s_RendererAPI != ERendererAPI::RENDERER_API_NONE) return;
+        if (s_RendererAPI == rendererApi) return;
         s_RendererAPI = rendererApi;
     }
 
   private:
-    inline static ERendererAPI s_RendererAPI = ERendererAPI::RENDERER_API_NONE;
+    inline static ERendererAPI s_RendererAPI = ERendererAPI::RENDERER_API_VULKAN;
+
+    RendererAPI()           = default;
+    ~RendererAPI() override = default;
 };
 
 }  // namespace Pathfinder

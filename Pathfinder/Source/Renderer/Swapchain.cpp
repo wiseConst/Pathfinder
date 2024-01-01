@@ -1,18 +1,19 @@
 #include "PathfinderPCH.h"
 #include "Swapchain.h"
-#include "Core/Application.h"
+#include "RendererAPI.h"
 
 #include "Platform/Vulkan/VulkanSwapchain.h"
 
 namespace Pathfinder
 {
-Unique<Swapchain> Swapchain::Create()
+Unique<Swapchain> Swapchain::Create(void* windowHandle)
 {
-    switch (Application::Get().GetSpecification().RendererAPI)
+    switch (RendererAPI::Get())
     {
-        case ERendererAPI::RENDERER_API_VULKAN: return MakeUnique<VulkanSwapchain>();
+        case ERendererAPI::RENDERER_API_VULKAN: return MakeUnique<VulkanSwapchain>(windowHandle);
     }
 
+    PFR_ASSERT(false, "Unknown RendererAPI!");
     return nullptr;
 }
 
