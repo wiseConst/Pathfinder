@@ -1,6 +1,9 @@
 #ifndef IMAGE_H
 #define IMAGE_H
 
+#include "Core/Core.h"
+#include "RendererCoreDefines.h"
+
 namespace Pathfinder
 {
 
@@ -28,11 +31,23 @@ enum class EImageLayout : uint8_t
     IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL
 };
 
+struct ImageSpecification
+{
+    uint32_t Width      = 1280;
+    uint32_t Height     = 720;
+    EImageLayout Layout = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+};
+
 class Image : private Uncopyable, private Unmovable
 {
   public:
-    Image()          = default;
     virtual ~Image() = default;
+
+    static Unique<Image> Create(const ImageSpecification& imageSpec);
+
+  protected:
+    Image()                = default;
+    virtual void Destroy() = 0;
 };
 
 }  // namespace Pathfinder

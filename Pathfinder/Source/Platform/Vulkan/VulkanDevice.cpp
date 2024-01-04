@@ -1,6 +1,8 @@
 #include "PathfinderPCH.h"
 #include "VulkanDevice.h"
 
+#include "VulkanAllocator.h"
+
 namespace Pathfinder
 {
 
@@ -40,38 +42,62 @@ VulkanDevice::VulkanDevice(const VkInstance& instance)
     PickPhysicalDevice(instance);
     CreateLogicalDevice();
 
+    CreateCommandPools();
+
+    m_VMA = MakeUnique<VulkanAllocator>(m_GPUInfo.LogicalDevice, m_GPUInfo.PhysicalDevice);
+}
+
+void VulkanDevice::CreateCommandPools()
+{
+    // Allocating command pools per thread for async deals
     const VkCommandPoolCreateInfo graphicsCommandPoolCreateInfo = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr,
                                                                    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
                                                                    m_GPUInfo.QueueFamilyIndices.GraphicsFamily};
-    VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &graphicsCommandPoolCreateInfo, nullptr, &m_GPUInfo.GraphicsCommandPool),
-             "Failed to create graphics command pool!");
-    VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.GraphicsCommandPool, VK_OBJECT_TYPE_COMMAND_POOL, "GRAPHICS_COMMAND_POOL");
 
     const VkCommandPoolCreateInfo computeCommandPoolCreateInfo = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr,
                                                                   VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
                                                                   m_GPUInfo.QueueFamilyIndices.ComputeFamily};
-    VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &computeCommandPoolCreateInfo, nullptr, &m_GPUInfo.ComputeCommandPool),
-             "Failed to create compute command pool!");
-    VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.ComputeCommandPool, VK_OBJECT_TYPE_COMMAND_POOL,
-                    "ASYNC_COMPUTE_COMMAND_POOL");
 
     const VkCommandPoolCreateInfo transferCommandPoolCreateInfo = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr,
                                                                    VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT |
                                                                        VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
                                                                    m_GPUInfo.QueueFamilyIndices.TransferFamily};
-    VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &transferCommandPoolCreateInfo, nullptr, &m_GPUInfo.TransferCommandPool),
-             "Failed to create transfer command pool!");
-    VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.TransferCommandPool, VK_OBJECT_TYPE_COMMAND_POOL,
-                    "ASYNC_TRANSFER_COMMAND_POOL");
+    for (uint16_t i = 0; i < s_WORKER_THREAD_COUNT; ++i)
+    {
+        VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &graphicsCommandPoolCreateInfo, nullptr, &m_GPUInfo.GraphicsCommandPools[i]),
+                 "Failed to create graphics command pool!");
+        const std::string graphicsCommandPoolDebugName = "GRAPHICS_COMMAND_POOL_" + std::to_string(i);
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.GraphicsCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+                        graphicsCommandPoolDebugName.data());
+
+        VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &computeCommandPoolCreateInfo, nullptr, &m_GPUInfo.ComputeCommandPools[i]),
+                 "Failed to create compute command pool!");
+
+        const std::string computeCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL" + std::to_string(i);
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.ComputeCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+                        computeCommandPoolDebugName.data());
+
+        VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &transferCommandPoolCreateInfo, nullptr, &m_GPUInfo.TransferCommandPools[i]),
+                 "Failed to create transfer command pool!");
+
+        const std::string transferCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL" + std::to_string(i);
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.TransferCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+                        transferCommandPoolDebugName.data());
+    }
 }
+
+VulkanDevice::~VulkanDevice() = default;
 
 void VulkanDevice::Destroy()
 {
     WaitDeviceOnFinish();
 
-    vkDestroyCommandPool(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsCommandPool, nullptr);
-    vkDestroyCommandPool(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeCommandPool, nullptr);
-    vkDestroyCommandPool(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferCommandPool, nullptr);
+    for (uint16_t i = 0; i < s_WORKER_THREAD_COUNT; ++i)
+    {
+        vkDestroyCommandPool(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsCommandPools[i], nullptr);
+        vkDestroyCommandPool(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeCommandPools[i], nullptr);
+        vkDestroyCommandPool(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferCommandPools[i], nullptr);
+    }
 
     vkDestroyDevice(m_GPUInfo.LogicalDevice, nullptr);
 }
@@ -106,11 +132,11 @@ void VulkanDevice::PickPhysicalDevice(const VkInstance& instance)
     m_GPUInfo = candidates.rbegin()->second;
 
     PFR_ASSERT(m_GPUInfo.PhysicalDevice, "Failed to find suitable GPU");
-    LOG_TAG(VULKAN, "Renderer: %s", m_GPUInfo.GPUProperties.deviceName);
-    LOG_TAG(VULKAN, " Vendor: %s", GetVendorNameCString(m_GPUInfo.GPUProperties.vendorID));
-    LOG_TAG(VULKAN, " Driver: %s [%s]", m_GPUInfo.GPUDriverProperties.driverName, m_GPUInfo.GPUDriverProperties.driverInfo);
-    LOG_TAG(VULKAN, " Using Vulkan API Version: %u.%u.%u", VK_API_VERSION_MAJOR(m_GPUInfo.GPUProperties.apiVersion),
-            VK_API_VERSION_MINOR(m_GPUInfo.GPUProperties.apiVersion), VK_API_VERSION_PATCH(m_GPUInfo.GPUProperties.apiVersion));
+    LOG_TAG_INFO(VULKAN, "Renderer: %s", m_GPUInfo.GPUProperties.deviceName);
+    LOG_TAG_INFO(VULKAN, " Vendor: %s", GetVendorNameCString(m_GPUInfo.GPUProperties.vendorID));
+    LOG_TAG_INFO(VULKAN, " Driver: %s [%s]", m_GPUInfo.GPUDriverProperties.driverName, m_GPUInfo.GPUDriverProperties.driverInfo);
+    LOG_TAG_INFO(VULKAN, " Using Vulkan API Version: %u.%u.%u", VK_API_VERSION_MAJOR(m_GPUInfo.GPUProperties.apiVersion),
+                 VK_API_VERSION_MINOR(m_GPUInfo.GPUProperties.apiVersion), VK_API_VERSION_PATCH(m_GPUInfo.GPUProperties.apiVersion));
 }
 
 void VulkanDevice::CreateLogicalDevice()
@@ -137,14 +163,14 @@ void VulkanDevice::CreateLogicalDevice()
     vulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;  // AMD issues
 
     // Bindless
-    vulkan12Features.descriptorBindingVariableDescriptorCount      = VK_TRUE; // to have no limits on array size of descriptor array
-    vulkan12Features.runtimeDescriptorArray                        = VK_TRUE; // to have descriptor array in e.g. (uniform sampler2D u_GlobalTextures[])
-    vulkan12Features.descriptorIndexing                            = VK_TRUE; //
-    vulkan12Features.descriptorBindingPartiallyBound               = VK_TRUE; // allow "holes" in the descriptor array
+    vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
+    vulkan12Features.runtimeDescriptorArray          = VK_TRUE;  // to have descriptor array in e.g. (uniform sampler2D u_GlobalTextures[])
+    vulkan12Features.descriptorIndexing              = VK_TRUE;  //
+    vulkan12Features.descriptorBindingPartiallyBound = VK_TRUE;  // allow "holes" in the descriptor array
 
     // Shader type aligment
-    vulkan12Features.scalarBlockLayout   = VK_TRUE;
-    //vulkan12Features.bufferDeviceAddress = VK_TRUE;
+    vulkan12Features.scalarBlockLayout = VK_TRUE;
+    // vulkan12Features.bufferDeviceAddress = VK_TRUE;
 
     deviceCI.pNext = &vulkan12Features;
     void** ppNext  = &vulkan12Features.pNext;
@@ -461,9 +487,15 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, EC
 
     switch (type)
     {
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS: commandBufferAllocateInfo.commandPool = m_GPUInfo.GraphicsCommandPool; break;
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE: commandBufferAllocateInfo.commandPool = m_GPUInfo.ComputeCommandPool; break;
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER: commandBufferAllocateInfo.commandPool = m_GPUInfo.TransferCommandPool; break;
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
+            commandBufferAllocateInfo.commandPool = m_GPUInfo.GraphicsCommandPools[0];
+            break;
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
+            commandBufferAllocateInfo.commandPool = m_GPUInfo.ComputeCommandPools[0];
+            break;
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
+            commandBufferAllocateInfo.commandPool = m_GPUInfo.TransferCommandPools[0];
+            break;
         default: PFR_ASSERT(false, "Unknown command buffer type!");
     }
 
@@ -477,17 +509,17 @@ void VulkanDevice::FreeCommandBuffer(const VkCommandBuffer& commandBuffer, EComm
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
         {
-            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsCommandPool, 1, &commandBuffer);
+            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsCommandPools[0], 1, &commandBuffer);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
         {
-            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeCommandPool, 1, &commandBuffer);
+            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeCommandPools[0], 1, &commandBuffer);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
         {
-            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferCommandPool, 1, &commandBuffer);
+            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferCommandPools[0], 1, &commandBuffer);
             break;
         }
     }

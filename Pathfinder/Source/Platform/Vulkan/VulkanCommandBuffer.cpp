@@ -89,9 +89,11 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit)
         VK_CHECK(vkResetFences(context.GetDevice()->GetLogicalDevice(), 1, &m_SubmitFence), "Failed to reset fence!");
     }
 }
-void VulkanCommandBuffer::TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout,
-                                                const EPipelineStage srcPipelineStage, const EPipelineStage dstPipelineStage)
+
+void VulkanCommandBuffer::TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout)
 {
+
+
 
 }
 

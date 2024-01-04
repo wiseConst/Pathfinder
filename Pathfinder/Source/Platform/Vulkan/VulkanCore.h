@@ -1,11 +1,13 @@
 #ifndef VULKANCORE_H
 #define VULKANCORE_H
 
-#include <volk.h>
+#include <volk/volk.h>
 #include <Renderer/RendererCoreDefines.h>
 
 namespace Pathfinder
 {
+
+#define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
 #define VK_PREFER_IGPU 0
 #define VK_FORCE_VALIDATION 1

@@ -5,7 +5,6 @@
 
 #include <fstream>
 #include <mutex>
-#include <chrono>
 
 namespace Pathfinder
 {
@@ -57,8 +56,7 @@ class Logger final : private Uncopyable, private Unmovable
     static void Init();
     static void Shutdown();
 
-    template <typename... Args>
-    static void Log(const ELogLevel level, const char* tag, const char* message, Args&&... args)
+    template <typename... Args> static void Log(const ELogLevel level, const char* tag, const char* message, Args&&... args)
     {
         static constexpr uint32_t s_MaxMessageLength        = 16384;
         static char s_TempMessageBuffer[s_MaxMessageLength] = {0};
@@ -113,6 +111,9 @@ class Logger final : private Uncopyable, private Unmovable
 #define LOG_DEBUG(msg, ...) (msg)
 #endif
 
-#define LOG_TAG(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_INFO, #tag, msg, ##__VA_ARGS__)
+#define LOG_TAG_INFO(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_INFO, #tag, msg, ##__VA_ARGS__)
+#define LOG_TAG_TRACE(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_TRACE, #tag, msg, ##__VA_ARGS__)
+#define LOG_TAG_WARN(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_WARN, #tag, msg, ##__VA_ARGS__)
+#define LOG_TAG_ERROR(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_ERROR, #tag, msg, ##__VA_ARGS__)
 
 #endif  // LOG_H

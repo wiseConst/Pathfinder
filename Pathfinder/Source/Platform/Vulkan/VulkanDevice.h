@@ -65,7 +65,7 @@ struct QueueFamilyIndices
 #endif
 
                 if (bPresentSupport)
-                    indices.PresentFamily = indices.GraphicsFamily ;
+                    indices.PresentFamily = indices.GraphicsFamily;
                 else
                     PFR_ASSERT(false, "Present family should be the same as graphics family!");
             }
@@ -169,12 +169,13 @@ struct QueueFamilyIndices
     uint32_t TransferFamily = UINT32_MAX;
 };
 
-class VulkanDevice final
+class VulkanAllocator;
+class VulkanDevice final : private Uncopyable, private Unmovable
 {
   public:
     explicit VulkanDevice(const VkInstance& instance);
-    VulkanDevice()  = delete;
-    ~VulkanDevice() = default;
+    VulkanDevice()           = delete;
+    ~VulkanDevice() override;
 
     void Destroy();
 
@@ -196,6 +197,12 @@ class VulkanDevice final
     NODISCARD FORCEINLINE const auto& GetComputeQueue() const { return m_GPUInfo.ComputeQueue; }
     NODISCARD FORCEINLINE const auto& GetTransferQueue() const { return m_GPUInfo.TransferQueue; }
 
+    NODISCARD FORCEINLINE VkDeviceAddress GetBufferDeviceAddress(const VkBuffer& buffer) const
+    {
+        const VkBufferDeviceAddressInfo bdaInfo = {VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, nullptr, buffer};
+        return vkGetBufferDeviceAddress(m_GPUInfo.LogicalDevice, &bdaInfo);
+    }
+
   private:
     struct GPUInfo
     {
@@ -204,15 +211,15 @@ class VulkanDevice final
         std::vector<VkFormat> SupportedDepthStencilFormats;
 
         QueueFamilyIndices QueueFamilyIndices = {};
-        VkCommandPool GraphicsCommandPool     = VK_NULL_HANDLE;
-        VkQueue GraphicsQueue                 = VK_NULL_HANDLE;
-        VkQueue PresentQueue                  = VK_NULL_HANDLE;
+        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> GraphicsCommandPools;
+        VkQueue GraphicsQueue = VK_NULL_HANDLE;
+        VkQueue PresentQueue  = VK_NULL_HANDLE;
 
-        VkCommandPool TransferCommandPool = VK_NULL_HANDLE;
-        VkQueue TransferQueue             = VK_NULL_HANDLE;
+        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> TransferCommandPools;
+        VkQueue TransferQueue = VK_NULL_HANDLE;
 
-        VkCommandPool ComputeCommandPool = VK_NULL_HANDLE;
-        VkQueue ComputeQueue             = VK_NULL_HANDLE;
+        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> ComputeCommandPools;
+        VkQueue ComputeQueue = VK_NULL_HANDLE;
 
         VkPhysicalDeviceProperties GPUProperties             = {};
         VkPhysicalDeviceFeatures GPUFeatures                 = {};
@@ -225,9 +232,11 @@ class VulkanDevice final
         VkPhysicalDeviceAccelerationStructurePropertiesKHR ASProperties = {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
     } m_GPUInfo;
+    Unique<VulkanAllocator> m_VMA;
 
     void PickPhysicalDevice(const VkInstance& instance);
     void CreateLogicalDevice();
+    void CreateCommandPools();
 
     uint32_t RateDeviceSuitability(GPUInfo& gpuInfo) const;
     bool IsDeviceSuitable(GPUInfo& gpuInfo) const;

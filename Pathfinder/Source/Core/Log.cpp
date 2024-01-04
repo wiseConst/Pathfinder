@@ -1,6 +1,8 @@
 #include "PathfinderPCH.h"
 #include "Log.h"
 
+#include <chrono>
+
 namespace Pathfinder
 {
 

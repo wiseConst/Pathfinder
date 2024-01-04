@@ -19,3 +19,6 @@
 [submodule "Pathfinder/vendor/vma"]
 	path = Pathfinder/vendor/vma
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
+[submodule "Pathfinder/vendor/spirv-reflect"]
+	path = Pathfinder/vendor/spirv-reflect
+	url = https://github.com/KhronosGroup/SPIRV-Reflect.git

@@ -42,8 +42,8 @@ void VulkanContext::CreateInstance()
                  VK_API_VERSION_PATCH(supportedApiVersionFromDLL));
 #endif
     }
-    // PFR_ASSERT(GNT_VK_API_VERSION <= supportedApiVersionFromDLL, "Desired VK version >= available VK version.");
-    // supportedApiVersionFromDLL = GNT_VK_API_VERSION;
+    PFR_ASSERT(PFR_VK_API_VERSION <= supportedApiVersionFromDLL, "Desired VK version >= available VK version.");
+    supportedApiVersionFromDLL = PFR_VK_API_VERSION;
 
     VkApplicationInfo applicationInfo  = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
     applicationInfo.apiVersion         = supportedApiVersionFromDLL;

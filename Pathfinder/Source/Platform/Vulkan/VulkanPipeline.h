@@ -19,6 +19,8 @@ class VulkanPipeline final : public Pipeline
     VkPipelineLayout m_Layout = VK_NULL_HANDLE;
     PipelineSpecification m_Specification;
 
+    void CreateLayout();
+
     void Invalidate() final override;
     void Destroy() final override;
 };

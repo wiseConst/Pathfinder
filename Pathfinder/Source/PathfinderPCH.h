@@ -6,6 +6,7 @@
 #include <sstream>
 #include <string_view>
 #include <string>
+#include <filesystem>
 
 #include <thread>
 #include <future>

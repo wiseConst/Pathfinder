@@ -10,7 +10,6 @@ namespace Pathfinder
 class GraphicsContext : private Uncopyable, private Unmovable
 {
   public:
-    GraphicsContext() noexcept = default;
     virtual ~GraphicsContext() { s_Instance = nullptr; }
 
     template <typename T> NODISCARD FORCEINLINE static T& Get()
@@ -27,8 +26,10 @@ class GraphicsContext : private Uncopyable, private Unmovable
     static Unique<GraphicsContext> Create(const ERendererAPI rendererApi);
 
   protected:
+
     static inline GraphicsContext* s_Instance = nullptr;
 
+    GraphicsContext() noexcept = default;
     virtual void Destroy() = 0;
 };
 

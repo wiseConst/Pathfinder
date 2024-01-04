@@ -42,8 +42,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     FORCEINLINE void EndRecording() final override { VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer"); }
 
     void Submit(bool bWaitAfterSubmit = true) final override;
-    void TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout, const EPipelineStage srcPipelineStage,
-                               const EPipelineStage dstPipelineStage) final override;
+    void TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout) final override;
 
     FORCEINLINE void CopyImageToImage(const VkImage& srcImage, const VkImageLayout srcImageLayout, VkImage& dstImage,
                                       const VkImageLayout dstImageLayout, const uint32_t regionCount, const VkImageCopy* regions) const

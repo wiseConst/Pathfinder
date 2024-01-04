@@ -1,6 +1,7 @@
 set(PROJECT_NAME Pathfinder)
 
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Source)
+set(VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
 
 file(GLOB_RECURSE CORE_SOURCES ${CORE_DIR}/Core/*.h ${CORE_DIR}/Core/*.cpp)
 source_group("Source/Core" FILES ${CORE_SOURCES})
@@ -23,6 +24,11 @@ source_group("Source/Renderer" FILES ${RENDERER_SOURCES})
 file(GLOB_RECURSE LAYERS_SOURCES ${CORE_DIR}/Layers/*.h ${CORE_DIR}/Layer/*.cpp)
 source_group("Source/Layers" FILES ${LAYERS_SOURCES})
 
+#TODO: Add memory includes
+
+set(VULKAN_SDK_DIR $ENV{VULKAN_SDK})
+message("VULKAN_SDK PATH: ${VULKAN_SDK_DIR}")
+
 set(ALL_FILES
         ${CORE_SOURCES}
         ${EVENTS_SOURCES}
@@ -34,22 +40,33 @@ set(ALL_FILES
 )
 
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
+set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY PROJECT_OUTPUT_DIRECTORY)
 
-set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/Binaries/${CMAKE_BUILD_TYPE}-${CMAKE_SYSTEM_NAME}-${CMAKE_SYSTEM_PROCESSOR}/${PROJECT_NAME}")
+target_include_directories(${PROJECT_NAME} PUBLIC ${CORE_DIR} ${VENDOR_DIR})
 target_precompile_headers(${PROJECT_NAME} PRIVATE ${CORE_DIR}/PathfinderPCH.h)
 
-target_include_directories(${PROJECT_NAME} PUBLIC ${CORE_DIR})
+# G++ filesystem issues ?
+if (NOT MSVC)
+    target_link_libraries(${PROJECT_NAME} PRIVATE stdc++fs)
+endif ()
 
 # GLFW
+set(BUILD_SHARED_LIBS OFF)
 set(GLFW_BUILD_DOCS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/GLFW)
+add_subdirectory(${VENDOR_DIR}/GLFW)
 target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vendor/GLFW/include)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/GLFW/include)
 
-# VOLK
+# meshoptimizer
+set(MESHOPT_BUILD_SHARED_LIBS OFF)
+add_subdirectory(${VENDOR_DIR}/meshoptimizer)
+target_link_libraries(${PROJECT_NAME} PRIVATE meshoptimizer)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/meshoptimizer/src)
+
+# volk
 if (WIN32)
     set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
 elseif (APPLE)
@@ -58,53 +75,62 @@ elseif (UNIX)
     set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_MACOS_MVK)
 endif ()
 
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/volk)
+add_subdirectory(${VENDOR_DIR}/volk)
 target_link_libraries(${PROJECT_NAME} PRIVATE volk)
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vendor/volk)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/volk)
+
+# vma
+set(VMA_STATIC_VULKAN_FUNCTIONS OFF)
+set(VMA_DYNAMIC_VULKAN_FUNCTIONS ON)
+add_subdirectory(${VENDOR_DIR}/vma)
+target_link_libraries(${PROJECT_NAME} PRIVATE GPUOpen::VulkanMemoryAllocator)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/vma/include)
+
+# spirv-reflect
+set(SPIRV_REFLECT_STATIC_LIB ON)
+add_subdirectory(${VENDOR_DIR}/spirv-reflect)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/spirv-reflect)
+target_link_libraries(${PROJECT_NAME} PRIVATE spirv-reflect-static)
+
+# shaderc (linked in the end of CMakeLists.txt)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VULKAN_SDK_DIR}/Include)
 
 # glm
-add_subdirectory(${CMAKE_CURRENT_SOURCE_DIR}/vendor/glm)
+add_subdirectory(${VENDOR_DIR}/glm)
 target_link_libraries(${PROJECT_NAME} PRIVATE glm)
-target_include_directories(${PROJECT_NAME} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/vendor/glm)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/glm)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+# stb
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/stb)
 
 # fastgltf
-add_subdirectory(vendor/fastgltf)
+add_subdirectory(${VENDOR_DIR}/fastgltf)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include)
 
-
+# TODO: shader on testing linking, I'm not sure which one I should link to
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_definitions(-DPFR_DEBUG=1)
     add_compile_options(-g)
+    if (NOT MSVC)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_sharedd.lib)
+    else ()
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_combinedd.lib)
+    endif ()
 elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
     add_definitions(-DPFR_RELEASE=1)
     add_compile_options(-Ofast)
+    if (NOT MSVC)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_shared.lib)
+    else ()
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_combined.lib)
+    endif ()
 elseif (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
     add_definitions(-DPFR_RELEASE=1)
     add_compile_options(-g)
+    if (NOT MSVC)
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_sharedd.lib)
+    else ()
+        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_combinedd.lib)
+    endif ()
 endif ()
+

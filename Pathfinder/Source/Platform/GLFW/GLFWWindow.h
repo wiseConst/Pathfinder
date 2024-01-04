@@ -26,17 +26,18 @@ class GLFWWindow final : public Window
     void SetWindowMode(const EWindowMode windowMode) final override;
     void SetWindowTitle(const char* title) final override;
 
-    void BeginFrame() final override;
-    void SwapBuffers() final override;
-    void PollEvents() final override;
-    void Destroy() final override;
-
   private:
     WindowSpecification m_Specification;
     GLFWwindow* m_Handle = nullptr;
     bool m_bIsRunning    = true;
 
     void SetEventCallbacks() const;
+    void CopyToWindow(const Shared<Framebuffer>& framebuffer) final override;
+
+    void BeginFrame() final override;
+    void SwapBuffers() final override;
+    void PollEvents() final override;
+    void Destroy() final override;
 };
 
 }  // namespace Pathfinder

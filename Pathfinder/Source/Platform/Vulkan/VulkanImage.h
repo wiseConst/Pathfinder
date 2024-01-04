@@ -3,6 +3,7 @@
 
 #include "Renderer/Image.h"
 #include "VulkanCore.h"
+#include "VulkanAllocator.h"
 
 namespace Pathfinder
 {
@@ -10,6 +11,10 @@ namespace Pathfinder
 class VulkanImage final : public Image
 {
   public:
+  private:
+    VkImage m_Handle           = VK_NULL_HANDLE;
+    VmaAllocation m_Allocation = VK_NULL_HANDLE;
+    ImageSpecification m_Specification;
 };
 
 namespace ImageUtils

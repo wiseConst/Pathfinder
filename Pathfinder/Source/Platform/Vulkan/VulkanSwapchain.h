@@ -30,8 +30,6 @@ class VulkanSwapchain final : public Swapchain
     }
     void SetWindowMode(const EWindowMode windowMode) final override;
 
-    void AcquireImage() final override;
-    void PresentImage() final override;
     void Invalidate() final override;
 
   private:
@@ -61,6 +59,10 @@ class VulkanSwapchain final : public Swapchain
 
     void Recreate();
     void Destroy() final override;
+    void AcquireImage() final override;
+    void PresentImage() final override;
+
+    void CopyToSwapchain(const Shared<Framebuffer>& framebuffer) final override;
 };
 
 }  // namespace Pathfinder

@@ -11,7 +11,6 @@ namespace Pathfinder
 class Swapchain : private Uncopyable, private Unmovable
 {
   public:
-    Swapchain() noexcept = default;
     virtual ~Swapchain() = default;
 
     NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const = 0;
@@ -23,11 +22,13 @@ class Swapchain : private Uncopyable, private Unmovable
     virtual void AcquireImage() = 0;
     virtual void PresentImage() = 0;
 
-    virtual void Invalidate() = 0;
+    virtual void Invalidate()                                            = 0;
+    virtual void CopyToSwapchain(const Shared<Framebuffer>& framebuffer) = 0;
 
     static Unique<Swapchain> Create(void* windowHandle);
 
   protected:
+    Swapchain() noexcept   = default;
     virtual void Destroy() = 0;
 };
 

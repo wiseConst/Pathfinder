@@ -347,8 +347,8 @@ void VulkanSwapchain::Recreate()
     const auto duration = std::chrono::duration<float>(Timer::Now() - recreationBegin);
 
 #if PFR_DEBUG
-    LOG_TAG(VULKAN, "Swapchain recreated with: (%u, %u). Took: %0.2fms", m_ImageExtent.width, m_ImageExtent.height,
-            duration.count() * 1000.0f);
+    LOG_TAG_TRACE(VULKAN, "Swapchain recreated with: (%u, %u). Took: %0.2fms", m_ImageExtent.width, m_ImageExtent.height,
+                  duration.count() * 1000.0f);
 #endif
 }
 
@@ -365,6 +365,20 @@ void VulkanSwapchain::Destroy()
     std::ranges::for_each(m_ImageViews,
                           [&](auto& imageView) { vkDestroyImageView(context.GetDevice()->GetLogicalDevice(), imageView, nullptr); });
     std::ranges::for_each(m_ImageAcquiredSemaphores, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
+}
+
+void VulkanSwapchain::CopyToSwapchain(const Shared<Framebuffer>& framebuffer)
+{
+    /*
+    auto commandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+    commandBuffer->BeginRecording();
+
+    VkImageBlit region = {};
+    commandBuffer->BlitImage(m_Images[m_ImageIndex], VK_IMAGE_LAYOUT_GENERAL, m_Images[m_ImageIndex], VK_IMAGE_LAYOUT_GENERAL, 1, &region,
+                             VK_FILTER_LINEAR);
+
+    commandBuffer->EndRecording();
+    commandBuffer->Submit();*/
 }
 
 }  // namespace Pathfinder

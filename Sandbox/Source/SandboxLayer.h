@@ -18,6 +18,9 @@ class SandboxLayer final : public Layer
     void OnEvent(Event& e) final override;
     void OnUpdate(const float deltaTime) final override;
     void OnUIRender() final override;
+
+  private:
+    Shared<Mesh> m_Kitten = nullptr;
 };
 
 }  // namespace Pathfinder

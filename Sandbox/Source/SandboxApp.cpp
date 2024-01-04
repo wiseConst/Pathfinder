@@ -16,7 +16,7 @@ class SandboxApp final : public Application
     ~SandboxApp() override = default;
 };
 
-Unique<Application> Create(const CommandLineArguments& cmdLineArgs)
+Unique<Application> Create()
 {
     ApplicationSpecification appSpec = {};
     appSpec.RendererAPI              = ERendererAPI::RENDERER_API_VULKAN;

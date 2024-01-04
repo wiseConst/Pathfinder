@@ -20,10 +20,11 @@ struct CommandLineArguments final
 
 struct ApplicationSpecification final
 {
-    ERendererAPI RendererAPI = ERendererAPI::RENDERER_API_VULKAN;
-    uint32_t Width           = 1280;
-    uint32_t Height          = 720;
-    std::string_view Title   = "Pathfinder";
+    ERendererAPI RendererAPI         = ERendererAPI::RENDERER_API_VULKAN;
+    CommandLineArguments CmdLineArgs = {};
+    uint32_t Width                   = 1280;
+    uint32_t Height                  = 720;
+    std::string_view Title           = "Pathfinder";
 };
 
 class Application : private Unmovable, private Uncopyable
@@ -33,6 +34,7 @@ class Application : private Unmovable, private Uncopyable
     explicit Application(const ApplicationSpecification& appSpec) noexcept;
     virtual ~Application();
 
+    FORCEINLINE void SetCommandLineArguments(const CommandLineArguments& cmdLineArgs) { m_Specification.CmdLineArgs = cmdLineArgs; }
     void Run();
 
     FORCEINLINE void PushLayer(Unique<Layer> layer)
@@ -58,12 +60,13 @@ class Application : private Unmovable, private Uncopyable
 
     inline static Application* s_Instance = nullptr;
     ApplicationSpecification m_Specification;
+
     static inline bool s_bIsRunning = false;
 
     void OnEvent(Event& e);
 };
 
-Unique<Application> Create(const CommandLineArguments& cmdLineArgs);
+Unique<Application> Create();
 
 }  // namespace Pathfinder
 

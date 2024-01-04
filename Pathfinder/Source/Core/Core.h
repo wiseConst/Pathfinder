@@ -7,8 +7,10 @@
 #include <memory>
 #include <string_view>
 
+#include "Memory/Memory.h"
 #include "Math.h"
 #include "Log.h"
+#include "Threading.h"
 
 #if PFR_WINDOWS
 #define DEBUGBREAK() __debugbreak()
@@ -53,6 +55,8 @@
 
 namespace Pathfinder
 {
+
+static constexpr uint16_t s_WORKER_THREAD_COUNT = 8;
 
 template <typename T> using Weak = std::weak_ptr<T>;
 

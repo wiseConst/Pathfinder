@@ -72,14 +72,31 @@ struct PipelineSpecification
 class Pipeline : private Uncopyable, private Unmovable
 {
   public:
-    Pipeline()          = default;
     virtual ~Pipeline() = default;
 
+    // TODO: Revisit with Unique/Shared approach
     NODISCARD static Shared<Pipeline> Create(const PipelineSpecification& pipelineSpec);
 
   protected:
+    Pipeline()                = default;
     virtual void Invalidate() = 0;
     virtual void Destroy()    = 0;
+};
+
+class PipelineBuilder final : private Uncopyable, private Unmovable
+{
+  public:
+    static void Init();
+    static void Shutdown();
+
+    static void Push(Unique<Pipeline>& pipeline, const PipelineSpecification pipelineSpec);
+    static void Build();
+
+  private:
+    PipelineBuilder()           = default;
+    ~PipelineBuilder() override = default;
+
+    static inline std::vector<std::pair<std::string, std::pair<Unique<Pipeline>&, PipelineSpecification>>> s_PipelinesToBuild;
 };
 
 }  // namespace Pathfinder

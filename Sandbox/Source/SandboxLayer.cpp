@@ -3,7 +3,10 @@
 namespace Pathfinder
 {
 
-void SandboxLayer::Init() {}
+void SandboxLayer::Init()
+{
+   // m_Kitten = Mesh::Create("Assets/Meshes/kitten/scene.gltf");
+}
 
 void SandboxLayer::Destroy() {}
 

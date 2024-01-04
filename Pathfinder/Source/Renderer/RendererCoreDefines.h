@@ -7,6 +7,8 @@
 namespace Pathfinder
 {
 
+#define LOG_SHADER_INFO 1
+
 static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
 
 class CommandBuffer;
@@ -15,8 +17,6 @@ using CommandBufferPerFrame = std::array<Shared<CommandBuffer>, s_FRAMES_IN_FLIG
 class Framebuffer;
 using FramebufferPerFrame = std::array<Shared<Framebuffer>, s_FRAMES_IN_FLIGHT>;
 
-class VertexBuffer;
-using VertexBufferPerFrame = std::array<Shared<VertexBuffer>, s_FRAMES_IN_FLIGHT>;
 
 // Mostly stolen from vulkan_core.h
 enum class EPipelineStage : uint32_t
@@ -60,32 +60,30 @@ enum class ECompareOp : uint8_t
     COMPARE_OP_ALWAYS,
 };
 
-enum class EShaderStage : uint32_t
-{
-    SHADER_STAGE_VERTEX_BIT                  = 0x00000001,
-    SHADER_STAGE_TESSELLATION_CONTROL_BIT    = 0x00000002,
-    SHADER_STAGE_TESSELLATION_EVALUATION_BIT = 0x00000004,
-    SHADER_STAGE_GEOMETRY_BIT                = 0x00000008,
-    SHADER_STAGE_FRAGMENT_BIT                = 0x00000010,
-    SHADER_STAGE_COMPUTE_BIT                 = 0x00000020,
-    SHADER_STAGE_ALL_GRAPHICS                = 0x0000001F,
-    SHADER_STAGE_ALL                         = 0x7FFFFFFF,
-    SHADER_STAGE_RAYGEN_BIT                  = 0x00000100,
-    SHADER_STAGE_ANY_HIT_BIT                 = 0x00000200,
-    SHADER_STAGE_CLOSEST_HIT_BI              = 0x00000400,
-    SHADER_STAGE_MISS_BIT                    = 0x00000800,
-    SHADER_STAGE_INTERSECTION_BIT            = 0x00001000,
-    SHADER_STAGE_CALLABLE_BIT                = 0x00002000,
-    SHADER_STAGE_TASK_BIT                    = 0x00000040,
-    SHADER_STAGE_MESH_BIT                    = 0x00000080,
-};
-
 struct QuadVertex
 {
-    glm::vec3 Position;
-    glm::vec4 Color;
-    glm::uvec2 TexCoord;
+    glm::vec3 Position  = glm::vec3(0.0f);
+    glm::vec4 Color     = glm::vec4(1.0f);
+    glm::uvec2 TexCoord = glm::uvec2(0);
 };
+
+struct MeshVertexPosition
+{
+    glm::vec3 Position = glm::vec3(0.0f);
+};
+
+struct MeshVertex
+{
+    glm::vec3 Normal  = glm::vec3(0.0f);
+    glm::vec3 Tangent = glm::vec3(0.0f);
+};
+
+/*
+struct Meshlet
+{
+
+};
+*/
 
 }  // namespace Pathfinder
 

@@ -11,21 +11,21 @@ namespace Pathfinder
 void Renderer2D::Init()
 {
     s_RendererData2D = MakeUnique<RendererData2D>();
-    LOG_TAG(RENDERER_2D, "Renderer2D created!");
+    LOG_TAG_TRACE(RENDERER_2D, "Renderer2D created!");
 
-    ShaderLibrary::Load("Assets/Shaders/Quad2D");
+    ShaderLibrary::Load("Quad2D");
 
-    PipelineSpecification quadPipelineSpec = {"Quad2D"};
-    quadPipelineSpec.Shader                = ShaderLibrary::Get("Assets/Shaders/Quad2D");
-    quadPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
-
-    s_RendererData2D->QuadPipeline = Pipeline::Create(quadPipelineSpec);
+    // PipelineSpecification quadPipelineSpec = {"Quad2D"};
+    // quadPipelineSpec.Shader                = ShaderLibrary::Get("Quad2D");
+    // quadPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
+    //
+    // s_RendererData2D->QuadPipeline = Pipeline::Create(quadPipelineSpec);
 }
 
 void Renderer2D::Shutdown()
 {
     s_RendererData2D.reset();
-    LOG_TAG(RENDERER_2D, "Renderer2D destroyed!");
+    LOG_TAG_TRACE(RENDERER_2D, "Renderer2D destroyed!");
 }
 
 }  // namespace Pathfinder

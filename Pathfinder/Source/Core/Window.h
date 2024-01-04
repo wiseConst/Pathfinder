@@ -28,10 +28,10 @@ struct WindowSpecification final
     EWindowMode WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
 };
 
+class Framebuffer;
 class Window : private Uncopyable, private Unmovable
 {
   public:
-    explicit Window() noexcept = default;
     virtual ~Window();
 
     NODISCARD FORCEINLINE virtual void* Get() const                                   = 0;
@@ -44,18 +44,20 @@ class Window : private Uncopyable, private Unmovable
     virtual void SetWindowTitle(const char* title)                            = 0;
 
     static std::vector<const char*> GetWSIExtensions();  // implemented in derived
-    FORCEINLINE virtual bool IsMinimized() const = 0;
-    FORCEINLINE virtual bool IsRunning() const   = 0;
-    virtual void BeginFrame()                    = 0;
-    virtual void SwapBuffers()                   = 0;
-    virtual void PollEvents()                    = 0;
+    FORCEINLINE virtual bool IsMinimized() const                      = 0;
+    FORCEINLINE virtual bool IsRunning() const                        = 0;
+    virtual void BeginFrame()                                         = 0;
+    virtual void SwapBuffers()                                        = 0;
+    virtual void PollEvents()                                         = 0;
+    virtual void CopyToWindow(const Shared<Framebuffer>& framebuffer) = 0;
 
     static Unique<Window> Create(const WindowSpecification& windowSpec = {});
 
   protected:
     Unique<Swapchain> m_Swapchain;
 
-    virtual void Destroy() = 0;
+    explicit Window() noexcept = default;
+    virtual void Destroy()     = 0;
 };
 
 }  // namespace Pathfinder

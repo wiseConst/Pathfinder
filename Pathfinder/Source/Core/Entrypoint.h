@@ -6,11 +6,12 @@
 namespace Pathfinder
 {
 
-extern Unique<Application> Create(const CommandLineArguments& cmdLineArgs);
+extern Unique<Application> Create();
 
-int32_t Main(int32_t argc, char** argv)
+inline int32_t Main(int32_t argc, char** argv)
 {
-    auto app = Create({argc, argv});
+    auto app = Create();
+    app->SetCommandLineArguments({argc, argv});
     app->Run();
 
     return 0;

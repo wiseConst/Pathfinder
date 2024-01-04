@@ -2,6 +2,7 @@
 #define RENDERER_H
 
 #include "Core/Core.h"
+#include "BindlessRenderer.h"
 #include "RendererCoreDefines.h"
 
 namespace Pathfinder
@@ -10,14 +11,16 @@ namespace Pathfinder
 class Texture2D;
 class Pipeline;
 class Camera;
+class Mesh;
+class Framebuffer;
 
 // TODO: Make fallback to default graphics pipeline; as of now I imply mesh shading support
 // It's not final cuz in future SceneRenderer may derive from this class
 class Renderer : private Uncopyable, private Unmovable
 {
   public:
-    Renderer()          = default;
-    virtual ~Renderer() = default;
+    Renderer();
+    virtual ~Renderer();
 
     static void Init();
     static void Shutdown();
@@ -37,13 +40,23 @@ class Renderer : private Uncopyable, private Unmovable
   private:
     struct RendererData
     {
-        Weak<CommandBuffer> CurrentRenderCommandBuffer;
-        CommandBufferPerFrame RenderCommandBuffer;
         uint32_t FrameIndex = 0;
 
-        Shared<Texture2D> WhiteTexture = nullptr;
+        Weak<CommandBuffer> CurrentRenderCommandBuffer;
+        CommandBufferPerFrame RenderCommandBuffer;
+
+        Weak<CommandBuffer> CurrentComputeCommandBuffer;
+        CommandBufferPerFrame ComputeCommandBuffer;
+
+        Shared<Pipeline> PathTracingPipeline = nullptr;
+        FramebufferPerFrame CompositeFramebuffer;
+
+        std::vector<Shared<Mesh>> OpaqueObjects;
+        std::vector<Shared<Mesh>> TranslucentObjects;
+        //  Shared<Texture2D> WhiteTexture = nullptr;
     };
-    static inline Unique<RendererData> s_RendererData = nullptr;
+    static inline Unique<RendererData> s_RendererData         = nullptr;
+    static inline Unique<BindlessRenderer> s_BindlessRenderer = nullptr;
 };
 
 }  // namespace Pathfinder

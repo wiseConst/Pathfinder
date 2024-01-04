@@ -3,4 +3,4 @@
 1) Vulkan CPU-side allocator for non-dispatchable objects 
 https://registry.khronos.org/vulkan/specs/1.2-extensions/html/vkspec.html#memory-allocation
 
-2)
+2) Create PipelineBuilder(multithreaded vulkan pipeline building), takes Unique<Pipeline>& ?? simply wait on futures in the end

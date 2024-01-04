@@ -20,6 +20,8 @@ Application::Application(const ApplicationSpecification& appSpec) noexcept : m_S
     s_bIsRunning = true;
 
     Logger::Init();
+    PFR_ASSERT(s_WORKER_THREAD_COUNT > 0 && Threading::GetNumThreads() > 0, "No worker threads found!");
+
     RendererAPI::Set(m_Specification.RendererAPI);
     m_LayerQueue = MakeUnique<LayerQueue>();
 
@@ -34,6 +36,7 @@ void Application::Run()
     m_LayerQueue->Init();
 
     LOG_ERROR("Hi world! %f", 0.5f);
+    LOG_TRACE("Current working directory: %s", std::filesystem::current_path().string().data());
     while (m_Window->IsRunning() && s_bIsRunning)
     {
         Timer t = {};

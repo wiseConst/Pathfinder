@@ -6,10 +6,9 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-
 namespace Pathfinder
 {
 
 }
 
-#endif //MATH_H
+#endif  // MATH_H

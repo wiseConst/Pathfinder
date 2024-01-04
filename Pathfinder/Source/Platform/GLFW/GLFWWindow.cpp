@@ -70,7 +70,7 @@ GLFWWindow::GLFWWindow(const WindowSpecification& windowSpec) noexcept : m_Speci
     glfwSetWindowUserPointer(m_Handle, this);
     SetEventCallbacks();
 
-    LOG_TAG(GLFW, "Created window \"%s\" (%u, %u).", m_Specification.Title.data(), m_Specification.Width, m_Specification.Height);
+    LOG_TAG_TRACE(GLFW, "Created window \"%s\" (%u, %u).", m_Specification.Title.data(), m_Specification.Width, m_Specification.Height);
 }
 
 void GLFWWindow::BeginFrame()
@@ -247,6 +247,12 @@ void GLFWWindow::SetEventCallbacks() const
                        });
 }
 
+void GLFWWindow::CopyToWindow(const Shared<Framebuffer>& framebuffer)
+{
+    PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
+    m_Swapchain->CopyToSwapchain(framebuffer);
+}
+
 void GLFWWindow::Destroy()
 {
     m_Swapchain.reset();
@@ -254,7 +260,7 @@ void GLFWWindow::Destroy()
     glfwDestroyWindow(m_Handle);
     glfwTerminate();
 
-    LOG_TAG(GLFW, "Destroyed window \"%s\".", m_Specification.Title.data());
+    LOG_TAG_TRACE(GLFW, "Destroyed window \"%s\".", m_Specification.Title.data());
 }
 
 }  // namespace Pathfinder

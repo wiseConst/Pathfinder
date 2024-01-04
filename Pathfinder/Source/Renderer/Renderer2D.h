@@ -20,7 +20,7 @@ class Renderer2D final : private Uncopyable, private Unmovable
   private:
     struct RendererData2D
     {
-        VertexBufferPerFrame QuadVertexBuffer;
+        // VertexBufferPerFrame QuadVertexBuffer;
         Shared<Pipeline> QuadPipeline = nullptr;
     };
     static inline Unique<RendererData2D> s_RendererData2D = nullptr;

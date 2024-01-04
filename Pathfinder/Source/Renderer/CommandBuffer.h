@@ -25,7 +25,6 @@ enum class ECommandBufferLevel : uint8_t
 class CommandBuffer : private Uncopyable, private Unmovable
 {
   public:
-    CommandBuffer()          = default;
     virtual ~CommandBuffer() = default;
 
     virtual ECommandBufferLevel GetLevel() const    = 0;
@@ -37,15 +36,15 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = nullptr) = 0;
     virtual void EndRecording()                                                                     = 0;
 
-    virtual void TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout, const EPipelineStage srcPipelineStage,
-                                       const EPipelineStage dstPipelineStage) = 0;
-    virtual void Submit(bool bWaitAfterSubmit = true)                         = 0;
-    virtual void Reset()                                                      = 0;
+    virtual void TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout) = 0;
+    virtual void Submit(bool bWaitAfterSubmit = true)                                            = 0;
+    virtual void Reset()                                                                         = 0;
 
     static Shared<CommandBuffer> Create(ECommandBufferType type,
                                         ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
 
   protected:
+    CommandBuffer()        = default;
     virtual void Destroy() = 0;
 };
 
