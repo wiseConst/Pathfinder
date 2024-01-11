@@ -3,8 +3,12 @@
 
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
-#include "VulkanSwapchain.h"
 #include "VulkanPipeline.h"
+#include "VulkanImage.h"
+
+#include "Core/Application.h"
+#include "Core/Window.h"
+#include "Renderer/Framebuffer.h"
 
 namespace Pathfinder
 {
@@ -90,11 +94,47 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit)
     }
 }
 
+// NOTE: Mip mapping and layer count harcoded for now
 void VulkanCommandBuffer::TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout)
 {
+    const auto oldLayout   = ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout);
+    const auto vkNewLayout = ImageUtils::PathfinderImageLayoutToVulkan(newLayout);
+    if (oldLayout == vkNewLayout) return;
 
+    VkAccessFlags srcAccessMask                   = 0;
+    VkAccessFlags dstAccessMask                   = 0;
+    const VkImageMemoryBarrier imageMemoryBarrier = VulkanUtility::GetImageMemoryBarrier(
+        (VkImage)image->Get(),
+        ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT, oldLayout,
+        vkNewLayout, srcAccessMask, dstAccessMask, 1, 0, 1, 0);
 
+    VkPipelineStageFlags srcStageMask = 0;
+    VkPipelineStageFlags dstStageMask = 0;
 
+    // Determine stages and resource access:
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && vkNewLayout == VK_IMAGE_LAYOUT_GENERAL)
+    {
+        srcAccessMask = 0;
+        dstAccessMask = 0;  // GENERAL layout means resource can be affected by any operationr
+
+        srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    }
+    else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && vkNewLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    {
+        srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+        dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+
+        srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;  // framebuffer and storage image case?
+    }
+    else
+    {
+        PFR_ASSERT(false, "Other transitions not supported!");
+    }
+
+    InsertBarrier(srcStageMask, dstStageMask, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+    image->SetLayout(newLayout);
 }
 
 void VulkanCommandBuffer::Destroy()
@@ -114,66 +154,57 @@ void VulkanCommandBuffer::BindDescriptorSets(Shared<VulkanPipeline>& pipeline, c
                                              VkDescriptorSet* descriptorSets, const uint32_t dynamicOffsetCount,
                                              uint32_t* dynamicOffsets) const
 {
-    // VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    // switch (pipeline->GetSpecification().PipelineType)
-    // {
-    //     case EPipelineType::PIPELINE_TYPE_COMPUTE: pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE; break;
-    //     case EPipelineType::PIPELINE_TYPE_GRAPHICS: pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; break;
-    //     case EPipelineType::PIPELINE_TYPE_RAY_TRACING: pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
-    // }
-    //
-    // vkCmdBindDescriptorSets(m_Handle, pipelineBindPoint, pipeline->GetLayout(), firstSet, descriptorSetCount, descriptorSets,
-    //                         dynamicOffsetCount, dynamicOffsets);
+    VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    switch (pipeline->GetSpecification().PipelineType)
+    {
+        case EPipelineType::PIPELINE_TYPE_COMPUTE: pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE; break;
+        case EPipelineType::PIPELINE_TYPE_GRAPHICS: pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; break;
+        case EPipelineType::PIPELINE_TYPE_RAY_TRACING: pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
+    }
+
+    vkCmdBindDescriptorSets(m_Handle, pipelineBindPoint, pipeline->GetLayout(), firstSet, descriptorSetCount, descriptorSets,
+                            dynamicOffsetCount, dynamicOffsets);
 }
 
-// void VulkanCommandBuffer::BindPipeline(Shared<VulkanPipeline>& pipeline) const
-// {
-//     auto& context         = VulkanContext::Get();
-//     const auto& swapchain = context.GetSwapchain();
-//     PFR_ASSERT(swapchain->IsValid(), "Vulkan swapchain is not valid!");
-//
-//     VkViewport viewport = {};
-//     viewport.x          = 0.0f;
-//     viewport.minDepth   = 0.0f;
-//     viewport.maxDepth   = 1.0f;
-//
-//     viewport.y      = static_cast<float>(swapchain->GetImageExtent().height);
-//     viewport.width  = static_cast<float>(swapchain->GetImageExtent().width);
-//     viewport.height = -static_cast<float>(swapchain->GetImageExtent().height);
-//
-//     VkRect2D scissor = {{0, 0}, swapchain->GetImageExtent()};
-//     if (auto& targetFramebuffer = pipeline->GetSpecification().TargetFramebuffer[context.GetCurrentFrameIndex()])
-//     {
-//         scissor.extent = VkExtent2D{targetFramebuffer->GetWidth(), targetFramebuffer->GetHeight()};
-//
-//         viewport.y      = static_cast<float>(scissor.extent.height);
-//         viewport.width  = static_cast<float>(scissor.extent.width);
-//         viewport.height = -static_cast<float>(scissor.extent.height);
-//     }
-//
-//     if (pipeline->GetSpecification().bDynamicPolygonMode && !RENDERDOC_DEBUG)
-//         vkCmdSetPolygonModeEXT(m_Handle, Utility::GauntletPolygonModeToVulkan(pipeline->GetSpecification().PolygonMode));
-//
-//     VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-//     switch (pipeline->GetSpecification().PipelineType)
-//     {
-//         case EPipelineType::PIPELINE_TYPE_COMPUTE: pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE; break;
-//         case EPipelineType::PIPELINE_TYPE_GRAPHICS: pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; break;
-//         case EPipelineType::PIPELINE_TYPE_RAY_TRACING: pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
-//     }
-//
-//     vkCmdBindPipeline(m_Handle, pipelineBindPoint, pipeline->Get());
-//
-//     if (pipelineBindPoint != VK_PIPELINE_BIND_POINT_COMPUTE)
-//     {
-//         vkCmdSetViewport(m_Handle, 0, 1, &viewport);
-//         vkCmdSetScissor(m_Handle, 0, 1, &scissor);
-//     }
-// }
+void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
+{
+    // TODO: Remove dependency on main window, in case you wanna have more viewports
+    const auto& window  = Application::Get().GetWindow();
+    VkViewport viewport = {0.0f,
+                           static_cast<float>(window->GetSpecification().Height),
+                           static_cast<float>(window->GetSpecification().Width),
+                           -static_cast<float>(window->GetSpecification().Height),
+                           0.0f,
+                           1.0f};
 
-// void VulkanCommandBuffer::SetPipelinePolygonMode(Ref<VulkanPipeline>& pipeline, const EPolygonMode polygonMode) const
-// {
-//     pipeline->GetSpecification().PolygonMode = polygonMode;
-// }
+    VkRect2D scissor = {{0, 0}, {window->GetSpecification().Width, window->GetSpecification().Height}};
+    if (auto& targetFramebuffer = pipeline->GetSpecification().TargetFramebuffer[window->GetCurrentFrameIndex()])
+    {
+        scissor.extent = VkExtent2D{targetFramebuffer->GetSpecification().Width, targetFramebuffer->GetSpecification().Height};
+
+        viewport.y      = static_cast<float>(scissor.extent.height);
+        viewport.width  = static_cast<float>(scissor.extent.width);
+        viewport.height = -static_cast<float>(scissor.extent.height);
+    }
+
+    // if (pipeline->GetSpecification().bDynamicPolygonMode && !RENDERDOC_DEBUG)
+    //       vkCmdSetPolygonModeEXT(m_Handle, Utility::GauntletPolygonModeToVulkan(pipeline->GetSpecification().PolygonMode));
+
+    VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    switch (pipeline->GetSpecification().PipelineType)
+    {
+        case EPipelineType::PIPELINE_TYPE_COMPUTE: pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE; break;
+        case EPipelineType::PIPELINE_TYPE_GRAPHICS: pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS; break;
+        case EPipelineType::PIPELINE_TYPE_RAY_TRACING: pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
+    }
+
+    if (pipelineBindPoint != VK_PIPELINE_BIND_POINT_COMPUTE)
+    {
+        vkCmdSetViewport(m_Handle, 0, 1, &viewport);
+        vkCmdSetScissor(m_Handle, 0, 1, &scissor);
+    }
+
+    vkCmdBindPipeline(m_Handle, pipelineBindPoint, (VkPipeline)pipeline->Get());
+}
 
 }  // namespace Pathfinder

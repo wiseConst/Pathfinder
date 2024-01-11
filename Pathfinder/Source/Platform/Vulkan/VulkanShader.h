@@ -49,7 +49,7 @@ class VulkanShader final : public Shader
     void Reflect(ShaderDescription& shaderDescription, const std::vector<uint32_t>& compiledShaderSrc);
     void LoadShaderModule(VkShaderModule& module, const std::vector<uint32_t>& shaderSrcSpv) const;
     void Destroy() final override;
-    void DestroyReflectionGarbage() final override;
+    void DestroyReflectionGarbage();
 };
 
 }  // namespace Pathfinder

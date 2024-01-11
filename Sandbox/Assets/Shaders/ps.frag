@@ -4,7 +4,7 @@
 
 layout (location = 0) out vec4 color;
 
-#include "ShaderDefines.h"
+#include "Assets/Shaders/ShaderDefines.h"
 
 
 layout(set = 3, binding = 0) uniform ShaderOptions

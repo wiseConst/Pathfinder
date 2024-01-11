@@ -63,6 +63,8 @@ class Application : private Unmovable, private Uncopyable
 
     static inline bool s_bIsRunning = false;
 
+    float m_DeltaTime = 0.0f;
+
     void OnEvent(Event& e);
 };
 

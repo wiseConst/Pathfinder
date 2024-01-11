@@ -197,7 +197,7 @@ std::vector<const char*> VulkanContext::GetRequiredExtensions() const
 void VulkanContext::Destroy()
 {
     m_Device->WaitDeviceOnFinish();
-    m_Device->Destroy();
+    m_Device.reset();
 
     if constexpr (VK_FORCE_VALIDATION || s_bEnableValidationLayers)
         vkDestroyDebugUtilsMessengerEXT(m_VulkanInstance, m_DebugMessenger, nullptr);

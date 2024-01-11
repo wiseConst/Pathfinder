@@ -1,0 +1,32 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#include "Assets/Shaders/ShaderDefines.h"
+
+#if DEBUG_PRINTF
+#extension GL_EXT_debug_printf : require
+#endif
+
+
+// 128 invocations (threads) in parallel
+layout(local_size_x = 16, local_size_y = 8, local_size_z = 1) in;
+
+void main()
+{
+    #if DEBUG_PRINTF
+    debugPrintfEXT("Hello from invocation (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    #endif
+
+    const uvec2 resolution = imageSize(u_GlobalImages_RGBA8[u_PC.ImageIndex]);
+    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
+    if ((pixel.x >= resolution.x) || (pixel.y >= resolution.y))
+    {
+        #if DEBUG_PRINTF
+        debugPrintfEXT("Out of bounds! (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+        #endif
+        return;
+    }
+
+    const vec4 pixelColor = vec4(float(pixel.x) / resolution.x, float(pixel.y) / resolution.y, 0.0, 0.0);
+    imageStore(u_GlobalImages_RGBA8[u_PC.ImageIndex], pixel, pixelColor);
+}

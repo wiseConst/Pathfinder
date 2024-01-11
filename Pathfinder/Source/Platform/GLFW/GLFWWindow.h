@@ -25,6 +25,7 @@ class GLFWWindow final : public Window
     void SetVSync(bool bVSync) final override;
     void SetWindowMode(const EWindowMode windowMode) final override;
     void SetWindowTitle(const char* title) final override;
+    void AddResizeCallback(ResizeCallback&& resizeCallback) final override;
 
   private:
     WindowSpecification m_Specification;
@@ -33,6 +34,7 @@ class GLFWWindow final : public Window
 
     void SetEventCallbacks() const;
     void CopyToWindow(const Shared<Framebuffer>& framebuffer) final override;
+    void CopyToWindow(const Shared<Image>& image) final override;
 
     void BeginFrame() final override;
     void SwapBuffers() final override;

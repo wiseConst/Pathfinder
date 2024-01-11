@@ -7,11 +7,11 @@
 namespace Pathfinder
 {
 
-static Unique<Buffer> Create(const BufferSpecification& bufferSpec)
+ Shared<Buffer> Buffer::Create(const BufferSpecification& bufferSpec)
 {
     switch (RendererAPI::Get())
     {
-        case ERendererAPI::RENDERER_API_VULKAN: return MakeUnique<VulkanBuffer>(bufferSpec);
+        case ERendererAPI::RENDERER_API_VULKAN: return MakeShared<VulkanBuffer>(bufferSpec);
     }
 
     PFR_ASSERT(false, "Unknown RendererAPI!");

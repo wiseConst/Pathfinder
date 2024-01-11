@@ -19,8 +19,7 @@ enum class EPolygonMode : uint8_t
 {
     POLYGON_MODE_FILL = 0,
     POLYGON_MODE_LINE,
-    POLYGON_MODE_POINT,
-    POLYGON_MODE_FILL_RECTANGLE_NV
+    POLYGON_MODE_POINT
 };
 
 enum class EFrontFace : uint8_t
@@ -37,6 +36,11 @@ enum class EPrimitiveTopology : uint8_t
     PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
     PRIMITIVE_TOPOLOGY_TRIANGLE_STRIP,
     PRIMITIVE_TOPOLOGY_TRIANGLE_FAN
+};
+
+enum class EBlendOp : uint8_t
+{
+    BLEND_OP_ADD = 0,
 };
 
 enum class EPipelineType : uint8_t
@@ -56,8 +60,10 @@ struct PipelineSpecification
     EPolygonMode PolygonMode             = EPolygonMode::POLYGON_MODE_FILL;
     EFrontFace FrontFace                 = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
     EPrimitiveTopology PrimitiveTopology = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    bool PrimitiveRestartEnable          = false;
+    EBlendOp BlendOp                     = EBlendOp::BLEND_OP_ADD;
     float LineWidth                      = 1.0f;
+    bool bMeshShading                    = false;
+    bool bBindlessCompatible             = false;
 
     Shared<Pathfinder::Shader> Shader = nullptr;
     FramebufferPerFrame TargetFramebuffer;
@@ -74,6 +80,11 @@ class Pipeline : private Uncopyable, private Unmovable
   public:
     virtual ~Pipeline() = default;
 
+    NODISCARD FORCEINLINE virtual const PipelineSpecification& GetSpecification() const = 0;
+    NODISCARD FORCEINLINE virtual void* Get() const                                     = 0;
+
+    FORCEINLINE virtual void SetPolygonMode(const EPolygonMode polygonMode) = 0;
+
     // TODO: Revisit with Unique/Shared approach
     NODISCARD static Shared<Pipeline> Create(const PipelineSpecification& pipelineSpec);
 
@@ -89,14 +100,17 @@ class PipelineBuilder final : private Uncopyable, private Unmovable
     static void Init();
     static void Shutdown();
 
-    static void Push(Unique<Pipeline>& pipeline, const PipelineSpecification pipelineSpec);
+    FORCEINLINE static void Push(Shared<Pipeline>& pipeline, const PipelineSpecification pipelineSpec)
+    {
+        s_PipelinesToBuild.emplace_back(pipeline, pipelineSpec);
+    }
     static void Build();
 
   private:
     PipelineBuilder()           = default;
     ~PipelineBuilder() override = default;
 
-    static inline std::vector<std::pair<std::string, std::pair<Unique<Pipeline>&, PipelineSpecification>>> s_PipelinesToBuild;
+    static inline std::vector<std::pair<Shared<Pipeline>&, PipelineSpecification>> s_PipelinesToBuild;
 };
 
 }  // namespace Pathfinder

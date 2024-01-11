@@ -3,6 +3,7 @@
 
 #include "Renderer/Swapchain.h"
 #include "VulkanCore.h"
+#include <vector>
 
 namespace Pathfinder
 {
@@ -32,13 +33,19 @@ class VulkanSwapchain final : public Swapchain
 
     void Invalidate() final override;
 
+    FORCEINLINE void AddResizeCallback(ResizeCallback&& resizeCallback) final override
+    {
+        m_ResizeCallbacks.emplace_back(std::forward<ResizeCallback>(resizeCallback));
+    }
+
   private:
     VkSwapchainKHR m_Handle  = VK_NULL_HANDLE;
     void* m_WindowHandle     = nullptr;
     EWindowMode m_WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
     VkSurfaceKHR m_Surface   = VK_NULL_HANDLE;
     bool m_bVSync            = false;
-    VulkanSempahorePerFrame m_ImageAcquiredSemaphores;
+    VulkanSemaphorePerFrame m_ImageAcquiredSemaphores;
+    std::vector<ResizeCallback> m_ResizeCallbacks;
 
 #if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     VkSurfaceFullScreenExclusiveWin32InfoEXT m_SurfaceFullScreenExclusiveWin32Info = {
@@ -62,7 +69,7 @@ class VulkanSwapchain final : public Swapchain
     void AcquireImage() final override;
     void PresentImage() final override;
 
-    void CopyToSwapchain(const Shared<Framebuffer>& framebuffer) final override;
+    void CopyToSwapchain(const Shared<Image>& image) final override;
 };
 
 }  // namespace Pathfinder

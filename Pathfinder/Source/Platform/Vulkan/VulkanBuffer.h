@@ -25,9 +25,24 @@ class VulkanBuffer final : public Buffer
     VkBuffer m_Handle          = VK_NULL_HANDLE;
     VmaAllocation m_Allocation = VK_NULL_HANDLE;
     BufferSpecification m_Specification;
+    bool m_bIsMapped = false;
 
     void Destroy() final override;
 };
+
+namespace BufferUtils
+{
+
+void CreateBuffer(VkBuffer& buffer, VmaAllocation& allocation, const size_t size, const VkBufferUsageFlags bufferUsage,
+                  VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY);
+
+VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUsage);
+
+VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUsage);
+
+void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation);
+
+}  // namespace BufferUtils
 
 }  // namespace Pathfinder
 

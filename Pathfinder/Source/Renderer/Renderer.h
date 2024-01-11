@@ -9,10 +9,12 @@ namespace Pathfinder
 {
 
 class Texture2D;
+class TextureCube;
 class Pipeline;
 class Camera;
 class Mesh;
 class Framebuffer;
+class Image;
 
 // TODO: Make fallback to default graphics pipeline; as of now I imply mesh shading support
 // It's not final cuz in future SceneRenderer may derive from this class
@@ -37,6 +39,12 @@ class Renderer : private Uncopyable, private Unmovable
         return s_RendererData;
     }
 
+    NODISCARD FORCEINLINE static const auto& GetBindlessRenderer()
+    {
+        PFR_ASSERT(s_BindlessRenderer, "BindlessRenderer is not valid!");
+        return s_BindlessRenderer;
+    }
+
   private:
     struct RendererData
     {
@@ -48,15 +56,18 @@ class Renderer : private Uncopyable, private Unmovable
         Weak<CommandBuffer> CurrentComputeCommandBuffer;
         CommandBufferPerFrame ComputeCommandBuffer;
 
-        Shared<Pipeline> PathTracingPipeline = nullptr;
+        Shared<Pipeline> PathtracingPipeline = nullptr;
+        ImagePerFrame PathtracedImage;
         FramebufferPerFrame CompositeFramebuffer;
+
+        FramebufferPerFrame GBuffer;
 
         std::vector<Shared<Mesh>> OpaqueObjects;
         std::vector<Shared<Mesh>> TranslucentObjects;
         //  Shared<Texture2D> WhiteTexture = nullptr;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
-    static inline Unique<BindlessRenderer> s_BindlessRenderer = nullptr;
+    static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
 };
 
 }  // namespace Pathfinder

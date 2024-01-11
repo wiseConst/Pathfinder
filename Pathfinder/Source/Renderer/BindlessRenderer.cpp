@@ -7,11 +7,11 @@
 namespace Pathfinder
 {
 
-Unique<BindlessRenderer> BindlessRenderer::Create()
+Shared<BindlessRenderer> BindlessRenderer::Create()
 {
     switch (RendererAPI::Get())
     {
-        case ERendererAPI::RENDERER_API_VULKAN: return MakeUnique<VulkanBindlessRenderer>();
+        case ERendererAPI::RENDERER_API_VULKAN: return MakeShared<VulkanBindlessRenderer>();
     }
 
     PFR_ASSERT(false, "Unknown RendererAPI!");

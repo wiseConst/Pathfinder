@@ -6,21 +6,23 @@
 namespace Pathfinder
 {
 
-enum class EBufferType : uint8_t
+enum EBufferUsage : uint32_t
 {
-    BUFFER_TYPE_VERTEX = 0,
-    BUFFER_TYPE_INDEX,
-    BUFFER_TYPE_STORAGE,
-    BUFFER_TYPE_STAGING
+    BUFFER_TYPE_VERTEX  = BIT(0),
+    BUFFER_TYPE_INDEX   = BIT(1),
+    BUFFER_TYPE_STORAGE = BIT(2),
+    BUFFER_TYPE_STAGING = BIT(3),
+    BUFFER_TYPE_UNIFORM = BIT(4),
 };
+typedef uint32_t BufferUsageFlags;
 
 struct BufferSpecification
 {
-    EBufferType BufferType = EBufferType::BUFFER_TYPE_VERTEX;
-    const void* Data       = nullptr;
-    size_t DataSize        = 0;
-    size_t BufferSize      = 0;
-    bool bMapPersistent    = false;  // In case it's UBO
+    BufferUsageFlags BufferUsage = 0;
+    const void* Data             = nullptr;
+    size_t DataSize              = 0;
+    size_t BufferCapacity        = 0;
+    bool bMapPersistent          = false;  // In case it's UBO
 };
 
 class Buffer : private Uncopyable, private Unmovable
@@ -28,12 +30,12 @@ class Buffer : private Uncopyable, private Unmovable
   public:
     virtual ~Buffer() = default;
 
-    NODISCARD FORCEINLINE virtual void* Get() const               = 0;
+    NODISCARD FORCEINLINE virtual const BufferSpecification& GetSpecification() = 0;
+    NODISCARD FORCEINLINE virtual void* Get() const                             = 0;
+
     virtual void SetData(const void* data, const size_t dataSize) = 0;
 
-    NODISCARD FORCEINLINE virtual const BufferSpecification& GetSpecification() = 0;
-
-    static Unique<Buffer> Create(const BufferSpecification& bufferSpec);
+   NODISCARD  static Shared<Buffer> Create(const BufferSpecification& bufferSpec);
 
   protected:
     explicit Buffer() = default;

@@ -12,6 +12,8 @@ namespace Pathfinder
 #define VK_PREFER_IGPU 0
 #define VK_FORCE_VALIDATION 1
 #define VK_LOG_INFO 0
+#define VK_SHADER_DEBUG_PRINTF 0
+#define VK_RTX 1
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -36,15 +38,20 @@ static const std::vector<const char*> s_DeviceExtensions = {
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
 
-    // VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,    // To build acceleration structures
-    // VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,      // To use vkCmdTraceRaysKHR
-    // VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structures
+#if VK_RTX
+VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,    // To build acceleration structures
+VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,      // To use vkCmdTraceRaysKHR
+VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structures
+#endif
+#if VK_SHADER_DEBUG_PRINTF
+    VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,  // debugPrintEXT shaders
+#endif
 };
 
 class VulkanCommandBuffer;
 using VulkanCommandBufferPerFrame = std::array<Shared<VulkanCommandBuffer>, s_FRAMES_IN_FLIGHT>;
 
-using VulkanSempahorePerFrame = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>;
+using VulkanSemaphorePerFrame = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>;
 
 static std::string VK_GetResultString(const VkResult result)
 {
@@ -164,6 +171,24 @@ static VkImageMemoryBarrier GetImageMemoryBarrier(const VkImage& image, const Vk
     imageMemoryBarrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
 
     return imageMemoryBarrier;
+}
+
+static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
+{
+    switch (compareOp)
+    {
+        case ECompareOp::COMPARE_OP_LESS: return VK_COMPARE_OP_LESS;
+        case ECompareOp::COMPARE_OP_EQUAL: return VK_COMPARE_OP_EQUAL;
+        case ECompareOp::COMPARE_OP_NEVER: return VK_COMPARE_OP_NEVER;
+        case ECompareOp::COMPARE_OP_ALWAYS: return VK_COMPARE_OP_ALWAYS;
+        case ECompareOp::COMPARE_OP_GREATER: return VK_COMPARE_OP_GREATER;
+        case ECompareOp::COMPARE_OP_NOT_EQUAL: return VK_COMPARE_OP_NOT_EQUAL;
+        case ECompareOp::COMPARE_OP_LESS_OR_EQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case ECompareOp::COMPARE_OP_GREATER_OR_EQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
+    }
+
+    PFR_ASSERT(false, "Unknown compare op!");
+    return VK_COMPARE_OP_NEVER;
 }
 
 }  // namespace VulkanUtility

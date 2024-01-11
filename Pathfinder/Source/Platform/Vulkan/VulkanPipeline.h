@@ -14,6 +14,12 @@ class VulkanPipeline final : public Pipeline
     explicit VulkanPipeline(const PipelineSpecification& pipelineSpec);
     ~VulkanPipeline() override { Destroy(); }
 
+    NODISCARD FORCEINLINE VkPipelineLayout GetLayout() const { return m_Layout; }
+    NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
+    NODISCARD FORCEINLINE const PipelineSpecification& GetSpecification() const final override { return m_Specification; }
+
+    FORCEINLINE void SetPolygonMode(const EPolygonMode polygonMode) final override { m_Specification.PolygonMode = polygonMode; }
+
   private:
     VkPipeline m_Handle       = VK_NULL_HANDLE;
     VkPipelineLayout m_Layout = VK_NULL_HANDLE;

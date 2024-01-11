@@ -4,7 +4,7 @@
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
 #include "VulkanCommandBuffer.h"
-#include "VulkanImage.h "
+#include "VulkanImage.h"
 
 #include "Core/Application.h"
 #include "Core/Window.h"
@@ -291,18 +291,9 @@ void VulkanSwapchain::AcquireImage()
     auto& context             = VulkanContext::Get();
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
 
-    // Firstly wait for GPU to finish drawing therefore set fence to signaled.
-    //  VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_InFlightFence[m_FrameIndex], VK_TRUE, UINT64_MAX), "Failed to wait for fences!");
-
     const auto result =
         vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphores[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
-    if (result == VK_SUCCESS)
-    {
-        // Reset fence if only we've acquired an image, otherwise if you reset it after waiting && swapchain recreated then here will be
-        // deadlock because fence is unsignaled, but we will be waiting it to be signaled.
-        //  VK_CHECK(vkResetFences(logicalDevice, 1, &m_InFlightFence[m_FrameIndex]), "Failed to reset fence!");
-        return;
-    }
+    if (result == VK_SUCCESS) return;
 
     if (result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR)
     {
@@ -350,6 +341,11 @@ void VulkanSwapchain::Recreate()
     LOG_TAG_TRACE(VULKAN, "Swapchain recreated with: (%u, %u). Took: %0.2fms", m_ImageExtent.width, m_ImageExtent.height,
                   duration.count() * 1000.0f);
 #endif
+
+    for (auto& resizeCallback : m_ResizeCallbacks)
+    {
+        resizeCallback(m_ImageExtent.width, m_ImageExtent.height);
+    }
 }
 
 void VulkanSwapchain::Destroy()
@@ -367,18 +363,61 @@ void VulkanSwapchain::Destroy()
     std::ranges::for_each(m_ImageAcquiredSemaphores, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
 }
 
-void VulkanSwapchain::CopyToSwapchain(const Shared<Framebuffer>& framebuffer)
+void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
 {
-    /*
-    auto commandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
-    commandBuffer->BeginRecording();
+    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+    vulkanCommandBuffer->BeginRecording(true);
+    vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain");
 
-    VkImageBlit region = {};
-    commandBuffer->BlitImage(m_Images[m_ImageIndex], VK_IMAGE_LAYOUT_GENERAL, m_Images[m_ImageIndex], VK_IMAGE_LAYOUT_GENERAL, 1, &region,
-                             VK_FILTER_LINEAR);
+    {
+        const auto srcImageBarrier =
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+                                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
+        const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+            (VkImage)image->Get(),
+            ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
+            ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0,
+            VK_ACCESS_TRANSFER_READ_BIT, 1, 0, 1, 0);
 
-    commandBuffer->EndRecording();
-    commandBuffer->Submit();*/
+        const std::vector<VkImageMemoryBarrier> imageBarriers = {srcImageBarrier, dstImageBarrier};
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT,
+                                           0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()), imageBarriers.data());
+    }
+
+    VkImageBlit region               = {};
+    region.srcSubresource.layerCount = 1;
+    region.srcSubresource.aspectMask =
+        ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    region.srcOffsets[1] =
+        VkOffset3D{static_cast<int32_t>(image->GetSpecification().Width), static_cast<int32_t>(image->GetSpecification().Height), 1};
+
+    region.dstSubresource.layerCount = 1;
+    region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    region.dstOffsets[1]             = VkOffset3D{static_cast<int32_t>(m_ImageExtent.width), static_cast<int32_t>(m_ImageExtent.height), 1};
+
+    vulkanCommandBuffer->BlitImage((VkImage)image->Get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_Images[m_ImageIndex],
+                                   VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
+
+    {
+        const auto srcImageBarrier =
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+                                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_TRANSFER_WRITE_BIT, 0, 1, 0, 1, 0);
+
+        const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+           (VkImage )image->Get(),
+            ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout),
+            VK_ACCESS_TRANSFER_READ_BIT, 0, 1, 0, 1, 0);
+
+        const std::vector<VkImageMemoryBarrier> imageBarriers = {srcImageBarrier, dstImageBarrier};
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()),
+                                           imageBarriers.data());
+    }
+
+    vulkanCommandBuffer->EndDebugLabel();
+    vulkanCommandBuffer->EndRecording();
+    vulkanCommandBuffer->Submit();
 }
 
 }  // namespace Pathfinder

@@ -174,13 +174,13 @@ class VulkanDevice final : private Uncopyable, private Unmovable
 {
   public:
     explicit VulkanDevice(const VkInstance& instance);
-    VulkanDevice()           = delete;
+    VulkanDevice() = delete;
     ~VulkanDevice() override;
-
-    void Destroy();
 
     void AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, ECommandBufferType type, VkCommandBufferLevel level) const;
     void FreeCommandBuffer(const VkCommandBuffer& commandBuffer, ECommandBufferType type) const;
+
+    NODISCARD FORCEINLINE const auto& GetAllocator() const { return m_VMA; }
 
     FORCEINLINE void WaitDeviceOnFinish() const
     {

@@ -1,16 +1,25 @@
 #ifndef BINDLESSRENDERER_H
 #define BINDLESSRENDERER_H
 
+#include "RendererCoreDefines.h"
 #include "Core/Core.h"
 
 namespace Pathfinder
 {
 
+class CommandBuffer;
+
 class BindlessRenderer : private Uncopyable, private Unmovable
 {
   public:
     virtual ~BindlessRenderer() = default;
-    NODISCARD static Unique<BindlessRenderer> Create();
+
+    virtual void Bind(const Shared<CommandBuffer>& commandBuffer) = 0;
+
+    virtual void LoadImage(const ImagePerFrame& images)           = 0;
+    virtual void LoadImage(const Shared<Image>& image)            = 0;
+
+    NODISCARD static Shared<BindlessRenderer> Create();
 
   protected:
     BindlessRenderer() = default;

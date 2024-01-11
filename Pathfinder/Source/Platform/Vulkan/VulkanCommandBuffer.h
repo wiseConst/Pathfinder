@@ -44,11 +44,8 @@ class VulkanCommandBuffer final : public CommandBuffer
     void Submit(bool bWaitAfterSubmit = true) final override;
     void TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout) final override;
 
-    FORCEINLINE void CopyImageToImage(const VkImage& srcImage, const VkImageLayout srcImageLayout, VkImage& dstImage,
-                                      const VkImageLayout dstImageLayout, const uint32_t regionCount, const VkImageCopy* regions) const
-    {
-        vkCmdCopyImage(m_Handle, srcImage, srcImageLayout, dstImage, dstImageLayout, regionCount, regions);
-    }
+    FORCEINLINE void BeginRendering(const VkRenderingInfo* renderingInfo) const { vkCmdBeginRendering(m_Handle, renderingInfo); }
+    FORCEINLINE void EndRendering() const { vkCmdEndRendering(m_Handle); }
 
     FORCEINLINE void InsertBarrier(const VkPipelineStageFlags srcStageMask, const VkPipelineStageFlags dstStageMask,
                                    const VkDependencyFlags dependencyFlags, const uint32_t memoryBarrierCount,
@@ -70,9 +67,7 @@ class VulkanCommandBuffer final : public CommandBuffer
                             VkDescriptorSet* descriptorSets = VK_NULL_HANDLE, const uint32_t dynamicOffsetCount = 0,
                             uint32_t* dynamicOffsets = nullptr) const;
 
-    // void BindPipeline(Ref<VulkanPipeline>& pipeline) const;
-    // void SetPipelinePolygonMode(Ref<VulkanPipeline>& pipeline,
-    //                             const EPolygonMode polygonMode) const;  // Invoke before binding actual pipeline
+    void BindPipeline(Shared<Pipeline>& pipeline) const final override;
 
     FORCEINLINE void DrawIndexed(const uint32_t indexCount, const uint32_t instanceCount = 1, const uint32_t firstIndex = 0,
                                  const int32_t vertexOffset = 0, const uint32_t firstInstance = 0) const
@@ -98,17 +93,20 @@ class VulkanCommandBuffer final : public CommandBuffer
         vkCmdBindVertexBuffers(m_Handle, firstBinding, bindingCount, buffers, offsets);
     }
 
-    FORCEINLINE void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ)
-    {
-        vkCmdDispatch(m_Handle, groupCountX, groupCountY, groupCountZ);
-    }
-
     FORCEINLINE
     void BindIndexBuffer(const VkBuffer& buffer, const VkDeviceSize offset = 0, VkIndexType indexType = VK_INDEX_TYPE_UINT32) const
     {
         vkCmdBindIndexBuffer(m_Handle, buffer, offset, indexType);
     }
 
+    // COMPUTE
+
+    FORCEINLINE void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) final override
+    {
+        vkCmdDispatch(m_Handle, groupCountX, groupCountY, groupCountZ);
+    }
+
+    // RT
     FORCEINLINE void TraceRays(const VkStridedDeviceAddressRegionKHR* raygenShaderBindingTable,
                                const VkStridedDeviceAddressRegionKHR* missShaderBindingTable,
                                const VkStridedDeviceAddressRegionKHR* hitShaderBindingTable,
@@ -125,6 +123,7 @@ class VulkanCommandBuffer final : public CommandBuffer
         vkCmdBuildAccelerationStructuresKHR(m_Handle, infoCount, infos, buildRangeInfos);
     }
 
+    // TRANSFER
     FORCEINLINE void CopyBuffer(const VkBuffer& srcBuffer, VkBuffer& dstBuffer, const uint32_t regionCount, const VkBufferCopy* pRegions)
     {
         vkCmdCopyBuffer(m_Handle, srcBuffer, dstBuffer, regionCount, pRegions);
@@ -134,6 +133,12 @@ class VulkanCommandBuffer final : public CommandBuffer
                                        const uint32_t regionCount, const VkBufferImageCopy* pRegions)
     {
         vkCmdCopyBufferToImage(m_Handle, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
+    }
+
+    FORCEINLINE void CopyImageToImage(const VkImage& srcImage, const VkImageLayout srcImageLayout, VkImage& dstImage,
+                                      const VkImageLayout dstImageLayout, const uint32_t regionCount, const VkImageCopy* regions) const
+    {
+        vkCmdCopyImage(m_Handle, srcImage, srcImageLayout, dstImage, dstImageLayout, regionCount, regions);
     }
 
     FORCEINLINE void BlitImage(const VkImage& srcImage, const VkImageLayout srcImageLayout, VkImage& dstImage,

@@ -15,18 +15,21 @@ class Renderer2D final : private Uncopyable, private Unmovable
     static void Init();
     static void Shutdown();
 
+    static void Begin();
+    static void Flush();
+
     static void DrawQuad(const glm::mat4& transform, const glm::vec4& color = glm::vec4(1.0f));
 
   private:
     struct RendererData2D
     {
-        // VertexBufferPerFrame QuadVertexBuffer;
+        BufferPerFrame QuadVertexBuffer;
         Shared<Pipeline> QuadPipeline = nullptr;
     };
     static inline Unique<RendererData2D> s_RendererData2D = nullptr;
 
-    Renderer2D()           = default;
-    ~Renderer2D() override = default;
+    Renderer2D()          ;
+    ~Renderer2D() override;
 };
 
 }  // namespace Pathfinder

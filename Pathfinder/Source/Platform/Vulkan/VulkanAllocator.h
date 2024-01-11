@@ -16,13 +16,21 @@ class VulkanAllocator final : private Uncopyable, private Unmovable
     VulkanAllocator(const VkDevice& device, const VkPhysicalDevice& physicalDevice);
     ~VulkanAllocator() override;
 
+    void CreateImage(const VkImageCreateInfo& imageCI, VkImage& image, VmaAllocation& allocation,
+                     VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY);
+
+    void CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer& buffer, VmaAllocation& allocation,
+                      VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY);
+
+    void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation);
+    void DestroyImage(VkImage& image, VmaAllocation& allocation);
+
+    NODISCARD void* GetMapped(VmaAllocation& allocation);
+    NODISCARD void* Map(VmaAllocation& allocation);
+    void Unmap(VmaAllocation& allocation);
+
   private:
     VmaAllocator m_Handle = VK_NULL_HANDLE;
-
-    struct VmaAllocations
-    {
-
-    };
 };
 
 }  // namespace Pathfinder

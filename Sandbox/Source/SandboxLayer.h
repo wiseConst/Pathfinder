@@ -20,7 +20,8 @@ class SandboxLayer final : public Layer
     void OnUIRender() final override;
 
   private:
-    Shared<Mesh> m_Kitten = nullptr;
+    Shared<Mesh> m_Kitten   = nullptr;
+    Shared<Camera> m_Camera = nullptr;
 };
 
 }  // namespace Pathfinder

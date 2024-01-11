@@ -63,17 +63,11 @@ void ShaderLibrary::Shutdown()
     LOG_INFO("ShaderLibrary destroyed!");
 }
 
-void ShaderLibrary::DestroyReflectionGarbage()
-{
-    for (const auto& shader : s_Shaders | std::views::values)
-        shader->DestroyReflectionGarbage();
-}
-
 void ShaderLibrary::Load(const std::string& shaderName)
 {
     if (s_Shaders.contains(shaderName))
     {
-        LOG_WARN("Shader you want to load already exists!");
+        LOG_TAG_WARN(SHADER_LIBRARY, "Shader \"%s\" already loaded!", shaderName.data());
         return;
     }
 
@@ -86,7 +80,11 @@ void ShaderLibrary::Load(const std::string& shaderName)
 
 const Shared<Shader>& ShaderLibrary::Get(const std::string& shaderName)
 {
-    PFR_ASSERT(s_Shaders.contains(shaderName), "Shader you want to get doesn't exist!");
+    if (!s_Shaders.contains(shaderName))
+    {
+        LOG_TAG_ERROR(SHADER_LIBRARY, "\"%s\" doesn't exist!", shaderName.data());
+        PFR_ASSERT(false, "Failed to retrieve shader!");
+    }
     return s_Shaders[shaderName];
 }
 

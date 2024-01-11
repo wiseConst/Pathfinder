@@ -53,6 +53,8 @@
 
 #define NODISCARD [[nodiscard]]
 
+#define BIT(x) (1 << x)
+
 namespace Pathfinder
 {
 

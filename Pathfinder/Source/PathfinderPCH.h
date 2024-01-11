@@ -7,6 +7,7 @@
 #include <string_view>
 #include <string>
 #include <filesystem>
+#include <cassert>
 
 #include <thread>
 #include <future>

@@ -54,11 +54,10 @@ class Shader : private Uncopyable, private Unmovable
 
     NODISCARD static Shared<Shader> Create(const std::string_view shaderName);
 
-    virtual void DestroyReflectionGarbage() = 0;
-
   protected:
-    Shader()               = default;
-    virtual void Destroy() = 0;
+    Shader()                                = default;
+
+    virtual void Destroy()                  = 0;
 };
 
 class ShaderLibrary final : private Uncopyable, private Unmovable
@@ -69,7 +68,6 @@ class ShaderLibrary final : private Uncopyable, private Unmovable
 
     static void Init();
     static void Shutdown();
-    static void DestroyReflectionGarbage();
 
     static void Load(const std::string& shaderName);
     NODISCARD static const Shared<Shader>& Get(const std::string& shaderName);

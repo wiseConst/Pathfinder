@@ -6,6 +6,7 @@
 namespace Pathfinder
 {
 
+class Buffer;
 class Mesh final : private Uncopyable, private Unmovable
 {
   public:
@@ -17,6 +18,12 @@ class Mesh final : private Uncopyable, private Unmovable
 
   private:
     void Destroy();
+
+    std::vector<Shared<Buffer>> m_VertexPositionBuffers;
+    std::vector<Shared<Buffer>> m_VertexAttributeBuffers;
+
+    void LoadImages(const auto& asset);
+    void LoadSubmeshes(const auto& asset, const auto& submesh);
 };
 
 }  // namespace Pathfinder

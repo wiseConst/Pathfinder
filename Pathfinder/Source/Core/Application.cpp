@@ -1,6 +1,8 @@
 #include "PathfinderPCH.h"
 #include "Application.h"
 
+#include "Threading.h"
+
 #include "Window.h"
 #include "Renderer/GraphicsContext.h"
 #include "Renderer/Renderer.h"
@@ -20,7 +22,10 @@ Application::Application(const ApplicationSpecification& appSpec) noexcept : m_S
     s_bIsRunning = true;
 
     Logger::Init();
-    PFR_ASSERT(s_WORKER_THREAD_COUNT > 0 && Threading::GetNumThreads() > 0, "No worker threads found!");
+    PFR_ASSERT(s_FRAMES_IN_FLIGHT != 0, "Frames in flight should be greater than zero!");
+    PFR_ASSERT(s_WORKER_THREAD_COUNT > 0 && JobSystem::GetNumThreads() > 0, "No worker threads found!");
+
+    JobSystem::Init();
 
     RendererAPI::Set(m_Specification.RendererAPI);
     m_LayerQueue = MakeUnique<LayerQueue>();
@@ -45,16 +50,21 @@ void Application::Run()
             Renderer::Begin();
 
             m_Window->BeginFrame();
-            m_Window->SetClearColor(glm::vec3(0.15f));
 
-            // std::string title = std::string("PATHFINDER x64 ") + std::to_string(t.GetElapsedMilliseconds());
-            //  m_Window->SetWindowTitle(title.data());
+            m_LayerQueue->OnUpdate(m_DeltaTime);
+
+            const std::string title = std::string("PATHFINDER x64 / ") + std::to_string(m_DeltaTime * 1000.0f) + std::string("ms");
+            m_Window->SetWindowTitle(title.data());
+
+            m_Window->SetClearColor(glm::vec3(0.15f));
 
             Renderer::Flush();
             m_Window->SwapBuffers();
         }
 
         m_Window->PollEvents();
+
+        m_DeltaTime = static_cast<float>(t.GetElapsedMilliseconds());
     }
 }
 
@@ -78,15 +88,16 @@ void Application::OnEvent(Event& e)
             if (key == EKey::KEY_F1)
             {
                 m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_WINDOWED);
-
                 return true;
             }
+
             if (key == EKey::KEY_F2)
             {
                 m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN);
 
                 return true;
             }
+
             if (key == EKey::KEY_F3)
             {
                 m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE);
@@ -120,6 +131,7 @@ Application::~Application()
     m_Window.reset();
     m_GraphicsContext.reset();
 
+    JobSystem::Shutdown();
     Logger::Shutdown();
     s_Instance = nullptr;
 }

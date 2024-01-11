@@ -86,11 +86,11 @@ void VulkanDevice::CreateCommandPools()
     }
 }
 
-VulkanDevice::~VulkanDevice() = default;
-
-void VulkanDevice::Destroy()
+VulkanDevice::~VulkanDevice()
 {
     WaitDeviceOnFinish();
+
+    m_VMA.reset();
 
     for (uint16_t i = 0; i < s_WORKER_THREAD_COUNT; ++i)
     {
@@ -141,14 +141,14 @@ void VulkanDevice::PickPhysicalDevice(const VkInstance& instance)
 
 void VulkanDevice::CreateLogicalDevice()
 {
-    constexpr float QueuePriority = 1.0f;  // [0.0, 1.0]
-
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos = {};
     for (const std::set<uint32_t> uniqueQueueFamilies{
              m_GPUInfo.QueueFamilyIndices.GraphicsFamily, m_GPUInfo.QueueFamilyIndices.PresentFamily,
              m_GPUInfo.QueueFamilyIndices.TransferFamily, m_GPUInfo.QueueFamilyIndices.ComputeFamily};
          const auto queueFamily : uniqueQueueFamilies)
     {
+        constexpr float QueuePriority = 1.0f;  // [0.0, 1.0]
+
         auto& queueCreateInfo            = queueCreateInfos.emplace_back(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
         queueCreateInfo.pQueuePriorities = &QueuePriority;
         queueCreateInfo.queueCount       = 1;
@@ -159,9 +159,14 @@ void VulkanDevice::CreateLogicalDevice()
     deviceCI.pQueueCreateInfos    = queueCreateInfos.data();
     deviceCI.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
 
+    VkPhysicalDeviceVulkan13Features vulkan13Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
+    vulkan13Features.dynamicRendering                 = VK_TRUE;
+
+    deviceCI.pNext = &vulkan13Features;
+    void** ppNext  = &vulkan13Features.pNext;
+
     VkPhysicalDeviceVulkan12Features vulkan12Features          = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     vulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;  // AMD issues
-
     // Bindless
     vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
     vulkan12Features.runtimeDescriptorArray          = VK_TRUE;  // to have descriptor array in e.g. (uniform sampler2D u_GlobalTextures[])
@@ -172,8 +177,19 @@ void VulkanDevice::CreateLogicalDevice()
     vulkan12Features.scalarBlockLayout = VK_TRUE;
     // vulkan12Features.bufferDeviceAddress = VK_TRUE;
 
-    deviceCI.pNext = &vulkan12Features;
-    void** ppNext  = &vulkan12Features.pNext;
+    *ppNext = &vulkan12Features;
+    ppNext  = &vulkan12Features.pNext;
+
+#if VK_SHADER_DEBUG_PRINTF
+    VkValidationFeaturesEXT validationInfo                           = {VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
+    constexpr VkValidationFeatureEnableEXT validationFeatureToEnable = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT;
+    validationInfo.enabledValidationFeatureCount                     = 1;
+    validationInfo.pEnabledValidationFeatures                        = &validationFeatureToEnable;
+
+    *ppNext               = &validationInfo;
+    void* validationPNext = (void*)validationInfo.pNext;
+    ppNext                = &validationPNext;
+#endif
 
     // Useful pipeline features that can be changed in real-time(for instance, polygon mode, primitive topology, etc..)
     VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3FeaturesEXT = {
@@ -183,12 +199,7 @@ void VulkanDevice::CreateLogicalDevice()
     *ppNext = &extendedDynamicState3FeaturesEXT;
     ppNext  = &extendedDynamicState3FeaturesEXT.pNext;
 
-    VkPhysicalDeviceDynamicRenderingFeaturesKHR dynamicRenderingFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DYNAMIC_RENDERING_FEATURES};
-    dynamicRenderingFeatures.dynamicRendering                            = VK_TRUE;
-
-    *ppNext = &dynamicRenderingFeatures;
-    ppNext  = &dynamicRenderingFeatures.pNext;
-
+#if VK_RTX
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRayTracingPipelineFeatures = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
     enabledRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
@@ -202,6 +213,7 @@ void VulkanDevice::CreateLogicalDevice()
 
     *ppNext = &enabledAccelerationStructureFeatures;
     ppNext  = &enabledAccelerationStructureFeatures.pNext;
+#endif
 
     VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
     meshShaderFeaturesEXT.meshShaderQueries                     = VK_TRUE;
@@ -241,9 +253,7 @@ uint32_t VulkanDevice::RateDeviceSuitability(GPUInfo& gpuInfo) const
 {
     if (!IsDeviceSuitable(gpuInfo))
     {
-#if VK_LOG_INFO
-        LOG_WARN("GPU above is not suitable");
-#endif
+        LOG_TAG_WARN(VULKAN, "GPU: \"%s\" is not suitable", gpuInfo.GPUProperties.deviceName);
         return 0;
     }
 

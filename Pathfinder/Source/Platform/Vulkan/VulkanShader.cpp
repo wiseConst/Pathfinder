@@ -123,6 +123,10 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         LOG_TAG_TRACE(VULKAN, "SHADER_REFLECTION:\"%s\"...", shaderNameExt.data());
         Reflect(currentShaderDescription, compiledShaderSrc);
     }
+
+
+
+    DestroyReflectionGarbage();
 }
 
 void VulkanShader::Reflect(ShaderDescription& shaderDescription, const std::vector<uint32_t>& compiledShaderSrc)

@@ -22,6 +22,7 @@ enum class ECommandBufferLevel : uint8_t
     COMMAND_BUFFER_LEVEL_SECONDARY = 1
 };
 
+class Pipeline;
 class CommandBuffer : private Uncopyable, private Unmovable
 {
   public:
@@ -36,12 +37,18 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = nullptr) = 0;
     virtual void EndRecording()                                                                     = 0;
 
+    virtual void BindPipeline(Shared<Pipeline>& pipeline) const                                                           = 0;
+    FORCEINLINE virtual void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) = 0;
+
     virtual void TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout) = 0;
     virtual void Submit(bool bWaitAfterSubmit = true)                                            = 0;
     virtual void Reset()                                                                         = 0;
 
     static Shared<CommandBuffer> Create(ECommandBufferType type,
                                         ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
+
+    // TODO:
+    static void Submit(const std::vector<Shared<CommandBuffer>>& commandBuffers);
 
   protected:
     CommandBuffer()        = default;

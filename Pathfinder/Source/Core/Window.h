@@ -28,7 +28,10 @@ struct WindowSpecification final
     EWindowMode WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
 };
 
+using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
+
 class Framebuffer;
+class Image;
 class Window : private Uncopyable, private Unmovable
 {
   public:
@@ -50,6 +53,9 @@ class Window : private Uncopyable, private Unmovable
     virtual void SwapBuffers()                                        = 0;
     virtual void PollEvents()                                         = 0;
     virtual void CopyToWindow(const Shared<Framebuffer>& framebuffer) = 0;
+    virtual void CopyToWindow(const Shared<Image>& image) = 0;
+
+    virtual void AddResizeCallback(ResizeCallback&& resizeCallback) = 0;
 
     static Unique<Window> Create(const WindowSpecification& windowSpec = {});
 

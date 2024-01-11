@@ -20,28 +20,35 @@ Shared<Pipeline> Pipeline::Create(const PipelineSpecification& pipelineSpec)
 
 void PipelineBuilder::Init()
 {
-    LOG_TAG_INFO(RENDERER, "Pipeline builder created! (CURRENTLY NOT IMPLEMENTED AT ALL)");
+    LOG_TAG_INFO(RENDERER, "Pipeline builder created!");
 }
 
 void PipelineBuilder::Shutdown()
 {
-    LOG_TAG_INFO(RENDERER, "Pipeline builder destroyed! (CURRENTLY NOT IMPLEMENTED AT ALL)");
+    LOG_TAG_INFO(RENDERER, "Pipeline builder destroyed!");
+    s_PipelinesToBuild.clear();
 }
 
-void PipelineBuilder::Push(Unique<Pipeline>& pipeline, const PipelineSpecification pipelineSpec)
-{
-    //  auto pair = std::make_pair<pipelineSpec.DebugName, std::make_pair<pipeline, pipelineSpec>>;
-    // s_PipelinesToBuild.push_back(pair);
-}
-
+// TODO: JobSystem gonna stuck(won't propogate work) if pipeline count > threads
 void PipelineBuilder::Build()
 {
     if (s_PipelinesToBuild.empty()) return;
 
-    //  The way it should work:
-    // Submit to jobsystem and wait on futures
+    // The way it should work: Submit to jobsystem and wait on futures
+    std::vector<std::function<void()>> futures;
+    for (auto& [pipeline, pipelineSpec] : s_PipelinesToBuild)
+    {
+        auto future = JobSystem::Submit([&] { pipeline = Pipeline::Create(pipelineSpec); });
 
-    std::vector<std::thread> workers;
+        futures.emplace_back([future] { future.get(); });
+    }
+
+    Timer t = {};
+    for (auto& future : futures)
+        future();
+
+    LOG_TAG_INFO(RENDERER, "Time took to create (%zu) pipelines: %0.2fms", s_PipelinesToBuild.size(), t.GetElapsedMilliseconds() * 1000.0);
+    s_PipelinesToBuild.clear();
 }
 
 }  // namespace Pathfinder

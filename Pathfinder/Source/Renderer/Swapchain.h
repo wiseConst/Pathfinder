@@ -22,8 +22,9 @@ class Swapchain : private Uncopyable, private Unmovable
     virtual void AcquireImage() = 0;
     virtual void PresentImage() = 0;
 
-    virtual void Invalidate()                                            = 0;
-    virtual void CopyToSwapchain(const Shared<Framebuffer>& framebuffer) = 0;
+    virtual void Invalidate()                                       = 0;
+    virtual void CopyToSwapchain(const Shared<Image>& image)        = 0;
+    virtual void AddResizeCallback(ResizeCallback&& resizeCallback) = 0;
 
     static Unique<Swapchain> Create(void* windowHandle);
 

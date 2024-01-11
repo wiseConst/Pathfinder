@@ -50,21 +50,22 @@ static const char* LogLevelToASCIIColor(const ELogLevel level)
 class Logger final : private Uncopyable, private Unmovable
 {
   public:
-    Logger() noexcept = default;
-    ~Logger()         = default;
-
     static void Init();
     static void Shutdown();
 
-    template <typename... Args> static void Log(const ELogLevel level, const char* tag, const char* message, Args&&... args)
+    template <typename... Args>
+    static void Log(const ELogLevel level, const char* tag, const char* message, Args&&... args)
     {
+        std::lock_guard lock(s_LogMutex);
+
         static constexpr uint32_t s_MaxMessageLength        = 16384;
         static char s_TempMessageBuffer[s_MaxMessageLength] = {0};
-        memset(s_TempMessageBuffer, 0, sizeof(char) * s_MaxMessageLength);
+        memset(s_TempMessageBuffer, 0, sizeof(s_TempMessageBuffer[0]) * s_MaxMessageLength);
 
         if (strlen(message) > s_MaxMessageLength)
         {
             puts("TODO: Logger message length resize?");
+            puts(message);
             return;
         }
 
@@ -72,8 +73,6 @@ class Logger final : private Uncopyable, private Unmovable
         char formattedMessage[s_MaxMessageLength] = {0};
         sprintf(formattedMessage, message, args...);
         const char* systemTimeString = GetCurrentSystemTime();
-
-        std::lock_guard lock(s_LogMutex);
 
         // Create structured log message
         if (tag)
@@ -94,6 +93,8 @@ class Logger final : private Uncopyable, private Unmovable
     static inline std::ofstream s_LogFile;
     static inline std::mutex s_LogMutex;
 
+    Logger() noexcept  = default;
+    ~Logger() override = default;
     static const char* GetCurrentSystemTime();
 };
 

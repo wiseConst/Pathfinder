@@ -6,9 +6,12 @@
 namespace Pathfinder
 {
 
-class OrtrhogrpahicCamera final : public Camera
+class OrthographicCamera final : public Camera
 {
   public:
+    OrthographicCamera()           = default;
+    ~OrthographicCamera() override = default;
+
   private:
 };
 

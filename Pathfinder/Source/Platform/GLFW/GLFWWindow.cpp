@@ -152,9 +152,6 @@ void GLFWWindow::SetEventCallbacks() const
 
                                   WindowResizeEvent e(width, height);
                                   userWindow->m_Specification.EventCallback(e);
-
-                                  //  userWindow->m_Swapchain->Invalidate(); // I can't do this since, width and height can be zero,
-                                  //  swapchain doesn't like it
                               });
 
     glfwSetCursorPosCallback(m_Handle,
@@ -250,7 +247,19 @@ void GLFWWindow::SetEventCallbacks() const
 void GLFWWindow::CopyToWindow(const Shared<Framebuffer>& framebuffer)
 {
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    m_Swapchain->CopyToSwapchain(framebuffer);
+    // m_Swapchain->CopyToSwapchain(framebuffer[m_Swapchain->GetCurrentFrameIndex()]);
+}
+
+void GLFWWindow::CopyToWindow(const Shared<Image>& image)
+{
+    PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
+    m_Swapchain->CopyToSwapchain(image);
+}
+
+void GLFWWindow::AddResizeCallback(ResizeCallback&& resizeCallback)
+{
+    PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
+    m_Swapchain->AddResizeCallback(std::forward<ResizeCallback>(resizeCallback));
 }
 
 void GLFWWindow::Destroy()
