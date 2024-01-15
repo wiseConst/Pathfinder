@@ -1,9 +1,10 @@
 #ifndef WINDOW_H
 #define WINDOW_H
 
-#include "Core/Core.h"
-#include "Core/Math.h"
+#include "Core.h"
+#include "Math.h"
 #include <functional>
+#include "Keys.h"
 
 namespace Pathfinder
 {
@@ -47,13 +48,14 @@ class Window : private Uncopyable, private Unmovable
     virtual void SetWindowTitle(const char* title)                            = 0;
 
     static std::vector<const char*> GetWSIExtensions();  // implemented in derived
-    FORCEINLINE virtual bool IsMinimized() const                      = 0;
-    FORCEINLINE virtual bool IsRunning() const                        = 0;
+    FORCEINLINE virtual bool IsMinimized() const = 0;
+    FORCEINLINE virtual bool IsRunning() const   = 0;
+
     virtual void BeginFrame()                                         = 0;
     virtual void SwapBuffers()                                        = 0;
     virtual void PollEvents()                                         = 0;
     virtual void CopyToWindow(const Shared<Framebuffer>& framebuffer) = 0;
-    virtual void CopyToWindow(const Shared<Image>& image) = 0;
+    virtual void CopyToWindow(const Shared<Image>& image)             = 0;
 
     virtual void AddResizeCallback(ResizeCallback&& resizeCallback) = 0;
 

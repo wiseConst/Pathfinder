@@ -6,6 +6,7 @@
 namespace Pathfinder
 {
 
+// TODO: Replace staging with SRC, and add DST
 enum EBufferUsage : uint32_t
 {
     BUFFER_TYPE_VERTEX  = BIT(0),
@@ -35,7 +36,7 @@ class Buffer : private Uncopyable, private Unmovable
 
     virtual void SetData(const void* data, const size_t dataSize) = 0;
 
-   NODISCARD  static Shared<Buffer> Create(const BufferSpecification& bufferSpec);
+    NODISCARD static Shared<Buffer> Create(const BufferSpecification& bufferSpec);
 
   protected:
     explicit Buffer() = default;

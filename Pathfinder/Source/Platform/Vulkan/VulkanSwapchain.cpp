@@ -115,25 +115,16 @@ VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(w
 
     Invalidate();
 
-    std::ranges::for_each(
-        m_ImageAcquiredSemaphores,
-        [&](auto& semaphore)
-        {
-            constexpr VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-            VK_CHECK(vkCreateSemaphore(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &semaphoreCreateInfo, nullptr, &semaphore),
-                     "Failed to create semaphore!");
-        });
-
 #if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     m_SurfaceFullScreenExclusiveWin32Info.pNext = nullptr;
     m_SurfaceFullScreenExclusiveWin32Info.hmonitor =
         MonitorFromWindow(glfwGetWin32Window(static_cast<GLFWwindow*>(m_WindowHandle)), MONITOR_DEFAULTTONEAREST);
 
     m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT;
-    m_SurfaceFullScreenExclusiveInfo.pNext               = &m_SurfaceFullScreenExclusiveInfo;
-
+    m_SurfaceFullScreenExclusiveInfo.pNext               = &m_SurfaceFullScreenExclusiveWin32Info;
 #endif
 }
+
 void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
 {
     const auto& rendererData = Renderer::GetRendererData();
@@ -180,15 +171,15 @@ void VulkanSwapchain::SetWindowMode(const EWindowMode windowMode)
                  "Failed to release full screen exclusive mode!");
     }
 
-    if (m_WindowMode == EWindowMode::WINDOW_MODE_WINDOWED)
+    if (windowMode == EWindowMode::WINDOW_MODE_WINDOWED)
     {
         m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
     }
-    else if (m_WindowMode == EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN)
+    else if (windowMode == EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN)
     {
         m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT;
     }
-    else if (m_WindowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
+    else if (windowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
     {
         m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
     }
@@ -213,7 +204,20 @@ void VulkanSwapchain::Invalidate()
     const auto& physicalDevice = context.GetDevice()->GetPhysicalDevice();
 
     const auto oldSwapchain = m_Handle;
-    if (oldSwapchain) std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
+    if (oldSwapchain)
+    {
+        std::ranges::for_each(m_ImageAcquiredSemaphores, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
+        std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
+    }
+
+    std::ranges::for_each(
+        m_ImageAcquiredSemaphores,
+        [&](auto& semaphore)
+        {
+            constexpr VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+            VK_CHECK(vkCreateSemaphore(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &semaphoreCreateInfo, nullptr, &semaphore),
+                     "Failed to create semaphore!");
+        });
 
     m_ImageIndex = 0;
     m_FrameIndex = 0;
@@ -240,7 +244,13 @@ void VulkanSwapchain::Invalidate()
                                                    Details.SurfaceCapabilities.maxImageCount);
     swapchainCreateInfo.minImageCount = m_ImageCount;
 
-    m_ImageExtent                   = Details.ChooseBestExtent(static_cast<GLFWwindow*>(m_WindowHandle));
+#if VK_EXCLUSIVE_FULL_SCREEN_TEST
+    if (m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
+        m_ImageExtent = Details.SurfaceCapabilities.maxImageExtent;
+    else
+#endif
+        m_ImageExtent = Details.ChooseBestExtent(static_cast<GLFWwindow*>(m_WindowHandle));
+
     swapchainCreateInfo.imageExtent = m_ImageExtent;
 
     swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -284,12 +294,20 @@ void VulkanSwapchain::Invalidate()
         debugName = "Swapchain image view[" + std::to_string(i) + "]";
         VK_SetDebugName(logicalDevice, (uint64_t)m_ImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW, debugName.data());
     }
+
+    m_ImageLayouts.resize(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
+
+    m_bWasInvalidated = true;
 }
 
 void VulkanSwapchain::AcquireImage()
 {
+    m_bWasInvalidated = false;
+
     auto& context             = VulkanContext::Get();
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+
+    m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_UNDEFINED;
 
     const auto result =
         vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphores[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
@@ -306,6 +324,8 @@ void VulkanSwapchain::AcquireImage()
 
 void VulkanSwapchain::PresentImage()
 {
+    m_bWasInvalidated = false;
+
     VkPresentInfoKHR presentInfo   = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     presentInfo.pImageIndices      = &m_ImageIndex;
     presentInfo.swapchainCount     = 1;
@@ -402,9 +422,10 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
         const auto srcImageBarrier =
             VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_TRANSFER_WRITE_BIT, 0, 1, 0, 1, 0);
+        m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
         const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
-           (VkImage )image->Get(),
+            (VkImage)image->Get(),
             ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout),
             VK_ACCESS_TRANSFER_READ_BIT, 0, 1, 0, 1, 0);

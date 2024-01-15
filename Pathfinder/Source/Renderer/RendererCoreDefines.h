@@ -7,7 +7,7 @@
 namespace Pathfinder
 {
 
-#define LOG_SHADER_INFO 1
+#define LOG_SHADER_INFO 0
 
 static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
 
@@ -67,9 +67,10 @@ enum class ECompareOp : uint8_t
 
 struct QuadVertex
 {
-    glm::vec3 Position  = glm::vec3(0.0f);
-    glm::vec4 Color     = glm::vec4(1.0f);
-    glm::uvec2 TexCoord = glm::uvec2(0);
+    glm::vec3 Position = glm::vec3(0.0f);
+    glm::vec3 Normal   = glm::vec3(0.0f);
+    glm::vec2 UV       = glm::vec2(0.0f);
+    glm::vec4 Color    = glm::vec4(1.0f);
 };
 
 struct MeshVertexPosition
@@ -79,6 +80,7 @@ struct MeshVertexPosition
 
 struct MeshVertex
 {
+    glm::vec4 Color   = glm::vec4(1.0f);
     glm::vec3 Normal  = glm::vec3(0.0f);
     glm::vec3 Tangent = glm::vec3(0.0f);
 };
@@ -89,6 +91,13 @@ struct Meshlet
 
 };
 */
+
+struct CameraData
+{
+    glm::mat4 Projection  = glm::mat4(1.0f);
+    glm::mat4 InverseView = glm::mat4(1.0f);
+    //    alignas(16) glm::vec3 Position = glm::vec3(0.0f);
+};
 
 }  // namespace Pathfinder
 

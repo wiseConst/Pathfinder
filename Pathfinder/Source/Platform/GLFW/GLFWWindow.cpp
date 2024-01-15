@@ -115,7 +115,8 @@ void GLFWWindow::SetWindowTitle(const char* title)
 void GLFWWindow::SwapBuffers()
 {
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    m_Swapchain->PresentImage();
+
+    if (!m_Swapchain->WasInvalidatedDuringCurrentFrame()) m_Swapchain->PresentImage();
 }
 
 void GLFWWindow::PollEvents()
@@ -247,7 +248,8 @@ void GLFWWindow::SetEventCallbacks() const
 void GLFWWindow::CopyToWindow(const Shared<Framebuffer>& framebuffer)
 {
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    // m_Swapchain->CopyToSwapchain(framebuffer[m_Swapchain->GetCurrentFrameIndex()]);
+    PFR_ASSERT(false, "CopyToWindow() Not implemented!");
+    // m_Swapchain->CopyToSwapchain(framebuffer[m_Swapchain->GetCurrentFrameIndex()]->Get);
 }
 
 void GLFWWindow::CopyToWindow(const Shared<Image>& image)

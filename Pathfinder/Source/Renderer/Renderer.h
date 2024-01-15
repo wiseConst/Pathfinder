@@ -48,8 +48,6 @@ class Renderer : private Uncopyable, private Unmovable
   private:
     struct RendererData
     {
-        uint32_t FrameIndex = 0;
-
         Weak<CommandBuffer> CurrentRenderCommandBuffer;
         CommandBufferPerFrame RenderCommandBuffer;
 
@@ -63,11 +61,19 @@ class Renderer : private Uncopyable, private Unmovable
         FramebufferPerFrame GBuffer;
 
         std::vector<Shared<Mesh>> OpaqueObjects;
-        std::vector<Shared<Mesh>> TranslucentObjects;
+        std::vector<Shared<Mesh>> TransparentObjects;
         //  Shared<Texture2D> WhiteTexture = nullptr;
+
+        // MISC
+
+        uint32_t FrameIndex = 0;
+        Pathfinder::CameraData CameraData;
+        BufferPerFrame CameraUB;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
+
+    static void GeometryPass();
 };
 
 }  // namespace Pathfinder

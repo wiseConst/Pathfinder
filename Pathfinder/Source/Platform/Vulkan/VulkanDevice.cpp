@@ -73,14 +73,14 @@ void VulkanDevice::CreateCommandPools()
         VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &computeCommandPoolCreateInfo, nullptr, &m_GPUInfo.ComputeCommandPools[i]),
                  "Failed to create compute command pool!");
 
-        const std::string computeCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL" + std::to_string(i);
+        const std::string computeCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL_" + std::to_string(i);
         VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.ComputeCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
                         computeCommandPoolDebugName.data());
 
         VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &transferCommandPoolCreateInfo, nullptr, &m_GPUInfo.TransferCommandPools[i]),
                  "Failed to create transfer command pool!");
 
-        const std::string transferCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL" + std::to_string(i);
+        const std::string transferCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL_" + std::to_string(i);
         VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.TransferCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
                         transferCommandPoolDebugName.data());
     }
@@ -167,11 +167,17 @@ void VulkanDevice::CreateLogicalDevice()
 
     VkPhysicalDeviceVulkan12Features vulkan12Features          = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     vulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;  // AMD issues
+    vulkan12Features.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
+
     // Bindless
     vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
     vulkan12Features.runtimeDescriptorArray          = VK_TRUE;  // to have descriptor array in e.g. (uniform sampler2D u_GlobalTextures[])
     vulkan12Features.descriptorIndexing              = VK_TRUE;  //
     vulkan12Features.descriptorBindingPartiallyBound = VK_TRUE;  // allow "holes" in the descriptor array
+    vulkan12Features.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE;
+    vulkan12Features.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
+    vulkan12Features.descriptorBindingStorageImageUpdateAfterBind  = VK_TRUE;
+    vulkan12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
 
     // Shader type aligment
     vulkan12Features.scalarBlockLayout = VK_TRUE;
@@ -215,6 +221,7 @@ void VulkanDevice::CreateLogicalDevice()
     ppNext  = &enabledAccelerationStructureFeatures.pNext;
 #endif
 
+#if VK_MESH_SHADING
     VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
     meshShaderFeaturesEXT.meshShaderQueries                     = VK_TRUE;
     meshShaderFeaturesEXT.meshShader                            = VK_TRUE;
@@ -222,6 +229,7 @@ void VulkanDevice::CreateLogicalDevice()
 
     *ppNext = &meshShaderFeaturesEXT;
     ppNext  = &meshShaderFeaturesEXT.pNext;
+#endif
 
     // Required gpu features
     VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
@@ -440,7 +448,7 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo) const
     if (gpuInfo.SupportedDepthStencilFormats.empty() || !CheckDeviceExtensionSupport(gpuInfo.PhysicalDevice)) return false;
 
     gpuInfo.QueueFamilyIndices = QueueFamilyIndices::FindQueueFamilyIndices(gpuInfo.PhysicalDevice);
-    if constexpr (VK_PREFER_IGPU && gpuInfo.GPUProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) return false;
+    if /*constexpr*/ (VK_PREFER_IGPU && gpuInfo.GPUProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) return false;
 
     PFR_ASSERT(gpuInfo.GPUProperties.limits.maxSamplerAnisotropy > 0, "GPU has not valid Max Sampler Anisotropy!");
     return gpuInfo.GPUFeatures.samplerAnisotropy && gpuInfo.GPUFeatures.geometryShader;

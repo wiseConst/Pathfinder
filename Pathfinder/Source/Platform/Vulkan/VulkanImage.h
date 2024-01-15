@@ -19,7 +19,8 @@ class VulkanImage final : public Image
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE void* GetView() const { return m_View; }
 
-    FORCEINLINE void SetLayout(const EImageLayout newLayout) final override { m_Specification.Layout = newLayout; }
+     void SetLayout(const EImageLayout newLayout) final override;
+ 
     FORCEINLINE void Resize(const uint32_t width, const uint32_t height) final override
     {
         m_Specification.Width  = width;
@@ -29,11 +30,12 @@ class VulkanImage final : public Image
     }
 
   private:
-    VkImage m_Handle           = VK_NULL_HANDLE;
-    VmaAllocation m_Allocation = VK_NULL_HANDLE;
-    VkImageView m_View         = VK_NULL_HANDLE;
-    ImageSpecification m_Specification;
+    VkImage m_Handle                   = VK_NULL_HANDLE;
+    VmaAllocation m_Allocation         = VK_NULL_HANDLE;
+    VkImageView m_View                 = VK_NULL_HANDLE;
+    ImageSpecification m_Specification = {};
 
+    friend class VulkanFramebuffer;
     friend class VulkanBindlessRenderer;
     uint32_t m_Index = UINT32_MAX;  // bindless array purposes
 

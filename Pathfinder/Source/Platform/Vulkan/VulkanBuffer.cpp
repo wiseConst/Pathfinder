@@ -27,16 +27,26 @@ VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUs
 {
     VkBufferUsageFlags vkBufferUsage = 0;
 
-    switch (bufferUsage)
-    {
-        case EBufferUsage::BUFFER_TYPE_VERTEX: vkBufferUsage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT; break;
-        case EBufferUsage::BUFFER_TYPE_INDEX: vkBufferUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT; break;
-        case EBufferUsage::BUFFER_TYPE_UNIFORM: vkBufferUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT; break;
-        case EBufferUsage::BUFFER_TYPE_STORAGE:
-            vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-            break;
-        case EBufferUsage::BUFFER_TYPE_STAGING: vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT; break;
-    }
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX)
+        vkBufferUsage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX) vkBufferUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM) vkBufferUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE)
+        vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING) vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING &&
+        (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX || bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX ||
+         bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE || bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM))
+        PFR_ASSERT(false, "Buffer usage that has STAGING usage can't have any other flags!");
+
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM &&
+        (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX || bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX ||
+         bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE || bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING))
+        PFR_ASSERT(false, "Buffer usage that has UNIFORM usage can't have any other flags!");
+
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX && bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX)
+        PFR_ASSERT(false, "Buffer usage can't be both VERTEX and INDEX!");
 
     PFR_ASSERT(vkBufferUsage > 0, "Buffer should have any usage!");
     return vkBufferUsage;
@@ -65,6 +75,7 @@ VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUs
     else if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING)
         return VMA_MEMORY_USAGE_CPU_ONLY;
     else if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM)
+        //  return VMA_MEMORY_USAGE_CPU_ONLY;
         return VMA_MEMORY_USAGE_CPU_TO_GPU;
 
     return memoryUsage;
@@ -82,10 +93,17 @@ VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec) : m_Specificat
     if (m_Specification.BufferCapacity > 0)
     {
         BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
-                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage));
+                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
+                                  BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
+        m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
     }
 
-    if (m_Specification.Data && m_Specification.DataSize == 0) SetData(m_Specification.Data, m_Specification.DataSize);
+    if (m_Specification.Data && m_Specification.DataSize != 0)
+    {
+        SetData(m_Specification.Data, m_Specification.DataSize);
+        m_Specification.Data     = nullptr;
+        m_Specification.DataSize = 0;
+    }
 }
 
 void VulkanBuffer::SetData(const void* data, const size_t dataSize)
@@ -98,6 +116,8 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
                                   BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
                                   BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
+
+        m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
     }
 
     if (dataSize > m_Specification.BufferCapacity)
@@ -107,9 +127,11 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
                                   BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
                                   BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
+
+        m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
     }
 
-    if (m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_STAGING)
+    if (m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_STAGING || m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM)
     {
         void* mapped = nullptr;
         if (!m_bIsMapped)
@@ -136,7 +158,8 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
 
         BufferUtils::CreateBuffer(stagingBuffer, stagingAllocation, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
 
-        void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->GetMapped(stagingAllocation);
+        void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(stagingAllocation);
+        PFR_ASSERT(mapped, "Failed to retrieve mapped chunk!");
         memcpy(mapped, data, dataSize);
         VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(stagingAllocation);
 
@@ -161,6 +184,8 @@ void VulkanBuffer::Destroy()
 
     if (m_Handle) BufferUtils::DestroyBuffer(m_Handle, m_Allocation);
     m_Handle = VK_NULL_HANDLE;
+
+    m_DescriptorInfo = {};
 }
 
 }  // namespace Pathfinder

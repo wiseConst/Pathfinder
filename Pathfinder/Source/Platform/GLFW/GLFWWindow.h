@@ -28,7 +28,7 @@ class GLFWWindow final : public Window
     void AddResizeCallback(ResizeCallback&& resizeCallback) final override;
 
   private:
-    WindowSpecification m_Specification;
+    WindowSpecification m_Specification = {};
     GLFWwindow* m_Handle = nullptr;
     bool m_bIsRunning    = true;
 

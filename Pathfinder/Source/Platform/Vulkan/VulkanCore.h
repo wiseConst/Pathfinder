@@ -3,17 +3,21 @@
 
 #include <volk/volk.h>
 #include <Renderer/RendererCoreDefines.h>
+#include "Renderer/Shader.h"
 
 namespace Pathfinder
 {
 
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
+#define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
+
 #define VK_PREFER_IGPU 0
 #define VK_FORCE_VALIDATION 1
 #define VK_LOG_INFO 0
 #define VK_SHADER_DEBUG_PRINTF 0
-#define VK_RTX 1
+#define VK_RTX 0
+#define VK_MESH_SHADING 0
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -23,6 +27,9 @@ constexpr static bool s_bEnableValidationLayers = false;
 
 static const std::vector<const char*> s_InstanceLayers     = {"VK_LAYER_KHRONOS_validation"};
 static const std::vector<const char*> s_InstanceExtensions = {
+#if PFR_WINDOWS
+    VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
+#endif
     VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,        // Required by full screen ext
     VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,  // Required by full screen ext
 };
@@ -32,16 +39,20 @@ static const std::vector<const char*> s_DeviceExtensions = {
     VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,  // To get advanced info about gpu
     VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,  // To neglect renderpasses as my target is desktop only
 
+#if VK_EXCLUSIVE_FULL_SCREEN_TEST
     VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,  // Borderless fullscreen window
+#endif
 
+#if VK_MESH_SHADING
     VK_EXT_MESH_SHADER_EXTENSION_NAME,  // Mesh shading advanced modern rendering,
+#endif
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
 
 #if VK_RTX
-VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,    // To build acceleration structures
-VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,      // To use vkCmdTraceRaysKHR
-VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structures
+    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,    // To build acceleration structures
+    VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,      // To use vkCmdTraceRaysKHR
+    VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structures
 #endif
 #if VK_SHADER_DEBUG_PRINTF
     VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,  // debugPrintEXT shaders
@@ -51,7 +62,9 @@ VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration str
 class VulkanCommandBuffer;
 using VulkanCommandBufferPerFrame = std::array<Shared<VulkanCommandBuffer>, s_FRAMES_IN_FLIGHT>;
 
-using VulkanSemaphorePerFrame = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>;
+using VulkanSemaphorePerFrame      = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>;
+using VulkanDescriptorPoolPerFrame = std::array<VkDescriptorPool, s_FRAMES_IN_FLIGHT>;
+using VulkanDescriptorSetPerFrame  = std::array<VkDescriptorSet, s_FRAMES_IN_FLIGHT>;
 
 static std::string VK_GetResultString(const VkResult result)
 {
@@ -105,9 +118,12 @@ static void VK_CHECK(const VkResult result, const char* message)
     PFR_ASSERT(result == VK_SUCCESS, finalMessage.data());
 }
 
+// TODO: Make it #define, to reduce function calls in release mode.
 static void VK_SetDebugName(const VkDevice& logicalDevice, const uint64_t objectHandle, const VkObjectType objectType,
                             const char* objectName)
 {
+    if constexpr (!VK_FORCE_VALIDATION && !s_bEnableValidationLayers) return;
+
     VkDebugUtilsObjectNameInfoEXT objectNameInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
     objectNameInfo.objectHandle                  = objectHandle;
     objectNameInfo.objectType                    = objectType;
@@ -189,6 +205,91 @@ static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
 
     PFR_ASSERT(false, "Unknown compare op!");
     return VK_COMPARE_OP_NEVER;
+}
+
+static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
+{
+    switch (shaderStage)
+    {
+        case EShaderStage::SHADER_STAGE_VERTEX: return VK_SHADER_STAGE_VERTEX_BIT;
+        case EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case EShaderStage::SHADER_STAGE_GEOMETRY: return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case EShaderStage::SHADER_STAGE_FRAGMENT: return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case EShaderStage::SHADER_STAGE_COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
+        case EShaderStage::SHADER_STAGE_ALL_GRAPHICS: return VK_SHADER_STAGE_ALL_GRAPHICS;
+        case EShaderStage::SHADER_STAGE_ALL: return VK_SHADER_STAGE_ALL;
+        case EShaderStage::SHADER_STAGE_RAYGEN: return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_ANY_HIT: return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_CLOSEST_HIT: return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_MISS: return VK_SHADER_STAGE_MISS_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_INTERSECTION: return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_CALLABLE: return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_TASK: return VK_SHADER_STAGE_TASK_BIT_EXT;
+        case EShaderStage::SHADER_STAGE_MESH: return VK_SHADER_STAGE_MESH_BIT_EXT;
+    }
+
+    PFR_ASSERT(false, "Unknown shader stage!");
+    return VK_SHADER_STAGE_VERTEX_BIT;
+}
+
+static uint32_t GetTypeSizeFromVulkanFormat(const VkFormat format)
+{
+    switch (format)
+    {
+        case VK_FORMAT_UNDEFINED: return 0;
+
+        case VK_FORMAT_R16_UINT:
+        case VK_FORMAT_R16_SINT:
+        case VK_FORMAT_R16_SFLOAT: return sizeof(int16_t);
+
+        case VK_FORMAT_R32_UINT:
+        case VK_FORMAT_R32_SINT:
+        case VK_FORMAT_R32_SFLOAT: return sizeof(int32_t);
+
+        case VK_FORMAT_R64_UINT:
+        case VK_FORMAT_R64_SINT:
+        case VK_FORMAT_R64_SFLOAT: return sizeof(int64_t);
+
+        case VK_FORMAT_R16G16_UINT:
+        case VK_FORMAT_R16G16_SINT:
+        case VK_FORMAT_R16G16_SFLOAT: return 2 * sizeof(int16_t);
+
+        case VK_FORMAT_R32G32_UINT:
+        case VK_FORMAT_R32G32_SINT:
+        case VK_FORMAT_R32G32_SFLOAT: return 2 * sizeof(int32_t);
+
+        case VK_FORMAT_R64G64_UINT:
+        case VK_FORMAT_R64G64_SINT:
+        case VK_FORMAT_R64G64_SFLOAT: return 2 * sizeof(int64_t);
+
+        case VK_FORMAT_R16G16B16_UINT:
+        case VK_FORMAT_R16G16B16_SINT:
+        case VK_FORMAT_R16G16B16_SFLOAT: return 3 * sizeof(int16_t);
+
+        case VK_FORMAT_R32G32B32_SFLOAT:
+        case VK_FORMAT_R32G32B32_UINT:
+        case VK_FORMAT_R32G32B32_SINT: return 3 * sizeof(int32_t);
+
+        case VK_FORMAT_R64G64B64_UINT:
+        case VK_FORMAT_R64G64B64_SINT:
+        case VK_FORMAT_R64G64B64_SFLOAT: return 3 * sizeof(int64_t);
+
+        case VK_FORMAT_R16G16B16A16_UINT:
+        case VK_FORMAT_R16G16B16A16_SINT:
+        case VK_FORMAT_R16G16B16A16_SFLOAT: return 4 * sizeof(int16_t);
+
+        case VK_FORMAT_R32G32B32A32_UINT:
+        case VK_FORMAT_R32G32B32A32_SINT:
+        case VK_FORMAT_R32G32B32A32_SFLOAT: return 4 * sizeof(int32_t);
+
+        case VK_FORMAT_R64G64B64A64_UINT:
+        case VK_FORMAT_R64G64B64A64_SINT:
+        case VK_FORMAT_R64G64B64A64_SFLOAT: return 4 * sizeof(int64_t);
+    }
+
+    PFR_ASSERT(false, "Unknown type format!");
+    return 0;
 }
 
 }  // namespace VulkanUtility

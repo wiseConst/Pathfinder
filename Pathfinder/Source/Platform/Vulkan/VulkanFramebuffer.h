@@ -15,6 +15,9 @@ class VulkanFramebuffer final : public Framebuffer
     ~VulkanFramebuffer() override { Destroy(); }
 
     NODISCARD FORCEINLINE const FramebufferSpecification& GetSpecification() const final override { return m_Specification; }
+    NODISCARD FORCEINLINE const std::vector<FramebufferAttachment>& GetAttachments() const final override { return m_Attachments; }
+    const Shared<Image> GetDepthAttachment() const final override;
+
     FORCEINLINE void Resize(const uint32_t width, const uint32_t height) final override
     {
         m_Specification.Width  = width;
@@ -27,7 +30,11 @@ class VulkanFramebuffer final : public Framebuffer
     void EndPass(const Shared<CommandBuffer>& commandBuffer) final override;
 
   private:
-    FramebufferSpecification m_Specification;
+    FramebufferSpecification m_Specification = {};
+    std::vector<VkRenderingAttachmentInfo> m_AttachmentInfos;
+    VkRenderingAttachmentInfo m_DepthStencilAttachmentInfo = {};
+
+    std::vector<FramebufferAttachment> m_Attachments;
 
     void Invalidate() final override;
     void Destroy() final override;

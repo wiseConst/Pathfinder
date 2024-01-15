@@ -9,8 +9,8 @@
 #include "Pipeline.h"
 #include "Shader.h"
 #include "Framebuffer.h"
-#include "Platform/Vulkan/VulkanCommandBuffer.h"
-#include "Platform/Vulkan/VulkanPipeline.h"
+#include "Buffer.h"
+#include "Camera/Camera.h"
 
 namespace Pathfinder
 {
@@ -25,7 +25,7 @@ void Renderer::Init()
     PipelineBuilder::Init();
     s_BindlessRenderer = BindlessRenderer::Create();
 
-    ShaderLibrary::Load("pathtrace");
+    ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "GBuffer"});
 
     std::ranges::for_each(s_RendererData->RenderCommandBuffer, [&](auto& commandBuffer)
                           { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS); });
@@ -39,11 +39,9 @@ void Renderer::Init()
                               FramebufferSpecification framebufferSpec = {};
                               framebufferSpec.Name                     = "Composite";
 
-                              framebufferSpec.Attachments={{EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32}};
-                              framebuffer = Framebuffer::Create(framebufferSpec);
-
-                              Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height)
-                                                                                { framebuffer->Resize(width, height); });
+                              framebufferSpec.Attachments = {{EImageFormat::FORMAT_RGBA8_UNORM /*FORMAT_A2R10G10B10_UNORM_PACK32*/,
+                                                              ELoadOp::CLEAR, EStoreOp::STORE, glm::vec4(0.7f), true}};
+                              framebuffer                 = Framebuffer::Create(framebufferSpec);
                           });
 
     std::ranges::for_each(s_RendererData->GBuffer,
@@ -73,10 +71,15 @@ void Renderer::Init()
                               framebufferSpec.Attachments.push_back(attachmentSpec);
 
                               framebuffer = Framebuffer::Create(framebufferSpec);
-
-                              Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height)
-                                                                                { framebuffer->Resize(width, height); });
                           });
+
+    Application::Get().GetWindow()->AddResizeCallback(
+        [&](uint32_t width, uint32_t height)
+        { std::ranges::for_each(s_RendererData->GBuffer, [&](auto& framebuffer) { framebuffer->Resize(width, height); }); });
+
+    Application::Get().GetWindow()->AddResizeCallback(
+        [&](uint32_t width, uint32_t height)
+        { std::ranges::for_each(s_RendererData->CompositeFramebuffer, [&](auto& framebuffer) { framebuffer->Resize(width, height); }); });
 
     std::ranges::for_each(s_RendererData->PathtracedImage,
                           [&](auto& image)
@@ -101,10 +104,21 @@ void Renderer::Init()
     pathTracingPipelineSpec.Shader                = ShaderLibrary::Get("pathtrace");
     pathTracingPipelineSpec.DebugName             = "Pathtracing";
     pathTracingPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_COMPUTE;
-    pathTracingPipelineSpec.TargetFramebuffer     = s_RendererData->CompositeFramebuffer;
     pathTracingPipelineSpec.bBindlessCompatible   = true;
-
     PipelineBuilder::Push(s_RendererData->PathtracingPipeline, pathTracingPipelineSpec);
+
+    std::ranges::for_each(s_RendererData->CameraUB,
+                          [](Shared<Buffer>& cameraUB)
+                          {
+                              BufferSpecification vbSpec = {};
+                              vbSpec.BufferCapacity      = sizeof(CameraData);
+                              vbSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_UNIFORM;
+                              vbSpec.bMapPersistent      = true;
+                              vbSpec.Data                = &s_RendererData->CameraData;
+                              vbSpec.DataSize            = sizeof(s_RendererData->CameraData);
+
+                              cameraUB = Buffer::Create(vbSpec);
+                          });
 
     Renderer2D::Init();
 
@@ -129,53 +143,79 @@ void Renderer::Begin()
     s_RendererData->CurrentRenderCommandBuffer  = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex];
     s_RendererData->CurrentComputeCommandBuffer = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex];
 
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginRecording();
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginRecording();
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginRecording(true);
+    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginRecording(true);
 
+    Renderer2D::GetRendererData()->FrameIndex = s_RendererData->FrameIndex;
     Renderer2D::Begin();
-
-    s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-
-    auto vkCmdBuf = std::static_pointer_cast<VulkanCommandBuffer>(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-    PFR_ASSERT(vkCmdBuf, "vk");
-
-    auto vkPipeline = std::static_pointer_cast<VulkanPipeline>(s_RendererData->PathtracingPipeline);
-
-    struct PC
-    {
-        uint32_t img = 0;
-        uint32_t tex = 0;
-    } pc;
-
-    vkCmdBuf->BindPipeline(s_RendererData->PathtracingPipeline);
-    vkCmdBuf->BindPushConstants(vkPipeline->GetLayout(), VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT, 0,
-                                sizeof(uint32_t) * 2, &pc);
-    static constexpr uint32_t workgroup_width  = 16;
-    static constexpr uint32_t workgroup_height = 8;
-    vkCmdBuf->Dispatch(
-        (s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetSpecification().Width + workgroup_width - 1) / workgroup_width,
-        (s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetSpecification().Height + workgroup_height - 1) / workgroup_height,
-        1);
 }
 
 void Renderer::Flush()
 {
+    GeometryPass();
+
     Renderer2D::Flush();
 
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Submit();
-
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
+
+    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Submit();
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Submit();
 
     s_RendererData->CurrentRenderCommandBuffer.reset();
     s_RendererData->CurrentComputeCommandBuffer.reset();
 
-    Application::Get().GetWindow()->CopyToWindow(s_RendererData->PathtracedImage[s_RendererData->FrameIndex]);
+    // Application::Get().GetWindow()->CopyToWindow(s_RendererData->PathtracedImage[s_RendererData->FrameIndex]);
+    Application::Get().GetWindow()->CopyToWindow(
+        s_RendererData->CompositeFramebuffer[s_RendererData->FrameIndex]->GetAttachments()[0].Attachment);
 }
 
-void Renderer::BeginScene(const Camera& camera) {}
+void Renderer::BeginScene(const Camera& camera)
+{
+    s_RendererData->CameraData.Projection  = camera.GetProjection();
+    s_RendererData->CameraData.InverseView = camera.GetInverseView();
+
+    s_RendererData->CameraUB[s_RendererData->FrameIndex]->SetData(&s_RendererData->CameraData, sizeof(s_RendererData->CameraData));
+
+    s_BindlessRenderer->UpdateCameraData(s_RendererData->CameraUB[s_RendererData->FrameIndex]);
+    s_BindlessRenderer->Bind(s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex], false);
+
+    struct PC
+    {
+        glm::mat4 Transform = glm::mat4(1.0f);
+        uint32_t img        = 0;
+        uint32_t tex        = 0;
+    } pc;
+
+    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->PathtracingPipeline);
+    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(
+        s_RendererData->PathtracingPipeline,
+        EShaderStage::SHADER_STAGE_COMPUTE | EShaderStage::SHADER_STAGE_FRAGMENT | EShaderStage::SHADER_STAGE_VERTEX, 0, sizeof(PC), &pc);
+
+    static constexpr uint32_t workgroup_width  = 16;
+    static constexpr uint32_t workgroup_height = 8;
+
+    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Dispatch(
+        (s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetSpecification().Width + workgroup_width - 1) / workgroup_width,
+        (s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetSpecification().Height + workgroup_height - 1) / workgroup_height,
+        1);
+}
 
 void Renderer::EndScene() {}
+
+void Renderer::GeometryPass()
+{
+  //  s_RendererData->CompositeFramebuffer[s_RendererData->FrameIndex]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+    for (auto& opaque : s_RendererData->OpaqueObjects)
+    {
+    }
+
+    for (auto& transparent : s_RendererData->TransparentObjects)
+    {
+    }
+
+    //s_RendererData->CompositeFramebuffer[s_RendererData->FrameIndex]->EndPass(    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+}
 
 }  // namespace Pathfinder

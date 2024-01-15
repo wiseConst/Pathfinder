@@ -14,25 +14,26 @@ static constexpr uint16_t s_SHADER_EXTENSIONS_SIZE                              
 static constexpr std::array<const std::string_view, s_SHADER_EXTENSIONS_SIZE> s_SHADER_EXTENSIONS = {
     ".vert", ".tesc", ".tese", ".geom", ".frag", ".comp", ".rmiss", ".rgen", ".rchit", ".rahit", ".rcall", ".mesh", ".task"};
 
-enum class EShaderStage : uint8_t
+enum EShaderStage : uint32_t
 {
-    SHADER_STAGE_VERTEX = 0,
-    SHADER_STAGE_TESSELLATION_CONTROL,
-    SHADER_STAGE_TESSELLATION_EVALUATION,
-    SHADER_STAGE_GEOMETRY,
-    SHADER_STAGE_FRAGMENT,
-    SHADER_STAGE_COMPUTE,
-    SHADER_STAGE_ALL_GRAPHICS,
-    SHADER_STAGE_ALL,
-    SHADER_STAGE_RAYGEN,
-    SHADER_STAGE_ANY_HIT,
-    SHADER_STAGE_CLOSEST_HIT,
-    SHADER_STAGE_MISS,
-    SHADER_STAGE_INTERSECTION,
-    SHADER_STAGE_CALLABLE,
-    SHADER_STAGE_TASK,
-    SHADER_STAGE_MESH,
+    SHADER_STAGE_VERTEX                  = BIT(0),
+    SHADER_STAGE_TESSELLATION_CONTROL    = BIT(1),
+    SHADER_STAGE_TESSELLATION_EVALUATION = BIT(2),
+    SHADER_STAGE_GEOMETRY                = BIT(3),
+    SHADER_STAGE_FRAGMENT                = BIT(4),
+    SHADER_STAGE_COMPUTE                 = BIT(5),
+    SHADER_STAGE_ALL_GRAPHICS            = BIT(6),
+    SHADER_STAGE_ALL                     = BIT(7),
+    SHADER_STAGE_RAYGEN                  = BIT(8),
+    SHADER_STAGE_ANY_HIT                 = BIT(9),
+    SHADER_STAGE_CLOSEST_HIT             = BIT(10),
+    SHADER_STAGE_MISS                    = BIT(11),
+    SHADER_STAGE_INTERSECTION            = BIT(12),
+    SHADER_STAGE_CALLABLE                = BIT(13),
+    SHADER_STAGE_TASK                    = BIT(14),
+    SHADER_STAGE_MESH                    = BIT(15),
 };
+typedef uint32_t ShaderStageFlags;
 
 class GLSLShaderIncluder final : public shaderc::CompileOptions::IncluderInterface
 {
@@ -55,9 +56,9 @@ class Shader : private Uncopyable, private Unmovable
     NODISCARD static Shared<Shader> Create(const std::string_view shaderName);
 
   protected:
-    Shader()                                = default;
+    Shader() = default;
 
-    virtual void Destroy()                  = 0;
+    virtual void Destroy() = 0;
 };
 
 class ShaderLibrary final : private Uncopyable, private Unmovable
@@ -70,6 +71,7 @@ class ShaderLibrary final : private Uncopyable, private Unmovable
     static void Shutdown();
 
     static void Load(const std::string& shaderName);
+    static void Load(const std::vector<std::string>& shaderNames);
     NODISCARD static const Shared<Shader>& Get(const std::string& shaderName);
 
   private:

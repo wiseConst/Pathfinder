@@ -29,7 +29,7 @@ void PipelineBuilder::Shutdown()
     s_PipelinesToBuild.clear();
 }
 
-// TODO: JobSystem gonna stuck(won't propogate work) if pipeline count > threads
+// FIXME: JobSystem gonna stuck(won't propogate work) if pipeline count > threads
 void PipelineBuilder::Build()
 {
     if (s_PipelinesToBuild.empty()) return;
@@ -47,7 +47,7 @@ void PipelineBuilder::Build()
     for (auto& future : futures)
         future();
 
-    LOG_TAG_INFO(RENDERER, "Time took to create (%zu) pipelines: %0.2fms", s_PipelinesToBuild.size(), t.GetElapsedMilliseconds() * 1000.0);
+    LOG_TAG_INFO(RENDERER, "Time took to create (%zu) pipelines: %0.2fms", s_PipelinesToBuild.size(), t.GetElapsedSeconds() * 1000);
     s_PipelinesToBuild.clear();
 }
 

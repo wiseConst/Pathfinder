@@ -7,6 +7,7 @@
 #include "Renderer/GraphicsContext.h"
 #include "Renderer/Renderer.h"
 
+#include "Input.h"
 #include "Events/Events.h"
 #include "Events/WindowEvent.h"
 #include "Events/KeyEvent.h"
@@ -40,6 +41,9 @@ void Application::Run()
 {
     m_LayerQueue->Init();
 
+    uint32_t frameCount     = 0;
+    double accumulatedDelta = 0.0;
+
     LOG_ERROR("Hi world! %f", 0.5f);
     LOG_TRACE("Current working directory: %s", std::filesystem::current_path().string().data());
     while (m_Window->IsRunning() && s_bIsRunning)
@@ -53,10 +57,7 @@ void Application::Run()
 
             m_LayerQueue->OnUpdate(m_DeltaTime);
 
-            const std::string title = std::string("PATHFINDER x64 / ") + std::to_string(m_DeltaTime * 1000.0f) + std::string("ms");
-            m_Window->SetWindowTitle(title.data());
-
-            m_Window->SetClearColor(glm::vec3(0.15f));
+            //  m_Window->SetClearColor(glm::vec3(0.15f));
 
             Renderer::Flush();
             m_Window->SwapBuffers();
@@ -64,7 +65,18 @@ void Application::Run()
 
         m_Window->PollEvents();
 
-        m_DeltaTime = static_cast<float>(t.GetElapsedMilliseconds());
+        m_DeltaTime = static_cast<float>(t.GetElapsedSeconds());
+
+        ++frameCount;
+        accumulatedDelta += m_DeltaTime;
+        if (accumulatedDelta >= 1.0)
+        {
+            const std::string title = std::string("PATHFINDER x64 / ") + std::to_string(frameCount) + std::string(" FPS");
+            m_Window->SetWindowTitle(title.data());
+
+            accumulatedDelta = 0.0;
+            frameCount       = 0;
+        }
     }
 }
 
@@ -74,6 +86,7 @@ void Application::OnEvent(Event& e)
 
     m_LayerQueue->OnEvent(e);
 
+    /*
     EventDispatcher dispatcher(e);
     dispatcher.Dispatch<KeyButtonPressedEvent>(
         [this](const auto& event)
@@ -121,6 +134,7 @@ void Application::OnEvent(Event& e)
 
             return false;
         });
+        */
 }
 
 Application::~Application()

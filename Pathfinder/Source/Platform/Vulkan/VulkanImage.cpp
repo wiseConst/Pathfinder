@@ -163,6 +163,21 @@ VulkanImage::VulkanImage(const ImageSpecification& imageSpec) : m_Specification(
     Invalidate();
 }
 
+void VulkanImage::SetLayout(const EImageLayout newLayout)
+{
+    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+    vulkanCommandBuffer->BeginRecording(true);
+
+    vulkanCommandBuffer->TransitionImageLayout(
+        m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), ImageUtils::PathfinderImageLayoutToVulkan(newLayout),
+        ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT);
+
+    vulkanCommandBuffer->EndRecording();
+    vulkanCommandBuffer->Submit(true);
+
+    m_Specification.Layout = newLayout;
+}
+
 // TODO: Add cube map support
 void VulkanImage::Invalidate()
 {
@@ -175,25 +190,7 @@ void VulkanImage::Invalidate()
     ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat,
                                 ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT);
 
-    // By default all images have GENERAL layout
-    // TODO: Move things below into SetLayout()?
-    {
-        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
-        vulkanCommandBuffer->BeginRecording(true);
-
-        const auto imageBarrier = VulkanUtility::GetImageMemoryBarrier(
-            m_Handle, ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
-            VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_GENERAL, 0, 0, 1, 0, 1, 0);
-
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT,
-                                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
-                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
-
-        vulkanCommandBuffer->EndRecording();
-        vulkanCommandBuffer->Submit();
-
-        m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_GENERAL;
-    }
+    SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
 }
 
 void VulkanImage::Destroy()
@@ -204,6 +201,7 @@ void VulkanImage::Destroy()
     m_Handle = VK_NULL_HANDLE;
 
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_View, nullptr);
+    m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
 
     if (m_Index != UINT32_MAX)
     {

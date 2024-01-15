@@ -38,9 +38,10 @@ enum class EPrimitiveTopology : uint8_t
     PRIMITIVE_TOPOLOGY_TRIANGLE_FAN
 };
 
-enum class EBlendOp : uint8_t
+enum class EBlendMode : uint8_t
 {
-    BLEND_OP_ADD = 0,
+    BLEND_MODE_ADDITIVE = 0,
+    BLEND_MODE_ALPHA,
 };
 
 enum class EPipelineType : uint8_t
@@ -51,7 +52,6 @@ enum class EPipelineType : uint8_t
 };
 
 class Shader;
-
 struct PipelineSpecification
 {
     std::string DebugName                = "None";
@@ -60,18 +60,20 @@ struct PipelineSpecification
     EPolygonMode PolygonMode             = EPolygonMode::POLYGON_MODE_FILL;
     EFrontFace FrontFace                 = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
     EPrimitiveTopology PrimitiveTopology = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    EBlendOp BlendOp                     = EBlendOp::BLEND_OP_ADD;
     float LineWidth                      = 1.0f;
     bool bMeshShading                    = false;
     bool bBindlessCompatible             = false;
+    bool bSeparateVertexBuffers          = false;
 
     Shared<Pathfinder::Shader> Shader = nullptr;
     FramebufferPerFrame TargetFramebuffer;
 
+    bool bBlendEnable    = false;
+    EBlendMode BlendMode = EBlendMode::BLEND_MODE_ADDITIVE;
+
     bool bDynamicPolygonMode  = false;  // Allows to set pipeline states like PolygonMode
     bool bDepthTest           = false;  // If we should do any z-culling at all
     bool bDepthWrite          = false;  // Allows the depth to be written.
-    bool bBlendEnable         = false;  // TODO: Add blending modes/configuration
     ECompareOp DepthCompareOp = ECompareOp::COMPARE_OP_NEVER;
 };
 
@@ -110,6 +112,7 @@ class PipelineBuilder final : private Uncopyable, private Unmovable
     PipelineBuilder()           = default;
     ~PipelineBuilder() override = default;
 
+  private:
     static inline std::vector<std::pair<Shared<Pipeline>&, PipelineSpecification>> s_PipelinesToBuild;
 };
 

@@ -8,19 +8,19 @@ namespace Pathfinder
 
 enum class EEventType : uint8_t
 {
-    EVENT_TYPE_NONE = 0,
-    EVENT_TYPE_WINDOW_CLOSE,
-    EVENT_TYPE_WINDOW_RESIZE,
+    EVENT_TYPE_NONE          = 0,
+    EVENT_TYPE_WINDOW_CLOSE  = 1,
+    EVENT_TYPE_WINDOW_RESIZE = 2,
 
-    EVENT_TYPE_MOUSE_MOVED,
-    EVENT_TYPE_MOUSE_SCROLLED,
-    EVENT_TYPE_MOUSE_BUTTON_PRESSED,
-    EVENT_TYPE_MOUSE_BUTTON_RELEASED,
-    EVENT_TYPE_MOUSE_BUTTON_REPEATED,
+    EVENT_TYPE_MOUSE_MOVED           = 3,
+    EVENT_TYPE_MOUSE_SCROLLED        = 4,
+    EVENT_TYPE_MOUSE_BUTTON_PRESSED  = 5,
+    EVENT_TYPE_MOUSE_BUTTON_RELEASED = 6,
+    EVENT_TYPE_MOUSE_BUTTON_REPEATED = 7,
 
-    EVENT_TYPE_KEY_BUTTON_PRESSED,
-    EVENT_TYPE_KEY_BUTTON_RELEASED,
-    EVENT_TYPE_KEY_BUTTON_REPEATED
+    EVENT_TYPE_KEY_BUTTON_PRESSED  = 8,
+    EVENT_TYPE_KEY_BUTTON_RELEASED = 9,
+    EVENT_TYPE_KEY_BUTTON_REPEATED = 10
 };
 
 #define DECLARE_STATIC_EVENT_TYPE(type)                                                                                                    \
@@ -37,6 +37,16 @@ class Event : private Uncopyable, private Unmovable
 
     FORCEINLINE EEventType GetType() const { return m_EventType; }
     FORCEINLINE bool IsHandled() const { return m_bIsHandled; }
+
+    NODISCARD FORCEINLINE bool IsKeyEvent()
+    {
+        return m_EventType >= EEventType::EVENT_TYPE_KEY_BUTTON_PRESSED && m_EventType <= EEventType::EVENT_TYPE_KEY_BUTTON_REPEATED;
+    }
+
+    NODISCARD FORCEINLINE bool IsMouseEvent()
+    {
+        return m_EventType >= EEventType::EVENT_TYPE_MOUSE_MOVED && m_EventType <= EEventType::EVENT_TYPE_MOUSE_BUTTON_REPEATED;
+    }
 
   protected:
     Event(const std::string& name, const EEventType eventType) : m_Name(name), m_EventType(eventType) {}

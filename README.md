@@ -4,3 +4,9 @@
 
 * Vulkan window clear color to linux-style colors. 
 ![Alt text](/Resources/Images/1.png)
+
+* First rendered quad no way.
+![Alt text](/Resources/Images/2.png)
+
+* Batch-rendering 2D
+![Alt text](/Resources/Images/3.png)

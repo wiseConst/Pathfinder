@@ -14,7 +14,10 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     VulkanBindlessRenderer();
     ~VulkanBindlessRenderer() override { Destroy(); }
 
-    void Bind(const Shared<CommandBuffer>& commandBuffer) final override;
+    void Bind(const Shared<CommandBuffer>& commandBuffer, const bool bGraphicsBindPoint = true) final override;
+
+    void UpdateCameraData(const Shared<Buffer>& cameraUniformBuffer) final override;
+
     void LoadImage(const ImagePerFrame& images) final override;
     void LoadImage(const Shared<Image>& image) final override;
 
@@ -27,12 +30,16 @@ class VulkanBindlessRenderer final : public BindlessRenderer
 
   private:
     VkDescriptorSetLayout m_TextureSetLayout = VK_NULL_HANDLE;
-    std::array<VkDescriptorPool, s_FRAMES_IN_FLIGHT> m_TexturePool;
-    std::array<VkDescriptorSet, s_FRAMES_IN_FLIGHT> m_TextureSet;
+    VulkanDescriptorPoolPerFrame m_TexturePool;
+    VulkanDescriptorSetPerFrame m_TextureSet;
 
     VkDescriptorSetLayout m_ImageSetLayout = VK_NULL_HANDLE;
-    std::array<VkDescriptorPool, s_FRAMES_IN_FLIGHT> m_ImagePool;
-    std::array<VkDescriptorSet, s_FRAMES_IN_FLIGHT> m_ImageSet;
+    VulkanDescriptorPoolPerFrame m_ImagePool;
+    VulkanDescriptorSetPerFrame m_ImageSet;
+
+    VkDescriptorSetLayout m_CameraSetLayout = VK_NULL_HANDLE;
+    VulkanDescriptorPoolPerFrame m_CameraPool;
+    VulkanDescriptorSetPerFrame m_CameraSet;
 
     VkPushConstantRange m_PCBlock;
     VkPipelineLayout m_Layout = VK_NULL_HANDLE;

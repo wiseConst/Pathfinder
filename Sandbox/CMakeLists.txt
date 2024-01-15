@@ -13,16 +13,16 @@ target_include_directories(${PROJECT_NAME} PUBLIC
         "${CMAKE_CURRENT_SOURCE_DIR}/../Pathfinder/Source"
 )
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_definitions(-DPFR_DEBUG=1)
-    target_compile_options(Sandbox PRIVATE -g)
-elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_definitions(-DPFR_RELEASE=1)
-    target_compile_options(Sandbox PRIVATE -Ofast)
-elseif (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    add_definitions(-DPFR_RELEASE=1)
-    target_compile_options(Sandbox PRIVATE -g)
-endif ()
+add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
+add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 
-# TODO: Intermediate decision for CLION, current working dirs
-file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Assets DESTINATION ${PROJECT_OUTPUT_DIRECTORY})
+add_compile_options($<$<CONFIG:Debug>:-g -lto>)
+add_compile_options($<$<CONFIG:Release>:-Ofast -lto>)
+
+if (MSVC)
+    foreach(config ${CMAKE_CONFIGURATION_TYPES})
+        file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Assets DESTINATION "${PROJECT_OUTPUT_DIRECTORY}/${config}")
+    endforeach()
+else()
+    file(COPY ${CMAKE_CURRENT_SOURCE_DIR}/Assets DESTINATION ${PROJECT_OUTPUT_DIRECTORY})
+endif()

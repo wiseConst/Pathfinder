@@ -28,12 +28,13 @@ layout(set = 2, binding = 0, scalar) uniform CameraUB
 {
     mat4 Projection;
     mat4 InverseView;
-    vec3 Position;
+ //   vec3 Position;
 }
 u_GlobalCameraData;
 
 layout(push_constant) uniform PushConstantBlock
 {
+    mat4 Transform;
     uint32_t ImageIndex;
     uint32_t TextureIndex;
 }

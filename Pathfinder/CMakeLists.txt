@@ -45,7 +45,7 @@ set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY PROJEC
 target_include_directories(${PROJECT_NAME} PUBLIC ${CORE_DIR} ${VENDOR_DIR})
 target_precompile_headers(${PROJECT_NAME} PRIVATE ${CORE_DIR}/PathfinderPCH.h)
 
-# G++ filesystem issues ?
+# g++ filesystem issues ?
 if (NOT MSVC)
     target_link_libraries(${PROJECT_NAME} PRIVATE stdc++fs)
 endif ()
@@ -87,8 +87,8 @@ target_link_libraries(${PROJECT_NAME} PRIVATE GPUOpen::VulkanMemoryAllocator)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/vma/include)
 
 # spirv-reflect
-set(SPIRV_REFLECT_STATIC_LIB ON)
 set(SPIRV_REFLECT_EXECUTABLE OFF)
+set(SPIRV_REFLECT_STATIC_LIB ON)
 add_subdirectory(${VENDOR_DIR}/spirv-reflect)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/spirv-reflect)
 target_link_libraries(${PROJECT_NAME} PRIVATE spirv-reflect-static)
@@ -109,34 +109,18 @@ add_subdirectory(${VENDOR_DIR}/fastgltf)
 target_link_libraries(${PROJECT_NAME} PRIVATE fastgltf)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include)
 
-if (MSVC)
-target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_combinedd.lib)
+add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
+add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
+
+add_compile_options($<$<CONFIG:Debug>:-g -lto>)
+add_compile_options($<$<CONFIG:Release>:-Ofast -lto>)
+
+if(MSVC)
+target_link_libraries(${PROJECT_NAME} PRIVATE 
+        $<$<CONFIG:Debug>:${VULKAN_SDK_DIR}/Lib/shaderc_combinedd.lib> 
+        $<$<CONFIG:Release>:${VULKAN_SDK_DIR}/Lib/shaderc_combined.lib>)
+else()
+target_link_libraries(${PROJECT_NAME} PRIVATE 
+        $<$<CONFIG:Debug>:${VULKAN_SDK_DIR}/Lib/shaderc_sharedd.lib> 
+        $<$<CONFIG:Release>:${VULKAN_SDK_DIR}/Lib/shaderc_shared.lib>)
 endif()
-
-# TODO: shader on testing linking, I'm not sure which one I should link to
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_definitions(-DPFR_DEBUG=1)
-    add_compile_options(-g -flto)
-    if (NOT MSVC)
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_sharedd.lib)
-    else ()
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_combinedd.lib)
-    endif ()
-elseif (CMAKE_BUILD_TYPE STREQUAL "Release")
-    add_definitions(-DPFR_RELEASE=1)
-    add_compile_options(-Ofast -flto)
-    if (NOT MSVC)
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_shared.lib)
-    else ()
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_combined.lib)
-    endif ()
-elseif (CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo")
-    add_definitions(-DPFR_RELEASE=1)
-    add_compile_options(-g -flto)
-    if (NOT MSVC)
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_sharedd.lib)
-    else ()
-        target_link_libraries(${PROJECT_NAME} PRIVATE ${VULKAN_SDK_DIR}/Lib/shaderc_combinedd.lib)
-    endif ()
-endif ()
-

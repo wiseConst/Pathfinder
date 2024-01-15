@@ -23,12 +23,15 @@ class VulkanPipeline final : public Pipeline
   private:
     VkPipeline m_Handle       = VK_NULL_HANDLE;
     VkPipelineLayout m_Layout = VK_NULL_HANDLE;
-    PipelineSpecification m_Specification;
+    PipelineSpecification m_Specification={};
 
     void CreateLayout();
 
     void Invalidate() final override;
     void Destroy() final override;
+
+    void CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName) const;
+    void SavePipelineCache(VkPipelineCache& cache, const std::string& pipelineName) const;
 };
 
 }  // namespace Pathfinder

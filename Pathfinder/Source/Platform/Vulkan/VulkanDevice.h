@@ -190,6 +190,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE const auto& GetLogicalDevice() const { return m_GPUInfo.LogicalDevice; }
     NODISCARD FORCEINLINE const auto& GetPhysicalDevice() const { return m_GPUInfo.PhysicalDevice; }
+    NODISCARD FORCEINLINE const auto& GetGPUProperties() const { return m_GPUInfo.GPUProperties; }
 
     NODISCARD FORCEINLINE const auto& GetQueueFamilyIndices() const { return m_GPUInfo.QueueFamilyIndices; }
     NODISCARD FORCEINLINE const auto& GetGraphicsQueue() const { return m_GPUInfo.GraphicsQueue; }

@@ -11,6 +11,7 @@
 #include "Core/Window.h"
 #include "Renderer/Renderer.h"
 #include "VulkanBindlessRenderer.h"
+#include "Core/CoreUtils.h"
 
 namespace Pathfinder
 {
@@ -131,20 +132,61 @@ void VulkanPipeline::CreateLayout()
              "Failed to create pipeline layout!");
 }
 
+void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName) const
+{
+    PFR_ASSERT(!pipelineName.empty(), "Every pipeline should've a name!");
+
+    if (!std::filesystem::is_directory(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/"))
+        std::filesystem::create_directories(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/");
+
+    const std::string cachePath = std::string("Assets/Cached/Pipelines/") + pipelineName + std::string(".cache");
+    auto cacheData              = LoadData<std::vector<uint8_t>>(cachePath);
+
+    // Validate retrieved pipeline cache
+    VkPipelineCacheCreateInfo cacheCI = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, nullptr, 0};
+    auto& context                     = VulkanContext::Get();
+    if (!cacheData.empty())
+    {
+        bool bSamePipelineUUID = true;
+        for (uint16_t i = 0; i < VK_UUID_SIZE; ++i)
+            if (context.GetDevice()->GetGPUProperties().pipelineCacheUUID[i] != cacheData[16 + i]) bSamePipelineUUID = false;
+
+        bool bSameVendorID = true;
+        bool bSameDeviceID = true;
+        for (uint16_t i = 0; i < 4; ++i)
+        {
+            if (cacheData[8 + i] != ((context.GetDevice()->GetGPUProperties().vendorID >> (8 * i)) & 0xff)) bSameVendorID = false;
+            if (cacheData[12 + i] != ((context.GetDevice()->GetGPUProperties().deviceID >> (8 * i)) & 0xff)) bSameDeviceID = false;
+        }
+
+        if (bSamePipelineUUID && bSameVendorID && bSameDeviceID)
+        {
+            cacheCI.initialDataSize = cacheData.size();
+            cacheCI.pInitialData    = cacheData.data();
+        }
+        else
+        {
+            LOG_TAG_WARN(VULKAN, "Pipeline cache for \"%s\" not valid! Recompiling...", pipelineName.data());
+        }
+
+        LOG_TAG_INFO(VULKAN, "Found valid pipeline cache \"%s\", get ready!", pipelineName.data());
+    }
+    VK_CHECK(vkCreatePipelineCache(context.GetDevice()->GetLogicalDevice(), &cacheCI, nullptr, &outCache),
+             "Failed to create pipeline cache!");
+}
+
 void VulkanPipeline::Invalidate()
 {
     if (m_Handle) Destroy();
 
     PFR_ASSERT(m_Specification.Shader, "Not valid shader passed!");
-    auto& context             = VulkanContext::Get();
-    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
-
     CreateLayout();
 
-    // CreateOrRetrieveAndValidatePipelineCache();
+    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+    CreateOrRetrieveAndValidatePipelineCache(pipelineCache, m_Specification.DebugName);
 
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(m_Specification.Shader);
-    PFR_ASSERT(vulkanShader, "Invalid shader!");
+    PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
 
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
     const auto& shaderDescriptions = vulkanShader->GetDescriptions();
@@ -219,7 +261,8 @@ void VulkanPipeline::Invalidate()
         }
     }
 
-    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
+    auto& context             = VulkanContext::Get();
+    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
 
     switch (m_Specification.PipelineType)
     {
@@ -227,36 +270,57 @@ void VulkanPipeline::Invalidate()
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
             // Contains the configuration for what kind of topology will be drawn.
-            VkPipelineInputAssemblyStateCreateInfo InputAssemblyState = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO};
-            InputAssemblyState.primitiveRestartEnable                 = VK_FALSE;
-            InputAssemblyState.topology = PathfinderPrimitiveTopologyToVulkan(m_Specification.PrimitiveTopology);
+            const VkPipelineInputAssemblyStateCreateInfo IAState = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, nullptr, 0,
+                                                                    PathfinderPrimitiveTopologyToVulkan(m_Specification.PrimitiveTopology),
+                                                                    VK_FALSE};
 
-            // VertexInputState
-            VkPipelineVertexInputStateCreateInfo VertexInputState = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
+            VkPipelineVertexInputStateCreateInfo vertexInputState = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
 
-            /*
-            BufferLayout layout =
-                m_Specification.Layout.GetElements().size() > 0 ? m_Specification.Layout : vulkanShader->GetVertexBufferLayout();
+            const auto& inputVars = vulkanShader->GetInputVars();
+            if (m_Specification.bSeparateVertexBuffers)
+                PFR_ASSERT(inputVars.size() >= 2, "Nothing to separate! Shader input attributes size less than 2!");
 
-            std::vector<VkVertexInputAttributeDescription> shaderAttributeDescriptions;
-            shaderAttributeDescriptions.reserve(layout.GetElements().size());
+            std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
+            std::vector<VkVertexInputBindingDescription> inputBindings(m_Specification.bSeparateVertexBuffers ? 2 : 1);
 
-            for (uint32_t i = 0; i < shaderAttributeDescriptions.capacity(); ++i)
+            // In shader I do sort by locations(guarantee that position is first) so, it's OK to separate like that.
+            bool bSeparatedVertexBuffers = false;
+            for (auto& inputVar : inputVars)
             {
-                const auto& CurrentBufferElement = layout.GetElements()[i];
-                shaderAttributeDescriptions.emplace_back(i, 0, Utility::GauntletShaderDataTypeToVulkan(CurrentBufferElement.Type),
-                                                         CurrentBufferElement.Offset);
-            }
-            VertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(shaderAttributeDescriptions.size());
-            VertexInputState.pVertexAttributeDescriptions    = shaderAttributeDescriptions.data();
+                if (m_Specification.bSeparateVertexBuffers && !bSeparatedVertexBuffers)
+                {
+                    inputBindings[0].binding   = 0;
+                    inputBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                    inputBindings[0].stride    = VulkanUtility::GetTypeSizeFromVulkanFormat(inputVar.format);
 
-            const auto vertexBindingDescription = Utility::GetShaderBindingDescription(0, layout.GetStride());
-            if (shaderAttributeDescriptions.size() > 0)
-            {
-                VertexInputState.vertexBindingDescriptionCount = 1;
-                VertexInputState.pVertexBindingDescriptions    = &vertexBindingDescription;
+                    vertexAttributeDescriptions.emplace_back(0, 0, inputVar.format, 0);
+
+                    bSeparatedVertexBuffers = true;
+                    continue;
+                }
+
+                const uint32_t nextBindingIndex           = m_Specification.bSeparateVertexBuffers ? 1 : 0;
+                inputBindings[nextBindingIndex].binding   = nextBindingIndex;
+                inputBindings[nextBindingIndex].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+                auto& vertexAttribute    = vertexAttributeDescriptions.emplace_back();
+                vertexAttribute.binding  = nextBindingIndex;
+                vertexAttribute.format   = inputVar.format;
+                vertexAttribute.location = vertexAttributeDescriptions.size() - 1;
+                vertexAttribute.offset   = inputBindings[nextBindingIndex].stride;
+
+                inputBindings[nextBindingIndex].stride += VulkanUtility::GetTypeSizeFromVulkanFormat(inputVar.format);
             }
-*/
+
+            vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributeDescriptions.size());
+            vertexInputState.pVertexAttributeDescriptions    = vertexAttributeDescriptions.data();
+
+            if (!inputVars.empty())
+            {
+                vertexInputState.vertexBindingDescriptionCount = static_cast<uint32_t>(inputBindings.size());
+                vertexInputState.pVertexBindingDescriptions    = inputBindings.data();
+            }
+
             // TessellationState
             constexpr VkPipelineTessellationStateCreateInfo tessellationState = {VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};
 
@@ -284,29 +348,42 @@ void VulkanPipeline::Invalidate()
             MultisampleState.alphaToCoverageEnable                = VK_FALSE;
             MultisampleState.alphaToOneEnable                     = VK_FALSE;
 
-            // TODO: Make it configurable
             std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachmentStates;
+            if (m_Specification.TargetFramebuffer[0])
+            {
+                uint32_t attachmentCount = static_cast<uint32_t>(m_Specification.TargetFramebuffer[0]->GetAttachments().size());
+                if (m_Specification.TargetFramebuffer[0]->GetDepthAttachment()) --attachmentCount;
 
-            // auto vulkanFramebuffer = std::static_pointer_cast<VulkanFramebuffer>(
-            //     m_Specification.TargetFramebuffer[context.GetCurrentFrameIndex()]);  // it doesn't matter which framebuffer to take
-            // uint32_t attachmentCount = (uint32_t)vulkanFramebuffer->GetAttachments().size();
-            // if (vulkanFramebuffer->GetDepthAttachment()) --attachmentCount;
-            //
-            // for (uint32_t i = 0; i < attachmentCount; ++i)
-            // {
-            //     VkPipelineColorBlendAttachmentState colorBlendAttachmentState = {};
-            //     colorBlendAttachmentState.blendEnable                         = m_Specification.bBlendEnable;
-            //     colorBlendAttachmentState.colorWriteMask                      = 0xf;
-            //     // Color.rgb = (src.a * src.rgb) + ((1-src.a) * dst.rgb)
-            //     colorBlendAttachmentState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-            //     colorBlendAttachmentState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-            //     colorBlendAttachmentState.colorBlendOp        = VK_BLEND_OP_ADD;
-            //     // Optional
-            //     colorBlendAttachmentState.srcAlphaBlendFactor = VK_BLEND_FACTOR_ONE;
-            //     colorBlendAttachmentState.dstAlphaBlendFactor = VK_BLEND_FACTOR_ZERO;
-            //     colorBlendAttachmentState.alphaBlendOp        = VK_BLEND_OP_ADD;
-            //     colorBlendAttachmentStates.push_back(colorBlendAttachmentState);
-            // }
+                for (uint32_t i = 0; i < attachmentCount; ++i)
+                {
+                    auto& blendState = colorBlendAttachmentStates.emplace_back(m_Specification.bBlendEnable, VK_BLEND_FACTOR_ONE,
+                                                                               VK_BLEND_FACTOR_ONE, VK_BLEND_OP_ADD, VK_BLEND_FACTOR_ONE,
+                                                                               VK_BLEND_FACTOR_ZERO, VK_BLEND_OP_ADD, 0xf);
+
+                    switch (m_Specification.BlendMode)
+                    {
+                        case EBlendMode::BLEND_MODE_ALPHA:
+                        {
+                            // not used version: Color.rgb = (src.a * src.rgb) + ((1-src.a) * dst.rgb)
+                            blendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+                            blendState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+
+                            // Color.rgb = ((1-dst.a) * src.rgb) + (dst.a * dst.rgb)
+                            // blendState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
+                            // blendState.dstColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+                            break;
+                        }
+                        case EBlendMode::BLEND_MODE_ADDITIVE:
+                        {
+                            // Color.rgb = (1.0F * src.rgb) + (dst.a * dst.rgb)
+                            blendState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE;
+                            blendState.dstColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
+                            break;
+                        }
+                        default: PFR_ASSERT(false, "Unknown blend mode!");
+                    }
+                }
+            }
 
             VkPipelineColorBlendStateCreateInfo ColorBlendState = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
             ColorBlendState.attachmentCount                     = static_cast<uint32_t>(colorBlendAttachmentStates.size());
@@ -314,8 +391,8 @@ void VulkanPipeline::Invalidate()
             ColorBlendState.logicOpEnable                       = VK_FALSE;
             ColorBlendState.logicOp                             = VK_LOGIC_OP_COPY;
 
-            const auto windowWidth  = Application::Get().GetWindow()->GetSpecification().Width;
-            const auto windowHeight = Application::Get().GetWindow()->GetSpecification().Height;
+            const auto windowWidth  = m_Specification.TargetFramebuffer[0]->GetSpecification().Width;
+            const auto windowHeight = m_Specification.TargetFramebuffer[0]->GetSpecification().Height;
             // Unlike OpenGL([-1, 1]), Vulkan has depth range [0, 1] to solve we flip up the viewport
             const VkViewport viewport = {
                 0, static_cast<float>(windowHeight), static_cast<float>(windowWidth), -static_cast<float>(windowHeight), 0.0f, 1.0f};
@@ -339,7 +416,7 @@ void VulkanPipeline::Invalidate()
 
             std::vector<VkDynamicState> DynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
 
-            //  if (m_Specification.bDynamicPolygonMode && !RENDERDOC_DEBUG) DynamicStates.push_back(VK_DYNAMIC_STATE_POLYGON_MODE_EXT);
+            if (m_Specification.bDynamicPolygonMode) DynamicStates.push_back(VK_DYNAMIC_STATE_POLYGON_MODE_EXT);
             if (m_Specification.LineWidth != 1.0F) DynamicStates.push_back(VK_DYNAMIC_STATE_LINE_WIDTH);
 
             // TODO: Make it configurable?
@@ -351,8 +428,8 @@ void VulkanPipeline::Invalidate()
             pipelineCreateInfo.layout                       = m_Layout;
             if (!m_Specification.bMeshShading)
             {
-                pipelineCreateInfo.pInputAssemblyState = &InputAssemblyState;
-                pipelineCreateInfo.pVertexInputState   = &VertexInputState;
+                pipelineCreateInfo.pInputAssemblyState = &IAState;
+                pipelineCreateInfo.pVertexInputState   = &vertexInputState;
                 pipelineCreateInfo.pTessellationState  = &tessellationState;
             }
             pipelineCreateInfo.pRasterizationState = &RasterizationState;
@@ -364,25 +441,23 @@ void VulkanPipeline::Invalidate()
             pipelineCreateInfo.pColorBlendState    = &ColorBlendState;
             pipelineCreateInfo.pDynamicState       = &DynamicState;
 
-            VkPipelineRenderingCreateInfoKHR pipelineRenderingCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO_KHR};
+            VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
             std::vector<VkFormat> colorAttachmentFormats;
             VkFormat depthAttachmentFormat   = VK_FORMAT_UNDEFINED;
             VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;  // TODO: Fill stencil
 
-            /*
-            for (const auto& attachment :
-                 m_Specification.TargetFramebuffer[Application::Get().GetWindow()->GetCurrentFrameIndex()]->GetSpecification().Attachments)
+            for (const auto& attachment : m_Specification.TargetFramebuffer[0]->GetSpecification().Attachments)
             {
                 depthAttachmentFormat = depthAttachmentFormat == VK_FORMAT_UNDEFINED && ImageUtils::IsDepthFormat(attachment.Format)
                                             ? ImageUtils::PathfinderImageFormatToVulkan(attachment.Format)
                                             : depthAttachmentFormat;
                 if (!ImageUtils::IsDepthFormat(attachment.Format))
-                    colorAttachmentFormats.emplace_back(ImageUtils::PathfinderImageFormatToVulkan(attachment.Format));
+                    colorAttachmentFormats.push_back(ImageUtils::PathfinderImageFormatToVulkan(attachment.Format));
             }
 
             pipelineRenderingCreateInfo.colorAttachmentCount    = static_cast<uint32_t>(colorAttachmentFormats.size());
             pipelineRenderingCreateInfo.pColorAttachmentFormats = colorAttachmentFormats.data();
-            */
+
             pipelineRenderingCreateInfo.depthAttachmentFormat   = depthAttachmentFormat;
             pipelineRenderingCreateInfo.stencilAttachmentFormat = stencilAttachmentFormat;
 
@@ -421,6 +496,33 @@ void VulkanPipeline::Invalidate()
     }
 
     VK_SetDebugName(logicalDevice, (uint64_t)m_Handle, VK_OBJECT_TYPE_PIPELINE, m_Specification.DebugName.data());
+    SavePipelineCache(pipelineCache, m_Specification.DebugName);
+}
+
+void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string& pipelineName) const
+{
+    PFR_ASSERT(!pipelineName.empty(), "Every pipeline should've a name!");
+
+    if (!std::filesystem::is_directory(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/"))
+        std::filesystem::create_directories(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/");
+
+    size_t cacheSize          = 0;
+    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+    VK_CHECK(vkGetPipelineCacheData(logicalDevice, cache, &cacheSize, nullptr), "Failed to retrieve pipeline cache data size!");
+
+    std::vector<uint8_t> cacheData(cacheSize);
+    VK_CHECK(vkGetPipelineCacheData(logicalDevice, cache, &cacheSize, cacheData.data()), "Failed to retrieve pipeline cache data!");
+
+    const std::string cachePath = std::string("Assets/Cached/Pipelines/") + pipelineName + std::string(".cache");
+    if (!cacheData.data() || cacheSize <= 0)
+    {
+        LOG_TAG_WARN(VULKAN, "Invalid cache data or size! %s", cachePath.data());
+        vkDestroyPipelineCache(logicalDevice, cache, nullptr);
+        return;
+    }
+
+    SaveData(cachePath, cacheData.data(), cacheData.size() * cacheData[0]);
+    vkDestroyPipelineCache(logicalDevice, cache, nullptr);
 }
 
 void VulkanPipeline::Destroy()

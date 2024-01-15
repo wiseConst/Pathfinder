@@ -5,6 +5,7 @@
 #include "VulkanDevice.h"
 #include "VulkanPipeline.h"
 #include "VulkanImage.h"
+#include "VulkanBuffer.h"
 
 #include "Core/Application.h"
 #include "Core/Window.h"
@@ -13,7 +14,7 @@
 namespace Pathfinder
 {
 
-static VkCommandBufferLevel GauntletCommandBufferLevelToVulkan(ECommandBufferLevel level)
+static VkCommandBufferLevel PathfinderCommandBufferLevelToVulkan(ECommandBufferLevel level)
 {
     switch (level)
     {
@@ -25,10 +26,36 @@ static VkCommandBufferLevel GauntletCommandBufferLevelToVulkan(ECommandBufferLev
     return VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 }
 
+static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const ShaderStageFlags shaderStageFlags)
+{
+    VkShaderStageFlags vkShaderStageFlags = 0;
+
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_VERTEX) vkShaderStageFlags |= VK_SHADER_STAGE_VERTEX_BIT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL) vkShaderStageFlags |= VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION)
+        vkShaderStageFlags |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_GEOMETRY) vkShaderStageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_FRAGMENT) vkShaderStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_COMPUTE) vkShaderStageFlags |= VK_SHADER_STAGE_COMPUTE_BIT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_ALL_GRAPHICS) vkShaderStageFlags |= VK_SHADER_STAGE_ALL_GRAPHICS;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_ALL) vkShaderStageFlags |= VK_SHADER_STAGE_ALL;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_RAYGEN) vkShaderStageFlags |= VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_ANY_HIT) vkShaderStageFlags |= VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_CLOSEST_HIT) vkShaderStageFlags |= VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_MISS) vkShaderStageFlags |= VK_SHADER_STAGE_MISS_BIT_KHR;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_INTERSECTION) vkShaderStageFlags |= VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_CALLABLE) vkShaderStageFlags |= VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_TASK) vkShaderStageFlags |= VK_SHADER_STAGE_TASK_BIT_EXT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_MESH) vkShaderStageFlags |= VK_SHADER_STAGE_MESH_BIT_EXT;
+
+    PFR_ASSERT(vkShaderStageFlags > 0, "Shader stage flags can't be zero!");
+    return vkShaderStageFlags;
+}
+
 VulkanCommandBuffer::VulkanCommandBuffer(ECommandBufferType type, ECommandBufferLevel level) : m_Type(type), m_Level(level)
 {
     auto& context = VulkanContext::Get();
-    context.GetDevice()->AllocateCommandBuffer(m_Handle, type, GauntletCommandBufferLevelToVulkan(m_Level));
+    context.GetDevice()->AllocateCommandBuffer(m_Handle, type, PathfinderCommandBufferLevelToVulkan(m_Level));
 
     CreateSyncResourcesAndQueries();
 }
@@ -95,32 +122,29 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit)
 }
 
 // NOTE: Mip mapping and layer count harcoded for now
-void VulkanCommandBuffer::TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout)
+void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
+                                                const VkImageAspectFlags aspectMask)
 {
-    const auto oldLayout   = ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout);
-    const auto vkNewLayout = ImageUtils::PathfinderImageLayoutToVulkan(newLayout);
-    if (oldLayout == vkNewLayout) return;
+    if (oldLayout == newLayout) return;
 
-    VkAccessFlags srcAccessMask                   = 0;
-    VkAccessFlags dstAccessMask                   = 0;
-    const VkImageMemoryBarrier imageMemoryBarrier = VulkanUtility::GetImageMemoryBarrier(
-        (VkImage)image->Get(),
-        ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT, oldLayout,
-        vkNewLayout, srcAccessMask, dstAccessMask, 1, 0, 1, 0);
+    VkAccessFlags srcAccessMask = 0;
+    VkAccessFlags dstAccessMask = 0;
+    const VkImageMemoryBarrier imageMemoryBarrier =
+        VulkanUtility::GetImageMemoryBarrier(image, aspectMask, oldLayout, newLayout, srcAccessMask, dstAccessMask, 1, 0, 1, 0);
 
     VkPipelineStageFlags srcStageMask = 0;
     VkPipelineStageFlags dstStageMask = 0;
 
     // Determine stages and resource access:
-    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && vkNewLayout == VK_IMAGE_LAYOUT_GENERAL)
+    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_GENERAL)
     {
         srcAccessMask = 0;
         dstAccessMask = 0;  // GENERAL layout means resource can be affected by any operationr
 
         srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
     }
-    else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && vkNewLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+    else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
     {
         srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
         dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
@@ -134,7 +158,15 @@ void VulkanCommandBuffer::TransitionImageLayout(const Shared<Image>& image, cons
     }
 
     InsertBarrier(srcStageMask, dstStageMask, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
-    image->SetLayout(newLayout);
+}
+
+void VulkanCommandBuffer::BindPushConstants(Shared<Pipeline>& pipeline, const ShaderStageFlags shaderStageFlags, const uint32_t offset,
+                                            const uint32_t size, const void* data) const
+{
+    auto vulkanPipeline = std::static_pointer_cast<VulkanPipeline>(pipeline);
+    PFR_ASSERT(vulkanPipeline, "Failed to cast Pipeline to VulkanPipeline!");
+
+    vkCmdPushConstants(m_Handle, vulkanPipeline->GetLayout(), PathfinderShaderStageFlagsToVulkan(shaderStageFlags), offset, size, data);
 }
 
 void VulkanCommandBuffer::Destroy()
@@ -205,6 +237,31 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
     }
 
     vkCmdBindPipeline(m_Handle, pipelineBindPoint, (VkPipeline)pipeline->Get());
+}
+
+void VulkanCommandBuffer::BindVertexBuffers(const std::vector<Shared<Buffer>>& vertexBuffers, const uint32_t firstBinding,
+                                            const uint32_t bindingCount, const uint64_t* offsets) const
+{
+    std::vector<VkBuffer> vulkanBuffers;
+    vulkanBuffers.reserve(vertexBuffers.size());
+
+    for (auto& vertexBuffer : vertexBuffers)
+    {
+        auto vulkanVertexBuffer = std::static_pointer_cast<VulkanBuffer>(vertexBuffer);
+        PFR_ASSERT(vulkanVertexBuffer, "Failed to cast Buffer to VulkanBuffer!");
+
+        vulkanBuffers.emplace_back((VkBuffer)vulkanVertexBuffer->Get());
+    }
+
+    vkCmdBindVertexBuffers(m_Handle, firstBinding, bindingCount, vulkanBuffers.data(), offsets);
+}
+
+void VulkanCommandBuffer::BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset, bool bIndexType32) const
+{
+    auto vulkanIndexBuffer = std::static_pointer_cast<VulkanBuffer>(indexBuffer);
+    PFR_ASSERT(vulkanIndexBuffer, "Failed to cast Buffer to VulkanBuffer!");
+
+    vkCmdBindIndexBuffer(m_Handle, (VkBuffer)vulkanIndexBuffer->Get(), offset, bIndexType32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 }
 
 }  // namespace Pathfinder

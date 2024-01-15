@@ -20,14 +20,6 @@
 #define DEBUGBREAK() __builtin_trap()
 #endif
 
-#if _MSC_VER
-#ifdef _DEBUG
-#define PFR_DEBUG 1
-#else
-#define PFR_RELEASE 1
-#endif
-#endif
-
 #if PFR_RELEASE
 #define PFR_ASSERT(x, msg) (x)
 #elif PFR_DEBUG

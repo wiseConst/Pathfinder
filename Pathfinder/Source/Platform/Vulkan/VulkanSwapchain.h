@@ -7,9 +7,6 @@
 
 namespace Pathfinder
 {
-
-#define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
-
 class VulkanCommandBuffer;
 
 class VulkanSwapchain final : public Swapchain
@@ -58,11 +55,16 @@ class VulkanSwapchain final : public Swapchain
     VkSurfaceFormatKHR m_ImageFormat      = {VK_FORMAT_UNDEFINED, VK_COLORSPACE_SRGB_NONLINEAR_KHR};
     VkExtent2D m_ImageExtent              = {1280, 720};
 
+    std::vector<VkImageLayout> m_ImageLayouts;
     std::vector<VkImage> m_Images;
     std::vector<VkImageView> m_ImageViews;
 
     uint32_t m_ImageIndex{0};
     uint32_t m_FrameIndex{0};
+
+    bool m_bWasInvalidated = false;
+
+    NODISCARD FORCEINLINE bool WasInvalidatedDuringCurrentFrame() const final override { return m_bWasInvalidated; }
 
     void Recreate();
     void Destroy() final override;

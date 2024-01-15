@@ -7,6 +7,7 @@
 namespace Pathfinder
 {
 class VulkanPipeline;
+class Pipeline;
 
 class VulkanCommandBuffer final : public CommandBuffer
 {
@@ -42,7 +43,8 @@ class VulkanCommandBuffer final : public CommandBuffer
     FORCEINLINE void EndRecording() final override { VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer"); }
 
     void Submit(bool bWaitAfterSubmit = true) final override;
-    void TransitionImageLayout(const Shared<Image>& image, const EImageLayout newLayout) final override;
+    void TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
+                               const VkImageAspectFlags aspectMask);
 
     FORCEINLINE void BeginRendering(const VkRenderingInfo* renderingInfo) const { vkCmdBeginRendering(m_Handle, renderingInfo); }
     FORCEINLINE void EndRendering() const { vkCmdEndRendering(m_Handle); }
@@ -57,12 +59,8 @@ class VulkanCommandBuffer final : public CommandBuffer
                              bufferMemoryBarrierCount, pBufferMemoryBarriers, imageMemoryBarrierCount, pImageMemoryBarriers);
     }
 
-    FORCEINLINE void BindPushConstants(VkPipelineLayout pipelineLayout, const VkShaderStageFlags shaderStageFlags, const uint32_t offset,
-                                       const uint32_t size, const void* values = VK_NULL_HANDLE) const
-    {
-        vkCmdPushConstants(m_Handle, pipelineLayout, shaderStageFlags, offset, size, values);
-    }
-
+    void BindPushConstants(Shared<Pipeline>& pipeline, const ShaderStageFlags shaderStageFlags, const uint32_t offset, const uint32_t size,
+                           const void* data = nullptr) const final override;
     void BindDescriptorSets(Shared<VulkanPipeline>& pipeline, const uint32_t firstSet = 0, const uint32_t descriptorSetCount = 0,
                             VkDescriptorSet* descriptorSets = VK_NULL_HANDLE, const uint32_t dynamicOffsetCount = 0,
                             uint32_t* dynamicOffsets = nullptr) const;
@@ -70,22 +68,21 @@ class VulkanCommandBuffer final : public CommandBuffer
     void BindPipeline(Shared<Pipeline>& pipeline) const final override;
 
     FORCEINLINE void DrawIndexed(const uint32_t indexCount, const uint32_t instanceCount = 1, const uint32_t firstIndex = 0,
-                                 const int32_t vertexOffset = 0, const uint32_t firstInstance = 0) const
+                                 const int32_t vertexOffset = 0, const uint32_t firstInstance = 0) const final override
     {
         vkCmdDrawIndexed(m_Handle, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
     }
 
     FORCEINLINE void Draw(const uint32_t vertexCount, const uint32_t instanceCount = 1, const uint32_t firstVertex = 0,
-                          const uint32_t firstInstance = 0) const
+                          const uint32_t firstInstance = 0) const final override
     {
         vkCmdDraw(m_Handle, vertexCount, instanceCount, firstVertex, firstInstance);
     }
 
-    FORCEINLINE void DrawIndexedIndirect(const VkBuffer& buffer, const VkDeviceSize offset, const uint32_t drawCount, const uint32_t stride)
-    {
-        vkCmdDrawIndexedIndirect(m_Handle, buffer, offset, drawCount, stride);
-    }
+    void BindVertexBuffers(const std::vector<Shared<Buffer>>& vertexBuffers, const uint32_t firstBinding = 0,
+                           const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const final override;
 
+    // NOTE: Idk why would I need this for now, but let it be
     FORCEINLINE void BindVertexBuffers(const uint32_t firstBinding = 0, const uint32_t bindingCount = 1, VkBuffer* buffers = VK_NULL_HANDLE,
                                        VkDeviceSize* offsets = VK_NULL_HANDLE) const
     {
@@ -93,11 +90,7 @@ class VulkanCommandBuffer final : public CommandBuffer
         vkCmdBindVertexBuffers(m_Handle, firstBinding, bindingCount, buffers, offsets);
     }
 
-    FORCEINLINE
-    void BindIndexBuffer(const VkBuffer& buffer, const VkDeviceSize offset = 0, VkIndexType indexType = VK_INDEX_TYPE_UINT32) const
-    {
-        vkCmdBindIndexBuffer(m_Handle, buffer, offset, indexType);
-    }
+    void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const final override;
 
     // COMPUTE
 

@@ -12,6 +12,7 @@
 #include "Core/Math.h"
 #include "Core/Timer.h"
 #include "Core/Keys.h"
+#include "Core/Input.h"
 
 // EVENTS
 #include "Events/Events.h"

@@ -78,6 +78,24 @@ void ShaderLibrary::Load(const std::string& shaderName)
 #endif
 }
 
+void ShaderLibrary::Load(const std::vector<std::string>& shaderNames)
+{
+    // The way it should work: Submit to jobsystem and wait on futures
+    std::vector<std::function<void()>> futures;
+    for (auto& shaderName : shaderNames)
+    {
+        auto future = JobSystem::Submit([&] { s_Shaders[shaderName] = Shader::Create(shaderName); });
+
+        futures.emplace_back([future] { future.get(); });
+    }
+
+    Timer t = {};
+    for (auto& future : futures)
+        future();
+
+    LOG_TAG_INFO(SHADER_LIBRARY, "Time took to create (%zu) shaders: %0.2fms", shaderNames.size(), t.GetElapsedSeconds() * 1000);
+}
+
 const Shared<Shader>& ShaderLibrary::Get(const std::string& shaderName)
 {
     if (!s_Shaders.contains(shaderName))

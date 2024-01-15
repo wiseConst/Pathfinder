@@ -12,6 +12,53 @@
 namespace Pathfinder
 {
 
+static VkFormat SpvReflectFormatToVulkan(const SpvReflectFormat format)
+{
+    switch (format)
+    {
+        case SPV_REFLECT_FORMAT_UNDEFINED: return VK_FORMAT_UNDEFINED;
+        case SPV_REFLECT_FORMAT_R16_UINT: return VK_FORMAT_R16_UINT;
+        case SPV_REFLECT_FORMAT_R16_SINT: return VK_FORMAT_R16_SINT;
+        case SPV_REFLECT_FORMAT_R16_SFLOAT: return VK_FORMAT_R16_SFLOAT;
+        case SPV_REFLECT_FORMAT_R16G16_UINT: return VK_FORMAT_R16G16_UINT;
+        case SPV_REFLECT_FORMAT_R16G16_SINT: return VK_FORMAT_R16G16_SINT;
+        case SPV_REFLECT_FORMAT_R16G16_SFLOAT: return VK_FORMAT_R16G16_SFLOAT;
+        case SPV_REFLECT_FORMAT_R16G16B16_UINT: return VK_FORMAT_R16G16B16_UINT;
+        case SPV_REFLECT_FORMAT_R16G16B16_SINT: return VK_FORMAT_R16G16B16_SINT;
+        case SPV_REFLECT_FORMAT_R16G16B16_SFLOAT: return VK_FORMAT_R16G16B16_SFLOAT;
+        case SPV_REFLECT_FORMAT_R16G16B16A16_UINT: return VK_FORMAT_R16G16B16A16_UINT;
+        case SPV_REFLECT_FORMAT_R16G16B16A16_SINT: return VK_FORMAT_R16G16B16A16_SINT;
+        case SPV_REFLECT_FORMAT_R16G16B16A16_SFLOAT: return VK_FORMAT_R16G16B16A16_SFLOAT;
+        case SPV_REFLECT_FORMAT_R32_UINT: return VK_FORMAT_R32_UINT;
+        case SPV_REFLECT_FORMAT_R32_SINT: return VK_FORMAT_R32_SINT;
+        case SPV_REFLECT_FORMAT_R32_SFLOAT: return VK_FORMAT_R32_SFLOAT;
+        case SPV_REFLECT_FORMAT_R32G32_UINT: return VK_FORMAT_R32G32_UINT;
+        case SPV_REFLECT_FORMAT_R32G32_SINT: return VK_FORMAT_R32G32_SINT;
+        case SPV_REFLECT_FORMAT_R32G32_SFLOAT: return VK_FORMAT_R32G32_SFLOAT;
+        case SPV_REFLECT_FORMAT_R32G32B32_UINT: return VK_FORMAT_R32G32B32_UINT;
+        case SPV_REFLECT_FORMAT_R32G32B32_SINT: return VK_FORMAT_R32G32B32_SINT;
+        case SPV_REFLECT_FORMAT_R32G32B32_SFLOAT: return VK_FORMAT_R32G32B32_SFLOAT;
+        case SPV_REFLECT_FORMAT_R32G32B32A32_UINT: return VK_FORMAT_R32G32B32A32_UINT;
+        case SPV_REFLECT_FORMAT_R32G32B32A32_SINT: return VK_FORMAT_R32G32B32A32_SINT;
+        case SPV_REFLECT_FORMAT_R32G32B32A32_SFLOAT: return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case SPV_REFLECT_FORMAT_R64_UINT: return VK_FORMAT_R64_UINT;
+        case SPV_REFLECT_FORMAT_R64_SINT: return VK_FORMAT_R64_SINT;
+        case SPV_REFLECT_FORMAT_R64_SFLOAT: return VK_FORMAT_R64_SFLOAT;
+        case SPV_REFLECT_FORMAT_R64G64_UINT: return VK_FORMAT_R64G64_UINT;
+        case SPV_REFLECT_FORMAT_R64G64_SINT: return VK_FORMAT_R64G64_SINT;
+        case SPV_REFLECT_FORMAT_R64G64_SFLOAT: return VK_FORMAT_R64G64_SFLOAT;
+        case SPV_REFLECT_FORMAT_R64G64B64_UINT: return VK_FORMAT_R64G64B64_UINT;
+        case SPV_REFLECT_FORMAT_R64G64B64_SINT: return VK_FORMAT_R64G64B64_SINT;
+        case SPV_REFLECT_FORMAT_R64G64B64_SFLOAT: return VK_FORMAT_R64G64B64_SFLOAT;
+        case SPV_REFLECT_FORMAT_R64G64B64A64_UINT: return VK_FORMAT_R64G64B64A64_UINT;
+        case SPV_REFLECT_FORMAT_R64G64B64A64_SINT: return VK_FORMAT_R64G64B64A64_SINT;
+        case SPV_REFLECT_FORMAT_R64G64B64A64_SFLOAT: return VK_FORMAT_R64G64B64A64_SFLOAT;
+    }
+
+    PFR_ASSERT(false, "Unknown spv reflect format!");
+    return VK_FORMAT_UNDEFINED;
+}
+
 static void DetectShaderKind(shaderc_shader_kind& shaderKind, const std::string_view currentShaderExt)
 {
     if (strcmp(currentShaderExt.data(), ".vert") == 0)
@@ -124,8 +171,6 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         Reflect(currentShaderDescription, compiledShaderSrc);
     }
 
-
-
     DestroyReflectionGarbage();
 }
 
@@ -163,15 +208,37 @@ void VulkanShader::Reflect(ShaderDescription& shaderDescription, const std::vect
     result = spvReflectEnumerateInterfaceVariables(&shaderDescription.ReflectModule, &count, interface_variables.data());
     assert(result == SPV_REFLECT_RESULT_SUCCESS);
 
-    result = spvReflectEnumerateInputVariables(&shaderDescription.ReflectModule, &count, NULL);
-    assert(result == SPV_REFLECT_RESULT_SUCCESS);
-    std::vector<SpvReflectInterfaceVariable*> input_variables(count);
-    result = spvReflectEnumerateInputVariables(&shaderDescription.ReflectModule, &count, input_variables.data());
-    assert(result == SPV_REFLECT_RESULT_SUCCESS);
+    // TODO: Revisit with better approach, do other shaders also have input vars??
+    if (shaderDescription.Stage == EShaderStage::SHADER_STAGE_VERTEX)
+    {
+        result = spvReflectEnumerateInputVariables(&shaderDescription.ReflectModule, &count, NULL);
+        assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+        std::vector<SpvReflectInterfaceVariable*> inputVars(count);
+        result = spvReflectEnumerateInputVariables(&shaderDescription.ReflectModule, &count, inputVars.data());
+        assert(result == SPV_REFLECT_RESULT_SUCCESS);
+
+        std::ranges::sort(inputVars, [](const SpvReflectInterfaceVariable* lhs, const SpvReflectInterfaceVariable* rhs)
+                          { return lhs->location < rhs->location; });
+
+        m_InputVars.reserve(count);
+        for (const auto& reflectedInputVar : inputVars)
+        {
+            if (reflectedInputVar->built_in >= 0) continue;  // Default vars like gl_VertexIndex marked as ints > 0.
+
+            auto& inputVar    = m_InputVars.emplace_back();
+            inputVar.binding  = 0;  // It can be different???
+            inputVar.location = reflectedInputVar->location;
+            inputVar.offset   = 0;  // ???
+            inputVar.format   = SpvReflectFormatToVulkan(reflectedInputVar->format);
+        }
+    }
+
     result = spvReflectEnumerateOutputVariables(&shaderDescription.ReflectModule, &count, NULL);
     assert(result == SPV_REFLECT_RESULT_SUCCESS);
-    std::vector<SpvReflectInterfaceVariable*> output_variables(count);
-    result = spvReflectEnumerateOutputVariables(&shaderDescription.ReflectModule, &count, output_variables.data());
+
+    std::vector<SpvReflectInterfaceVariable*> outputVars(count);
+    result = spvReflectEnumerateOutputVariables(&shaderDescription.ReflectModule, &count, outputVars.data());
     assert(result == SPV_REFLECT_RESULT_SUCCESS);
 
     // Push constants

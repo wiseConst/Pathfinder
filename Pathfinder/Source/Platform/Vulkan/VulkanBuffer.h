@@ -19,13 +19,16 @@ class VulkanBuffer final : public Buffer
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     void SetData(const void* data, const size_t dataSize) final override;
 
+    NODISCARD FORCEINLINE const auto& GetDescriptorInfo() const { return m_DescriptorInfo; }
+
     NODISCARD FORCEINLINE const BufferSpecification& GetSpecification() final override { return m_Specification; }
 
   private:
-    VkBuffer m_Handle          = VK_NULL_HANDLE;
-    VmaAllocation m_Allocation = VK_NULL_HANDLE;
-    BufferSpecification m_Specification;
-    bool m_bIsMapped = false;
+    VkBuffer m_Handle                       = VK_NULL_HANDLE;
+    VmaAllocation m_Allocation              = VK_NULL_HANDLE;
+    BufferSpecification m_Specification     = {};
+    bool m_bIsMapped                        = false;
+    VkDescriptorBufferInfo m_DescriptorInfo = {};
 
     void Destroy() final override;
 };

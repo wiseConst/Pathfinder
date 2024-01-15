@@ -28,8 +28,10 @@ struct FramebufferAttachmentSpecification
     ELoadOp LoadOp       = ELoadOp::CLEAR;
     EStoreOp StoreOp     = EStoreOp::STORE;
     glm::vec4 ClearColor = glm::vec4(1.0f);
+    bool bCopyable       = false;
 };
 
+class Image;
 struct FramebufferAttachment
 {
     Shared<Image> Attachment = nullptr;
@@ -55,9 +57,11 @@ class Framebuffer : private Uncopyable, private Unmovable
   public:
     virtual ~Framebuffer() = default;
 
-    NODISCARD FORCEINLINE virtual const FramebufferSpecification& GetSpecification() const = 0;
-    virtual void Resize(const uint32_t width, const uint32_t height)                       = 0;
+    NODISCARD FORCEINLINE virtual const FramebufferSpecification& GetSpecification() const         = 0;
+    NODISCARD FORCEINLINE virtual const std::vector<FramebufferAttachment>& GetAttachments() const = 0;
+    virtual const Shared<Image> GetDepthAttachment() const                                         = 0;
 
+    virtual void Resize(const uint32_t width, const uint32_t height)   = 0;
     virtual void BeginPass(const Shared<CommandBuffer>& commandBuffer) = 0;
     virtual void EndPass(const Shared<CommandBuffer>& commandBuffer)   = 0;
 

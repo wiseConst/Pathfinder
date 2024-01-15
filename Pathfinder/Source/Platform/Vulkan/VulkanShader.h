@@ -19,6 +19,8 @@ class VulkanShader final : public Shader
 
     NODISCARD FORCEINLINE const auto& GetDescriptions() const { return m_ShaderDescriptions; }
 
+    NODISCARD FORCEINLINE const std::vector<VkVertexInputAttributeDescription>& GetInputVars() const { return m_InputVars; }
+
   private:
     struct ShaderDescription
     {
@@ -42,6 +44,7 @@ class VulkanShader final : public Shader
     };
 
     std::vector<ShaderDescription> m_ShaderDescriptions;
+    std::vector<VkVertexInputAttributeDescription> m_InputVars;
 
     // TODO: In case I'd like to add DX12, I'll have to make this function virtual in shader base class
     std::vector<uint32_t> CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,

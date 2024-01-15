@@ -14,10 +14,12 @@ class BindlessRenderer : private Uncopyable, private Unmovable
   public:
     virtual ~BindlessRenderer() = default;
 
-    virtual void Bind(const Shared<CommandBuffer>& commandBuffer) = 0;
+    virtual void Bind(const Shared<CommandBuffer>& commandBuffer, const bool bGraphicsBindPoint = true) = 0;
 
-    virtual void LoadImage(const ImagePerFrame& images)           = 0;
-    virtual void LoadImage(const Shared<Image>& image)            = 0;
+    virtual void LoadImage(const ImagePerFrame& images) = 0;
+    virtual void LoadImage(const Shared<Image>& image)  = 0;
+
+    virtual void UpdateCameraData(const Shared<Buffer>& cameraUniformBuffer) = 0;
 
     NODISCARD static Shared<BindlessRenderer> Create();
 
