@@ -92,6 +92,12 @@ class VulkanCommandBuffer final : public CommandBuffer
 
     void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const final override;
 
+    FORCEINLINE void DrawMeshTasks(const uint32_t groupCountX, const uint32_t groupCountY,
+                                   const uint32_t groupCountZ = 1) const final override
+    {
+        vkCmdDrawMeshTasksEXT(m_Handle, groupCountX, groupCountY, groupCountZ);
+    }
+
     // COMPUTE
 
     FORCEINLINE void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) final override
@@ -139,11 +145,6 @@ class VulkanCommandBuffer final : public CommandBuffer
                                const VkFilter filter)
     {
         vkCmdBlitImage(m_Handle, srcImage, srcImageLayout, dstImage, dstImageLayout, regionCount, pRegions, filter);
-    }
-
-    FORCEINLINE void DrawMeshTasksNV(const uint32_t taskCount, const uint32_t firstTask = 0)
-    {
-        vkCmdDrawMeshTasksNV(m_Handle, taskCount, firstTask);
     }
 
   private:

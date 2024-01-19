@@ -54,13 +54,13 @@ Shared<Shader> Shader::Create(const std::string_view shaderName)
 
 void ShaderLibrary::Init()
 {
-    LOG_INFO("ShaderLibrary created!");
+    LOG_TAG_INFO(RENDERER, "ShaderLibrary created!");
 }
 
 void ShaderLibrary::Shutdown()
 {
     s_Shaders.clear();
-    LOG_INFO("ShaderLibrary destroyed!");
+    LOG_TAG_INFO(RENDERER, "ShaderLibrary destroyed!");
 }
 
 void ShaderLibrary::Load(const std::string& shaderName)

@@ -16,32 +16,6 @@
 namespace Pathfinder
 {
 
-VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
-{
-    switch (shaderStage)
-    {
-        case EShaderStage::SHADER_STAGE_VERTEX: return VK_SHADER_STAGE_VERTEX_BIT;
-        case EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        case EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        case EShaderStage::SHADER_STAGE_GEOMETRY: return VK_SHADER_STAGE_GEOMETRY_BIT;
-        case EShaderStage::SHADER_STAGE_FRAGMENT: return VK_SHADER_STAGE_FRAGMENT_BIT;
-        case EShaderStage::SHADER_STAGE_COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
-        case EShaderStage::SHADER_STAGE_ALL_GRAPHICS: return VK_SHADER_STAGE_ALL_GRAPHICS;
-        case EShaderStage::SHADER_STAGE_ALL: return VK_SHADER_STAGE_ALL;
-        case EShaderStage::SHADER_STAGE_RAYGEN: return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_ANY_HIT: return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_CLOSEST_HIT: return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_MISS: return VK_SHADER_STAGE_MISS_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_INTERSECTION: return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_CALLABLE: return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_TASK: return VK_SHADER_STAGE_TASK_BIT_EXT;
-        case EShaderStage::SHADER_STAGE_MESH: return VK_SHADER_STAGE_MESH_BIT_EXT;
-    }
-
-    PFR_ASSERT(false, "Unknown shader stage!");
-    return VK_SHADER_STAGE_VERTEX_BIT;
-}
-
 VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
 {
     switch (frontFace)
@@ -112,16 +86,98 @@ void VulkanPipeline::CreateLayout()
         const auto& vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
         PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
 
-        // TODO: ON TESTING
-        m_Layout = vulkanBR->GetPipelineLayout();
-        return;
-
         setLayouts.push_back(vulkanBR->GetTextureSetLayout());
         setLayouts.push_back(vulkanBR->GetImageSetLayout());
+        setLayouts.push_back(vulkanBR->GetCameraSetLayout());
 
         pushConstants.push_back(vulkanBR->GetPushConstantBlock());
     }
 
+    const auto vulkanShader = std::static_pointer_cast<VulkanShader>(m_Specification.Shader);
+    PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
+
+    const auto appendVecFunc = [&](auto& src, const auto& additionalVec)
+    {
+        for (auto& elem : additionalVec)
+            src.emplace_back(elem);
+    };
+    switch (m_Specification.PipelineType)
+    {
+        case EPipelineType::PIPELINE_TYPE_GRAPHICS:
+        {
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_FRAGMENT));
+
+            // For bindless compatibility, push constants should be identical.
+            if (m_Specification.bMeshShading)
+            {
+                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
+                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+
+                if (!m_Specification.bBindlessCompatible)
+                {
+                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
+                }
+            }
+            else
+            {
+                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
+                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
+                appendVecFunc(setLayouts,
+                              vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
+                appendVecFunc(setLayouts,
+                              vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
+
+                if (!m_Specification.bBindlessCompatible)
+                {
+                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
+                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
+                    appendVecFunc(pushConstants,
+                                  vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
+                    appendVecFunc(pushConstants,
+                                  vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
+                }
+            }
+            break;
+        }
+        case EPipelineType::PIPELINE_TYPE_COMPUTE:
+        {
+            PFR_ASSERT(!m_Specification.bMeshShading, "Non-graphics pipelines can't have mesh shaders!");
+
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_COMPUTE));
+
+            // For bindless compatibility, push constants should be identical.
+            if (!m_Specification.bBindlessCompatible)
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_COMPUTE));
+
+            break;
+        }
+        case EPipelineType::PIPELINE_TYPE_RAY_TRACING:
+        {
+            PFR_ASSERT(!m_Specification.bMeshShading, "Non-graphics pipelines can't have mesh shaders!");
+
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_ANY_HIT));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_CLOSEST_HIT));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_RAYGEN));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_INTERSECTION));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_CALLABLE));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_MISS));
+
+            // For bindless compatibility, push constants should be identical.
+            if (!m_Specification.bBindlessCompatible)
+            {
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_ANY_HIT));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_CLOSEST_HIT));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_RAYGEN));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_INTERSECTION));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_CALLABLE));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_MISS));
+            }
+            break;
+        }
+    }
+
+    // TODO: Add layouts from shader
     layoutCI.pSetLayouts    = setLayouts.data();
     layoutCI.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
 
@@ -139,12 +195,13 @@ void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& o
     if (!std::filesystem::is_directory(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/"))
         std::filesystem::create_directories(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/");
 
+    VkPipelineCacheCreateInfo cacheCI = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, nullptr, 0};
+    auto& context                     = VulkanContext::Get();
+#if !VK_FORCE_PIPELINE_COMPILATION
     const std::string cachePath = std::string("Assets/Cached/Pipelines/") + pipelineName + std::string(".cache");
     auto cacheData              = LoadData<std::vector<uint8_t>>(cachePath);
 
     // Validate retrieved pipeline cache
-    VkPipelineCacheCreateInfo cacheCI = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, nullptr, 0};
-    auto& context                     = VulkanContext::Get();
     if (!cacheData.empty())
     {
         bool bSamePipelineUUID = true;
@@ -157,20 +214,22 @@ void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& o
         {
             if (cacheData[8 + i] != ((context.GetDevice()->GetGPUProperties().vendorID >> (8 * i)) & 0xff)) bSameVendorID = false;
             if (cacheData[12 + i] != ((context.GetDevice()->GetGPUProperties().deviceID >> (8 * i)) & 0xff)) bSameDeviceID = false;
+
+            if (!bSameDeviceID || !bSameVendorID || !bSamePipelineUUID) break;
         }
 
         if (bSamePipelineUUID && bSameVendorID && bSameDeviceID)
         {
             cacheCI.initialDataSize = cacheData.size();
             cacheCI.pInitialData    = cacheData.data();
+            LOG_TAG_INFO(VULKAN, "Found valid pipeline cache \"%s\", get ready!", pipelineName.data());
         }
         else
         {
             LOG_TAG_WARN(VULKAN, "Pipeline cache for \"%s\" not valid! Recompiling...", pipelineName.data());
         }
-
-        LOG_TAG_INFO(VULKAN, "Found valid pipeline cache \"%s\", get ready!", pipelineName.data());
     }
+#endif
     VK_CHECK(vkCreatePipelineCache(context.GetDevice()->GetLogicalDevice(), &cacheCI, nullptr, &outCache),
              "Failed to create pipeline cache!");
 }
@@ -222,7 +281,7 @@ void VulkanPipeline::Invalidate()
                     shaderStage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
                     shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
                     shaderStage.module = shaderDescriptions[i].Module;
-                    shaderStage.stage  = PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+                    shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
                 }
                 break;
             }
@@ -235,7 +294,7 @@ void VulkanPipeline::Invalidate()
                     shaderStage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
                     shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
                     shaderStage.module = shaderDescriptions[i].Module;
-                    shaderStage.stage  = PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+                    shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
                 }
                 break;
             }
@@ -253,7 +312,7 @@ void VulkanPipeline::Invalidate()
                     shaderStage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
                     shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
                     shaderStage.module = shaderDescriptions[i].Module;
-                    shaderStage.stage  = PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+                    shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
                 }
                 break;
             }
@@ -506,8 +565,9 @@ void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string
     if (!std::filesystem::is_directory(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/"))
         std::filesystem::create_directories(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/");
 
-    size_t cacheSize          = 0;
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+#if !VK_FORCE_PIPELINE_COMPILATION
+    size_t cacheSize = 0;
     VK_CHECK(vkGetPipelineCacheData(logicalDevice, cache, &cacheSize, nullptr), "Failed to retrieve pipeline cache data size!");
 
     std::vector<uint8_t> cacheData(cacheSize);
@@ -522,6 +582,7 @@ void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string
     }
 
     SaveData(cachePath, cacheData.data(), cacheData.size() * cacheData[0]);
+#endif
     vkDestroyPipelineCache(logicalDevice, cache, nullptr);
 }
 
@@ -530,8 +591,7 @@ void VulkanPipeline::Destroy()
     auto& context             = VulkanContext::Get();
     const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
 
-    // TODO: ON TESTING
-    if (!m_Specification.bBindlessCompatible) vkDestroyPipelineLayout(logicalDevice, m_Layout, nullptr);
+    vkDestroyPipelineLayout(logicalDevice, m_Layout, nullptr);
     vkDestroyPipeline(logicalDevice, m_Handle, nullptr);
     m_Handle = VK_NULL_HANDLE;
 }

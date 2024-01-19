@@ -21,21 +21,22 @@ inline int32_t Main(int32_t argc, char** argv)
 
 #endif
 
-//#if PFR_RELEASE
+#if PFR_RELEASE
 
-// TODO: Fix this, I want to ship without console
-/*
-int APIENTRY WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR pCmdLine, int nCmdShow)
+#if _MSC_VER
+
+int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     return Pathfinder::Main(__argc, __argv);
 }
-*/
 
-//#else
+#endif
+
+#else
 
 int32_t main(int32_t argc, char** argv)
 {
     return Pathfinder::Main(argc, argv);
 }
 
-//#endif
+#endif

@@ -85,18 +85,27 @@ struct MeshVertex
     glm::vec3 Tangent = glm::vec3(0.0f);
 };
 
-/*
+// TESTING
 struct Meshlet
 {
-
+    uint32_t vertices[64];
+    uint8_t indices[126];  // up to 42 tris
+    uint8_t triangleCount;
+    uint8_t vertexCount;
 };
-*/
 
 struct CameraData
 {
     glm::mat4 Projection  = glm::mat4(1.0f);
     glm::mat4 InverseView = glm::mat4(1.0f);
-    //    alignas(16) glm::vec3 Position = glm::vec3(0.0f);
+    glm::vec3 Position    = glm::vec3(0.0f);
+};
+
+struct PBRData
+{
+    glm::vec4 BaseColor = glm::vec4(1.0f);
+    float Roughness     = 1.0f;
+    float Metallic      = 1.0f;
 };
 
 }  // namespace Pathfinder

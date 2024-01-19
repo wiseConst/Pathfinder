@@ -24,6 +24,7 @@ class Camera : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetProjection() const { return m_Projection; }
     NODISCARD FORCEINLINE auto GetInverseView() const { return glm::inverse(m_View); }
     NODISCARD FORCEINLINE auto GetViewProjection() const { return m_Projection * m_View; }
+    NODISCARD FORCEINLINE const auto& GetPosition() const { return m_Position; }
 
     NODISCARD static Shared<Camera> Create(const ECameraType cameraType);
 

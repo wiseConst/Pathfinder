@@ -6,11 +6,36 @@
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
 
+#include "Core/Application.h"
+#include "Core/Window.h"
+
 #include <shaderc/shaderc.hpp>
 #include "spirv-reflect/common/output_stream.h"
 
 namespace Pathfinder
 {
+
+static const char* SpvReflectDescriptorTypeToString(const SpvReflectDescriptorType descriptorType)
+{
+    switch (descriptorType)
+    {
+        case SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR: return "ACCELERATION_STRUCTURE_KHR";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLER: return "SAMPLER";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: return "COMBINED_IMAGE_SAMPLER";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE: return "SAMPLED_IMAGE";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE: return "STORAGE_IMAGE";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER: return "UNIFORM_TEXEL_BUFFER";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER: return "STORAGE_TEXEL_BUFFER";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER: return "UNIFORM_BUFFER";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER: return "STORAGE_BUFFER";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC: return "UNIFORM_BUFFER_DYNAMIC";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: return "STORAGE_BUFFER_DYNAMIC";
+        case SPV_REFLECT_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: return "INPUT_ATTACHMENT";
+    }
+
+    PFR_ASSERT(false, "Unknown spv reflect descriptor type!");
+    return "Unknown";
+}
 
 static VkFormat SpvReflectFormatToVulkan(const SpvReflectFormat format)
 {
@@ -93,9 +118,8 @@ static void DetectShaderKind(shaderc_shader_kind& shaderKind, const std::string_
         PFR_ASSERT(false, "Unknown shader extension!");
 }
 
-static EShaderStage ShadercShaderStageToGauntlet(const shaderc_shader_kind& shaderKind)
+static EShaderStage ShadercShaderStageToPathfinder(const shaderc_shader_kind& shaderKind)
 {
-
     switch (shaderKind)
     {
         case shaderc_vertex_shader: return EShaderStage::SHADER_STAGE_VERTEX;
@@ -117,6 +141,58 @@ static EShaderStage ShadercShaderStageToGauntlet(const shaderc_shader_kind& shad
     return EShaderStage::SHADER_STAGE_ALL;
 }
 
+static void PrintPushConstants(const std::vector<SpvReflectBlockVariable*>& pushConstants)
+{
+#if LOG_SHADER_INFO
+    for (auto& pushConstant : pushConstants)
+    {
+        LOG_TAG_TRACE(SPIRV_REFLECT, "PushConstantBlock: \"%s\" with (%zu) bytes size has (%zu) members:", pushConstant->name,
+                      pushConstant->size, pushConstant->member_count);
+        for (uint32_t i = 0; i < pushConstant->member_count; ++i)
+        {
+            const auto& member = pushConstant->members[i];
+            std::stringstream ss;
+            switch (member.type_description->op)
+            {
+                case SpvOpTypeBool:
+                {
+                    ss << "bool";
+                    break;
+                }
+                case SpvOpTypeInt:
+                {
+                    ss << (member.type_description->traits.numeric.scalar.signedness ? "int" : "uint");
+                    ss << member.type_description->traits.numeric.scalar.width << "_t";
+                    break;
+                }
+                case SpvOpTypeFloat:
+                {
+                    ss << "float";
+                    break;
+                }
+                case SpvOpTypeVector:
+                {
+                    ss << "vec" << member.type_description->traits.numeric.vector.component_count;
+                    break;
+                }
+                case SpvOpTypeMatrix:
+                {
+                    ss << "mat" << member.type_description->traits.numeric.matrix.row_count << "x"
+                       << member.type_description->traits.numeric.matrix.column_count;
+                    break;
+                }
+                default:
+                {
+                    LOG_TAG_WARN(SPIRV_REFLECT, "Unsupported member type!");
+                }
+            }
+            ss << " " << member.name;
+            LOG_TAG_TRACE(SPIRV_REFLECT, "%s", ss.str().data());
+        }
+    }
+#endif
+}
+
 static void PrintDescriptorSets(const std::vector<SpvReflectDescriptorSet*>& descriptorSets)
 {
 #if LOG_SHADER_INFO
@@ -127,22 +203,8 @@ static void PrintDescriptorSets(const std::vector<SpvReflectDescriptorSet*>& des
         {
             const auto& obj = descriptorSet->bindings[i];
             LOG_TAG_TRACE(SPIRV_REFLECT, "Binding: %zu", obj->binding);
-            // LOG_TAG_TRACE(SPIRV_REFLECT, "Type: %s", ToStringDescriptorType(obj->descriptor_type));
-
-            if (obj->array.dims_count > 0)
-            {
-                LOG_TAG_TRACE(SPIRV_REFLECT, "Array: ");
-                for (uint32_t dim_index = 0; dim_index < obj->array.dims_count; ++dim_index)
-                    LOG_TAG_TRACE(SPIRV_REFLECT, "%zu", obj->array.dims[dim_index]);
-            }
-
-            if (obj->uav_counter_binding)
-            {
-                LOG_TAG_TRACE(SPIRV_REFLECT, "Counter: (set=%zu, binding=%zu, name=%s);", obj->uav_counter_binding->set,
-                              obj->uav_counter_binding->binding, obj->uav_counter_binding->name);
-            }
-
-            LOG_TAG_TRACE(SPIRV_REFLECT, "name: %s", obj->name);
+            LOG_TAG_TRACE(SPIRV_REFLECT, "    Type: %s", SpvReflectDescriptorTypeToString(obj->descriptor_type));
+            LOG_TAG_TRACE(SPIRV_REFLECT, "    name: %s", obj->name);
         }
     }
 #endif
@@ -162,61 +224,161 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         const std::string shaderNameExt = std::string(shaderName) + std::string(shaderExt);
         shaderc_shader_kind shaderKind  = shaderc_vertex_shader;
         DetectShaderKind(shaderKind, shaderExt);
-        auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToGauntlet(shaderKind));
+        auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToPathfinder(shaderKind));
 
         const auto compiledShaderSrc = CompileOrRetrieveCached(shaderNameExt, localShaderPath.string(), shaderKind);
         LoadShaderModule(currentShaderDescription.Module, compiledShaderSrc);
 
+        std::vector<SpvReflectDescriptorSet*> descriptorSets;
+        std::vector<SpvReflectBlockVariable*> pushConstants;
         LOG_TAG_TRACE(VULKAN, "SHADER_REFLECTION:\"%s\"...", shaderNameExt.data());
-        Reflect(currentShaderDescription, compiledShaderSrc);
-    }
+        Reflect(currentShaderDescription, compiledShaderSrc, descriptorSets, pushConstants);
 
-    DestroyReflectionGarbage();
+        for (const auto& pc : pushConstants)
+        {
+            currentShaderDescription.PushConstants[pc->name] = VulkanUtility::GetPushConstantRange(
+                VulkanUtility::PathfinderShaderStageToVulkan(currentShaderDescription.Stage), pc->offset, pc->size);
+        }
+
+        const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+        for (const auto& ds : descriptorSets)
+        {
+            auto& descriptorSetInfo = currentShaderDescription.DescriptorSetBindings.emplace_back();
+            std::vector<VkDescriptorSetLayoutBinding> bindings;
+            bindings.reserve(ds->binding_count);
+
+            // NOTE: This is for bindless, where I store 4 descriptors in 1 set (inappropriate but who the fuck cares in vulkan huh?)
+            // NOTE: I meant for ALIASES
+            uint32_t prevBinding = UINT32_MAX;
+
+            for (uint32_t i = 0; i < ds->binding_count; ++i)
+            {
+                if (prevBinding == ds->bindings[i]->binding) continue;
+
+                auto& bindingInfo = ds->bindings[i];
+                descriptorSetInfo.emplace(bindingInfo->name, VkDescriptorSetLayoutBinding{});
+
+                auto& dsBinding              = descriptorSetInfo[bindingInfo->name];
+                dsBinding.binding            = bindingInfo->binding;
+                dsBinding.descriptorCount    = bindingInfo->count;
+                dsBinding.descriptorType     = static_cast<VkDescriptorType>(bindingInfo->descriptor_type);
+                dsBinding.stageFlags         = VulkanUtility::PathfinderShaderStageToVulkan(currentShaderDescription.Stage);
+                dsBinding.pImmutableSamplers = 0;  // TODO: Do I need these?
+
+                bindings.emplace_back(dsBinding);
+                prevBinding = dsBinding.binding;
+            }
+
+            // NOTE: Should I add any flags since most of my shit is bindless
+            currentShaderDescription.SetLayouts.emplace_back();
+            VkDescriptorSetLayoutCreateInfo dslci = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
+            dslci.bindingCount                    = static_cast<uint32_t>(bindings.size());
+            dslci.pBindings                       = bindings.data();
+            VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &dslci, nullptr,
+                                                 &currentShaderDescription.SetLayouts[currentShaderDescription.SetLayouts.size() - 1]),
+                     "Failed to create descriptor layout for shader needs!");
+        }
+
+        currentShaderDescription.Sets.resize(currentShaderDescription.SetLayouts.size());
+        for (const auto& setLayout : currentShaderDescription.SetLayouts)
+        {
+            for (auto& ds : currentShaderDescription.Sets)
+            {
+                for (auto& dsPerFrame : ds)
+                {
+                    PFR_ASSERT(VulkanContext::Get().GetDevice()->GetDescriptorAllocator()->Allocate(dsPerFrame, setLayout),
+                               "Failed to allocate descriptor set!");
+                }
+            }
+        }
+    }
 }
 
-void VulkanShader::Reflect(ShaderDescription& shaderDescription, const std::vector<uint32_t>& compiledShaderSrc)
+const std::vector<VkDescriptorSet> VulkanShader::GetDescriptorSetByShaderStage(const EShaderStage shaderStage)
 {
-    auto result = spvReflectCreateShaderModule(compiledShaderSrc.size() * sizeof(compiledShaderSrc[0]), compiledShaderSrc.data(),
-                                               &shaderDescription.ReflectModule);
-    PFR_ASSERT(result == SPV_REFLECT_RESULT_SUCCESS, "Failed to reflect shader!");
+    std::vector<VkDescriptorSet> descriptorSets;
+
+    const auto currentFrame = Application::Get().GetWindow()->GetCurrentFrameIndex();
+    for (const auto& shaderDesc : m_ShaderDescriptions)
+    {
+        if (shaderDesc.Stage != shaderStage) continue;
+
+        descriptorSets.reserve(shaderDesc.Sets.size());
+        for (const auto& descriptorSet : shaderDesc.Sets)
+        {
+            descriptorSets.emplace_back(descriptorSet[currentFrame].second);
+        }
+        break;
+    }
+
+    if (descriptorSets.empty()) LOG_TAG_WARN(VULKAN, "Returning empty descriptor sets from the shader!");
+    return descriptorSets;
+}
+
+void VulkanShader::DestroyGarbageIfNeeded()
+{
+    for (auto& shaderDescription : m_ShaderDescriptions)
+    {
+        if (shaderDescription.Module != VK_NULL_HANDLE)
+        {
+            vkDestroyShaderModule(VulkanContext::Get().GetDevice()->GetLogicalDevice(), shaderDescription.Module, nullptr);
+            shaderDescription.Module = VK_NULL_HANDLE;
+        }
+        if (shaderDescription.ReflectModule._internal) spvReflectDestroyShaderModule(&shaderDescription.ReflectModule);
+    }
+}
+
+void VulkanShader::Reflect(ShaderDescription& shaderDescription, const std::vector<uint32_t>& compiledShaderSrc,
+                           std::vector<SpvReflectDescriptorSet*>& outSets, std::vector<SpvReflectBlockVariable*>& outPushConstants)
+{
+    PFR_ASSERT(spvReflectCreateShaderModule(compiledShaderSrc.size() * sizeof(compiledShaderSrc[0]), compiledShaderSrc.data(),
+                                            &shaderDescription.ReflectModule) == SPV_REFLECT_RESULT_SUCCESS,
+               "Failed to reflect shader!");
 
     shaderDescription.EntrypointName = std::string(shaderDescription.ReflectModule.entry_point_name);
     uint32_t count                   = 0;
-    // Descriptor sets
+
     {
+        // Descriptor sets
         PFR_ASSERT(spvReflectEnumerateDescriptorSets(&shaderDescription.ReflectModule, &count, NULL) == SPV_REFLECT_RESULT_SUCCESS,
                    "Failed to retrieve descriptor sets count from reflection module!");
 
-        std::vector<SpvReflectDescriptorSet*> sets(count);
-        PFR_ASSERT(spvReflectEnumerateDescriptorSets(&shaderDescription.ReflectModule, &count, sets.data()) == SPV_REFLECT_RESULT_SUCCESS,
+        // TODO: If I removed duplicates I'll have to add offset for firstSet while binding, or it will handle pipeline?
+        // FIXME: Need better solution for not duplicating descriptor sets that already contains my bindless renderer
+        std::vector<SpvReflectDescriptorSet*> descriptorSets(count);
+        PFR_ASSERT(spvReflectEnumerateDescriptorSets(&shaderDescription.ReflectModule, &count, descriptorSets.data()) ==
+                       SPV_REFLECT_RESULT_SUCCESS,
                    "Failed to retrieve descriptor sets from reflection module!");
-        PrintDescriptorSets(sets);
+
+        // Finding unique descriptor sets which bindless renderer doesn't contain
+        for (const auto& ds : descriptorSets)
+        {
+            for (uint32_t i = 0; i < ds->binding_count; ++i)
+            {
+                const auto& obj = ds->bindings[i];
+                if (!obj->name) continue;
+
+                const std::string bindingName(obj->name);
+                if (bindingName.find("Global") != std::string::npos) continue;
+
+                outSets.emplace_back(ds);
+            }
+        }
+
+        PrintDescriptorSets(outSets);
     }
 
-    // Descriptor bindings
-    {
-        result = spvReflectEnumerateDescriptorBindings(&shaderDescription.ReflectModule, &count, NULL);
-        assert(result == SPV_REFLECT_RESULT_SUCCESS);
-        std::vector<SpvReflectDescriptorBinding*> bindings(count);
-        result = spvReflectEnumerateDescriptorBindings(&shaderDescription.ReflectModule, &count, bindings.data());
-        assert(result == SPV_REFLECT_RESULT_SUCCESS);
-    }
-
-    result = spvReflectEnumerateInterfaceVariables(&shaderDescription.ReflectModule, &count, NULL);
-    assert(result == SPV_REFLECT_RESULT_SUCCESS);
-    std::vector<SpvReflectInterfaceVariable*> interface_variables(count);
-    result = spvReflectEnumerateInterfaceVariables(&shaderDescription.ReflectModule, &count, interface_variables.data());
-    assert(result == SPV_REFLECT_RESULT_SUCCESS);
-
-    // TODO: Revisit with better approach, do other shaders also have input vars??
+    // NOTE: Here I form BufferLayout (vertex buffer layout): what data and how laid out in memory
+    // TODO: Revisit with better approach, do other shaders also have such input vars??
     if (shaderDescription.Stage == EShaderStage::SHADER_STAGE_VERTEX)
     {
-        result = spvReflectEnumerateInputVariables(&shaderDescription.ReflectModule, &count, NULL);
-        assert(result == SPV_REFLECT_RESULT_SUCCESS);
+        PFR_ASSERT(spvReflectEnumerateInputVariables(&shaderDescription.ReflectModule, &count, NULL) == SPV_REFLECT_RESULT_SUCCESS,
+                   "Failed to retrieve input variable count!");
 
         std::vector<SpvReflectInterfaceVariable*> inputVars(count);
-        result = spvReflectEnumerateInputVariables(&shaderDescription.ReflectModule, &count, inputVars.data());
-        assert(result == SPV_REFLECT_RESULT_SUCCESS);
+        PFR_ASSERT(spvReflectEnumerateInputVariables(&shaderDescription.ReflectModule, &count, inputVars.data()) ==
+                       SPV_REFLECT_RESULT_SUCCESS,
+                   "Failed to retrieve input variables!");
 
         std::ranges::sort(inputVars, [](const SpvReflectInterfaceVariable* lhs, const SpvReflectInterfaceVariable* rhs)
                           { return lhs->location < rhs->location; });
@@ -227,34 +389,37 @@ void VulkanShader::Reflect(ShaderDescription& shaderDescription, const std::vect
             if (reflectedInputVar->built_in >= 0) continue;  // Default vars like gl_VertexIndex marked as ints > 0.
 
             auto& inputVar    = m_InputVars.emplace_back();
-            inputVar.binding  = 0;  // It can be different???
             inputVar.location = reflectedInputVar->location;
-            inputVar.offset   = 0;  // ???
             inputVar.format   = SpvReflectFormatToVulkan(reflectedInputVar->format);
+            inputVar.binding  = 0;  // TODO: Should it be hardcoded like this??
+            inputVar.offset   = 0;  // ???
         }
     }
 
-    result = spvReflectEnumerateOutputVariables(&shaderDescription.ReflectModule, &count, NULL);
-    assert(result == SPV_REFLECT_RESULT_SUCCESS);
-
-    std::vector<SpvReflectInterfaceVariable*> outputVars(count);
-    result = spvReflectEnumerateOutputVariables(&shaderDescription.ReflectModule, &count, outputVars.data());
-    assert(result == SPV_REFLECT_RESULT_SUCCESS);
-
-    // Push constants
     {
-        result = spvReflectEnumeratePushConstantBlocks(&shaderDescription.ReflectModule, &count, NULL);
-        assert(result == SPV_REFLECT_RESULT_SUCCESS);
-        std::vector<SpvReflectBlockVariable*> push_constant(count);
-        result = spvReflectEnumeratePushConstantBlocks(&shaderDescription.ReflectModule, &count, push_constant.data());
-        assert(result == SPV_REFLECT_RESULT_SUCCESS);
+        // NOTE: My bindless renderer and shader can contain the same push constant is it needed? Like I can update my data both through the
+        // shader and bindless renderer Push constants
+        PFR_ASSERT(spvReflectEnumeratePushConstantBlocks(&shaderDescription.ReflectModule, &count, NULL) == SPV_REFLECT_RESULT_SUCCESS,
+                   "Failed to retrieve push constant count!");
+        outPushConstants.resize(count);
+        PFR_ASSERT(spvReflectEnumeratePushConstantBlocks(&shaderDescription.ReflectModule, &count, outPushConstants.data()) ==
+                       SPV_REFLECT_RESULT_SUCCESS,
+                   "Failed to retrieve push constant blocks!");
+        PrintPushConstants(outPushConstants);
     }
 }
 
-// TODO: Refactor, make virtual functions
 std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
                                                             shaderc_shader_kind shaderKind)
 {
+    // Firstly check if cache exists and retrieve it
+#if !VK_FORCE_SHADER_COMPILATION
+    const std::filesystem::path cachedShaderPath = std::string("Assets/Cached/Shaders/") + std::string(shaderName) + ".spv";
+    if (std::filesystem::exists(cachedShaderPath)) return LoadData<std::vector<uint32_t>>(cachedShaderPath.string());
+#endif
+
+    // Got no cache, let's compile then
+    static shaderc::Compiler compiler;
     static shaderc::CompileOptions compileOptions;
     compileOptions.SetOptimizationLevel(shaderc_optimization_level_zero);
     compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
@@ -262,12 +427,6 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
     compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
     compileOptions.SetWarningsAsErrors();
     compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
-
-    static shaderc::Compiler compiler;
-
-    // Firstly check if cache exists and retrieve it
-    const std::filesystem::path cachedShaderPath = std::string("Assets/Cached/Shaders/") + std::string(shaderName) + ".spv";
-    if (std::filesystem::exists(cachedShaderPath)) return LoadData<std::vector<uint32_t>>(cachedShaderPath.string());
 
     const auto shaderSrc = LoadData<std::string>(localShaderPath);
     // Preprocess
@@ -302,7 +461,9 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
     }
 
     const std::vector<uint32_t> compiledShaderSrc{compiledShaderResult.cbegin(), compiledShaderResult.cend()};
+#if !VK_FORCE_SHADER_COMPILATION
     SaveData(cachedShaderPath.string(), compiledShaderSrc.data(), compiledShaderSrc.size() * sizeof(compiledShaderSrc[0]));
+#endif
 
     return compiledShaderSrc;
 }
@@ -320,17 +481,11 @@ void VulkanShader::Destroy()
 {
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
 
+    DestroyGarbageIfNeeded();
     for (auto& shaderDescription : m_ShaderDescriptions)
     {
-        vkDestroyShaderModule(logicalDevice, shaderDescription.Module, nullptr);
-    }
-}
-
-void VulkanShader::DestroyReflectionGarbage()
-{
-    for (auto& shaderDescription : m_ShaderDescriptions)
-    {
-        spvReflectDestroyShaderModule(&shaderDescription.ReflectModule);
+        for (auto& setLayout : shaderDescription.SetLayouts)
+            vkDestroyDescriptorSetLayout(logicalDevice, setLayout, nullptr);
     }
 }
 

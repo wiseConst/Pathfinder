@@ -326,6 +326,23 @@ void VulkanSwapchain::PresentImage()
 {
     m_bWasInvalidated = false;
 
+    if (m_ImageLayouts[m_ImageIndex] != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+    {
+        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+        vulkanCommandBuffer->BeginRecording(true);
+
+        const auto srcImageBarrier =
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
+                                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, 0, 1, 0, 1, 0);
+
+        // NOTE: TBH idk which stages to use here
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &srcImageBarrier);
+
+        vulkanCommandBuffer->EndRecording();
+        vulkanCommandBuffer->Submit();
+    }
+
     VkPresentInfoKHR presentInfo   = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
     presentInfo.pImageIndices      = &m_ImageIndex;
     presentInfo.swapchainCount     = 1;

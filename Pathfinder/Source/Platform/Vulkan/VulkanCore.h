@@ -12,12 +12,17 @@ namespace Pathfinder
 
 #define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
 
-#define VK_PREFER_IGPU 0
 #define VK_FORCE_VALIDATION 1
+#define VK_FORCE_SHADER_COMPILATION 0
+#define VK_FORCE_PIPELINE_COMPILATION 0
+
 #define VK_LOG_INFO 0
 #define VK_SHADER_DEBUG_PRINTF 0
+
+#define VK_PREFER_IGPU 0
+
 #define VK_RTX 0
-#define VK_MESH_SHADING 0
+#define VK_MESH_SHADING 1
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -27,7 +32,7 @@ constexpr static bool s_bEnableValidationLayers = false;
 
 static const std::vector<const char*> s_InstanceLayers     = {"VK_LAYER_KHRONOS_validation"};
 static const std::vector<const char*> s_InstanceExtensions = {
-#if PFR_WINDOWS
+#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #endif
     VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,        // Required by full screen ext
@@ -164,12 +169,13 @@ static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeve
 namespace VulkanUtility
 {
 
-static VkImageMemoryBarrier GetImageMemoryBarrier(const VkImage& image, const VkImageAspectFlags aspectMask, const VkImageLayout oldLayout,
-                                                  const VkImageLayout newLayout, const VkAccessFlags srcAccessMask,
-                                                  const VkAccessFlags dstAccessMask, const uint32_t layerCount,
-                                                  const uint32_t baseArrayLayer, const uint32_t levelCount, const uint32_t baseMipLevel,
-                                                  const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                                                  const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
+NODISCARD static VkImageMemoryBarrier GetImageMemoryBarrier(const VkImage& image, const VkImageAspectFlags aspectMask,
+                                                            const VkImageLayout oldLayout, const VkImageLayout newLayout,
+                                                            const VkAccessFlags srcAccessMask, const VkAccessFlags dstAccessMask,
+                                                            const uint32_t layerCount, const uint32_t baseArrayLayer,
+                                                            const uint32_t levelCount, const uint32_t baseMipLevel,
+                                                            const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                                            const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
 {
     VkImageMemoryBarrier imageMemoryBarrier            = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
     imageMemoryBarrier.image                           = image;
@@ -189,7 +195,7 @@ static VkImageMemoryBarrier GetImageMemoryBarrier(const VkImage& image, const Vk
     return imageMemoryBarrier;
 }
 
-static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
+NODISCARD static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
 {
     switch (compareOp)
     {
@@ -207,7 +213,7 @@ static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
     return VK_COMPARE_OP_NEVER;
 }
 
-static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
+NODISCARD static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
 {
     switch (shaderStage)
     {
@@ -233,7 +239,7 @@ static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage sh
     return VK_SHADER_STAGE_VERTEX_BIT;
 }
 
-static uint32_t GetTypeSizeFromVulkanFormat(const VkFormat format)
+NODISCARD static uint32_t GetTypeSizeFromVulkanFormat(const VkFormat format)
 {
     switch (format)
     {
@@ -290,6 +296,31 @@ static uint32_t GetTypeSizeFromVulkanFormat(const VkFormat format)
 
     PFR_ASSERT(false, "Unknown type format!");
     return 0;
+}
+
+NODISCARD static VkDescriptorSetAllocateInfo GetDescriptorSetAllocateInfo(const VkDescriptorPool& descriptorPool,
+                                                                          const uint32_t descriptorSetCount,
+                                                                          const VkDescriptorSetLayout* descriptorSetLayouts)
+{
+    const VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, descriptorPool,
+                                                                   descriptorSetCount, descriptorSetLayouts};
+    return descriptorSetAllocateInfo;
+}
+
+NODISCARD static VkDescriptorPoolCreateInfo GetDescriptorPoolCreateInfo(const uint32_t poolSizeCount, const uint32_t maxSetCount,
+                                                                        const VkDescriptorPoolSize* poolSizes,
+                                                                        const VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0,
+                                                                        const void* pNext = nullptr)
+{
+    const VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {
+        VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, pNext, descriptorPoolCreateFlags, maxSetCount, poolSizeCount, poolSizes};
+    return descriptorPoolCreateInfo;
+}
+
+NODISCARD static VkPushConstantRange GetPushConstantRange(const VkShaderStageFlags stageFlags, const uint32_t offset, const uint32_t size)
+{
+    const VkPushConstantRange pushConstantRange = {stageFlags, offset, size};
+    return pushConstantRange;
 }
 
 }  // namespace VulkanUtility

@@ -2,8 +2,9 @@
 #define VULKANSHADER_H
 
 #include "Renderer/Shader.h"
-#include "VulkanCore.h"
 #include "Renderer/Buffer.h"
+#include "VulkanCore.h"
+#include "VulkanDescriptors.h"
 
 #include "spirv-reflect/spirv_reflect.h"
 
@@ -18,8 +19,36 @@ class VulkanShader final : public Shader
     ~VulkanShader() override { Destroy(); }
 
     NODISCARD FORCEINLINE const auto& GetDescriptions() const { return m_ShaderDescriptions; }
-
     NODISCARD FORCEINLINE const std::vector<VkVertexInputAttributeDescription>& GetInputVars() const { return m_InputVars; }
+
+    const std::vector<VkDescriptorSet> GetDescriptorSetByShaderStage(const EShaderStage shaderStage);
+    NODISCARD FORCEINLINE const std::vector<VkDescriptorSetLayout> GetDescriptorSetLayoutsByShaderStage(
+        const EShaderStage shaderStage) const
+    {
+        for (auto& shaderDesc : m_ShaderDescriptions)
+        {
+            if (shaderDesc.Stage == shaderStage) return shaderDesc.SetLayouts;
+        }
+
+        //  PFR_ASSERT(false, "Attempting to return invalid VkDescriptorSetLayouts!");
+        return std::vector<VkDescriptorSetLayout>{};
+    }
+
+    NODISCARD FORCEINLINE std::vector<VkPushConstantRange> GetPushConstantsByShaderStage(const EShaderStage shaderStage)
+    {
+        std::vector<VkPushConstantRange> result;
+        for (auto& shaderDesc : m_ShaderDescriptions)
+        {
+            if (shaderDesc.Stage != shaderStage) continue;
+
+            for (auto& pc : shaderDesc.PushConstants)
+                result.emplace_back(pc.second);
+        }
+
+        return result;
+    }
+
+     void DestroyGarbageIfNeeded() final override;
 
   private:
     struct ShaderDescription
@@ -29,18 +58,12 @@ class VulkanShader final : public Shader
         SpvReflectShaderModule ReflectModule = {};
         std::string EntrypointName           = "main";
 
-        struct DescriptorSetLayoutData
-        {
-            uint16_t Set = 0;                                                        // DescriptorSet it's from.
-            std::unordered_map<std::string, VkDescriptorSetLayoutBinding> Bindings;  // Name and index slot
-        };
-
-        // Now I assume that if I want to have 1 push constant block in 2 different shader stages,
-        // they should have the same name.
         std::unordered_map<std::string, VkPushConstantRange> PushConstants;
 
-        // TODO: I think here I can simply store vector<unordored_map> cuz setIndex is the vector element index.
-        std::vector<DescriptorSetLayoutData> DescriptorSetBindings;
+        // NOTE: Array index is the descriptor set number
+        std::vector<std::unordered_map<std::string, VkDescriptorSetLayoutBinding>> DescriptorSetBindings;
+        std::vector<VkDescriptorSetLayout> SetLayouts;
+        std::vector<DescriptorSetPerFrame> Sets;
     };
 
     std::vector<ShaderDescription> m_ShaderDescriptions;
@@ -49,10 +72,10 @@ class VulkanShader final : public Shader
     // TODO: In case I'd like to add DX12, I'll have to make this function virtual in shader base class
     std::vector<uint32_t> CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
                                                   shaderc_shader_kind shaderKind);
-    void Reflect(ShaderDescription& shaderDescription, const std::vector<uint32_t>& compiledShaderSrc);
+    void Reflect(ShaderDescription& shaderDescription, const std::vector<uint32_t>& compiledShaderSrc,
+                 std::vector<SpvReflectDescriptorSet*>& outSets, std::vector<SpvReflectBlockVariable*>& outPushConstants);
     void LoadShaderModule(VkShaderModule& module, const std::vector<uint32_t>& shaderSrcSpv) const;
     void Destroy() final override;
-    void DestroyReflectionGarbage();
 };
 
 }  // namespace Pathfinder

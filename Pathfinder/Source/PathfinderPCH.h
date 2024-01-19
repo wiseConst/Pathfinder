@@ -25,6 +25,7 @@
 #include <unordered_map>
 
 #include <format>
+#include <chrono>
 
 #include "Core/Log.h"
 #include "Core/Timer.h"

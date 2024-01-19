@@ -33,6 +33,9 @@ class Renderer : private Uncopyable, private Unmovable
     static void BeginScene(const Camera& camera);
     static void EndScene();
 
+    // EARLY TESTING
+    static void SubmitMesh(const Shared<Mesh>& mesh);
+
     NODISCARD FORCEINLINE static const auto& GetRendererData()
     {
         PFR_ASSERT(s_RendererData, "RendererData is not valid!");
@@ -43,6 +46,19 @@ class Renderer : private Uncopyable, private Unmovable
     {
         PFR_ASSERT(s_BindlessRenderer, "BindlessRenderer is not valid!");
         return s_BindlessRenderer;
+    }
+
+    NODISCARD FORCEINLINE static auto& GetRendererSettings() { return s_RendererSettings; }
+    NODISCARD FORCEINLINE static const auto& GetStats() { return s_RendererStats; }
+
+    FORCEINLINE static void SetDescriptorSetCount(const uint32_t descriptorSetCount)
+    {
+        s_RendererStats.DescriptorSetCount = descriptorSetCount;
+    }
+
+    FORCEINLINE static void SetDescriptorPoolCount(const uint32_t descriptorPoolCount)
+    {
+        s_RendererStats.DescriptorPoolCount = descriptorPoolCount;
     }
 
   private:
@@ -60,18 +76,35 @@ class Renderer : private Uncopyable, private Unmovable
 
         FramebufferPerFrame GBuffer;
 
+        Shared<Pipeline> ForwardRenderingPipeline = nullptr;
+
         std::vector<Shared<Mesh>> OpaqueObjects;
         std::vector<Shared<Mesh>> TransparentObjects;
         //  Shared<Texture2D> WhiteTexture = nullptr;
 
-        // MISC
+        // TEST
+        Shared<Pipeline> TestMeshShadingPipeline = nullptr;
 
+        // MISC
         uint32_t FrameIndex = 0;
         Pathfinder::CameraData CameraData;
         BufferPerFrame CameraUB;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
+
+    struct RendererSettings
+    {
+        bool bMeshShadingSupport = false;
+        bool bRTXSupport         = false;
+    } static inline s_RendererSettings = {};
+
+    struct RendererStats
+    {
+        uint32_t TriangleCount       = 0;
+        uint32_t DescriptorSetCount  = 0;
+        uint32_t DescriptorPoolCount = 0;
+    } static inline s_RendererStats = {};
 
     static void GeometryPass();
 };

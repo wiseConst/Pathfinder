@@ -76,7 +76,7 @@ class Logger final : private Uncopyable, private Unmovable
 
         // Create structured log message
         if (tag)
-            sprintf(s_TempMessageBuffer, "%s [%s]: [%s] %s", systemTimeString, LogLevelToCString(level), tag, formattedMessage);
+            sprintf(s_TempMessageBuffer, "%s [%s]: [%s]: %s", systemTimeString, LogLevelToCString(level), tag, formattedMessage);
         else
             sprintf(s_TempMessageBuffer, "%s [%s]: %s", systemTimeString, LogLevelToCString(level), formattedMessage);
 

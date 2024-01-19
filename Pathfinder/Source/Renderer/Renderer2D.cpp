@@ -104,6 +104,9 @@ void Renderer2D::Begin()
 // reuse same vertex buffer whilst it's not submitted, so I create command buffer, submit it and reuse vertex buffer, simple as that, but
 // maybe there's perfomance issues since I'll have to rebind my "bindless" layout
 
+// NOTE: In future there will be lots of "Flush" calls, so it's applicable to batch submits, since they have some cost, i mean rename this
+// func to FlushBatch
+
 void Renderer2D::Flush()
 {
     const uint32_t dataSize = s_Renderer2DStats.QuadCount * sizeof(QuadVertex) * 4;
@@ -165,6 +168,7 @@ void Renderer2D::DrawQuad(const glm::mat4& transform, const glm::vec4& color)
     }
 
     ++s_Renderer2DStats.QuadCount;
+    s_Renderer2DStats.TriangleCount += 2;
 }
 
 }  // namespace Pathfinder

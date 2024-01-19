@@ -40,6 +40,7 @@ build
 cmake-build-debug
 cmake-build-release
 .idea
+Sandbox/Assets/Cached
 
 # Misc
 *.log

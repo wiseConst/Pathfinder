@@ -21,7 +21,7 @@
 #error "Unknown Apple platform"
 #endif
 #elif defined(__ANDOIRD__)
-#error "Andoird not supported!"
+#error "Android not supported!"
 #elif defined(__linux__)
 #define PFR_LINUX 1
 #elif defined(__unix__)

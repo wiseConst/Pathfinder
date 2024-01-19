@@ -54,6 +54,7 @@ class Shader : private Uncopyable, private Unmovable
     virtual ~Shader() = default;
 
     NODISCARD static Shared<Shader> Create(const std::string_view shaderName);
+    virtual void DestroyGarbageIfNeeded() = 0;
 
   protected:
     Shader() = default;
@@ -73,6 +74,16 @@ class ShaderLibrary final : private Uncopyable, private Unmovable
     static void Load(const std::string& shaderName);
     static void Load(const std::vector<std::string>& shaderNames);
     NODISCARD static const Shared<Shader>& Get(const std::string& shaderName);
+
+    FORCEINLINE static void DestroyGarbageIfNeeded()
+    {
+        std::ranges::for_each(s_Shaders,
+                              [](const std::pair<std::string, Shared<Shader>>& shaderData)
+                              {
+                                  if (shaderData.second) shaderData.second->DestroyGarbageIfNeeded();
+                              });
+        LOG_TAG_TRACE(SHADER_LIBRARY, "Destroyed (%zu) shader garbages!", s_Shaders.size());
+    }
 
   private:
     static inline std::map<std::string, Shared<Shader>> s_Shaders;

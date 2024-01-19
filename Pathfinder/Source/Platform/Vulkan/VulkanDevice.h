@@ -170,6 +170,7 @@ struct QueueFamilyIndices
 };
 
 class VulkanAllocator;
+class VulkanDescriptorAllocator;
 class VulkanDevice final : private Uncopyable, private Unmovable
 {
   public:
@@ -177,10 +178,12 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     VulkanDevice() = delete;
     ~VulkanDevice() override;
 
-    void AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, ECommandBufferType type, VkCommandBufferLevel level) const;
-    void FreeCommandBuffer(const VkCommandBuffer& commandBuffer, ECommandBufferType type) const;
+    void AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, ECommandBufferType type,
+                               VkCommandBufferLevel level = VK_COMMAND_BUFFER_LEVEL_PRIMARY, const uint16_t threadID = 0) const;
+    void FreeCommandBuffer(const VkCommandBuffer& commandBuffer, ECommandBufferType type, const uint16_t threadID = 0) const;
 
     NODISCARD FORCEINLINE const auto& GetAllocator() const { return m_VMA; }
+    NODISCARD FORCEINLINE const auto& GetDescriptorAllocator() const { return m_VDA; }
 
     FORCEINLINE void WaitDeviceOnFinish() const
     {
@@ -211,7 +214,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
         VkPhysicalDevice PhysicalDevice = VK_NULL_HANDLE;
         std::vector<VkFormat> SupportedDepthStencilFormats;
 
-        QueueFamilyIndices QueueFamilyIndices = {};
+        Pathfinder::QueueFamilyIndices QueueFamilyIndices = {};
         std::array<VkCommandPool, s_WORKER_THREAD_COUNT> GraphicsCommandPools;
         VkQueue GraphicsQueue = VK_NULL_HANDLE;
         VkQueue PresentQueue  = VK_NULL_HANDLE;
@@ -227,21 +230,25 @@ class VulkanDevice final : private Uncopyable, private Unmovable
         VkPhysicalDeviceMemoryProperties GPUMemoryProperties = {};
         VkPhysicalDeviceDriverProperties GPUDriverProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
 
-        VkPhysicalDeviceMeshShaderPropertiesEXT MSProperties         = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};
+        VkPhysicalDeviceMeshShaderPropertiesEXT MSProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};
+        bool bMeshShaderSupport                              = true;
+
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR RTProperties = {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
         VkPhysicalDeviceAccelerationStructurePropertiesKHR ASProperties = {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
+        bool bRTXSupport = false;
     } m_GPUInfo;
     Unique<VulkanAllocator> m_VMA;
+    Unique<VulkanDescriptorAllocator> m_VDA;
 
     void PickPhysicalDevice(const VkInstance& instance);
     void CreateLogicalDevice();
     void CreateCommandPools();
 
-    uint32_t RateDeviceSuitability(GPUInfo& gpuInfo) const;
-    bool IsDeviceSuitable(GPUInfo& gpuInfo) const;
-    bool CheckDeviceExtensionSupport(const VkPhysicalDevice& physicalDevice) const;
+    uint32_t RateDeviceSuitability(GPUInfo& gpuInfo);
+    bool IsDeviceSuitable(GPUInfo& gpuInfo);
+    bool CheckDeviceExtensionSupport(GPUInfo& gpuInfo);
 };
 
 }  // namespace Pathfinder

@@ -2,6 +2,8 @@
 #include "VulkanDevice.h"
 
 #include "VulkanAllocator.h"
+#include "VulkanDescriptors.h"
+#include "Renderer/Renderer.h"
 
 namespace Pathfinder
 {
@@ -45,6 +47,7 @@ VulkanDevice::VulkanDevice(const VkInstance& instance)
     CreateCommandPools();
 
     m_VMA = MakeUnique<VulkanAllocator>(m_GPUInfo.LogicalDevice, m_GPUInfo.PhysicalDevice);
+    m_VDA = MakeUnique<VulkanDescriptorAllocator>(m_GPUInfo.LogicalDevice);
 }
 
 void VulkanDevice::CreateCommandPools()
@@ -59,8 +62,7 @@ void VulkanDevice::CreateCommandPools()
                                                                   m_GPUInfo.QueueFamilyIndices.ComputeFamily};
 
     const VkCommandPoolCreateInfo transferCommandPoolCreateInfo = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr,
-                                                                   VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT |
-                                                                       VK_COMMAND_POOL_CREATE_TRANSIENT_BIT,
+                                                                   VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT,
                                                                    m_GPUInfo.QueueFamilyIndices.TransferFamily};
     for (uint16_t i = 0; i < s_WORKER_THREAD_COUNT; ++i)
     {
@@ -91,6 +93,7 @@ VulkanDevice::~VulkanDevice()
     WaitDeviceOnFinish();
 
     m_VMA.reset();
+    m_VDA.reset();
 
     for (uint16_t i = 0; i < s_WORKER_THREAD_COUNT; ++i)
     {
@@ -147,12 +150,9 @@ void VulkanDevice::CreateLogicalDevice()
              m_GPUInfo.QueueFamilyIndices.TransferFamily, m_GPUInfo.QueueFamilyIndices.ComputeFamily};
          const auto queueFamily : uniqueQueueFamilies)
     {
-        constexpr float QueuePriority = 1.0f;  // [0.0, 1.0]
+        const float QueuePriority = 1.0f;  // [0.0, 1.0]
 
-        auto& queueCreateInfo            = queueCreateInfos.emplace_back(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO);
-        queueCreateInfo.pQueuePriorities = &QueuePriority;
-        queueCreateInfo.queueCount       = 1;
-        queueCreateInfo.queueFamilyIndex = queueFamily;
+        queueCreateInfos.emplace_back(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0, queueFamily, 1, &QueuePriority);
     }
 
     VkDeviceCreateInfo deviceCI   = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
@@ -205,31 +205,33 @@ void VulkanDevice::CreateLogicalDevice()
     *ppNext = &extendedDynamicState3FeaturesEXT;
     ppNext  = &extendedDynamicState3FeaturesEXT.pNext;
 
-#if VK_RTX
-    VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRayTracingPipelineFeatures = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
-    enabledRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
+    if (m_GPUInfo.bRTXSupport && VK_RTX)
+    {
+        VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRayTracingPipelineFeatures = {
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
+        enabledRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
 
-    *ppNext = &enabledRayTracingPipelineFeatures;
-    ppNext  = &enabledRayTracingPipelineFeatures.pNext;
+        *ppNext = &enabledRayTracingPipelineFeatures;
+        ppNext  = &enabledRayTracingPipelineFeatures.pNext;
 
-    VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccelerationStructureFeatures = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
-    enabledAccelerationStructureFeatures.accelerationStructure = VK_TRUE;
+        VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccelerationStructureFeatures = {
+            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+        enabledAccelerationStructureFeatures.accelerationStructure = VK_TRUE;
 
-    *ppNext = &enabledAccelerationStructureFeatures;
-    ppNext  = &enabledAccelerationStructureFeatures.pNext;
-#endif
+        *ppNext = &enabledAccelerationStructureFeatures;
+        ppNext  = &enabledAccelerationStructureFeatures.pNext;
+    }
 
-#if VK_MESH_SHADING
-    VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
-    meshShaderFeaturesEXT.meshShaderQueries                     = VK_TRUE;
-    meshShaderFeaturesEXT.meshShader                            = VK_TRUE;
-    meshShaderFeaturesEXT.taskShader                            = VK_TRUE;
+    if (m_GPUInfo.bMeshShaderSupport && VK_MESH_SHADING)
+    {
+        VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
+        meshShaderFeaturesEXT.meshShaderQueries                     = VK_TRUE;
+        meshShaderFeaturesEXT.meshShader                            = VK_TRUE;
+        meshShaderFeaturesEXT.taskShader                            = VK_TRUE;
 
-    *ppNext = &meshShaderFeaturesEXT;
-    ppNext  = &meshShaderFeaturesEXT.pNext;
-#endif
+        *ppNext = &meshShaderFeaturesEXT;
+        ppNext  = &meshShaderFeaturesEXT.pNext;
+    }
 
     // Required gpu features
     VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
@@ -240,9 +242,34 @@ void VulkanDevice::CreateLogicalDevice()
                    m_GPUInfo.GPUFeatures.textureCompressionBC,
                "Required gpu features aren't supported!");
 
-    deviceCI.pEnabledFeatures        = &physicalDeviceFeatures;
-    deviceCI.enabledExtensionCount   = static_cast<uint32_t>(s_DeviceExtensions.size());
-    deviceCI.ppEnabledExtensionNames = s_DeviceExtensions.data();
+    deviceCI.pEnabledFeatures = &physicalDeviceFeatures;
+
+    std::vector<const char*> deviceExtensions;
+    deviceExtensions.reserve(s_DeviceExtensions.size());
+
+    for (size_t i = 0; i < s_DeviceExtensions.size(); ++i)
+    {
+        bool bSupportedExtension = true;
+
+        if (!m_GPUInfo.bMeshShaderSupport)
+        {
+            if (strcmp(s_DeviceExtensions[i], VK_EXT_MESH_SHADER_EXTENSION_NAME) == 0) bSupportedExtension = false;
+        }
+
+        if (!m_GPUInfo.bRTXSupport)
+        {
+            if (strcmp(s_DeviceExtensions[i], VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0 ||
+                strcmp(s_DeviceExtensions[i], VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) == 0 ||
+                strcmp(s_DeviceExtensions[i], VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0)
+                bSupportedExtension = false;
+        }
+
+        if (bSupportedExtension) deviceExtensions.emplace_back(s_DeviceExtensions[i]);
+    }
+
+    deviceExtensions.shrink_to_fit();
+    deviceCI.enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size());
+    deviceCI.ppEnabledExtensionNames = deviceExtensions.data();
 
     PFR_ASSERT(vkCreateDevice(m_GPUInfo.PhysicalDevice, &deviceCI, nullptr, &m_GPUInfo.LogicalDevice) == VK_SUCCESS,
                "Failed to create vulkan logical device && queues!");
@@ -255,9 +282,12 @@ void VulkanDevice::CreateLogicalDevice()
 
     PFR_ASSERT(m_GPUInfo.GraphicsQueue && m_GPUInfo.PresentQueue && m_GPUInfo.TransferQueue && m_GPUInfo.ComputeQueue,
                "Failed to retrieve queue handles!");
+
+    Renderer::GetRendererSettings().bMeshShadingSupport = VK_MESH_SHADING && m_GPUInfo.bMeshShaderSupport;
+    Renderer::GetRendererSettings().bRTXSupport         = VK_RTX && m_GPUInfo.bRTXSupport;
 }
 
-uint32_t VulkanDevice::RateDeviceSuitability(GPUInfo& gpuInfo) const
+uint32_t VulkanDevice::RateDeviceSuitability(GPUInfo& gpuInfo)
 {
     if (!IsDeviceSuitable(gpuInfo))
     {
@@ -298,8 +328,10 @@ uint32_t VulkanDevice::RateDeviceSuitability(GPUInfo& gpuInfo) const
     return score;
 }
 
-bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo) const
+bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
 {
+    const auto bRequiredDeviceExtensionsSupported = CheckDeviceExtensionSupport(gpuInfo);
+
     // Query GPU properties(device name, limits, etc..)
     vkGetPhysicalDeviceProperties(gpuInfo.PhysicalDevice, &gpuInfo.GPUProperties);
 
@@ -350,7 +382,7 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo) const
                                     descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount;
     LOG_INFO(" Bindless Renderer: %s", bBindlessSupported ? "SUPPORTED" : "NOT SUPPORTED");
 
-    if (gpuInfo.RTProperties.maxRayRecursionDepth == 0)
+    if (gpuInfo.RTProperties.maxRayRecursionDepth == 0 || !gpuInfo.bRTXSupport)
         LOG_INFO(" [RTX]: Not supported :(");
     else
     {
@@ -362,29 +394,36 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo) const
     }
 
     // Mesh shader
-    LOG_INFO(" [MS]: Max Output Vertices: %u", gpuInfo.MSProperties.maxMeshOutputVertices);
-    LOG_INFO(" [MS]: Max Output Primitives: %u", gpuInfo.MSProperties.maxMeshOutputPrimitives);
-    LOG_INFO(" [MS]: Max Output Memory Size: %u", gpuInfo.MSProperties.maxMeshOutputMemorySize);
-    LOG_INFO(" [MS]: Max Mesh Work Group Count: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxMeshWorkGroupCount[0],
-             gpuInfo.MSProperties.maxMeshWorkGroupCount[1], gpuInfo.MSProperties.maxMeshWorkGroupCount[2]);
-    LOG_INFO(" [MS]: Max Mesh Work Group Invocations: %u", gpuInfo.MSProperties.maxMeshWorkGroupInvocations);
-    LOG_INFO(" [MS]: Max Mesh Work Group Size: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxMeshWorkGroupSize[0],
-             gpuInfo.MSProperties.maxMeshWorkGroupSize[1], gpuInfo.MSProperties.maxMeshWorkGroupSize[2]);
-    LOG_INFO(" [MS]: Max Mesh Work Group Total Count: %u", gpuInfo.MSProperties.maxMeshWorkGroupTotalCount);
-    LOG_WARN(" [MS]: Max Preferred Mesh Work Group Invocations: %u", gpuInfo.MSProperties.maxPreferredMeshWorkGroupInvocations);
+    if (!gpuInfo.bMeshShaderSupport)
+    {
+        LOG_INFO(" [MS] Not supported :(");
+    }
+    else
+    {
+        LOG_INFO(" [MS]: Max Output Vertices: %u", gpuInfo.MSProperties.maxMeshOutputVertices);
+        LOG_INFO(" [MS]: Max Output Primitives: %u", gpuInfo.MSProperties.maxMeshOutputPrimitives);
+        LOG_INFO(" [MS]: Max Output Memory Size: %u", gpuInfo.MSProperties.maxMeshOutputMemorySize);
+        LOG_INFO(" [MS]: Max Mesh Work Group Count: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxMeshWorkGroupCount[0],
+                 gpuInfo.MSProperties.maxMeshWorkGroupCount[1], gpuInfo.MSProperties.maxMeshWorkGroupCount[2]);
+        LOG_INFO(" [MS]: Max Mesh Work Group Invocations: %u", gpuInfo.MSProperties.maxMeshWorkGroupInvocations);
+        LOG_INFO(" [MS]: Max Mesh Work Group Size: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxMeshWorkGroupSize[0],
+                 gpuInfo.MSProperties.maxMeshWorkGroupSize[1], gpuInfo.MSProperties.maxMeshWorkGroupSize[2]);
+        LOG_INFO(" [MS]: Max Mesh Work Group Total Count: %u", gpuInfo.MSProperties.maxMeshWorkGroupTotalCount);
+        LOG_WARN(" [MS]: Max Preferred Mesh Work Group Invocations: %u", gpuInfo.MSProperties.maxPreferredMeshWorkGroupInvocations);
 
-    // Task shader
-    LOG_INFO(" [TS]: Max Task Work Group Count: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxTaskWorkGroupCount[0],
-             gpuInfo.MSProperties.maxTaskWorkGroupCount[1], gpuInfo.MSProperties.maxTaskWorkGroupCount[2]);
-    LOG_INFO(" [TS]: Max Task Work Group Invocations: %u", gpuInfo.MSProperties.maxTaskWorkGroupInvocations);
-    LOG_INFO(" [TS]: Max Task Work Group Size: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxTaskWorkGroupSize[0],
-             gpuInfo.MSProperties.maxTaskWorkGroupSize[1], gpuInfo.MSProperties.maxTaskWorkGroupSize[2]);
-    LOG_INFO(" [TS]: Max Task Work Group Total Count: %u", gpuInfo.MSProperties.maxTaskWorkGroupTotalCount);
-    LOG_WARN(" [TS]: Max Preferred Task Work Group Invocations: %u", gpuInfo.MSProperties.maxPreferredTaskWorkGroupInvocations);
-    LOG_INFO(" [TS]: Max Task Payload Size: %u", gpuInfo.MSProperties.maxTaskPayloadSize);
+        // Task shader
+        LOG_INFO(" [TS]: Max Task Work Group Count: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxTaskWorkGroupCount[0],
+                 gpuInfo.MSProperties.maxTaskWorkGroupCount[1], gpuInfo.MSProperties.maxTaskWorkGroupCount[2]);
+        LOG_INFO(" [TS]: Max Task Work Group Invocations: %u", gpuInfo.MSProperties.maxTaskWorkGroupInvocations);
+        LOG_INFO(" [TS]: Max Task Work Group Size: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxTaskWorkGroupSize[0],
+                 gpuInfo.MSProperties.maxTaskWorkGroupSize[1], gpuInfo.MSProperties.maxTaskWorkGroupSize[2]);
+        LOG_INFO(" [TS]: Max Task Work Group Total Count: %u", gpuInfo.MSProperties.maxTaskWorkGroupTotalCount);
+        LOG_WARN(" [TS]: Max Preferred Task Work Group Invocations: %u", gpuInfo.MSProperties.maxPreferredTaskWorkGroupInvocations);
+        LOG_INFO(" [TS]: Max Task Payload Size: %u", gpuInfo.MSProperties.maxTaskPayloadSize);
 
-    LOG_WARN(" [MS]: Prefers Compact Primitive Output: %s", gpuInfo.MSProperties.prefersCompactPrimitiveOutput ? "TRUE" : "FALSE");
-    LOG_WARN(" [MS]: Prefers Compact Vertex Output: %s", gpuInfo.MSProperties.prefersCompactVertexOutput ? "TRUE" : "FALSE");
+        LOG_WARN(" [MS]: Prefers Compact Primitive Output: %s", gpuInfo.MSProperties.prefersCompactPrimitiveOutput ? "TRUE" : "FALSE");
+        LOG_WARN(" [MS]: Prefers Compact Vertex Output: %s", gpuInfo.MSProperties.prefersCompactVertexOutput ? "TRUE" : "FALSE");
+    }
 
     LOG_INFO(" Memory types: %u", gpuInfo.GPUMemoryProperties.memoryTypeCount);
     for (uint32_t i = 0; i < gpuInfo.GPUMemoryProperties.memoryTypeCount; ++i)
@@ -445,7 +484,7 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo) const
     }
 
     // No support for any depth/stencil format?? also Check if required device extensions are supported
-    if (gpuInfo.SupportedDepthStencilFormats.empty() || !CheckDeviceExtensionSupport(gpuInfo.PhysicalDevice)) return false;
+    if (gpuInfo.SupportedDepthStencilFormats.empty() || !bRequiredDeviceExtensionsSupported) return false;
 
     gpuInfo.QueueFamilyIndices = QueueFamilyIndices::FindQueueFamilyIndices(gpuInfo.PhysicalDevice);
     if /*constexpr*/ (VK_PREFER_IGPU && gpuInfo.GPUProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) return false;
@@ -454,14 +493,15 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo) const
     return gpuInfo.GPUFeatures.samplerAnisotropy && gpuInfo.GPUFeatures.geometryShader;
 }
 
-bool VulkanDevice::CheckDeviceExtensionSupport(const VkPhysicalDevice& physicalDevice) const
+bool VulkanDevice::CheckDeviceExtensionSupport(GPUInfo& gpuInfo)
 {
     uint32_t extensionCount = 0;
-    PFR_ASSERT(vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr) == VK_SUCCESS,
+    PFR_ASSERT(vkEnumerateDeviceExtensionProperties(gpuInfo.PhysicalDevice, nullptr, &extensionCount, nullptr) == VK_SUCCESS,
                "Failed to retrieve available device extensions!");
 
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    PFR_ASSERT(vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data()) == VK_SUCCESS,
+    PFR_ASSERT(vkEnumerateDeviceExtensionProperties(gpuInfo.PhysicalDevice, nullptr, &extensionCount, availableExtensions.data()) ==
+                   VK_SUCCESS,
                "Failed to retrieve available device extensions!");
 
 #if VK_LOG_INFO
@@ -472,7 +512,6 @@ bool VulkanDevice::CheckDeviceExtensionSupport(const VkPhysicalDevice& physicalD
     }
 #endif
 
-    // TODO: Mesh shading should be optional, I mean I can always fallback to traditional graphics pipeline with VS/GS/TS.
     for (const auto& requestedExt : s_DeviceExtensions)
     {
         bool bIsSupported = false;
@@ -485,10 +524,23 @@ bool VulkanDevice::CheckDeviceExtensionSupport(const VkPhysicalDevice& physicalD
             }
         }
 
+        if (strcmp(requestedExt, VK_EXT_MESH_SHADER_EXTENSION_NAME) == 0)
+        {
+            gpuInfo.bMeshShaderSupport = false;
+            continue;
+        }
+
+        if (strcmp(requestedExt, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0 ||
+            strcmp(requestedExt, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) == 0 ||
+            strcmp(requestedExt, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0)
+        {
+            gpuInfo.bRTXSupport = false;
+        }
+
         if (!bIsSupported)
         {
 #if VK_LOG_INFO
-            LOG_WARN("Device extension <%s> is not supported!", requestedExt);
+            LOG_TAG_WARN(VULKAN, "Device extension <%s> is not supported!", requestedExt);
 #endif
             return false;
         }
@@ -497,8 +549,11 @@ bool VulkanDevice::CheckDeviceExtensionSupport(const VkPhysicalDevice& physicalD
     return true;
 }
 
-void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, ECommandBufferType type, VkCommandBufferLevel level) const
+void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, ECommandBufferType type, VkCommandBufferLevel level,
+                                         const uint16_t threadID) const
 {
+    PFR_ASSERT(threadID < s_WORKER_THREAD_COUNT, "Invalid threadID!");
+
     VkCommandBufferAllocateInfo commandBufferAllocateInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
     commandBufferAllocateInfo.level                       = level;
     commandBufferAllocateInfo.commandBufferCount          = 1;
@@ -506,14 +561,20 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, EC
     switch (type)
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
-            commandBufferAllocateInfo.commandPool = m_GPUInfo.GraphicsCommandPools[0];
+        {
+            commandBufferAllocateInfo.commandPool = m_GPUInfo.GraphicsCommandPools[threadID];
             break;
+        }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
-            commandBufferAllocateInfo.commandPool = m_GPUInfo.ComputeCommandPools[0];
+        {
+            commandBufferAllocateInfo.commandPool = m_GPUInfo.ComputeCommandPools[threadID];
             break;
+        }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
-            commandBufferAllocateInfo.commandPool = m_GPUInfo.TransferCommandPools[0];
+        {
+            commandBufferAllocateInfo.commandPool = m_GPUInfo.TransferCommandPools[threadID];
             break;
+        }
         default: PFR_ASSERT(false, "Unknown command buffer type!");
     }
 
@@ -521,25 +582,28 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, EC
              "Failed to allocate command buffer!");
 }
 
-void VulkanDevice::FreeCommandBuffer(const VkCommandBuffer& commandBuffer, ECommandBufferType type) const
+void VulkanDevice::FreeCommandBuffer(const VkCommandBuffer& commandBuffer, ECommandBufferType type, const uint16_t threadID) const
 {
+    PFR_ASSERT(threadID < s_WORKER_THREAD_COUNT, "Invalid threadID!");
+
     switch (type)
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
         {
-            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsCommandPools[0], 1, &commandBuffer);
+            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsCommandPools[threadID], 1, &commandBuffer);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
         {
-            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeCommandPools[0], 1, &commandBuffer);
+            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeCommandPools[threadID], 1, &commandBuffer);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
         {
-            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferCommandPools[0], 1, &commandBuffer);
+            vkFreeCommandBuffers(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferCommandPools[threadID], 1, &commandBuffer);
             break;
         }
+        default: PFR_ASSERT(false, "Unknown command buffer type!");
     }
 }
 

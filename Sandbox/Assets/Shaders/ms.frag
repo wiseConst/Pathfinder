@@ -2,11 +2,12 @@
 
 layout(location = 0) out vec4 outFragColor;
 
-#extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/ShaderDefines.h"
+layout(location = 0) in VertexInput
+{
+    vec4 color;
+} vertexInput;
 
 void main()
 {
-
-
+    outFragColor = vertexInput.color;
 }

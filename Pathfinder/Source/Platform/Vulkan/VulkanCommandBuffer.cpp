@@ -115,9 +115,9 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit)
 
     if (bWaitAfterSubmit)
     {
-        VK_CHECK(vkWaitForFences(context.GetDevice()->GetLogicalDevice(), 1, &m_SubmitFence, VK_TRUE, UINT64_MAX),
-                 "Failed to wait for fence!");
-        VK_CHECK(vkResetFences(context.GetDevice()->GetLogicalDevice(), 1, &m_SubmitFence), "Failed to reset fence!");
+        const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
+        VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_SubmitFence, VK_TRUE, UINT64_MAX), "Failed to wait for fence!");
+        VK_CHECK(vkResetFences(logicalDevice, 1, &m_SubmitFence), "Failed to reset fence!");
     }
 }
 

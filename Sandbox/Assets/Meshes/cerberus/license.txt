@@ -1,0 +1,11 @@
+Model Information:
+* title:	Cerberus(FFVII Gun) model by Andrew Maximov.
+* source:	https://sketchfab.com/3d-models/cerberusffvii-gun-model-by-andrew-maximov-d08c461f8217491892ad5dd29b436c90
+* author:	JuanXGL (https://sketchfab.com/juanfx1.0)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Cerberus(FFVII Gun) model by Andrew Maximov." (https://sketchfab.com/3d-models/cerberusffvii-gun-model-by-andrew-maximov-d08c461f8217491892ad5dd29b436c90) by JuanXGL (https://sketchfab.com/juanfx1.0) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

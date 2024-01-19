@@ -14,6 +14,10 @@ message("Output directory: ${PROJECT_OUTPUT_DIRECTORY}")
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 set_property(GLOBAL PROPERTY RULE_LAUNCH_COMPILE "${CMAKE_COMMAND} -E time")
 
+if (MSVC)
+    add_compile_options("/MP")
+endif()
+
 add_subdirectory(Pathfinder)
 add_subdirectory(Sandbox)
 

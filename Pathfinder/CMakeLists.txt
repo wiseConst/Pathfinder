@@ -26,6 +26,7 @@ source_group("Source/Layers" FILES ${LAYERS_SOURCES})
 
 #TODO: Add memory includes
 
+message("Building pathfinder rendering engine...")
 set(VULKAN_SDK_DIR $ENV{VULKAN_SDK})
 message("VULKAN_SDK PATH: ${VULKAN_SDK_DIR}")
 
@@ -59,12 +60,14 @@ set(GLFW_BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 add_subdirectory(${VENDOR_DIR}/GLFW)
 target_link_libraries(${PROJECT_NAME} PRIVATE glfw)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/GLFW/include)
+set_target_properties(glfw PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
 # meshoptimizer
 set(MESHOPT_BUILD_SHARED_LIBS OFF)
 add_subdirectory(${VENDOR_DIR}/meshoptimizer)
 target_link_libraries(${PROJECT_NAME} PRIVATE meshoptimizer)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/meshoptimizer/src)
+set_target_properties(meshoptimizer PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
 # volk
 if (WIN32)
@@ -78,6 +81,7 @@ endif ()
 add_subdirectory(${VENDOR_DIR}/volk)
 target_link_libraries(${PROJECT_NAME} PRIVATE volk)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/volk)
+set_target_properties(volk PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
 # vma
 set(VMA_STATIC_VULKAN_FUNCTIONS OFF)
@@ -85,6 +89,7 @@ set(VMA_DYNAMIC_VULKAN_FUNCTIONS ON)
 add_subdirectory(${VENDOR_DIR}/vma)
 target_link_libraries(${PROJECT_NAME} PRIVATE GPUOpen::VulkanMemoryAllocator)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/vma/include)
+set_target_properties(VulkanMemoryAllocator PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
 # spirv-reflect
 set(SPIRV_REFLECT_EXECUTABLE OFF)
@@ -92,14 +97,26 @@ set(SPIRV_REFLECT_STATIC_LIB ON)
 add_subdirectory(${VENDOR_DIR}/spirv-reflect)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/spirv-reflect)
 target_link_libraries(${PROJECT_NAME} PRIVATE spirv-reflect-static)
+set_target_properties(spirv-reflect-static PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
-# shaderc (linked in the end of CMakeLists.txt)
+# shaderc
 target_include_directories(${PROJECT_NAME} PUBLIC ${VULKAN_SDK_DIR}/Include)
+
+if (MSVC)
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+            $<$<CONFIG:Debug>:${VULKAN_SDK_DIR}/Lib/shaderc_combinedd.lib>
+            $<$<CONFIG:Release>:${VULKAN_SDK_DIR}/Lib/shaderc_combined.lib>)
+else ()
+    target_link_libraries(${PROJECT_NAME} PRIVATE
+            $<$<CONFIG:Debug>:${VULKAN_SDK_DIR}/Lib/shaderc_sharedd.lib>
+            $<$<CONFIG:Release>:${VULKAN_SDK_DIR}/Lib/shaderc_shared.lib>)
+endif()
 
 # glm
 add_subdirectory(${VENDOR_DIR}/glm)
 target_link_libraries(${PROJECT_NAME} PRIVATE glm)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/glm)
+set_target_properties(glm PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
 # stb
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/stb)
@@ -108,19 +125,12 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/stb)
 add_subdirectory(${VENDOR_DIR}/fastgltf)
 target_link_libraries(${PROJECT_NAME} PRIVATE fastgltf)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include)
+set_target_properties(fastgltf PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
+set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
 add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 
-add_compile_options($<$<CONFIG:Debug>:-g -lto>)
+add_compile_options($<$<CONFIG:Debug>:-g>) # -lto
 add_compile_options($<$<CONFIG:Release>:-Ofast -lto>)
 
-if(MSVC)
-target_link_libraries(${PROJECT_NAME} PRIVATE 
-        $<$<CONFIG:Debug>:${VULKAN_SDK_DIR}/Lib/shaderc_combinedd.lib> 
-        $<$<CONFIG:Release>:${VULKAN_SDK_DIR}/Lib/shaderc_combined.lib>)
-else()
-target_link_libraries(${PROJECT_NAME} PRIVATE 
-        $<$<CONFIG:Debug>:${VULKAN_SDK_DIR}/Lib/shaderc_sharedd.lib> 
-        $<$<CONFIG:Release>:${VULKAN_SDK_DIR}/Lib/shaderc_shared.lib>)
-endif()

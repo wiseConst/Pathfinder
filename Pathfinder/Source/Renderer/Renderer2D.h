@@ -31,7 +31,7 @@ class Renderer2D final : private Uncopyable, private Unmovable
 
     static void DrawQuad(const glm::mat4& transform, const glm::vec4& color = glm::vec4(1.0f));
 
-    NODISCARD FORCEINLINE static const auto& GetStats() { return s_Renderer2DStats; }
+    NODISCARD FORCEINLINE static auto& GetStats() { return s_Renderer2DStats; }
 
     NODISCARD FORCEINLINE static const auto& GetRendererData()
     {
@@ -73,7 +73,7 @@ class Renderer2D final : private Uncopyable, private Unmovable
 
         // FIXME: Currently wrong
         static constexpr glm::vec3 QuadNormals[4] = {
-            glm::vec3(1.0f, 0.0f, 0.0f),   //  right
+            glm::vec3(1.0f, 0.0f, 0.0f),   //  top right
             glm::vec3(0.0f, -1.0f, 0.0f),  // bottom right
             glm::vec3(-1.0f, 0.0f, 0.0f),  // bottom left
             glm::vec3(0.0f, 1.0f, 0.0f),   // top left
@@ -83,9 +83,10 @@ class Renderer2D final : private Uncopyable, private Unmovable
 
     struct Renderer2DStats
     {
-        uint32_t BatchCount;
-        uint32_t QuadCount;
-    } static inline s_Renderer2DStats;
+        uint32_t BatchCount    = 0;
+        uint32_t QuadCount     = 0;
+        uint32_t TriangleCount = 0;
+    } static inline s_Renderer2DStats = {};
 
     Renderer2D();
     ~Renderer2D() override;

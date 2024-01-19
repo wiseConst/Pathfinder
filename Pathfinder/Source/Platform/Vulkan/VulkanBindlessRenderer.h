@@ -7,6 +7,7 @@
 
 namespace Pathfinder
 {
+// CORE: https://registry.khronos.org/vulkan/specs/1.2-extensions/html/vkspec.html#descriptorsets-compatibility
 
 class VulkanBindlessRenderer final : public BindlessRenderer
 {
@@ -25,6 +26,7 @@ class VulkanBindlessRenderer final : public BindlessRenderer
 
     NODISCARD FORCEINLINE const auto& GetTextureSetLayout() const { return m_TextureSetLayout; }
     NODISCARD FORCEINLINE const auto& GetImageSetLayout() const { return m_ImageSetLayout; }
+    NODISCARD FORCEINLINE const auto& GetCameraSetLayout() const { return m_CameraSetLayout; }
     NODISCARD FORCEINLINE const VkPushConstantRange& GetPushConstantBlock() const { return m_PCBlock; }
     NODISCARD FORCEINLINE const auto& GetPipelineLayout() const { return m_Layout; }
 
@@ -41,10 +43,10 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     VulkanDescriptorPoolPerFrame m_CameraPool;
     VulkanDescriptorSetPerFrame m_CameraSet;
 
-    VkPushConstantRange m_PCBlock;
-    VkPipelineLayout m_Layout = VK_NULL_HANDLE;
+    VkPushConstantRange m_PCBlock = {};
+    VkPipelineLayout m_Layout     = VK_NULL_HANDLE;
 
-    // TODO: Maybe it's better to hold an array of weak ptrs?
+    // TODO: Maybe it's better to hold an array of weak ptrs of images?
     std::vector<uint32_t> m_ImageIndicesPool;
     std::vector<uint32_t> m_FreeImageIndicesPool;
 

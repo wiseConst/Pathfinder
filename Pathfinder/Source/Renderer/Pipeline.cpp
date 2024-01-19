@@ -47,7 +47,7 @@ void PipelineBuilder::Build()
     for (auto& future : futures)
         future();
 
-    LOG_TAG_INFO(RENDERER, "Time took to create (%zu) pipelines: %0.2fms", s_PipelinesToBuild.size(), t.GetElapsedSeconds() * 1000);
+    LOG_TAG_INFO(RENDERER, "Time taken to create (%zu) pipelines: %0.2fms", s_PipelinesToBuild.size(), t.GetElapsedSeconds() * 1000);
     s_PipelinesToBuild.clear();
 }
 

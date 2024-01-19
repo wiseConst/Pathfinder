@@ -6,6 +6,7 @@
 #include "Window.h"
 #include "Renderer/GraphicsContext.h"
 #include "Renderer/Renderer.h"
+#include "Renderer/Renderer2D.h"
 
 #include "Input.h"
 #include "Events/Events.h"
@@ -71,8 +72,11 @@ void Application::Run()
         accumulatedDelta += m_DeltaTime;
         if (accumulatedDelta >= 1.0)
         {
-            const std::string title = std::string("PATHFINDER x64 / ") + std::to_string(frameCount) + std::string(" FPS");
-            m_Window->SetWindowTitle(title.data());
+            std::stringstream ss;
+            ss << std::string("PATHFINDER x64 / ") + std::to_string(frameCount) + std::string(" FPS ");
+            ss << std::string(" [tris]: ") << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
+            ss << std::string(" [2D batches]: ") << Renderer2D::GetStats().BatchCount;
+            m_Window->SetWindowTitle(ss.str().data());
 
             accumulatedDelta = 0.0;
             frameCount       = 0;
@@ -86,7 +90,7 @@ void Application::OnEvent(Event& e)
 
     m_LayerQueue->OnEvent(e);
 
-    /*
+    
     EventDispatcher dispatcher(e);
     dispatcher.Dispatch<KeyButtonPressedEvent>(
         [this](const auto& event)
@@ -98,25 +102,25 @@ void Application::OnEvent(Event& e)
             //     Close();
             // }
 
-            if (key == EKey::KEY_F1)
-            {
-                m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_WINDOWED);
-                return true;
-            }
+           /* if (key == EKey::KEY_F1)
+             {
+                 m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_WINDOWED);
+                 return true;
+             }
 
-            if (key == EKey::KEY_F2)
-            {
-                m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN);
+             if (key == EKey::KEY_F2)
+             {
+                 m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN);
 
-                return true;
-            }
+                 return true;
+             }
 
-            if (key == EKey::KEY_F3)
-            {
-                m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE);
+             if (key == EKey::KEY_F3)
+             {
+                 m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE);
 
-                return true;
-            }
+                 return true;
+             }*/
 
             if (key == EKey::KEY_F4)
             {
@@ -134,7 +138,7 @@ void Application::OnEvent(Event& e)
 
             return false;
         });
-        */
+        
 }
 
 Application::~Application()
