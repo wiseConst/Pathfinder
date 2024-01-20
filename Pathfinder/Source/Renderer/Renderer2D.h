@@ -9,16 +9,14 @@ namespace Pathfinder
 
 class Pipeline;
 
-/*
 struct Sprite
 {
-    Ref<Texture2D> Texture = nullptr;
+    // Ref<Texture2D> Texture = nullptr;
     glm::mat4 Transform    = glm::mat4(1.0f);
     glm::vec4 Color        = glm::vec4(1.0f);
     glm::vec2 SpriteCoords = glm::vec2(0.0f);
     uint32_t Layer         = 0;
 };
-*/
 
 class Renderer2D final : private Uncopyable, private Unmovable
 {
@@ -29,7 +27,7 @@ class Renderer2D final : private Uncopyable, private Unmovable
     static void Begin();
     static void Flush();
 
-    static void DrawQuad(const glm::mat4& transform, const glm::vec4& color = glm::vec4(1.0f));
+    static void DrawQuad(const glm::mat4& transform, const glm::vec4& color = glm::vec4(1.0f), const uint32_t layer = 0);
 
     NODISCARD FORCEINLINE static auto& GetStats() { return s_Renderer2DStats; }
 
@@ -71,13 +69,15 @@ class Renderer2D final : private Uncopyable, private Unmovable
             glm::vec2(0.0f, 1.0f),  // top left
         };
 
-        // FIXME: Currently wrong
+        // FIXME: Currently wrong defined
         static constexpr glm::vec3 QuadNormals[4] = {
             glm::vec3(1.0f, 0.0f, 0.0f),   //  top right
             glm::vec3(0.0f, -1.0f, 0.0f),  // bottom right
             glm::vec3(-1.0f, 0.0f, 0.0f),  // bottom left
             glm::vec3(0.0f, 1.0f, 0.0f),   // top left
         };
+
+        std::vector<Sprite> Sprites;
     };
     static inline Unique<RendererData2D> s_RendererData2D = nullptr;
 
@@ -86,10 +86,13 @@ class Renderer2D final : private Uncopyable, private Unmovable
         uint32_t BatchCount    = 0;
         uint32_t QuadCount     = 0;
         uint32_t TriangleCount = 0;
+        float GPUTime          = 0.0F;
     } static inline s_Renderer2DStats = {};
 
     Renderer2D();
     ~Renderer2D() override;
+
+    static void FlushBatch();
 };
 
 }  // namespace Pathfinder

@@ -106,7 +106,6 @@ void VulkanDescriptorAllocator::ReleaseDescriptorSets(DescriptorSet* descriptorS
 
 VkDescriptorPool VulkanDescriptorAllocator::CreatePool(const uint32_t count, VkDescriptorPoolCreateFlags descriptorPoolCreateFlags)
 {
-    VDA_LOCK_GUARD_MUTEX;
     std::vector<VkDescriptorPoolSize> poolSizes(s_DefaultPoolSizes.size());
 
     for (size_t i = 0; i < poolSizes.size(); ++i)
@@ -122,8 +121,7 @@ VkDescriptorPool VulkanDescriptorAllocator::CreatePool(const uint32_t count, VkD
 
     const auto descriptorPoolCreateInfo = VulkanUtility::GetDescriptorPoolCreateInfo(
         static_cast<uint32_t>(poolSizes.size()), count, poolSizes.data(),
-        VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT /*| VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT*/ |
-            descriptorPoolCreateFlags);
+        VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT | VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | descriptorPoolCreateFlags);
 
     VkDescriptorPool newDescriptorPool = VK_NULL_HANDLE;
     VK_CHECK(vkCreateDescriptorPool(m_LogicalDevice, &descriptorPoolCreateInfo, nullptr, &newDescriptorPool),

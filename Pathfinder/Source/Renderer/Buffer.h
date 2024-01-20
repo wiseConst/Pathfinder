@@ -9,11 +9,15 @@ namespace Pathfinder
 // TODO: Replace staging with SRC, and add DST
 enum EBufferUsage : uint32_t
 {
-    BUFFER_TYPE_VERTEX  = BIT(0),
-    BUFFER_TYPE_INDEX   = BIT(1),
-    BUFFER_TYPE_STORAGE = BIT(2),
-    BUFFER_TYPE_STAGING = BIT(3),
-    BUFFER_TYPE_UNIFORM = BIT(4),
+    BUFFER_TYPE_VERTEX                                       = BIT(0),
+    BUFFER_TYPE_INDEX                                        = BIT(1),
+    BUFFER_TYPE_STORAGE                                      = BIT(2),
+    BUFFER_TYPE_STAGING                                      = BIT(3),
+    BUFFER_TYPE_UNIFORM                                      = BIT(4),
+    BUFFER_TYPE_SHADER_DEVICE_ADDRESS                        = BIT(5),
+    BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(6),
+    BUFFER_TYPE_ACCELERATION_STRUCTURE_STORAGE               = BIT(7),
+    BUFFER_TYPE_SHADER_BINDING_TABLE                         = BIT(8),
 };
 typedef uint32_t BufferUsageFlags;
 
@@ -33,6 +37,7 @@ class Buffer : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE virtual const BufferSpecification& GetSpecification() = 0;
     NODISCARD FORCEINLINE virtual void* Get() const                             = 0;
+    NODISCARD FORCEINLINE virtual uint32_t GetBindlessIndex() const = 0;
 
     virtual void SetData(const void* data, const size_t dataSize) = 0;
 

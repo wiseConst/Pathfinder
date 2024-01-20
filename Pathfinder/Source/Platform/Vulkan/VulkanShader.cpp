@@ -1,16 +1,17 @@
 #include "PathfinderPCH.h"
 #include "VulkanShader.h"
 
-#include "Core/CoreUtils.h"
-
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
+#include "VulkanBuffer.h"
 
+#include "Core/CoreUtils.h"
 #include "Core/Application.h"
 #include "Core/Window.h"
 
+#include "Renderer/Renderer.h"
+
 #include <shaderc/shaderc.hpp>
-#include "spirv-reflect/common/output_stream.h"
 
 namespace Pathfinder
 {
@@ -224,6 +225,13 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         const std::string shaderNameExt = std::string(shaderName) + std::string(shaderExt);
         shaderc_shader_kind shaderKind  = shaderc_vertex_shader;
         DetectShaderKind(shaderKind, shaderExt);
+
+        if (!Renderer::GetRendererSettings().bMeshShadingSupport &&
+                (shaderKind == shaderc_mesh_shader || shaderKind == shaderc_task_shader) ||
+            !Renderer::GetRendererSettings().bRTXSupport && shaderKind >= shaderc_raygen_shader &&
+                shaderKind <= shaderc_glsl_default_callable_shader)
+            continue;
+
         auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToPathfinder(shaderKind));
 
         const auto compiledShaderSrc = CompileOrRetrieveCached(shaderNameExt, localShaderPath.string(), shaderKind);
@@ -269,11 +277,10 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
                 prevBinding = dsBinding.binding;
             }
 
-            // NOTE: Should I add any flags since most of my shit is bindless
+            // NOTE: Should I add any flags since most of my shit is bindless?
             currentShaderDescription.SetLayouts.emplace_back();
-            VkDescriptorSetLayoutCreateInfo dslci = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO};
-            dslci.bindingCount                    = static_cast<uint32_t>(bindings.size());
-            dslci.pBindings                       = bindings.data();
+            const VkDescriptorSetLayoutCreateInfo dslci = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0,
+                                                           static_cast<uint32_t>(bindings.size()), bindings.data()};
             VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &dslci, nullptr,
                                                  &currentShaderDescription.SetLayouts[currentShaderDescription.SetLayouts.size() - 1]),
                      "Failed to create descriptor layout for shader needs!");
@@ -294,6 +301,35 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
     }
 }
 
+void VulkanShader::Set(const std::string_view name, const Shared<Buffer> buffer)
+{
+    // NOTE: Is it possible that variable is used in different shader stages? Do I cover this?
+
+    const auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
+    PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
+
+    const auto currentFrame  = Application::Get().GetWindow()->GetCurrentFrameIndex();
+    VkWriteDescriptorSet wds = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+    for (auto& shaderDesc : m_ShaderDescriptions)
+    {
+        for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)
+        {
+            for (auto& [bindingName, descriptor] : shaderDesc.DescriptorSetBindings[iSet])
+            {
+                if (strcmp(bindingName.data(), name.data()) != 0) continue;
+
+                wds.dstBinding      = descriptor.binding;
+                wds.descriptorCount = descriptor.descriptorCount;
+                wds.descriptorType  = descriptor.descriptorType;
+                wds.dstSet          = shaderDesc.Sets[iSet][currentFrame].second;
+                wds.pBufferInfo     = &vulkanBuffer->GetDescriptorInfo();
+            }
+        }
+    }
+
+    vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), 1, &wds, 0, nullptr);
+}
+
 const std::vector<VkDescriptorSet> VulkanShader::GetDescriptorSetByShaderStage(const EShaderStage shaderStage)
 {
     std::vector<VkDescriptorSet> descriptorSets;
@@ -311,7 +347,7 @@ const std::vector<VkDescriptorSet> VulkanShader::GetDescriptorSetByShaderStage(c
         break;
     }
 
-    if (descriptorSets.empty()) LOG_TAG_WARN(VULKAN, "Returning empty descriptor sets from the shader!");
+    //   if (descriptorSets.empty()) LOG_TAG_WARN(VULKAN, "Returning empty descriptor sets from the shader!");
     return descriptorSets;
 }
 
@@ -353,16 +389,21 @@ void VulkanShader::Reflect(ShaderDescription& shaderDescription, const std::vect
         // Finding unique descriptor sets which bindless renderer doesn't contain
         for (const auto& ds : descriptorSets)
         {
+            bool bIsBindlessSet = false;
             for (uint32_t i = 0; i < ds->binding_count; ++i)
             {
                 const auto& obj = ds->bindings[i];
                 if (!obj->name) continue;
 
                 const std::string bindingName(obj->name);
-                if (bindingName.find("Global") != std::string::npos) continue;
-
-                outSets.emplace_back(ds);
+                if (bindingName.find("Global") != std::string::npos)
+                {
+                    bIsBindlessSet = true;
+                    break;
+                }
             }
+
+            if (!bIsBindlessSet) outSets.emplace_back(ds);
         }
 
         PrintDescriptorSets(outSets);
@@ -421,12 +462,17 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
     // Got no cache, let's compile then
     static shaderc::Compiler compiler;
     static shaderc::CompileOptions compileOptions;
-    compileOptions.SetOptimizationLevel(shaderc_optimization_level_zero);
-    compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
-    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_4);
-    compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
-    compileOptions.SetWarningsAsErrors();
-    compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
+    static std::atomic<bool> s_bIsCompilerShaderCompilerSetup = false;
+    if (!s_bIsCompilerShaderCompilerSetup)
+    {
+        compileOptions.SetOptimizationLevel(shaderc_optimization_level_zero);
+        compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
+        compileOptions.SetTargetSpirv(shaderc_spirv_version_1_4);
+        compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
+        compileOptions.SetWarningsAsErrors();
+        compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
+        s_bIsCompilerShaderCompilerSetup = true;
+    }
 
     const auto shaderSrc = LoadData<std::string>(localShaderPath);
     // Preprocess

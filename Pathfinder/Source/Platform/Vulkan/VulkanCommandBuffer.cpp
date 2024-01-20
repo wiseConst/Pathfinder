@@ -6,6 +6,7 @@
 #include "VulkanPipeline.h"
 #include "VulkanImage.h"
 #include "VulkanBuffer.h"
+#include "VulkanShader.h"
 
 #include "Core/Application.h"
 #include "Core/Window.h"
@@ -35,8 +36,10 @@ static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const ShaderStageFl
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION)
         vkShaderStageFlags |= VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_GEOMETRY) vkShaderStageFlags |= VK_SHADER_STAGE_GEOMETRY_BIT;
-    if (shaderStageFlags & EShaderStage::SHADER_STAGE_FRAGMENT) vkShaderStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_COMPUTE) vkShaderStageFlags |= VK_SHADER_STAGE_COMPUTE_BIT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_FRAGMENT) vkShaderStageFlags |= VK_SHADER_STAGE_FRAGMENT_BIT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_TASK) vkShaderStageFlags |= VK_SHADER_STAGE_TASK_BIT_EXT;
+    if (shaderStageFlags & EShaderStage::SHADER_STAGE_MESH) vkShaderStageFlags |= VK_SHADER_STAGE_MESH_BIT_EXT;
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_ALL_GRAPHICS) vkShaderStageFlags |= VK_SHADER_STAGE_ALL_GRAPHICS;
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_ALL) vkShaderStageFlags |= VK_SHADER_STAGE_ALL;
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_RAYGEN) vkShaderStageFlags |= VK_SHADER_STAGE_RAYGEN_BIT_KHR;
@@ -45,8 +48,6 @@ static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const ShaderStageFl
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_MISS) vkShaderStageFlags |= VK_SHADER_STAGE_MISS_BIT_KHR;
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_INTERSECTION) vkShaderStageFlags |= VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
     if (shaderStageFlags & EShaderStage::SHADER_STAGE_CALLABLE) vkShaderStageFlags |= VK_SHADER_STAGE_CALLABLE_BIT_KHR;
-    if (shaderStageFlags & EShaderStage::SHADER_STAGE_TASK) vkShaderStageFlags |= VK_SHADER_STAGE_TASK_BIT_EXT;
-    if (shaderStageFlags & EShaderStage::SHADER_STAGE_MESH) vkShaderStageFlags |= VK_SHADER_STAGE_MESH_BIT_EXT;
 
     PFR_ASSERT(vkShaderStageFlags > 0, "Shader stage flags can't be zero!");
     return vkShaderStageFlags;
@@ -112,7 +113,6 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit)
     }
 
     VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, m_SubmitFence), "Failed to submit command buffer!");
-
     if (bWaitAfterSubmit)
     {
         const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
@@ -160,13 +160,83 @@ void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkIm
     InsertBarrier(srcStageMask, dstStageMask, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
 }
 
-void VulkanCommandBuffer::BindPushConstants(Shared<Pipeline>& pipeline, const ShaderStageFlags shaderStageFlags, const uint32_t offset,
+void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const
+{
+    const auto vulkanPipeline = std::static_pointer_cast<VulkanPipeline>(pipeline);
+    PFR_ASSERT(vulkanPipeline, "Failed to cast Pipeline to VulkanPipeline!");
+
+    const auto vulkanShader = std::static_pointer_cast<VulkanShader>(shader);
+    PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
+
+    const auto appendVecFunc = [&](auto& src, const auto& additionalVec)
+    {
+        for (auto& elem : additionalVec)
+            src.emplace_back(elem);
+    };
+
+    std::vector<VkDescriptorSet> descriptorSets;
+    VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+    switch (pipeline->GetSpecification().PipelineType)
+    {
+        case EPipelineType::PIPELINE_TYPE_GRAPHICS:
+        {
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_FRAGMENT));
+
+            if (pipeline->GetSpecification().bMeshShading)
+            {
+                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_MESH));
+                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+            }
+            else
+            {
+                // clang-format off
+                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
+                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
+                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
+                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
+                // clang-format on
+            }
+
+            pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+            break;
+        }
+        case EPipelineType::PIPELINE_TYPE_COMPUTE:
+        {
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_COMPUTE));
+
+            pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+            break;
+        }
+        case EPipelineType::PIPELINE_TYPE_RAY_TRACING:
+        {
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_ANY_HIT));
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_CLOSEST_HIT));
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_RAYGEN));
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_INTERSECTION));
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_CALLABLE));
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_MISS));
+
+            pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
+            break;
+        }
+    }
+
+    if (descriptorSets.empty()) return;
+
+    // Since first 0,1,2 are busy by bindless stuff we make an offset
+    const uint32_t firstSet = pipeline->GetSpecification().bBindlessCompatible ? 4 : 0;
+    vkCmdBindDescriptorSets(m_Handle, pipelineBindPoint, vulkanPipeline->GetLayout(), firstSet,
+                            static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
+}
+
+void VulkanCommandBuffer::BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset,
                                             const uint32_t size, const void* data) const
 {
     auto vulkanPipeline = std::static_pointer_cast<VulkanPipeline>(pipeline);
     PFR_ASSERT(vulkanPipeline, "Failed to cast Pipeline to VulkanPipeline!");
 
-    vkCmdPushConstants(m_Handle, vulkanPipeline->GetLayout(), PathfinderShaderStageFlagsToVulkan(shaderStageFlags), offset, size, data);
+    const VkShaderStageFlags vkShaderStageFlags = vulkanPipeline->GetPushConstantShaderStageByIndex(pushConstantIndex);
+    vkCmdPushConstants(m_Handle, vulkanPipeline->GetLayout(), vkShaderStageFlags, offset, size, data);
 }
 
 void VulkanCommandBuffer::Destroy()

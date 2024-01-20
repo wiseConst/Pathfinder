@@ -16,12 +16,13 @@ class VulkanBuffer final : public Buffer
     VulkanBuffer() = delete;
     ~VulkanBuffer() override { Destroy(); }
 
+    NODISCARD FORCEINLINE const BufferSpecification& GetSpecification() final override { return m_Specification; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
-    void SetData(const void* data, const size_t dataSize) final override;
-
     NODISCARD FORCEINLINE const auto& GetDescriptorInfo() const { return m_DescriptorInfo; }
 
-    NODISCARD FORCEINLINE const BufferSpecification& GetSpecification() final override { return m_Specification; }
+    NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const final override { return m_Index; }
+
+    void SetData(const void* data, const size_t dataSize) final override;
 
   private:
     VkBuffer m_Handle                       = VK_NULL_HANDLE;
@@ -29,6 +30,9 @@ class VulkanBuffer final : public Buffer
     BufferSpecification m_Specification     = {};
     bool m_bIsMapped                        = false;
     VkDescriptorBufferInfo m_DescriptorInfo = {};
+
+    friend class VulkanBindlessRenderer;
+    uint32_t m_Index = UINT32_MAX;  // bindless array purposes
 
     void Destroy() final override;
 };

@@ -8,6 +8,25 @@
 namespace Pathfinder
 {
 
+namespace ImageUtils
+{
+
+void CreateImage(VkImage& image, VmaAllocation& allocation, const VkFormat format, const VkImageUsageFlags imageUsage,
+                 const VkExtent3D extent, const uint32_t mipLevels = 1);
+
+void CreateImageView(const VkImage& image, VkImageView& imageView, VkFormat format, const VkImageAspectFlags aspectFlags,
+                     const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D, const uint32_t mipLevels = 1);
+
+void DestroyImage(VkImage& image, VmaAllocation& allocation);
+
+VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout);
+
+VkImageUsageFlags PathfinderImageUsageFlagsToVulkan(const ImageUsageFlags usageFlags);
+
+VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat);
+
+}  // namespace ImageUtils
+
 class VulkanImage final : public Image
 {
   public:
@@ -18,9 +37,15 @@ class VulkanImage final : public Image
     NODISCARD FORCEINLINE const ImageSpecification& GetSpecification() const final override { return m_Specification; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE void* GetView() const { return m_View; }
+    NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const final override { return m_Index; }
+    NODISCARD FORCEINLINE const VkDescriptorImageInfo GetDescriptorInfo() const
+    {
+        VkDescriptorImageInfo descriptorInfo = {VK_NULL_HANDLE, m_View, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
+        return descriptorInfo;
+    }
 
-     void SetLayout(const EImageLayout newLayout) final override;
- 
+    void SetLayout(const EImageLayout newLayout) final override;
+
     FORCEINLINE void Resize(const uint32_t width, const uint32_t height) final override
     {
         m_Specification.Width  = width;
@@ -42,25 +67,6 @@ class VulkanImage final : public Image
     void Invalidate() final override;
     void Destroy() final override;
 };
-
-namespace ImageUtils
-{
-
-void CreateImage(VkImage& image, VmaAllocation& allocation, const VkFormat format, const VkImageUsageFlags imageUsage,
-                 const VkExtent3D extent, const uint32_t mipLevels = 1);
-
-void CreateImageView(const VkImage& image, VkImageView& imageView, VkFormat format, const VkImageAspectFlags aspectFlags,
-                     const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D, const uint32_t mipLevels = 1);
-
-void DestroyImage(VkImage& image, VmaAllocation& allocation);
-
-VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout);
-
-VkImageUsageFlags PathfinderImageUsageFlagsToVulkan(const ImageUsageFlags usageFlags);
-
-VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat);
-
-}  // namespace ImageUtils
 
 }  // namespace Pathfinder
 

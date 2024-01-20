@@ -4,16 +4,16 @@
 
 layout (location = 0) out vec4 color;
 
-#include "Assets/Shaders/ShaderDefines.h"
+#include "Assets/Shaders/Include/Globals.glslh"
 
 
-layout(set = 3, binding = 0) uniform ShaderOptions
-{
-    uint AlbedoTexIndex;
-    uint NormalTexIndex;
-    uint RoughnessTexIndex;
-    uint AOTexIndex;
-} u_ShaderOptions;
+//layout(set = 3, binding = 0) uniform ShaderOptions
+//{
+  //  uint AlbedoTexIndex;
+   // uint NormalTexIndex;
+   // uint RoughnessTexIndex;
+   //uint AOTexIndex;
+//} u_ShaderOptions;
 
 void main()
 {

@@ -3,6 +3,7 @@
 
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
+#include "Renderer/Renderer.h"
 
 #define VK_NO_PROTOTYPES
 #define VMA_IMPLEMENTATION
@@ -22,6 +23,7 @@ VulkanAllocator::VulkanAllocator(const VkDevice& device, const VkPhysicalDevice&
     allocatorCI.vulkanApiVersion       = VK_API_VERSION_1_3;
     allocatorCI.pVulkanFunctions       = &vulkanFunctions;
 
+    if (Renderer::GetRendererSettings().bRTXSupport) allocatorCI.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     VK_CHECK(vmaCreateAllocator(&allocatorCI, &m_Handle), "Failed to create VMA!");
 }
 
@@ -30,8 +32,8 @@ void VulkanAllocator::CreateImage(const VkImageCreateInfo& imageCI, VkImage& ima
     // VmaAllocationInfo allocationInfo;
 
     VmaAllocationCreateInfo allocationCI = {};
-    allocationCI.usage = memoryUsage;
-    //allocationCI.flags         = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    allocationCI.usage                   = memoryUsage;
+    // allocationCI.flags         = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
     allocationCI.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
 
     VK_CHECK(vmaCreateImage(m_Handle, &imageCI, &allocationCI, &image, &allocation, VK_NULL_HANDLE /* &allocationInfo*/),
@@ -44,7 +46,7 @@ void VulkanAllocator::CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer&
     // VmaAllocationInfo allocationInfo;
 
     VmaAllocationCreateInfo allocationCI = {};
-    allocationCI.usage = memoryUsage;
+    allocationCI.usage                   = memoryUsage;
 
     VK_CHECK(vmaCreateBuffer(m_Handle, &bufferCI, &allocationCI, &buffer, &allocation, VK_NULL_HANDLE /* &allocationInfo */),
              "Failed to create buffer!");

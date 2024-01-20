@@ -15,9 +15,9 @@ class Camera;
 class Mesh;
 class Framebuffer;
 class Image;
+class Submesh;
 
-// TODO: Make fallback to default graphics pipeline; as of now I imply mesh shading support
-// It's not final cuz in future SceneRenderer may derive from this class
+// NOTE: It's not final cuz in future SceneRenderer may derive from this class
 class Renderer : private Uncopyable, private Unmovable
 {
   public:
@@ -33,7 +33,6 @@ class Renderer : private Uncopyable, private Unmovable
     static void BeginScene(const Camera& camera);
     static void EndScene();
 
-    // EARLY TESTING
     static void SubmitMesh(const Shared<Mesh>& mesh);
 
     NODISCARD FORCEINLINE static const auto& GetRendererData()
@@ -76,14 +75,15 @@ class Renderer : private Uncopyable, private Unmovable
 
         FramebufferPerFrame GBuffer;
 
+        // NOTE: Forward+ renderer
         Shared<Pipeline> ForwardRenderingPipeline = nullptr;
 
-        std::vector<Shared<Mesh>> OpaqueObjects;
-        std::vector<Shared<Mesh>> TransparentObjects;
-        //  Shared<Texture2D> WhiteTexture = nullptr;
+        FramebufferPerFrame DepthPrePassFramebuffer;
+        Shared<Pipeline> DepthPrePassPipeline = nullptr;
 
-        // TEST
-        Shared<Pipeline> TestMeshShadingPipeline = nullptr;
+        std::vector<Shared<Submesh>> OpaqueObjects;
+        std::vector<Shared<Submesh>> TransparentObjects;
+        //  Shared<Texture2D> WhiteTexture = nullptr;
 
         // MISC
         uint32_t FrameIndex = 0;
@@ -104,6 +104,8 @@ class Renderer : private Uncopyable, private Unmovable
         uint32_t TriangleCount       = 0;
         uint32_t DescriptorSetCount  = 0;
         uint32_t DescriptorPoolCount = 0;
+        uint32_t MeshletCount        = 0;
+        float GPUTime                = 0.0F;
     } static inline s_RendererStats = {};
 
     static void GeometryPass();

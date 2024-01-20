@@ -73,24 +73,24 @@ struct QuadVertex
     glm::vec4 Color    = glm::vec4(1.0f);
 };
 
-struct MeshVertexPosition
+struct MeshPositionVertex
 {
     glm::vec3 Position = glm::vec3(0.0f);
 };
 
-struct MeshVertex
+struct MeshAttributeVertex
 {
     glm::vec4 Color   = glm::vec4(1.0f);
     glm::vec3 Normal  = glm::vec3(0.0f);
     glm::vec3 Tangent = glm::vec3(0.0f);
 };
 
-// TESTING
+// TESTING, learning mesh shaders from zeux
 struct Meshlet
 {
     uint32_t vertices[64];
     uint8_t indices[126];  // up to 42 tris
-    uint8_t triangleCount;
+    uint8_t indexCount;
     uint8_t vertexCount;
 };
 
@@ -99,6 +99,17 @@ struct CameraData
     glm::mat4 Projection  = glm::mat4(1.0f);
     glm::mat4 InverseView = glm::mat4(1.0f);
     glm::vec3 Position    = glm::vec3(0.0f);
+};
+
+struct PCBlock
+{
+    glm::mat4 Transform              = glm::mat4(1.0);
+    uint32_t StorageImageIndex       = 0;
+    uint32_t AlbedoTextureIndex      = 0;
+    uint32_t NormalTextureIndex      = 0;
+    uint32_t VertexPosBufferIndex    = 0;
+    uint32_t VertexAttribBufferIndex = 0;
+    uint32_t MeshletBufferIndex      = 0;
 };
 
 struct PBRData

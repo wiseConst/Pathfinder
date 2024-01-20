@@ -1,0 +1,56 @@
+#version 460
+
+#extension GL_EXT_mesh_shader : require
+
+#extension GL_GOOGLE_include_directive : require
+#include "Assets/Shaders/Include/Globals.glslh"
+
+// local_size_x =32
+layout(local_size_x = 1, local_size_y = 1, local_size_z = 1) in;
+layout(triangles, max_vertices = 64, max_primitives = 42) out; // 126 optimal nvidia
+
+layout(location = 0) out VertexOutput
+{
+    vec4 Color;
+    vec3 Normal;
+    vec3 Tangent;
+} o_VertexOutput[];
+
+#if DEBUG_PRINTF
+#extension GL_EXT_debug_printf : require
+#endif
+
+void main()
+{
+    const uint mi = gl_WorkGroupID.x;
+
+    #if DEBUG_PRINTF
+        debugPrintfEXT("Hello from workGroup (%d, %d)!", gl_WorkGroupID.x, gl_WorkGroupID.y);
+        debugPrintfEXT("Hello from global invocation (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    #endif
+
+    // TODO: bad for perf; our workgroup has 1 thread!
+    for(uint i = 0; i < s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexCount; ++i)
+    {
+        const uint vi =  s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertices[i];
+
+        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);  
+        
+        o_VertexOutput[i].Color = vec4(s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color.xyz * 0.2 + s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal.xyz * 0.5, s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color.w);
+        o_VertexOutput[i].Normal = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal;
+        o_VertexOutput[i].Tangent = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Tangent;
+    }
+
+    const uint primitiveCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].indexCount / 3;
+    const uint vertexCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexCount;
+    SetMeshOutputsEXT(vertexCount, primitiveCount);
+        
+    // TODO: bad for perf; our workgroup has 1 thread!
+    for(uint i = 0; i < primitiveCount; ++i)
+    {
+        gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
+            s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].indices[3*i+0], 
+            s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].indices[3*i+1], 
+            s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].indices[3*i+2]);
+    }
+}

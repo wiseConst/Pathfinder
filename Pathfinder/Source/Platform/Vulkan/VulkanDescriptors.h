@@ -14,13 +14,11 @@ class VulkanDescriptorAllocator final : private Unmovable, private Uncopyable
 {
   public:
     VulkanDescriptorAllocator(VkDevice& device);
-    VulkanDescriptorAllocator()           = delete;
-    ~VulkanDescriptorAllocator() override = default;
+    VulkanDescriptorAllocator() = delete;
+    ~VulkanDescriptorAllocator() override { Destroy(); }
 
     NODISCARD bool Allocate(DescriptorSet& outDescriptorSet, const VkDescriptorSetLayout& descriptorSetLayout);
     void ReleaseDescriptorSets(DescriptorSet* descriptorSets, const uint32_t descriptorSetCount);
-
-    void Destroy();
 
     FORCEINLINE const uint32_t GetAllocatedDescriptorSetsCount() { return m_AllocatedDescriptorSets; }
 
@@ -51,6 +49,7 @@ class VulkanDescriptorAllocator final : private Unmovable, private Uncopyable
     };                                                      //
 
     NODISCARD VkDescriptorPool CreatePool(const uint32_t count, VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0);
+    void Destroy();
 };
 
 }  // namespace Pathfinder

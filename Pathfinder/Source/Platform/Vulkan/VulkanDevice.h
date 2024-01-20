@@ -237,7 +237,9 @@ class VulkanDevice final : private Uncopyable, private Unmovable
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
         VkPhysicalDeviceAccelerationStructurePropertiesKHR ASProperties = {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
-        bool bRTXSupport = false;
+        bool bRTXSupport = true;
+ 
+        bool bBDASupport = true;
     } m_GPUInfo;
     Unique<VulkanAllocator> m_VMA;
     Unique<VulkanDescriptorAllocator> m_VDA;

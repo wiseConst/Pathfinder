@@ -1,0 +1,107 @@
+#version 460
+
+#extension GL_EXT_mesh_shader : require
+
+#extension GL_GOOGLE_include_directive : require
+#include "Assets/Shaders/Include/Globals.glslh"
+
+layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(triangles, max_vertices = 64, max_primitives = 126) out;
+
+layout(location = 0) out VertexOutput
+{
+    vec4 Color;
+    vec3 Normal;
+    vec3 Tangent;
+} o_VertexOutput[];
+
+struct MeshPositionVertex
+{
+    vec3 Position;
+};
+
+struct MeshAttributeVertex
+{
+    vec4 Color;
+    vec3 Normal;
+    vec3 Tangent;
+};
+
+layout(set = 3, binding = 0, scalar) readonly buffer VertexPosBuffer
+{
+    MeshPositionVertex Positions[];
+} s_VertexPosBuffer;
+
+
+layout(set = 3, binding = 1, scalar) readonly buffer VertexAttribBuffer
+{
+    MeshAttributeVertex Attributes[];
+} s_VertexAttribBuffer;
+
+struct Meshlet
+{
+    uint32_t vertices[64];
+    uint8_t indices[126*3];  // up to 126 tris
+    uint8_t triangleCount;
+    uint8_t vertexCount;
+};
+
+layout(set = 3, binding = 2, scalar) readonly buffer MeshletBuffer
+{
+    Meshlet meshlets[];
+} s_MeshletBuffer;
+
+#define DEBUG 1
+#if DEBUG
+uint hash(uint a)
+{
+   a = (a+0x7ed55d16) + (a<<12);
+   a = (a^0xc761c23c) ^ (a>>19);
+   a = (a+0x165667b1) + (a<<5);
+   a = (a+0xd3a2646c) ^ (a<<9);
+   a = (a+0xfd7046c5) + (a<<3);
+   a = (a^0xb55a4f09) ^ (a>>16);
+   return a;
+}
+#endif
+
+void main()
+{
+    const uint mi = gl_WorkGroupID.x;
+    const uint ti = gl_LocalInvocationID.x;
+
+    const uint vertexCount = s_MeshletBuffer.meshlets[mi].vertexCount;
+    const uint triangleCount = s_MeshletBuffer.meshlets[mi].triangleCount;
+    const uint indexCount = triangleCount * 3;
+    
+#if DEBUG
+    uint mhash = hash(mi);
+	vec3 mcolor = vec3(float(mhash & 255), float((mhash >> 8) & 255), float((mhash >> 16) & 255)) / 255.0;
+#endif
+    
+    SetMeshOutputsEXT(vertexCount, triangleCount);
+
+	// TODO: if we have meshlets with 62 or 63 vertices then we pay a small penalty for branch divergence here - we can instead redundantly xform the last vertex
+    for(uint i = ti; i < vertexCount; i += 32)
+    {
+        const uint vi = s_MeshletBuffer.meshlets[mi].vertices[i];
+
+        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * u_PC.Transform *  vec4(s_VertexPosBuffer.Positions[vi].Position, 1.0);  
+        
+        o_VertexOutput[i].Color = vec4(s_VertexAttribBuffer.Attributes[vi].Color.xyz * 0.2 + s_VertexAttribBuffer.Attributes[vi].Normal.xyz * 0.5, s_VertexAttribBuffer.Attributes[vi].Color.w);
+        o_VertexOutput[i].Normal = s_VertexAttribBuffer.Attributes[vi].Normal;
+        o_VertexOutput[i].Tangent = s_VertexAttribBuffer.Attributes[vi].Tangent;
+        
+    #if DEBUG
+        o_VertexOutput[i].Color = vec4(mcolor, 1.0);
+    #endif
+    }
+
+    for (uint i = ti; i < indexCount; i += 32)
+	{
+        gl_PrimitiveTriangleIndicesEXT[i/3] = uvec3(
+            s_MeshletBuffer.meshlets[mi].indices[i + 0], 
+            s_MeshletBuffer.meshlets[mi].indices[i + 1], 
+            s_MeshletBuffer.meshlets[mi].indices[i + 2]);
+	}
+}

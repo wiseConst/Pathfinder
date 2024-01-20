@@ -2,7 +2,7 @@
 #define VULKANCORE_H
 
 #include <volk/volk.h>
-#include <Renderer/RendererCoreDefines.h>
+#include "Renderer/RendererCoreDefines.h"
 #include "Renderer/Shader.h"
 
 namespace Pathfinder
@@ -12,7 +12,7 @@ namespace Pathfinder
 
 #define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
 
-#define VK_FORCE_VALIDATION 1
+#define VK_FORCE_VALIDATION 0
 #define VK_FORCE_SHADER_COMPILATION 0
 #define VK_FORCE_PIPELINE_COMPILATION 0
 
@@ -23,6 +23,7 @@ namespace Pathfinder
 
 #define VK_RTX 0
 #define VK_MESH_SHADING 1
+#define VK_BDA 0
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -49,10 +50,14 @@ static const std::vector<const char*> s_DeviceExtensions = {
 #endif
 
 #if VK_MESH_SHADING
-    VK_EXT_MESH_SHADER_EXTENSION_NAME,  // Mesh shading advanced modern rendering,
+    VK_EXT_MESH_SHADER_EXTENSION_NAME,  // Mesh shading advanced modern rendering
 #endif
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
+
+#if VK_BDA
+// VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,  // as it says buffer device address
+#endif
 
 #if VK_RTX
     VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,    // To build acceleration structures
@@ -120,17 +125,20 @@ static std::string VK_GetResultString(const VkResult result)
 static void VK_CHECK(const VkResult result, const char* message)
 {
     const std::string finalMessage = std::string(message) + std::string(" The result is: ") + std::string(VK_GetResultString(result));
+#if PFR_RELEASE
+    if (result != VK_SUCCESS) LOG_TAG_ERROR(VULKAN, "%s", finalMessage.data());
+#endif
     PFR_ASSERT(result == VK_SUCCESS, finalMessage.data());
 }
 
 // TODO: Make it #define, to reduce function calls in release mode.
-static void VK_SetDebugName(const VkDevice& logicalDevice, const uint64_t objectHandle, const VkObjectType objectType,
-                            const char* objectName)
+static void VK_SetDebugName(const VkDevice& logicalDevice, const void* objectHandle, const VkObjectType objectType, const char* objectName)
 {
     if constexpr (!VK_FORCE_VALIDATION && !s_bEnableValidationLayers) return;
+    PFR_ASSERT(objectHandle, "Object handle is not valid!");
 
     VkDebugUtilsObjectNameInfoEXT objectNameInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
-    objectNameInfo.objectHandle                  = objectHandle;
+    objectNameInfo.objectHandle                  = *(uint64_t*)objectHandle;
     objectNameInfo.objectType                    = objectType;
     objectNameInfo.pObjectName                   = objectName;
     VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo), "Failed to set debug name!");

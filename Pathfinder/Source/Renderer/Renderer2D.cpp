@@ -98,16 +98,10 @@ void Renderer2D::Begin()
     auto& rd = Renderer::GetRendererData();
 
     s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex] = s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex];
+    s_RendererData2D->Sprites.clear();
 }
 
-// NOTE: The idea of creating command buffer on flush has it roots because of my general submits are done in Renderer::Flush, and I can't
-// reuse same vertex buffer whilst it's not submitted, so I create command buffer, submit it and reuse vertex buffer, simple as that, but
-// maybe there's perfomance issues since I'll have to rebind my "bindless" layout
-
-// NOTE: In future there will be lots of "Flush" calls, so it's applicable to batch submits, since they have some cost, i mean rename this
-// func to FlushBatch
-
-void Renderer2D::Flush()
+void Renderer2D::FlushBatch()
 {
     const uint32_t dataSize = s_Renderer2DStats.QuadCount * sizeof(QuadVertex) * 4;
     if (dataSize == 0) return;
@@ -123,17 +117,10 @@ void Renderer2D::Flush()
 
     s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]->SetData(
         s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], dataSize);
-    struct PC
-    {
-        glm::mat4 Transform = glm::mat4(1.0);
-        uint32_t img        = 0;
-        uint32_t tex        = 0;
-    } pc;
 
+    PCBlock pc = {};
     renderCommandBuffer->BindPipeline(s_RendererData2D->QuadPipeline);
-    renderCommandBuffer->BindPushConstants(
-        s_RendererData2D->QuadPipeline,
-        EShaderStage::SHADER_STAGE_COMPUTE | EShaderStage::SHADER_STAGE_FRAGMENT | EShaderStage::SHADER_STAGE_VERTEX, 0, sizeof(PC), &pc);
+    renderCommandBuffer->BindPushConstants(s_RendererData2D->QuadPipeline, 0, 0, sizeof(pc), &pc);
 
     constexpr uint64_t offset = 0;
     renderCommandBuffer->BindVertexBuffers({s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]}, 0, 1, &offset);
@@ -152,7 +139,12 @@ void Renderer2D::Flush()
     s_Renderer2DStats.QuadCount = 0;
 }
 
-void Renderer2D::DrawQuad(const glm::mat4& transform, const glm::vec4& color)
+void Renderer2D::Flush()
+{
+    FlushBatch();
+}
+
+void Renderer2D::DrawQuad(const glm::mat4& transform, const glm::vec4& color, const uint32_t layer)
 {
     if (s_Renderer2DStats.QuadCount >= s_RendererData2D->s_MAX_QUADS) Flush();
 

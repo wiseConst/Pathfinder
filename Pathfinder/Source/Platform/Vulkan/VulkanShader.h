@@ -18,9 +18,12 @@ class VulkanShader final : public Shader
     explicit VulkanShader(const std::string_view shaderName);
     ~VulkanShader() override { Destroy(); }
 
+    void Set(const std::string_view name, const Shared<Buffer> buffer) final override;
+
     NODISCARD FORCEINLINE const auto& GetDescriptions() const { return m_ShaderDescriptions; }
     NODISCARD FORCEINLINE const std::vector<VkVertexInputAttributeDescription>& GetInputVars() const { return m_InputVars; }
 
+    // NOTE: Returns vector of descriptor sets for current frame
     const std::vector<VkDescriptorSet> GetDescriptorSetByShaderStage(const EShaderStage shaderStage);
     NODISCARD FORCEINLINE const std::vector<VkDescriptorSetLayout> GetDescriptorSetLayoutsByShaderStage(
         const EShaderStage shaderStage) const
@@ -48,7 +51,7 @@ class VulkanShader final : public Shader
         return result;
     }
 
-     void DestroyGarbageIfNeeded() final override;
+    void DestroyGarbageIfNeeded() final override;
 
   private:
     struct ShaderDescription

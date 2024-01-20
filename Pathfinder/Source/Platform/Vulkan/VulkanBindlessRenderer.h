@@ -22,10 +22,16 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     void LoadImage(const ImagePerFrame& images) final override;
     void LoadImage(const Shared<Image>& image) final override;
 
-    void FreeImage(uint32_t& imageIndex);
+    void LoadVertexPosBuffer(const Shared<Buffer>& buffer) final override;
+    void LoadVertexAttribBuffer(const Shared<Buffer>& buffer) final override;
+    void LoadMeshletBuffer(const Shared<Buffer>& buffer) final override;
+
+    void FreeImage(uint32_t& imageIndex) final override;
+    void FreeBuffer(uint32_t& bufferIndex) final override;
 
     NODISCARD FORCEINLINE const auto& GetTextureSetLayout() const { return m_TextureSetLayout; }
     NODISCARD FORCEINLINE const auto& GetImageSetLayout() const { return m_ImageSetLayout; }
+    NODISCARD FORCEINLINE const auto& GetStorageBufferSetLayout() const { return m_StorageBufferSetLayout; }
     NODISCARD FORCEINLINE const auto& GetCameraSetLayout() const { return m_CameraSetLayout; }
     NODISCARD FORCEINLINE const VkPushConstantRange& GetPushConstantBlock() const { return m_PCBlock; }
     NODISCARD FORCEINLINE const auto& GetPipelineLayout() const { return m_Layout; }
@@ -39,6 +45,10 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     VulkanDescriptorPoolPerFrame m_ImagePool;
     VulkanDescriptorSetPerFrame m_ImageSet;
 
+    VkDescriptorSetLayout m_StorageBufferSetLayout = VK_NULL_HANDLE;
+    VulkanDescriptorPoolPerFrame m_StorageBufferPool;
+    VulkanDescriptorSetPerFrame m_StorageBufferSet;
+
     VkDescriptorSetLayout m_CameraSetLayout = VK_NULL_HANDLE;
     VulkanDescriptorPoolPerFrame m_CameraPool;
     VulkanDescriptorSetPerFrame m_CameraSet;
@@ -49,6 +59,9 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     // TODO: Maybe it's better to hold an array of weak ptrs of images?
     std::vector<uint32_t> m_ImageIndicesPool;
     std::vector<uint32_t> m_FreeImageIndicesPool;
+
+    std::vector<uint32_t> m_StorageBufferIndicesPool;
+    std::vector<uint32_t> m_FreeStorageBufferIndicesPool;
 
     void CreateDescriptorPools();
     void Destroy() final override;

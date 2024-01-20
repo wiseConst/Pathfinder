@@ -290,9 +290,9 @@ void VulkanSwapchain::Invalidate()
                                     1);
 
         std::string debugName = "Swapchain image[" + std::to_string(i) + "]";
-        VK_SetDebugName(logicalDevice, (uint64_t)m_Images[i], VK_OBJECT_TYPE_IMAGE, debugName.data());
+        VK_SetDebugName(logicalDevice, &m_Images[i], VK_OBJECT_TYPE_IMAGE, debugName.data());
         debugName = "Swapchain image view[" + std::to_string(i) + "]";
-        VK_SetDebugName(logicalDevice, (uint64_t)m_ImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW, debugName.data());
+        VK_SetDebugName(logicalDevice, &m_ImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW, debugName.data());
     }
 
     m_ImageLayouts.resize(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
@@ -404,7 +404,7 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
 {
     auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
     vulkanCommandBuffer->BeginRecording(true);
-    vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain");
+    vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain", glm::vec3(0.9f, 0.1f, 0.1f));
 
     {
         const auto srcImageBarrier =

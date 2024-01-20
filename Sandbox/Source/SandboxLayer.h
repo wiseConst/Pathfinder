@@ -20,7 +20,7 @@ class SandboxLayer final : public Layer
     void OnUIRender() final override;
 
   private:
-    Shared<Mesh> m_Kitten   = nullptr;
+    Shared<Mesh> m_Dummy   = nullptr;
     Shared<Camera> m_Camera = nullptr;
 };
 

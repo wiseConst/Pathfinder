@@ -20,10 +20,16 @@ class VulkanPipeline final : public Pipeline
 
     FORCEINLINE void SetPolygonMode(const EPolygonMode polygonMode) final override { m_Specification.PolygonMode = polygonMode; }
 
+    NODISCARD FORCEINLINE VkShaderStageFlags GetPushConstantShaderStageByIndex(const uint32_t pushConstantIndex) const
+    {
+        return m_PushConstants[pushConstantIndex].stageFlags;
+    }
+
   private:
-    VkPipeline m_Handle       = VK_NULL_HANDLE;
-    VkPipelineLayout m_Layout = VK_NULL_HANDLE;
-    PipelineSpecification m_Specification={};
+    VkPipeline m_Handle                   = VK_NULL_HANDLE;
+    VkPipelineLayout m_Layout             = VK_NULL_HANDLE;
+    PipelineSpecification m_Specification = {};
+    std::vector<VkPushConstantRange> m_PushConstants;  // FIXME: Wasting memory, but convenient way to bind push constants
 
     void CreateLayout();
 

@@ -39,8 +39,9 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void EndRecording()                                                                     = 0;
 
     virtual void BindPipeline(Shared<Pipeline>& pipeline) const                                                           = 0;
-    virtual void BindPushConstants(Shared<Pipeline>& pipeline, const ShaderStageFlags shaderStageFlags, const uint32_t offset,
-                                   const uint32_t size, const void* data = nullptr) const                                 = 0;
+    virtual void BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const                           = 0;
+    virtual void BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
+                                   const void* data = nullptr) const                                                      = 0;
     FORCEINLINE virtual void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) = 0;
 
     FORCEINLINE virtual void DrawIndexed(const uint32_t indexCount, const uint32_t instanceCount = 1, const uint32_t firstIndex = 0,

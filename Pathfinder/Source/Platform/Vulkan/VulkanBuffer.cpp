@@ -5,6 +5,9 @@
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
 
+#include "Renderer/Renderer.h"
+#include "VulkanBindlessRenderer.h"
+
 namespace Pathfinder
 {
 
@@ -34,6 +37,17 @@ VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUs
     if (bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE)
         vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING) vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+
+    // RTX
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
+        vkBufferUsage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
+
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_STORAGE)
+        vkBufferUsage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
+
+    if (bufferUsage & EBufferUsage::BUFFER_TYPE_SHADER_BINDING_TABLE) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR;
 
     if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING &&
         (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX || bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX ||
@@ -186,6 +200,14 @@ void VulkanBuffer::Destroy()
     m_Handle = VK_NULL_HANDLE;
 
     m_DescriptorInfo = {};
+
+    if (m_Index != UINT32_MAX)
+    {
+        auto vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
+        PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
+
+        vulkanBR->FreeBuffer(m_Index);
+    }
 }
 
 }  // namespace Pathfinder

@@ -26,7 +26,7 @@ void Renderer::Init()
     PipelineBuilder::Init();
     s_BindlessRenderer = BindlessRenderer::Create();
 
-    ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "GBuffer", "Forward"});
+    ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "GBuffer", "Forward", "DepthPrePass"});
 
     std::ranges::for_each(s_RendererData->RenderCommandBuffer, [&](auto& commandBuffer)
                           { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS); });
@@ -37,8 +37,7 @@ void Renderer::Init()
     std::ranges::for_each(s_RendererData->CompositeFramebuffer,
                           [&](auto& framebuffer)
                           {
-                              FramebufferSpecification framebufferSpec = {};
-                              framebufferSpec.Name                     = "Composite";
+                              FramebufferSpecification framebufferSpec = {"Composite"};
 
                               framebufferSpec.Attachments = {
                                   {EImageFormat::FORMAT_RGBA8_UNORM /*EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32*/, ELoadOp::CLEAR,
@@ -49,8 +48,7 @@ void Renderer::Init()
     std::ranges::for_each(s_RendererData->GBuffer,
                           [&](auto& framebuffer)
                           {
-                              FramebufferSpecification framebufferSpec = {};
-                              framebufferSpec.Name                     = "GBuffer";
+                              FramebufferSpecification framebufferSpec = {"GBuffer"};
 
                               FramebufferAttachmentSpecification attachmentSpec = {};
                               attachmentSpec.LoadOp                             = ELoadOp::CLEAR;
@@ -109,29 +107,38 @@ void Renderer::Init()
     pathTracingPipelineSpec.bBindlessCompatible   = true;
     PipelineBuilder::Push(s_RendererData->PathtracingPipeline, pathTracingPipelineSpec);
 
-    // Fallback to default graphics pipeline
-    if (s_RendererSettings.bMeshShadingSupport)
-    {
-        ShaderLibrary::Load("ms");
-
-        PipelineSpecification testMeshShadingPipelineSpec = {};
-        testMeshShadingPipelineSpec.Shader                = ShaderLibrary::Get("ms");
-        testMeshShadingPipelineSpec.DebugName             = "TestMeshShading";
-        testMeshShadingPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
-        testMeshShadingPipelineSpec.bMeshShading          = true;
-        testMeshShadingPipelineSpec.TargetFramebuffer     = s_RendererData->CompositeFramebuffer;
-        PipelineBuilder::Push(s_RendererData->TestMeshShadingPipeline, testMeshShadingPipelineSpec);
-    }
-
     PipelineSpecification forwardPipelineSpec  = {};
     forwardPipelineSpec.Shader                 = ShaderLibrary::Get("Forward");
-    forwardPipelineSpec.DebugName              = "ForwardRendering";
+    forwardPipelineSpec.DebugName              = "Forward+";
     forwardPipelineSpec.PipelineType           = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     forwardPipelineSpec.bBindlessCompatible    = true;
     forwardPipelineSpec.bSeparateVertexBuffers = true;
-    //  forwardPipelineSpec.CullMode               = ECullMode::CULL_MODE_BACK;
-    forwardPipelineSpec.TargetFramebuffer = s_RendererData->CompositeFramebuffer;
+    forwardPipelineSpec.CullMode               = ECullMode::CULL_MODE_BACK;
+    forwardPipelineSpec.TargetFramebuffer      = s_RendererData->CompositeFramebuffer;
+    forwardPipelineSpec.bMeshShading           = s_RendererSettings.bMeshShadingSupport;
     PipelineBuilder::Push(s_RendererData->ForwardRenderingPipeline, forwardPipelineSpec);
+
+    std::ranges::for_each(
+        s_RendererData->DepthPrePassFramebuffer,
+        [&](auto& framebuffer)
+        {
+            FramebufferSpecification framebufferSpec = {};
+            framebufferSpec.Name                     = "DepthPrePass";
+
+            framebufferSpec.Attachments = {{EImageFormat::FORMAT_D32F, ELoadOp::CLEAR, EStoreOp::STORE, glm::vec4(1.0f), true}};
+            framebuffer                 = Framebuffer::Create(framebufferSpec);
+        });
+
+    PipelineSpecification depthPrePassPipelineSpec  = {};
+    depthPrePassPipelineSpec.Shader                 = ShaderLibrary::Get("DepthPrePass");
+    depthPrePassPipelineSpec.DebugName              = "DepthPrePass";
+    depthPrePassPipelineSpec.PipelineType           = EPipelineType::PIPELINE_TYPE_GRAPHICS;
+    depthPrePassPipelineSpec.bBindlessCompatible    = true;
+    depthPrePassPipelineSpec.bSeparateVertexBuffers = true;
+    depthPrePassPipelineSpec.CullMode               = ECullMode::CULL_MODE_BACK;
+    depthPrePassPipelineSpec.TargetFramebuffer      = s_RendererData->DepthPrePassFramebuffer;
+    depthPrePassPipelineSpec.bMeshShading           = s_RendererSettings.bMeshShadingSupport;
+    PipelineBuilder::Push(s_RendererData->DepthPrePassPipeline, depthPrePassPipelineSpec);
 
     std::ranges::for_each(s_RendererData->CameraUB,
                           [](Shared<Buffer>& cameraUB)
@@ -184,24 +191,6 @@ void Renderer::Flush()
 
     Renderer2D::Flush();
 
-    if (s_RendererSettings.bMeshShadingSupport)
-    {
-        /*     MESH SHADING TESTS       */
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(
-            s_RendererData->TestMeshShadingPipeline->GetSpecification().DebugName, glm::vec3(0.1f, 0.7f, 0.1f));
-        s_RendererData->CompositeFramebuffer[s_RendererData->FrameIndex]->BeginPass(
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->TestMeshShadingPipeline);
-
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(1, 1, 1);
-
-        s_RendererData->CompositeFramebuffer[s_RendererData->FrameIndex]->EndPass(
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
-        /*     MESH SHADING TESTS       */
-    }
-
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
 
@@ -214,7 +203,7 @@ void Renderer::Flush()
     s_RendererData->OpaqueObjects.clear();
     s_RendererData->TransparentObjects.clear();
 
-    // Application::Get().GetWindow()->CopyToWindow(s_RendererData->PathtracedImage[s_RendererData->FrameIndex]);
+    //  Application::Get().GetWindow()->CopyToWindow(s_RendererData->PathtracedImage[s_RendererData->FrameIndex]);
     Application::Get().GetWindow()->CopyToWindow(
         s_RendererData->CompositeFramebuffer[s_RendererData->FrameIndex]->GetAttachments()[0].Attachment);
 }
@@ -227,31 +216,31 @@ void Renderer::BeginScene(const Camera& camera)
 
     s_BindlessRenderer->UpdateCameraData(s_RendererData->CameraUB[s_RendererData->FrameIndex]);
 
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(
-        s_RendererData->PathtracingPipeline->GetSpecification().DebugName, glm::vec3(0.8f, 0.8f, 0.1f));
-    s_BindlessRenderer->Bind(s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex], false);
-
-    struct PC
+    /* PATHTRACING TESTS from vk_mini_path_tracer */
+    // if (s_RendererSettings.bRTXSupport)
     {
-        glm::mat4 Transform = glm::mat4(1.0f);
-        uint32_t img        = 0;
-        uint32_t tex        = 0;
-    } pc;
+        s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(
+            s_RendererData->PathtracingPipeline->GetSpecification().DebugName, glm::vec3(0.8f, 0.8f, 0.1f));
+        s_BindlessRenderer->Bind(s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex], false);
 
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->PathtracingPipeline);
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(
-        s_RendererData->PathtracingPipeline,
-        EShaderStage::SHADER_STAGE_COMPUTE | EShaderStage::SHADER_STAGE_FRAGMENT | EShaderStage::SHADER_STAGE_VERTEX, 0, sizeof(PC), &pc);
+        PCBlock pc           = {};
+        pc.StorageImageIndex = s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetBindlessIndex();
+        s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->PathtracingPipeline);
+        s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->PathtracingPipeline, 0, 0,
+                                                                                            sizeof(pc), &pc);
 
-    static constexpr uint32_t workgroup_width  = 16;
-    static constexpr uint32_t workgroup_height = 8;
+        static constexpr uint32_t workgroup_width  = 16;
+        static constexpr uint32_t workgroup_height = 8;
 
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Dispatch(
-        (s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetSpecification().Width + workgroup_width - 1) / workgroup_width,
-        (s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetSpecification().Height + workgroup_height - 1) / workgroup_height,
-        1);
+        s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Dispatch(
+            (s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetSpecification().Width + workgroup_width - 1) / workgroup_width,
+            (s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetSpecification().Height + workgroup_height - 1) /
+                workgroup_height,
+            1);
 
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+        s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+    }
+    /* PATHTRACING TESTS from vk_mini_path_tracer */
 }
 
 void Renderer::EndScene() {}
@@ -267,21 +256,42 @@ void Renderer::GeometryPass()
     s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->ForwardRenderingPipeline);
 
-    auto renderMeshFunc = [](const Shared<Mesh>& mesh)
+    auto renderMeshFunc = [&](const Shared<Submesh>& submesh)
     {
-        for (uint32_t i = 0; i < mesh->GetIndexBuffers().size(); ++i)
-        {
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindIndexBuffer(mesh->GetIndexBuffers()[0]);
+        PCBlock pc                 = {};
+        pc.Transform               = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
+        pc.VertexPosBufferIndex    = submesh->GetVertexPositionBuffer()->GetBindlessIndex();
+        pc.VertexAttribBufferIndex = submesh->GetVertexAttributeBuffer()->GetBindlessIndex();
 
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindShaderData(
+            s_RendererData->ForwardRenderingPipeline, s_RendererData->ForwardRenderingPipeline->GetSpecification().Shader);
+
+        if (s_RendererSettings.bMeshShadingSupport)
+        {
+            pc.MeshletBufferIndex = submesh->GetMeshletBuffer()->GetBindlessIndex();
+
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ForwardRenderingPipeline, 0,
+                                                                                               0, sizeof(pc), &pc);
+            /*static constexpr uint32_t workgroup_width = 32;
+            const uint32_t groupCountX                = (meshletCount + workgroup_width - 1) / workgroup_width;*/
+            const uint32_t meshletCount = submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(meshletCount, 1, 1);
+
+            s_RendererStats.MeshletCount += meshletCount;
+        }
+        else
+        {
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ForwardRenderingPipeline, 0,
+                                                                                               0, sizeof(pc), &pc);
             const uint64_t offsets[2] = {0, 0};
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindVertexBuffers(
-                std::vector<Shared<Buffer>>{mesh->GetVertexPositionBuffers()[i], mesh->GetVertexAttributeBuffers()[i]}, 0, 2, offsets);
+                std::vector<Shared<Buffer>>{submesh->GetVertexPositionBuffer(), submesh->GetVertexAttributeBuffer()}, 0, 2, offsets);
 
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindIndexBuffer(submesh->GetIndexBuffer());
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawIndexed(
-                mesh->GetIndexBuffers()[0]->GetSpecification().BufferCapacity / sizeof(uint32_t));
-
-            s_RendererStats.TriangleCount += mesh->GetIndexBuffers()[0]->GetSpecification().BufferCapacity / sizeof(uint32_t);
+                submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t));
         }
+        s_RendererStats.TriangleCount += submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t);
     };
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
@@ -305,10 +315,13 @@ void Renderer::GeometryPass()
 
 void Renderer::SubmitMesh(const Shared<Mesh>& mesh)
 {
-    if (mesh->IsOpaque()[0])
-        s_RendererData->OpaqueObjects.emplace_back(mesh);
-    else
-        s_RendererData->TransparentObjects.emplace_back(mesh);
+    for (auto& submesh : mesh->GetSubmeshes())
+    {
+        if (submesh->IsOpaque())
+            s_RendererData->OpaqueObjects.emplace_back(submesh);
+        else
+            s_RendererData->TransparentObjects.emplace_back(submesh);
+    }
 }
 
 }  // namespace Pathfinder

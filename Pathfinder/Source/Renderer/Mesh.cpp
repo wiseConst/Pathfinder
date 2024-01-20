@@ -3,10 +3,13 @@
 
 #include "Buffer.h"
 #include "RendererCoreDefines.h"
+#include "Renderer.h"
+#include "BindlessRenderer.h"
 
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/parser.hpp>
 #include <fastgltf/tools.hpp>
+
 #include <meshoptimizer.h>
 
 namespace Pathfinder
@@ -80,56 +83,67 @@ Shared<Mesh> Mesh::Create(const std::string& meshPath)
 
 void Mesh::Destroy()
 {
-    m_VertexPositionBuffers.clear();
-    m_VertexPositionBuffers.clear();
-    m_IndexBuffers.clear();
+    m_Submeshes.clear();
 }
 
 // TODO: Sort out why would I need byteOffset/byteStride in accessor
-void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& submesh)
+void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLTFsubmesh)
 {
-    for (const auto& p : submesh.primitives)
+    for (const auto& p : GLTFsubmesh.primitives)
     {
         const auto positionIt = p.findAttribute("POSITION");
         PFR_ASSERT(positionIt != p.attributes.end(), "Mesh doesn't contain positions?!");
         PFR_ASSERT(p.indicesAccessor.has_value(), "Non-indexed geometry is not supported!");
 
+        auto& submesh = m_Submeshes.emplace_back(MakeShared<Submesh>());
+
         // INDICES
+        const auto& indicesAccessor = asset.accessors[p.indicesAccessor.value()];  // out of scope cuz needed for meshlets
+        std::vector<uint32_t> indices(indicesAccessor.count);
         {
-            const auto& indicesAccessor = asset.accessors[p.indicesAccessor.value()];
-            std::vector<uint32_t> indices(indicesAccessor.count);
             fastgltf::iterateAccessorWithIndex<std::uint32_t>(asset, indicesAccessor,
                                                               [&](uint32_t index, std::size_t idx) { indices[idx] = index; });
 
             BufferSpecification ibSpec = {};
-            ibSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_INDEX;
+            ibSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_INDEX | EBufferUsage::BUFFER_TYPE_STORAGE;
             ibSpec.Data                = indices.data();
             ibSpec.DataSize            = indices.size() * sizeof(indices[0]);
+            if (Renderer::GetRendererSettings().bRTXSupport)
+            {
+                ibSpec.BufferUsage |= EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY |
+                                      EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS;
+            }
 
-            m_IndexBuffers.emplace_back(Buffer::Create(ibSpec));
+            submesh->m_IndexBuffer = Buffer::Create(ibSpec);
         }
 
         // POSITION
+        const auto& positionAccessor = asset.accessors[positionIt->second];  // out of scope cuz needed for meshlets
+        std::vector<MeshPositionVertex> vertices(positionAccessor.count);
         {
-            const auto& positionAccessor = asset.accessors[positionIt->second];
             PFR_ASSERT(positionAccessor.type == fastgltf::AccessorType::Vec3, "Positions can only contain vec3!");
 
             const auto& bufferView = asset.bufferViews[positionAccessor.bufferViewIndex.value()];
             const auto& bufferData = asset.buffers[bufferView.bufferIndex].data;
             PFR_ASSERT(std::holds_alternative<fastgltf::sources::Vector>(bufferData), "Only vector parsing support for now!");
 
-            std::vector<MeshVertexPosition> vertices(positionAccessor.count);
             fastgltf::iterateAccessorWithIndex<glm::vec3>(
                 asset, positionAccessor, [&](const glm::vec3& position, std::size_t idx) { vertices[idx].Position = position; });
 
-            BufferSpecification vbSpec = {};
-            vbSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_VERTEX;
-            vbSpec.Data                = vertices.data();
-            vbSpec.DataSize            = vertices.size() * sizeof(vertices[0]);
-            m_VertexPositionBuffers.emplace_back(Buffer::Create(vbSpec));
+            BufferSpecification vbPosSpec = {};
+            vbPosSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_VERTEX | EBufferUsage::BUFFER_TYPE_STORAGE;
+            vbPosSpec.Data                = vertices.data();
+            vbPosSpec.DataSize            = vertices.size() * sizeof(vertices[0]);
+            if (Renderer::GetRendererSettings().bRTXSupport)
+            {
+                vbPosSpec.BufferUsage |= EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY |
+                                         EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS;
+            }
+
+            submesh->m_VertexPositionBuffer = Buffer::Create(vbPosSpec);
         }
 
-        std::vector<MeshVertex> vertexAttributes(asset.accessors[positionIt->second].count);
+        std::vector<MeshAttributeVertex> vertexAttributes(asset.accessors[positionIt->second].count);
         // NORMAL
         {
             const auto& normalIt = p.findAttribute("NORMAL");
@@ -185,15 +199,115 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& sub
                                                   materialAccessor.pbrData.baseColorFactor[2], materialAccessor.pbrData.baseColorFactor[3]);
             }
 
-            m_bIsOpaque.emplace_back(materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque);
+            submesh->m_bIsOpaque = materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque;
         }
 
-        BufferSpecification vbSpec = {};
-        vbSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_VERTEX;
-        vbSpec.Data                = vertexAttributes.data();
-        vbSpec.DataSize            = vertexAttributes.size() * sizeof(vertexAttributes[0]);
+        BufferSpecification vbAttribSpec = {};
+        vbAttribSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_VERTEX | EBufferUsage::BUFFER_TYPE_STORAGE;
+        vbAttribSpec.Data                = vertexAttributes.data();
+        vbAttribSpec.DataSize            = vertexAttributes.size() * sizeof(vertexAttributes[0]);
+        if (Renderer::GetRendererSettings().bRTXSupport)
+        {
+            vbAttribSpec.BufferUsage |=
+                EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS;
+        }
 
-        m_VertexAttributeBuffers.emplace_back(Buffer::Create(vbSpec));
+        submesh->m_VertexAttributeBuffer = Buffer::Create(vbAttribSpec);
+
+        if (Renderer::GetRendererSettings().bRTXSupport)
+        {
+            // TODO:
+        }
+
+        if (!Renderer::GetRendererSettings().bMeshShadingSupport) continue;
+
+        // Simple meshlet building from zeux stream
+        std::vector<Meshlet> meshlets;
+        Meshlet meshlet = {};
+        std::vector<uint8_t> meshletVertices(vertices.size(), UINT8_MAX);
+        for (size_t i = 0; i < indices.size(); i += 3)
+        {
+            uint32_t a = indices[i + 0];
+            uint32_t b = indices[i + 1];
+            uint32_t c = indices[i + 2];
+
+            uint8_t& av = meshletVertices[a];
+            uint8_t& bv = meshletVertices[b];
+            uint8_t& cv = meshletVertices[c];
+
+            // 1 meshlet can store max 64 vertices, so if we exceeding the limit we do flush
+            if (meshlet.vertexCount + (av == UINT8_MAX) + (bv == UINT8_MAX) + (cv == UINT8_MAX) > 64 || meshlet.indexCount + 3 > 126)
+            {
+                meshlets.emplace_back(meshlet);
+                meshlet = {};
+                memset(meshletVertices.data(), UINT8_MAX, meshletVertices.size() * sizeof(meshletVertices[0]));
+            }
+
+            if (av == UINT8_MAX)
+            {
+                av                                    = meshlet.vertexCount;
+                meshlet.vertices[meshlet.vertexCount] = a;
+                ++meshlet.vertexCount;
+            }
+
+            if (bv == UINT8_MAX)
+            {
+                bv                                    = meshlet.vertexCount;
+                meshlet.vertices[meshlet.vertexCount] = b;
+                ++meshlet.vertexCount;
+            }
+
+            if (cv == UINT8_MAX)
+            {
+                cv                                    = meshlet.vertexCount;
+                meshlet.vertices[meshlet.vertexCount] = c;
+                ++meshlet.vertexCount;
+            }
+
+            meshlet.indices[meshlet.indexCount++] = av;
+            meshlet.indices[meshlet.indexCount++] = bv;
+            meshlet.indices[meshlet.indexCount++] = cv;
+        }
+
+        if (meshlet.indexCount > 0)
+        {
+            meshlets.emplace_back(meshlet);
+            meshlet = {};
+            memset(meshletVertices.data(), UINT8_MAX, meshletVertices.size() * sizeof(meshletVertices[0]));
+        }
+
+        BufferSpecification mbSpec = {};
+        mbSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_STORAGE;
+        mbSpec.Data                = meshlets.data();
+        mbSpec.DataSize            = meshlets.size() * sizeof(meshlets[0]);
+
+        submesh->m_MeshletBuffer = Buffer::Create(mbSpec);
+    }
+
+    // Load buffers into bindless system
+    const auto& br = Renderer::GetBindlessRenderer();
+    for (auto& submesh : m_Submeshes)
+    {
+        if (submesh->m_VertexPositionBuffer) br->LoadVertexPosBuffer(submesh->m_VertexPositionBuffer);
+
+        if (submesh->m_VertexAttributeBuffer) br->LoadVertexAttribBuffer(submesh->m_VertexAttributeBuffer);
+
+        if (Renderer::GetRendererSettings().bMeshShadingSupport && submesh->m_MeshletBuffer)
+            br->LoadMeshletBuffer(submesh->m_MeshletBuffer);
     }
 }
+
+void Submesh::Destroy()
+{
+    // NOTE: Remove it, d-tor handles it
+    m_VertexPositionBuffer.reset();
+    m_VertexPositionBuffer.reset();
+    m_IndexBuffer.reset();
+
+    if (Renderer::GetRendererSettings().bMeshShadingSupport)
+    {
+        m_MeshletBuffer.reset();
+    }
+}
+
 }  // namespace Pathfinder

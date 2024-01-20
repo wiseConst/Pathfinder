@@ -8,14 +8,14 @@ layout(location = 0) out vec4 outFragColor;
 
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/ShaderDefines.h"
+#include "Assets/Shaders/Include/Globals.glslh"
 
 void main()
 {
     // TODO: Remove it when u implement samplers and textures
-    if(u_PC.TextureIndex != 0)
+    if(u_PC.AlbedoTextureIndex != 0)
     {
-         outFragColor = texture(u_GlobalTextures[nonuniformEXT(u_PC.TextureIndex)], inUV) * inColor;
+         outFragColor = texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], inUV) * inColor;
     } 
     
     outFragColor = inColor;

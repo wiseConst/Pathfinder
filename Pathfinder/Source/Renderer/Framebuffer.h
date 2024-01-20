@@ -40,16 +40,15 @@ struct FramebufferAttachment
 
 struct FramebufferSpecification
 {
-    std::vector<FramebufferAttachmentSpecification> Attachments;
-    std::vector<FramebufferAttachment> ExistingAttachments;
-
-    // These are in case you have existing attachments
-    ELoadOp LoadOp   = ELoadOp::CLEAR;
-    EStoreOp StoreOp = EStoreOp::STORE;
-
+    std::string Name = "None";
     uint32_t Width   = 1280;
     uint32_t Height  = 720;
-    std::string Name = "None";
+
+    std::vector<FramebufferAttachmentSpecification> Attachments;
+
+    std::vector<FramebufferAttachment> ExistingAttachments;
+    ELoadOp LoadOp   = ELoadOp::CLEAR;
+    EStoreOp StoreOp = EStoreOp::STORE;
 };
 
 class Framebuffer : private Uncopyable, private Unmovable

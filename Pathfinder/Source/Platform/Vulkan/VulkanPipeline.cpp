@@ -88,6 +88,7 @@ void VulkanPipeline::CreateLayout()
 
         setLayouts.push_back(vulkanBR->GetTextureSetLayout());
         setLayouts.push_back(vulkanBR->GetImageSetLayout());
+        setLayouts.push_back(vulkanBR->GetStorageBufferSetLayout());
         setLayouts.push_back(vulkanBR->GetCameraSetLayout());
 
         pushConstants.push_back(vulkanBR->GetPushConstantBlock());
@@ -176,6 +177,8 @@ void VulkanPipeline::CreateLayout()
             break;
         }
     }
+
+    appendVecFunc(m_PushConstants, pushConstants);
 
     // TODO: Add layouts from shader
     layoutCI.pSetLayouts    = setLayouts.data();
@@ -342,42 +345,45 @@ void VulkanPipeline::Invalidate()
             std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
             std::vector<VkVertexInputBindingDescription> inputBindings(m_Specification.bSeparateVertexBuffers ? 2 : 1);
 
-            // In shader I do sort by locations(guarantee that position is first) so, it's OK to separate like that.
-            bool bSeparatedVertexBuffers = false;
-            for (auto& inputVar : inputVars)
+            if (!m_Specification.bMeshShading)
             {
-                if (m_Specification.bSeparateVertexBuffers && !bSeparatedVertexBuffers)
+                // In shader I do sort by locations(guarantee that position is first) so, it's OK to separate like that.
+                bool bSeparatedVertexBuffers = false;
+                for (auto& inputVar : inputVars)
                 {
-                    inputBindings[0].binding   = 0;
-                    inputBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-                    inputBindings[0].stride    = VulkanUtility::GetTypeSizeFromVulkanFormat(inputVar.format);
+                    if (m_Specification.bSeparateVertexBuffers && !bSeparatedVertexBuffers)
+                    {
+                        inputBindings[0].binding   = 0;
+                        inputBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                        inputBindings[0].stride    = VulkanUtility::GetTypeSizeFromVulkanFormat(inputVar.format);
 
-                    vertexAttributeDescriptions.emplace_back(0, 0, inputVar.format, 0);
+                        vertexAttributeDescriptions.emplace_back(0, 0, inputVar.format, 0);
 
-                    bSeparatedVertexBuffers = true;
-                    continue;
+                        bSeparatedVertexBuffers = true;
+                        continue;
+                    }
+
+                    const uint32_t nextBindingIndex           = m_Specification.bSeparateVertexBuffers ? 1 : 0;
+                    inputBindings[nextBindingIndex].binding   = nextBindingIndex;
+                    inputBindings[nextBindingIndex].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+                    auto& vertexAttribute    = vertexAttributeDescriptions.emplace_back();
+                    vertexAttribute.binding  = nextBindingIndex;
+                    vertexAttribute.format   = inputVar.format;
+                    vertexAttribute.location = vertexAttributeDescriptions.size() - 1;
+                    vertexAttribute.offset   = inputBindings[nextBindingIndex].stride;
+
+                    inputBindings[nextBindingIndex].stride += VulkanUtility::GetTypeSizeFromVulkanFormat(inputVar.format);
                 }
 
-                const uint32_t nextBindingIndex           = m_Specification.bSeparateVertexBuffers ? 1 : 0;
-                inputBindings[nextBindingIndex].binding   = nextBindingIndex;
-                inputBindings[nextBindingIndex].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributeDescriptions.size());
+                vertexInputState.pVertexAttributeDescriptions    = vertexAttributeDescriptions.data();
 
-                auto& vertexAttribute    = vertexAttributeDescriptions.emplace_back();
-                vertexAttribute.binding  = nextBindingIndex;
-                vertexAttribute.format   = inputVar.format;
-                vertexAttribute.location = vertexAttributeDescriptions.size() - 1;
-                vertexAttribute.offset   = inputBindings[nextBindingIndex].stride;
-
-                inputBindings[nextBindingIndex].stride += VulkanUtility::GetTypeSizeFromVulkanFormat(inputVar.format);
-            }
-
-            vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributeDescriptions.size());
-            vertexInputState.pVertexAttributeDescriptions    = vertexAttributeDescriptions.data();
-
-            if (!inputVars.empty())
-            {
-                vertexInputState.vertexBindingDescriptionCount = static_cast<uint32_t>(inputBindings.size());
-                vertexInputState.pVertexBindingDescriptions    = inputBindings.data();
+                if (!inputVars.empty())
+                {
+                    vertexInputState.vertexBindingDescriptionCount = static_cast<uint32_t>(inputBindings.size());
+                    vertexInputState.pVertexBindingDescriptions    = inputBindings.data();
+                }
             }
 
             // TessellationState
@@ -554,7 +560,7 @@ void VulkanPipeline::Invalidate()
         default: PFR_ASSERT(false, "Unknown pipeline type!"); break;
     }
 
-    VK_SetDebugName(logicalDevice, (uint64_t)m_Handle, VK_OBJECT_TYPE_PIPELINE, m_Specification.DebugName.data());
+    VK_SetDebugName(logicalDevice, &m_Handle, VK_OBJECT_TYPE_PIPELINE, m_Specification.DebugName.data());
     SavePipelineCache(pipelineCache, m_Specification.DebugName);
 }
 

@@ -48,6 +48,11 @@ VulkanDevice::VulkanDevice(const VkInstance& instance)
 
     m_VMA = MakeUnique<VulkanAllocator>(m_GPUInfo.LogicalDevice, m_GPUInfo.PhysicalDevice);
     m_VDA = MakeUnique<VulkanDescriptorAllocator>(m_GPUInfo.LogicalDevice);
+
+    const std::string logicalDeviceDebugName("[LogicalDevice]:" + std::string(m_GPUInfo.GPUProperties.deviceName));
+    VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.LogicalDevice, VK_OBJECT_TYPE_DEVICE, logicalDeviceDebugName.data());
+    const std::string physicalDeviceDebugName("[PhysicalDevice]:" + std::string(m_GPUInfo.GPUProperties.deviceName));
+    VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.PhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE, physicalDeviceDebugName.data());
 }
 
 void VulkanDevice::CreateCommandPools()
@@ -69,21 +74,19 @@ void VulkanDevice::CreateCommandPools()
         VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &graphicsCommandPoolCreateInfo, nullptr, &m_GPUInfo.GraphicsCommandPools[i]),
                  "Failed to create graphics command pool!");
         const std::string graphicsCommandPoolDebugName = "GRAPHICS_COMMAND_POOL_" + std::to_string(i);
-        VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.GraphicsCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.GraphicsCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
                         graphicsCommandPoolDebugName.data());
 
         VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &computeCommandPoolCreateInfo, nullptr, &m_GPUInfo.ComputeCommandPools[i]),
                  "Failed to create compute command pool!");
-
         const std::string computeCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL_" + std::to_string(i);
-        VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.ComputeCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.ComputeCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
                         computeCommandPoolDebugName.data());
 
         VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &transferCommandPoolCreateInfo, nullptr, &m_GPUInfo.TransferCommandPools[i]),
                  "Failed to create transfer command pool!");
-
-        const std::string transferCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL_" + std::to_string(i);
-        VK_SetDebugName(m_GPUInfo.LogicalDevice, (uint64_t)m_GPUInfo.TransferCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+        const std::string transferCommandPoolDebugName = "ASYNC_TRANSFER_COMMAND_POOL_" + std::to_string(i);
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.TransferCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
                         transferCommandPoolDebugName.data());
     }
 }
@@ -108,16 +111,10 @@ VulkanDevice::~VulkanDevice()
 void VulkanDevice::PickPhysicalDevice(const VkInstance& instance)
 {
     uint32_t GPUsCount = 0;
-    {
-        const auto result = vkEnumeratePhysicalDevices(instance, &GPUsCount, nullptr);
-        PFR_ASSERT(result == VK_SUCCESS && GPUsCount > 0, "Failed to retrieve gpu count.");
-    }
+    VK_CHECK(vkEnumeratePhysicalDevices(instance, &GPUsCount, nullptr), "Failed to retrieve gpu count.");
 
     std::vector<VkPhysicalDevice> physicalDevices(GPUsCount);
-    {
-        const auto result = vkEnumeratePhysicalDevices(instance, &GPUsCount, physicalDevices.data());
-        PFR_ASSERT(result == VK_SUCCESS && GPUsCount > 0, "Failed to retrieve gpu count.");
-    }
+    VK_CHECK(vkEnumeratePhysicalDevices(instance, &GPUsCount, physicalDevices.data()), "Failed to retrieve gpus.");
 
 #if VK_LOG_INFO
     LOG_INFO("Available GPUs: %u", GPUsCount);
@@ -126,8 +123,7 @@ void VulkanDevice::PickPhysicalDevice(const VkInstance& instance)
     std::multimap<uint32_t, GPUInfo> candidates;
     for (const auto& physicalDevice : physicalDevices)
     {
-        GPUInfo currentGPU        = {};
-        currentGPU.PhysicalDevice = physicalDevice;
+        GPUInfo currentGPU = {VK_NULL_HANDLE, physicalDevice};
 
         candidates.insert(std::make_pair(RateDeviceSuitability(currentGPU), currentGPU));
     }
@@ -144,14 +140,12 @@ void VulkanDevice::PickPhysicalDevice(const VkInstance& instance)
 
 void VulkanDevice::CreateLogicalDevice()
 {
+    const float QueuePriority                             = 1.0f;  // [0.0, 1.0]
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos = {};
-    for (const std::set<uint32_t> uniqueQueueFamilies{
-             m_GPUInfo.QueueFamilyIndices.GraphicsFamily, m_GPUInfo.QueueFamilyIndices.PresentFamily,
-             m_GPUInfo.QueueFamilyIndices.TransferFamily, m_GPUInfo.QueueFamilyIndices.ComputeFamily};
-         const auto queueFamily : uniqueQueueFamilies)
+    const std::set<uint32_t> uniqueQueueFamilies{m_GPUInfo.QueueFamilyIndices.GraphicsFamily, m_GPUInfo.QueueFamilyIndices.PresentFamily,
+                                                 m_GPUInfo.QueueFamilyIndices.TransferFamily, m_GPUInfo.QueueFamilyIndices.ComputeFamily};
+    for (const auto queueFamily : uniqueQueueFamilies)
     {
-        const float QueuePriority = 1.0f;  // [0.0, 1.0]
-
         queueCreateInfos.emplace_back(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0, queueFamily, 1, &QueuePriority);
     }
 
@@ -168,6 +162,7 @@ void VulkanDevice::CreateLogicalDevice()
     VkPhysicalDeviceVulkan12Features vulkan12Features          = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     vulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;  // AMD issues
     vulkan12Features.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
+    vulkan12Features.storageBuffer8BitAccess                   = VK_TRUE;
 
     // Bindless
     vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
@@ -179,9 +174,10 @@ void VulkanDevice::CreateLogicalDevice()
     vulkan12Features.descriptorBindingStorageImageUpdateAfterBind  = VK_TRUE;
     vulkan12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
 
-    // Shader type aligment
+    // Shader type alignment
     vulkan12Features.scalarBlockLayout = VK_TRUE;
-    // vulkan12Features.bufferDeviceAddress = VK_TRUE;
+
+    if (m_GPUInfo.bBDASupport && VK_BDA) vulkan12Features.bufferDeviceAddress = VK_TRUE;
 
     *ppNext = &vulkan12Features;
     ppNext  = &vulkan12Features.pNext;
@@ -205,29 +201,29 @@ void VulkanDevice::CreateLogicalDevice()
     *ppNext = &extendedDynamicState3FeaturesEXT;
     ppNext  = &extendedDynamicState3FeaturesEXT.pNext;
 
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRayTracingPipelineFeatures = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccelerationStructureFeatures = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
     if (m_GPUInfo.bRTXSupport && VK_RTX)
     {
-        VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRayTracingPipelineFeatures = {
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
         enabledRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
 
         *ppNext = &enabledRayTracingPipelineFeatures;
         ppNext  = &enabledRayTracingPipelineFeatures.pNext;
 
-        VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccelerationStructureFeatures = {
-            VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
         enabledAccelerationStructureFeatures.accelerationStructure = VK_TRUE;
 
         *ppNext = &enabledAccelerationStructureFeatures;
         ppNext  = &enabledAccelerationStructureFeatures.pNext;
     }
 
+    VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
     if (m_GPUInfo.bMeshShaderSupport && VK_MESH_SHADING)
     {
-        VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
-        meshShaderFeaturesEXT.meshShaderQueries                     = VK_TRUE;
-        meshShaderFeaturesEXT.meshShader                            = VK_TRUE;
-        meshShaderFeaturesEXT.taskShader                            = VK_TRUE;
+        meshShaderFeaturesEXT.meshShaderQueries = VK_TRUE;
+        meshShaderFeaturesEXT.meshShader        = VK_TRUE;
+        meshShaderFeaturesEXT.taskShader        = VK_TRUE;
 
         *ppNext = &meshShaderFeaturesEXT;
         ppNext  = &meshShaderFeaturesEXT.pNext;
@@ -246,7 +242,6 @@ void VulkanDevice::CreateLogicalDevice()
 
     std::vector<const char*> deviceExtensions;
     deviceExtensions.reserve(s_DeviceExtensions.size());
-
     for (size_t i = 0; i < s_DeviceExtensions.size(); ++i)
     {
         bool bSupportedExtension = true;
@@ -264,15 +259,19 @@ void VulkanDevice::CreateLogicalDevice()
                 bSupportedExtension = false;
         }
 
+        if (!m_GPUInfo.bBDASupport)
+        {
+            if (strcmp(s_DeviceExtensions[i], VK_KHR_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == 0) bSupportedExtension = false;
+        }
+
         if (bSupportedExtension) deviceExtensions.emplace_back(s_DeviceExtensions[i]);
     }
 
     deviceExtensions.shrink_to_fit();
     deviceCI.enabledExtensionCount   = static_cast<uint32_t>(deviceExtensions.size());
     deviceCI.ppEnabledExtensionNames = deviceExtensions.data();
-
-    PFR_ASSERT(vkCreateDevice(m_GPUInfo.PhysicalDevice, &deviceCI, nullptr, &m_GPUInfo.LogicalDevice) == VK_SUCCESS,
-               "Failed to create vulkan logical device && queues!");
+    VK_CHECK(vkCreateDevice(m_GPUInfo.PhysicalDevice, &deviceCI, nullptr, &m_GPUInfo.LogicalDevice),
+             "Failed to create vulkan logical device && queues!");
     volkLoadDevice(m_GPUInfo.LogicalDevice);
 
     vkGetDeviceQueue(m_GPUInfo.LogicalDevice, m_GPUInfo.QueueFamilyIndices.GraphicsFamily, 0, &m_GPUInfo.GraphicsQueue);
@@ -487,7 +486,7 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
     if (gpuInfo.SupportedDepthStencilFormats.empty() || !bRequiredDeviceExtensionsSupported) return false;
 
     gpuInfo.QueueFamilyIndices = QueueFamilyIndices::FindQueueFamilyIndices(gpuInfo.PhysicalDevice);
-    if /*constexpr*/ (VK_PREFER_IGPU && gpuInfo.GPUProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) return false;
+    if (VK_PREFER_IGPU && gpuInfo.GPUProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) return false;
 
     PFR_ASSERT(gpuInfo.GPUProperties.limits.maxSamplerAnisotropy > 0, "GPU has not valid Max Sampler Anisotropy!");
     return gpuInfo.GPUFeatures.samplerAnisotropy && gpuInfo.GPUFeatures.geometryShader;
@@ -496,13 +495,12 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
 bool VulkanDevice::CheckDeviceExtensionSupport(GPUInfo& gpuInfo)
 {
     uint32_t extensionCount = 0;
-    PFR_ASSERT(vkEnumerateDeviceExtensionProperties(gpuInfo.PhysicalDevice, nullptr, &extensionCount, nullptr) == VK_SUCCESS,
-               "Failed to retrieve available device extensions!");
+    VK_CHECK(vkEnumerateDeviceExtensionProperties(gpuInfo.PhysicalDevice, nullptr, &extensionCount, nullptr),
+             "Failed to retrieve available device extensions!");
 
     std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-    PFR_ASSERT(vkEnumerateDeviceExtensionProperties(gpuInfo.PhysicalDevice, nullptr, &extensionCount, availableExtensions.data()) ==
-                   VK_SUCCESS,
-               "Failed to retrieve available device extensions!");
+    VK_CHECK(vkEnumerateDeviceExtensionProperties(gpuInfo.PhysicalDevice, nullptr, &extensionCount, availableExtensions.data()),
+             "Failed to retrieve available device extensions!");
 
 #if VK_LOG_INFO
     for (const auto& [extensionName, specVersion] : availableExtensions)
@@ -524,17 +522,24 @@ bool VulkanDevice::CheckDeviceExtensionSupport(GPUInfo& gpuInfo)
             }
         }
 
-        if (strcmp(requestedExt, VK_EXT_MESH_SHADER_EXTENSION_NAME) == 0)
+        if (!bIsSupported && strcmp(requestedExt, VK_EXT_MESH_SHADER_EXTENSION_NAME) == 0)
         {
             gpuInfo.bMeshShaderSupport = false;
             continue;
         }
 
-        if (strcmp(requestedExt, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0 ||
-            strcmp(requestedExt, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) == 0 ||
-            strcmp(requestedExt, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0)
+        if (!bIsSupported && (strcmp(requestedExt, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0 ||
+                              strcmp(requestedExt, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) == 0 ||
+                              strcmp(requestedExt, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0))
         {
             gpuInfo.bRTXSupport = false;
+            continue;
+        }
+
+        if (!bIsSupported && strcmp(requestedExt, VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME) == 0)
+        {
+            gpuInfo.bBDASupport = false;
+            continue;
         }
 
         if (!bIsSupported)

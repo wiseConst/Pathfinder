@@ -1,7 +1,8 @@
 #version 460
 
+#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/ShaderDefines.h"
+#include "Assets/Shaders/Include/Globals.glslh"
 
 #if DEBUG_PRINTF
 #extension GL_EXT_debug_printf : require
@@ -17,7 +18,7 @@ void main()
     debugPrintfEXT("Hello from invocation (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     #endif
 
-    const uvec2 resolution = imageSize(u_GlobalImages_RGBA8[u_PC.ImageIndex]);
+    const uvec2 resolution = imageSize(u_GlobalImages_RGBA8[u_PC.StorageImageIndex]);
     const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     if ((pixel.x >= resolution.x) || (pixel.y >= resolution.y))
     {
@@ -28,5 +29,5 @@ void main()
     }
 
     const vec4 pixelColor = vec4(float(pixel.x) / resolution.x, float(pixel.y) / resolution.y, 0.0, 0.0);
-    imageStore(u_GlobalImages_RGBA8[u_PC.ImageIndex], pixel, pixelColor);
+    imageStore(u_GlobalImages_RGBA8[nonuniformEXT(u_PC.StorageImageIndex)], pixel, pixelColor);
 }

@@ -59,7 +59,8 @@ class VulkanCommandBuffer final : public CommandBuffer
                              bufferMemoryBarrierCount, pBufferMemoryBarriers, imageMemoryBarrierCount, pImageMemoryBarriers);
     }
 
-    void BindPushConstants(Shared<Pipeline>& pipeline, const ShaderStageFlags shaderStageFlags, const uint32_t offset, const uint32_t size,
+    void BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const final override;
+    void BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
                            const void* data = nullptr) const final override;
     void BindDescriptorSets(Shared<VulkanPipeline>& pipeline, const uint32_t firstSet = 0, const uint32_t descriptorSetCount = 0,
                             VkDescriptorSet* descriptorSets = VK_NULL_HANDLE, const uint32_t dynamicOffsetCount = 0,
@@ -117,7 +118,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     FORCEINLINE void BuildAccelerationStructure(uint32_t infoCount, const VkAccelerationStructureBuildGeometryInfoKHR* infos,
-                                                const VkAccelerationStructureBuildRangeInfoKHR* const* buildRangeInfos)
+                                                const VkAccelerationStructureBuildRangeInfoKHR* const* buildRangeInfos) const 
     {
         vkCmdBuildAccelerationStructuresKHR(m_Handle, infoCount, infos, buildRangeInfos);
     }

@@ -12,7 +12,7 @@ namespace Pathfinder
 
 static constexpr uint16_t s_SHADER_EXTENSIONS_SIZE                                                = 13;
 static constexpr std::array<const std::string_view, s_SHADER_EXTENSIONS_SIZE> s_SHADER_EXTENSIONS = {
-    ".vert", ".tesc", ".tese", ".geom", ".frag", ".comp", ".rmiss", ".rgen", ".rchit", ".rahit", ".rcall", ".mesh", ".task"};
+    ".vert", ".tesc", ".tese", ".geom", ".frag", ".mesh", ".task", ".comp", ".rmiss", ".rgen", ".rchit", ".rahit", ".rcall"};
 
 enum EShaderStage : uint32_t
 {
@@ -48,10 +48,17 @@ class GLSLShaderIncluder final : public shaderc::CompileOptions::IncluderInterfa
     ~GLSLShaderIncluder() override = default;
 };
 
+class Buffer;
+class Image;
+class Texture2D;
+class TextureCube;
+
 class Shader : private Uncopyable, private Unmovable
 {
   public:
     virtual ~Shader() = default;
+
+    virtual void Set(const std::string_view name, const Shared<Buffer> buffer) = 0;
 
     NODISCARD static Shared<Shader> Create(const std::string_view shaderName);
     virtual void DestroyGarbageIfNeeded() = 0;

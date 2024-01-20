@@ -34,7 +34,7 @@ void VulkanContext::CreateInstance()
 
     uint32_t supportedApiVersionFromDLL = 0;
     {
-        PFR_ASSERT(vkEnumerateInstanceVersion(&supportedApiVersionFromDLL) == VK_SUCCESS, "Failed to retrieve supported vulkan version!");
+        VK_CHECK(vkEnumerateInstanceVersion(&supportedApiVersionFromDLL), "Failed to retrieve supported vulkan version!");
 
 #if PFR_DEBUG && VK_LOG_INFO
         LOG_INFO("Your system supports vulkan version up to: %u.%u.%u.%u", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
@@ -65,7 +65,7 @@ void VulkanContext::CreateInstance()
         instanceCI.ppEnabledLayerNames = s_InstanceLayers.data();
     }
 
-    PFR_ASSERT(vkCreateInstance(&instanceCI, nullptr, &m_VulkanInstance) == VK_SUCCESS, "Failed to create vulkan instance!");
+    VK_CHECK(vkCreateInstance(&instanceCI, nullptr, &m_VulkanInstance), "Failed to create vulkan instance!");
     volkLoadInstanceOnly(m_VulkanInstance);
 
 #if PFR_DEBUG && VK_LOG_INFO
@@ -88,23 +88,19 @@ void VulkanContext::CreateDebugMessenger()
                                            VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT;
     debugMessengerCreateInfo.pfnUserCallback = &DebugCallback;
 
-    PFR_ASSERT(vkCreateDebugUtilsMessengerEXT(m_VulkanInstance, &debugMessengerCreateInfo, nullptr, &m_DebugMessenger) == VK_SUCCESS,
-               "Failed to create debug messenger!");
+    VK_CHECK(vkCreateDebugUtilsMessengerEXT(m_VulkanInstance, &debugMessengerCreateInfo, nullptr, &m_DebugMessenger),
+             "Failed to create debug messenger!");
 }
 
 bool VulkanContext::CheckVulkanAPISupport() const
 {
     uint32_t extensionCount = 0;
-    {
-        const auto result = vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr);
-        PFR_ASSERT(result == VK_SUCCESS && extensionCount != 0, "Can't retrieve number of supported vulkan instance extensions.");
-    }
+    VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, nullptr),
+             "Can't retrieve number of supported vulkan instance extensions.");
 
     std::vector<VkExtensionProperties> extensions(extensionCount);
-    {
-        const auto result = vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data());
-        PFR_ASSERT(result == VK_SUCCESS && extensionCount != 0, "Can't retrieve supported vulkan instance extensions.");
-    }
+    VK_CHECK(vkEnumerateInstanceExtensionProperties(nullptr, &extensionCount, extensions.data()),
+             "Can't retrieve supported vulkan instance extensions.");
 
 #if VK_LOG_INFO && PFR_DEBUG
     LOG_INFO("List of supported vulkan INSTANCE extensions. (%u)", extensionCount);
@@ -146,23 +142,17 @@ bool VulkanContext::CheckVulkanAPISupport() const
 bool VulkanContext::CheckVulkanValidationSupport() const
 {
     uint32_t layerCount = 0;
-    {
-        const auto result = vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-        PFR_ASSERT(result == VK_SUCCESS && layerCount != 0, "Can't retrieve number of supported vulkan instance layers.");
-    }
+    VK_CHECK(vkEnumerateInstanceLayerProperties(&layerCount, nullptr), "Can't retrieve number of supported vulkan instance layers.");
 
     std::vector<VkLayerProperties> availableLayers(layerCount);
-    {
-        const auto result = vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-        PFR_ASSERT(result == VK_SUCCESS && layerCount != 0, "Can't retrieve supported vulkan instance layers.");
-    }
+    VK_CHECK(vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data()), "Can't retrieve supported vulkan instance layers.");
 
 #if VK_LOG_INFO && PFR_DEBUG
     LOG_INFO("List of supported vulkan INSTANCE layers. (%u)", layerCount);
     for (const auto& [layerName, specVersion, implementationVersion, description] : availableLayers)
     {
         LOG_TRACE("%s", description);
-        LOG_TRACE("%s, version: %u.%u.%u", layerName, VK_API_VERSION_MAJOR(specVersion), VK_API_VERSION_MINOR(specVersion),
+        LOG_TRACE("\t%s, version: %u.%u.%u", layerName, VK_API_VERSION_MAJOR(specVersion), VK_API_VERSION_MINOR(specVersion),
                   VK_API_VERSION_PATCH(specVersion));
     }
 #endif
