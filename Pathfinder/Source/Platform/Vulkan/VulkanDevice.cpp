@@ -177,7 +177,7 @@ void VulkanDevice::CreateLogicalDevice()
     // Shader type alignment
     vulkan12Features.scalarBlockLayout = VK_TRUE;
 
-    if (m_GPUInfo.bBDASupport && VK_BDA) vulkan12Features.bufferDeviceAddress = VK_TRUE;
+    if (m_GPUInfo.bBDASupport) vulkan12Features.bufferDeviceAddress = VK_TRUE;
 
     *ppNext = &vulkan12Features;
     ppNext  = &vulkan12Features.pNext;
@@ -284,6 +284,8 @@ void VulkanDevice::CreateLogicalDevice()
 
     Renderer::GetRendererSettings().bMeshShadingSupport = VK_MESH_SHADING && m_GPUInfo.bMeshShaderSupport;
     Renderer::GetRendererSettings().bRTXSupport         = VK_RTX && m_GPUInfo.bRTXSupport;
+    Renderer::GetRendererSettings().bBDASupport         = m_GPUInfo.bBDASupport;
+    if (Renderer::GetRendererSettings().bRTXSupport) PFR_ASSERT(Renderer::GetRendererSettings().bBDASupport, "RTX requires BDA!");
 }
 
 uint32_t VulkanDevice::RateDeviceSuitability(GPUInfo& gpuInfo)

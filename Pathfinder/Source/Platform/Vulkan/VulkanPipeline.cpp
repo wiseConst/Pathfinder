@@ -389,8 +389,6 @@ void VulkanPipeline::Invalidate()
             // TessellationState
             constexpr VkPipelineTessellationStateCreateInfo tessellationState = {VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};
 
-            // Configuration for the fixed-function rasterization. In here is where we enable or disable backface culling, and set line
-            // width or wireframe drawing.
             VkPipelineRasterizationStateCreateInfo RasterizationState = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
             RasterizationState.cullMode                               = PathfinderCullModeToVulkan(m_Specification.CullMode);
             RasterizationState.lineWidth                              = m_Specification.LineWidth;
@@ -458,7 +456,8 @@ void VulkanPipeline::Invalidate()
 
             const auto windowWidth  = m_Specification.TargetFramebuffer[0]->GetSpecification().Width;
             const auto windowHeight = m_Specification.TargetFramebuffer[0]->GetSpecification().Height;
-            // Unlike OpenGL([-1, 1]), Vulkan has depth range [0, 1] to solve we flip up the viewport
+
+            // Unlike OpenGL([-1, 1]), Vulkan has depth range [0, 1], and Y points down, so to solve we flip up the viewport
             const VkViewport viewport = {
                 0, static_cast<float>(windowHeight), static_cast<float>(windowWidth), -static_cast<float>(windowHeight), 0.0f, 1.0f};
 
@@ -479,15 +478,15 @@ void VulkanPipeline::Invalidate()
             DepthStencilState.minDepthBounds = 0.0f;
             DepthStencilState.maxDepthBounds = 1.0f;
 
-            std::vector<VkDynamicState> DynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
+            std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
 
-            if (m_Specification.bDynamicPolygonMode) DynamicStates.push_back(VK_DYNAMIC_STATE_POLYGON_MODE_EXT);
-            if (m_Specification.LineWidth != 1.0F) DynamicStates.push_back(VK_DYNAMIC_STATE_LINE_WIDTH);
+            if (m_Specification.bDynamicPolygonMode) dynamicStates.emplace_back(VK_DYNAMIC_STATE_POLYGON_MODE_EXT);
+            if (m_Specification.LineWidth != 1.0F) dynamicStates.emplace_back(VK_DYNAMIC_STATE_LINE_WIDTH);
 
             // TODO: Make it configurable?
-            VkPipelineDynamicStateCreateInfo DynamicState = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-            DynamicState.dynamicStateCount                = static_cast<uint32_t>(DynamicStates.size());
-            DynamicState.pDynamicStates                   = DynamicStates.data();
+            VkPipelineDynamicStateCreateInfo dynamicState = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
+            dynamicState.dynamicStateCount                = static_cast<uint32_t>(dynamicStates.size());
+            dynamicState.pDynamicStates                   = dynamicStates.data();
 
             VkGraphicsPipelineCreateInfo pipelineCreateInfo = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
             pipelineCreateInfo.layout                       = m_Layout;
@@ -504,20 +503,27 @@ void VulkanPipeline::Invalidate()
             pipelineCreateInfo.pMultisampleState   = &MultisampleState;
             pipelineCreateInfo.pDepthStencilState  = &DepthStencilState;
             pipelineCreateInfo.pColorBlendState    = &ColorBlendState;
-            pipelineCreateInfo.pDynamicState       = &DynamicState;
+            pipelineCreateInfo.pDynamicState       = &dynamicState;
 
             VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
             std::vector<VkFormat> colorAttachmentFormats;
             VkFormat depthAttachmentFormat   = VK_FORMAT_UNDEFINED;
             VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;  // TODO: Fill stencil
 
-            for (const auto& attachment : m_Specification.TargetFramebuffer[0]->GetSpecification().Attachments)
+            for (const auto& attachment : m_Specification.TargetFramebuffer[0]->GetAttachments())
             {
-                depthAttachmentFormat = depthAttachmentFormat == VK_FORMAT_UNDEFINED && ImageUtils::IsDepthFormat(attachment.Format)
-                                            ? ImageUtils::PathfinderImageFormatToVulkan(attachment.Format)
-                                            : depthAttachmentFormat;
-                if (!ImageUtils::IsDepthFormat(attachment.Format))
-                    colorAttachmentFormats.push_back(ImageUtils::PathfinderImageFormatToVulkan(attachment.Format));
+                if (ImageUtils::IsDepthFormat(attachment.Attachment->GetSpecification().Format))
+                {
+                    depthAttachmentFormat =
+                        depthAttachmentFormat == VK_FORMAT_UNDEFINED
+                            ? ImageUtils::PathfinderImageFormatToVulkan(attachment.Attachment->GetSpecification().Format)
+                            : depthAttachmentFormat;
+                }
+                else
+                {
+                    colorAttachmentFormats.emplace_back(
+                        ImageUtils::PathfinderImageFormatToVulkan(attachment.Attachment->GetSpecification().Format));
+                }
             }
 
             pipelineRenderingCreateInfo.colorAttachmentCount    = static_cast<uint32_t>(colorAttachmentFormats.size());

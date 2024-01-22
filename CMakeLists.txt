@@ -19,6 +19,8 @@ if (MSVC)
 endif()
 
 add_subdirectory(Pathfinder)
+target_include_directories(Pathfinder PUBLIC Sandbox/Assets/Shaders/Include/)
+
 add_subdirectory(Sandbox)
 
 #set_property(GLOBAL PROPERTY RULE_LAUNCH_LINK "${CMAKE_COMMAND} -E time")

@@ -5,7 +5,7 @@ namespace Pathfinder
 
 void SandboxLayer::Init()
 {
-    m_Dummy  = Mesh::Create("Assets/Meshes/sponza/scene.gltf");
+    m_Dummy  = Mesh::Create("Assets/Meshes/kitten/scene.gltf");
     m_Camera = Camera::Create(ECameraType::CAMERA_TYPE_ORTHOGRAPHIC);
 }
 

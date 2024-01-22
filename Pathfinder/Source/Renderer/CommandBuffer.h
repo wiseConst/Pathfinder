@@ -29,8 +29,9 @@ class CommandBuffer : private Uncopyable, private Unmovable
   public:
     virtual ~CommandBuffer() = default;
 
-    virtual ECommandBufferLevel GetLevel() const    = 0;
-    NODISCARD FORCEINLINE virtual void* Get() const = 0;
+    NODISCARD FORCEINLINE virtual ECommandBufferType GetType() const   = 0;
+    NODISCARD FORCEINLINE virtual ECommandBufferLevel GetLevel() const = 0;
+    NODISCARD FORCEINLINE virtual void* Get() const                    = 0;
 
     virtual void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const = 0;
     virtual void EndDebugLabel() const                                                                   = 0;

@@ -8,7 +8,7 @@ layout(location = 0) out vec4 outFragColor;
 
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.glslh"
+#include "Assets/Shaders/Include/Globals.h"
 
 void main()
 {

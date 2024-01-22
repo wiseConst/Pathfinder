@@ -13,7 +13,7 @@ layout(location = 0) out VertexOutput
 } i_VertexOutput;
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.glslh"
+#include "Assets/Shaders/Include/Globals.h"
 
 void main()
 {

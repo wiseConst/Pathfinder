@@ -9,7 +9,7 @@ layout(location = 1) out vec4 outNormal;
 layout(location = 2) out vec4 outAlbedo;
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.glslh"
+#include "Assets/Shaders/Include/Globals.h"
 
 
 void main()

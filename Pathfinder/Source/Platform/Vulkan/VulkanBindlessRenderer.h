@@ -15,7 +15,7 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     VulkanBindlessRenderer();
     ~VulkanBindlessRenderer() override { Destroy(); }
 
-    void Bind(const Shared<CommandBuffer>& commandBuffer, const bool bGraphicsBindPoint = true) final override;
+    void Bind(const Shared<CommandBuffer>& commandBuffer) final override;
 
     void UpdateCameraData(const Shared<Buffer>& cameraUniformBuffer) final override;
 

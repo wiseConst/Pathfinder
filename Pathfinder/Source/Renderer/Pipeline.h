@@ -57,7 +57,6 @@ struct PipelineSpecification
     std::string DebugName                = "None";
     EPipelineType PipelineType           = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     ECullMode CullMode                   = ECullMode::CULL_MODE_NONE;
-    EPolygonMode PolygonMode             = EPolygonMode::POLYGON_MODE_FILL;
     EFrontFace FrontFace                 = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
     EPrimitiveTopology PrimitiveTopology = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
     float LineWidth                      = 1.0f;
@@ -71,7 +70,10 @@ struct PipelineSpecification
     bool bBlendEnable    = false;
     EBlendMode BlendMode = EBlendMode::BLEND_MODE_ADDITIVE;
 
-    bool bDynamicPolygonMode  = false;  // Allows to set pipeline states like PolygonMode
+    bool bDynamicPolygonMode = false;  // Allows to set pipeline states like PolygonMode
+    EPolygonMode PolygonMode = EPolygonMode::POLYGON_MODE_FILL;
+
+    // NOTE: To perform any depth-testing, bDepthTest should be true!
     bool bDepthTest           = false;  // If we should do any z-culling at all
     bool bDepthWrite          = false;  // Allows the depth to be written.
     ECompareOp DepthCompareOp = ECompareOp::COMPARE_OP_NEVER;

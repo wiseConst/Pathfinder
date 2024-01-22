@@ -26,11 +26,13 @@ VulkanBindlessRenderer::VulkanBindlessRenderer()
     LOG_TAG_INFO(VULKAN, "Vulkan Bindless Renderer created!");
 }
 
-void VulkanBindlessRenderer::Bind(const Shared<CommandBuffer>& commandBuffer, const bool bGraphicsBindPoint)
+void VulkanBindlessRenderer::Bind(const Shared<CommandBuffer>& commandBuffer)
 {
     const auto currentFrame = Application::Get().GetWindow()->GetCurrentFrameIndex();
 
-    const auto pipelineBindPoint = bGraphicsBindPoint ? VK_PIPELINE_BIND_POINT_GRAPHICS : VK_PIPELINE_BIND_POINT_COMPUTE;
+    const auto pipelineBindPoint = commandBuffer->GetType() == ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS
+                                       ? VK_PIPELINE_BIND_POINT_GRAPHICS
+                                       : VK_PIPELINE_BIND_POINT_COMPUTE;
     VkDescriptorSet sets[]       = {m_TextureSet[currentFrame], m_ImageSet[currentFrame], m_StorageBufferSet[currentFrame],
                                     m_CameraSet[currentFrame]};
     vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), pipelineBindPoint, m_Layout, 0, 4, sets, 0, nullptr);

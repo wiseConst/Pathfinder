@@ -21,6 +21,8 @@ Renderer::~Renderer() = default;
 
 void Renderer::Init()
 {
+    PFR_ASSERT(s_RendererSettings.bBDASupport, "BDA support required!");
+
     s_RendererData = MakeUnique<RendererData>();
     ShaderLibrary::Init();
     PipelineBuilder::Init();
@@ -39,9 +41,15 @@ void Renderer::Init()
                           {
                               FramebufferSpecification framebufferSpec = {"Composite"};
 
-                              framebufferSpec.Attachments = {
-                                  {EImageFormat::FORMAT_RGBA8_UNORM /*EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32*/, ELoadOp::CLEAR,
-                                   EStoreOp::STORE, glm::vec4(0.15f), true}};
+                              FramebufferAttachmentSpecification compositeAttachmentSpec = {};
+                              compositeAttachmentSpec.Format =
+                                  EImageFormat::FORMAT_RGBA8_UNORM;  // /*EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32*/
+                              compositeAttachmentSpec.ClearColor = glm::vec4(0.15f);
+                              compositeAttachmentSpec.LoadOp     = ELoadOp::CLEAR;
+                              compositeAttachmentSpec.StoreOp    = EStoreOp::STORE;
+                              compositeAttachmentSpec.bCopyable  = true;
+
+                              framebufferSpec.AttachmentsToCreate.emplace_back(compositeAttachmentSpec);
                               framebuffer = Framebuffer::Create(framebufferSpec);
                           });
 
@@ -56,19 +64,19 @@ void Renderer::Init()
 
                               // positions
                               attachmentSpec.Format = EImageFormat::FORMAT_RGBA16F;
-                              framebufferSpec.Attachments.push_back(attachmentSpec);
+                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
 
                               // normals
                               attachmentSpec.Format = EImageFormat::FORMAT_RGBA16F;
-                              framebufferSpec.Attachments.push_back(attachmentSpec);
+                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
 
                               // albedo
                               attachmentSpec.Format = EImageFormat::FORMAT_RGBA8_UNORM;
-                              framebufferSpec.Attachments.push_back(attachmentSpec);
+                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
 
                               // depth
                               attachmentSpec.Format = EImageFormat::FORMAT_D32F;
-                              framebufferSpec.Attachments.push_back(attachmentSpec);
+                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
 
                               framebuffer = Framebuffer::Create(framebufferSpec);
                           });
@@ -107,10 +115,8 @@ void Renderer::Init()
     pathTracingPipelineSpec.bBindlessCompatible   = true;
     PipelineBuilder::Push(s_RendererData->PathtracingPipeline, pathTracingPipelineSpec);
 
-    PipelineSpecification forwardPipelineSpec  = {};
+    PipelineSpecification forwardPipelineSpec  = {"Forward+", EPipelineType::PIPELINE_TYPE_GRAPHICS};
     forwardPipelineSpec.Shader                 = ShaderLibrary::Get("Forward");
-    forwardPipelineSpec.DebugName              = "Forward+";
-    forwardPipelineSpec.PipelineType           = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     forwardPipelineSpec.bBindlessCompatible    = true;
     forwardPipelineSpec.bSeparateVertexBuffers = true;
     forwardPipelineSpec.CullMode               = ECullMode::CULL_MODE_BACK;
@@ -118,26 +124,36 @@ void Renderer::Init()
     forwardPipelineSpec.bMeshShading           = s_RendererSettings.bMeshShadingSupport;
     PipelineBuilder::Push(s_RendererData->ForwardRenderingPipeline, forwardPipelineSpec);
 
-    std::ranges::for_each(
-        s_RendererData->DepthPrePassFramebuffer,
-        [&](auto& framebuffer)
-        {
-            FramebufferSpecification framebufferSpec = {};
-            framebufferSpec.Name                     = "DepthPrePass";
+    std::ranges::for_each(s_RendererData->DepthPrePassFramebuffer,
+                          [&](auto& framebuffer)
+                          {
+                              FramebufferSpecification framebufferSpec = {"DepthPrePass"};
 
-            framebufferSpec.Attachments = {{EImageFormat::FORMAT_D32F, ELoadOp::CLEAR, EStoreOp::STORE, glm::vec4(1.0f), true}};
-            framebuffer                 = Framebuffer::Create(framebufferSpec);
+                              FramebufferAttachmentSpecification depthAttachmentSpec = {};
+                              depthAttachmentSpec.Format                             = EImageFormat::FORMAT_D32F;
+                              depthAttachmentSpec.ClearColor                         = glm::vec4(1.0f);
+                              depthAttachmentSpec.LoadOp                             = ELoadOp::CLEAR;
+                              depthAttachmentSpec.StoreOp                            = EStoreOp::STORE;
+                              depthAttachmentSpec.bCopyable                          = true;
+
+                              framebufferSpec.AttachmentsToCreate.emplace_back(depthAttachmentSpec);
+                              framebuffer = Framebuffer::Create(framebufferSpec);
+                          });
+
+    Application::Get().GetWindow()->AddResizeCallback(
+        [&](uint32_t width, uint32_t height) {
+            std::ranges::for_each(s_RendererData->DepthPrePassFramebuffer, [&](auto& framebuffer) { framebuffer->Resize(width, height); });
         });
 
-    PipelineSpecification depthPrePassPipelineSpec  = {};
-    depthPrePassPipelineSpec.Shader                 = ShaderLibrary::Get("DepthPrePass");
-    depthPrePassPipelineSpec.DebugName              = "DepthPrePass";
-    depthPrePassPipelineSpec.PipelineType           = EPipelineType::PIPELINE_TYPE_GRAPHICS;
-    depthPrePassPipelineSpec.bBindlessCompatible    = true;
-    depthPrePassPipelineSpec.bSeparateVertexBuffers = true;
-    depthPrePassPipelineSpec.CullMode               = ECullMode::CULL_MODE_BACK;
-    depthPrePassPipelineSpec.TargetFramebuffer      = s_RendererData->DepthPrePassFramebuffer;
-    depthPrePassPipelineSpec.bMeshShading           = s_RendererSettings.bMeshShadingSupport;
+    PipelineSpecification depthPrePassPipelineSpec = {"DepthPrePass", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+    depthPrePassPipelineSpec.Shader                = ShaderLibrary::Get("DepthPrePass");
+    depthPrePassPipelineSpec.bBindlessCompatible   = true;
+    depthPrePassPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
+    depthPrePassPipelineSpec.TargetFramebuffer     = s_RendererData->DepthPrePassFramebuffer;
+    depthPrePassPipelineSpec.bMeshShading          = s_RendererSettings.bMeshShadingSupport;
+    depthPrePassPipelineSpec.bDepthTest            = true;
+    depthPrePassPipelineSpec.bDepthWrite           = true;
+    depthPrePassPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
     PipelineBuilder::Push(s_RendererData->DepthPrePassPipeline, depthPrePassPipelineSpec);
 
     std::ranges::for_each(s_RendererData->CameraUB,
@@ -183,10 +199,14 @@ void Renderer::Begin()
     s_RendererStats                           = {};
     Renderer2D::GetRendererData()->FrameIndex = s_RendererData->FrameIndex;
     Renderer2D::Begin();
+
+    s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+    s_BindlessRenderer->Bind(s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]);
 }
 
 void Renderer::Flush()
 {
+    DepthPrePass();
     GeometryPass();
 
     Renderer2D::Flush();
@@ -217,11 +237,10 @@ void Renderer::BeginScene(const Camera& camera)
     s_BindlessRenderer->UpdateCameraData(s_RendererData->CameraUB[s_RendererData->FrameIndex]);
 
     /* PATHTRACING TESTS from vk_mini_path_tracer */
-    // if (s_RendererSettings.bRTXSupport)
+    if (s_RendererSettings.bRTXSupport)
     {
         s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(
             s_RendererData->PathtracingPipeline->GetSpecification().DebugName, glm::vec3(0.8f, 0.8f, 0.1f));
-        s_BindlessRenderer->Bind(s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex], false);
 
         PCBlock pc           = {};
         pc.StorageImageIndex = s_RendererData->PathtracedImage[s_RendererData->FrameIndex]->GetBindlessIndex();
@@ -245,6 +264,73 @@ void Renderer::BeginScene(const Camera& camera)
 
 void Renderer::EndScene() {}
 
+void Renderer::DepthPrePass()
+{
+    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(__FUNCTION__, glm::vec3(0.2f, 0.2f, 0.2f));
+
+    s_RendererData->DepthPrePassFramebuffer[s_RendererData->FrameIndex]->BeginPass(
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->DepthPrePassPipeline);
+
+    auto renderMeshFunc = [&](const Shared<Submesh>& submesh)
+    {
+        PCBlock pc = {};
+        //  pc.Transform               = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
+        pc.VertexPosBufferIndex = submesh->GetVertexPositionBuffer()->GetBindlessIndex();
+
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindShaderData(
+            s_RendererData->DepthPrePassPipeline, s_RendererData->DepthPrePassPipeline->GetSpecification().Shader);
+
+        if (s_RendererSettings.bMeshShadingSupport)
+        {
+            pc.MeshletBufferIndex = submesh->GetMeshletBuffer()->GetBindlessIndex();
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->DepthPrePassPipeline, 0, 0,
+                                                                                               sizeof(pc), &pc);
+
+            const uint32_t meshletCount = submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(meshletCount, 1, 1);
+
+            s_RendererStats.MeshletCount += meshletCount;
+        }
+        else
+        {
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->DepthPrePassPipeline, 0, 0,
+                                                                                               sizeof(pc), &pc);
+
+            const uint64_t offset = 0;
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindVertexBuffers(
+                std::vector<Shared<Buffer>>{submesh->GetVertexPositionBuffer()}, 0, 1, &offset);
+
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindIndexBuffer(submesh->GetIndexBuffer());
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawIndexed(
+                submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t));
+        }
+        s_RendererStats.TriangleCount += submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
+    };
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
+    for (auto& opaque : s_RendererData->OpaqueObjects)
+    {
+        renderMeshFunc(opaque);
+    }
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
+    for (auto& transparent : s_RendererData->TransparentObjects)
+    {
+        renderMeshFunc(transparent);
+    }
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+
+    s_RendererData->DepthPrePassFramebuffer[s_RendererData->FrameIndex]->EndPass(
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+}
+
 void Renderer::GeometryPass()
 {
     if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
@@ -253,13 +339,12 @@ void Renderer::GeometryPass()
     s_RendererData->CompositeFramebuffer[s_RendererData->FrameIndex]->BeginPass(
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
-    s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->ForwardRenderingPipeline);
 
     auto renderMeshFunc = [&](const Shared<Submesh>& submesh)
     {
-        PCBlock pc                 = {};
-        pc.Transform               = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
+        PCBlock pc = {};
+        //  pc.Transform               = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
         pc.VertexPosBufferIndex    = submesh->GetVertexPositionBuffer()->GetBindlessIndex();
         pc.VertexAttribBufferIndex = submesh->GetVertexAttributeBuffer()->GetBindlessIndex();
 
@@ -272,8 +357,6 @@ void Renderer::GeometryPass()
 
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ForwardRenderingPipeline, 0,
                                                                                                0, sizeof(pc), &pc);
-            /*static constexpr uint32_t workgroup_width = 32;
-            const uint32_t groupCountX                = (meshletCount + workgroup_width - 1) / workgroup_width;*/
             const uint32_t meshletCount = submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(meshletCount, 1, 1);
 
@@ -291,7 +374,7 @@ void Renderer::GeometryPass()
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawIndexed(
                 submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t));
         }
-        s_RendererStats.TriangleCount += submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t);
+        s_RendererStats.TriangleCount += submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
     };
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));

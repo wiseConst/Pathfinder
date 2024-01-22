@@ -12,10 +12,12 @@ class Texture2D;
 class TextureCube;
 class Pipeline;
 class Camera;
-class Mesh;
 class Framebuffer;
 class Image;
 class Submesh;
+class Mesh;
+
+// TODO: Implement RT_Renderer / RayTracingModule / RayTracingBuilder
 
 // NOTE: It's not final cuz in future SceneRenderer may derive from this class
 class Renderer : private Uncopyable, private Unmovable
@@ -97,6 +99,7 @@ class Renderer : private Uncopyable, private Unmovable
     {
         bool bMeshShadingSupport = false;
         bool bRTXSupport         = false;
+        bool bBDASupport         = false;
     } static inline s_RendererSettings = {};
 
     struct RendererStats
@@ -108,6 +111,7 @@ class Renderer : private Uncopyable, private Unmovable
         float GPUTime                = 0.0F;
     } static inline s_RendererStats = {};
 
+    static void DepthPrePass();
     static void GeometryPass();
 };
 

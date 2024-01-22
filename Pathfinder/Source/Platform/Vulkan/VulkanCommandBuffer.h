@@ -16,6 +16,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     VulkanCommandBuffer() = delete;
     ~VulkanCommandBuffer() override { Destroy(); }
 
+    NODISCARD FORCEINLINE ECommandBufferType GetType() const final override { return m_Type; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE ECommandBufferLevel GetLevel() const final override { return m_Level; }
 
@@ -118,7 +119,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     FORCEINLINE void BuildAccelerationStructure(uint32_t infoCount, const VkAccelerationStructureBuildGeometryInfoKHR* infos,
-                                                const VkAccelerationStructureBuildRangeInfoKHR* const* buildRangeInfos) const 
+                                                const VkAccelerationStructureBuildRangeInfoKHR* const* buildRangeInfos) const
     {
         vkCmdBuildAccelerationStructuresKHR(m_Handle, infoCount, infos, buildRangeInfos);
     }

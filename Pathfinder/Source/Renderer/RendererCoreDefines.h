@@ -4,6 +4,8 @@
 #include "Core/Math.h"
 #include <array>
 
+#include "Globals.h"
+
 namespace Pathfinder
 {
 
@@ -71,27 +73,6 @@ struct QuadVertex
     glm::vec3 Normal   = glm::vec3(0.0f);
     glm::vec2 UV       = glm::vec2(0.0f);
     glm::vec4 Color    = glm::vec4(1.0f);
-};
-
-struct MeshPositionVertex
-{
-    glm::vec3 Position = glm::vec3(0.0f);
-};
-
-struct MeshAttributeVertex
-{
-    glm::vec4 Color   = glm::vec4(1.0f);
-    glm::vec3 Normal  = glm::vec3(0.0f);
-    glm::vec3 Tangent = glm::vec3(0.0f);
-};
-
-// TESTING, learning mesh shaders from zeux
-struct Meshlet
-{
-    uint32_t vertices[64];
-    uint8_t indices[126];  // up to 42 tris
-    uint8_t indexCount;
-    uint8_t vertexCount;
 };
 
 struct CameraData

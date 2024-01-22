@@ -2,7 +2,7 @@
 
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.glslh"
+#include "Assets/Shaders/Include/Globals.h"
 
 #if DEBUG_PRINTF
 #extension GL_EXT_debug_printf : require

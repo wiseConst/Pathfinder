@@ -20,22 +20,23 @@ enum class EStoreOp : uint8_t
     DONT_CARE
 };
 
+// TODO: Add texture filter when implement samplers and textures
 struct FramebufferAttachmentSpecification
 {
     EImageFormat Format = EImageFormat::FORMAT_UNDEFINED;
     // ETextureFilter Filter = ETextureFilter::LINEAR;
-    //  ETextureWrap Wrap     = ETextureWrap::REPEAT;
+    // ETextureWrap Wrap     = ETextureWrap::REPEAT;
     ELoadOp LoadOp       = ELoadOp::CLEAR;
     EStoreOp StoreOp     = EStoreOp::STORE;
-    glm::vec4 ClearColor = glm::vec4(1.0f);
     bool bCopyable       = false;
+    glm::vec4 ClearColor = glm::vec4(1.0f);
 };
 
 class Image;
 struct FramebufferAttachment
 {
-    Shared<Image> Attachment = nullptr;
     FramebufferAttachmentSpecification Specification;
+    Shared<Image> Attachment = nullptr;
 };
 
 struct FramebufferSpecification
@@ -44,7 +45,7 @@ struct FramebufferSpecification
     uint32_t Width   = 1280;
     uint32_t Height  = 720;
 
-    std::vector<FramebufferAttachmentSpecification> Attachments;
+    std::vector<FramebufferAttachmentSpecification> AttachmentsToCreate;
 
     std::vector<FramebufferAttachment> ExistingAttachments;
     ELoadOp LoadOp   = ELoadOp::CLEAR;

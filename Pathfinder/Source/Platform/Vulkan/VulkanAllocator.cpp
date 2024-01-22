@@ -23,7 +23,7 @@ VulkanAllocator::VulkanAllocator(const VkDevice& device, const VkPhysicalDevice&
     allocatorCI.vulkanApiVersion       = VK_API_VERSION_1_3;
     allocatorCI.pVulkanFunctions       = &vulkanFunctions;
 
-    if (Renderer::GetRendererSettings().bRTXSupport) allocatorCI.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
+    if (Renderer::GetRendererSettings().bBDASupport) allocatorCI.flags |= VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT;
     VK_CHECK(vmaCreateAllocator(&allocatorCI, &m_Handle), "Failed to create VMA!");
 }
 

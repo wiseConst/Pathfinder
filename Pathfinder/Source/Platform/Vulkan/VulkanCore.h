@@ -12,8 +12,8 @@ namespace Pathfinder
 
 #define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
 
-#define VK_FORCE_VALIDATION 0
-#define VK_FORCE_SHADER_COMPILATION 0
+#define VK_FORCE_VALIDATION 1
+#define VK_FORCE_SHADER_COMPILATION 1
 #define VK_FORCE_PIPELINE_COMPILATION 0
 
 #define VK_LOG_INFO 0
@@ -22,8 +22,7 @@ namespace Pathfinder
 #define VK_PREFER_IGPU 0
 
 #define VK_RTX 0
-#define VK_MESH_SHADING 1
-#define VK_BDA 0
+#define VK_MESH_SHADING 0
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -54,10 +53,6 @@ static const std::vector<const char*> s_DeviceExtensions = {
 #endif
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
-
-#if VK_BDA
-// VK_EXT_BUFFER_DEVICE_ADDRESS_EXTENSION_NAME,  // as it says buffer device address
-#endif
 
 #if VK_RTX
     VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,    // To build acceleration structures
