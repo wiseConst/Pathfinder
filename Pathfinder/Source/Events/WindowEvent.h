@@ -22,6 +22,11 @@ class WindowResizeEvent final : public Event
         return formatted;
     }
 
+    NODISCARD FORCEINLINE const float GetAspectRatio() const
+    {
+        return m_Height == 0 ? 0.0f : static_cast<float>(m_Width) / static_cast<float>(m_Height);
+    }
+
   private:
     uint32_t m_Width  = 0;
     uint32_t m_Height = 0;

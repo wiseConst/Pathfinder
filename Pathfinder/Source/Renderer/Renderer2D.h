@@ -40,18 +40,21 @@ class Renderer2D final : private Uncopyable, private Unmovable
   private:
     struct RendererData2D
     {
-        uint32_t FrameIndex = 0;
+        BufferPerFrame QuadVertexBuffer;
+        Shared<Pipeline> QuadPipeline = nullptr;
 
         using QuadVertexBasePerFrame = std::array<QuadVertex*, s_FRAMES_IN_FLIGHT>;
         QuadVertexBasePerFrame QuadVertexBase;
         QuadVertexBasePerFrame QuadVertexCurrent;
 
-        BufferPerFrame QuadVertexBuffer;
-        Shared<Pipeline> QuadPipeline = nullptr;
+        std::vector<Sprite> Sprites;
 
-        static constexpr uint32_t s_MAX_QUADS    = 2500;
-        static constexpr uint32_t s_MAX_VERTICES = s_MAX_QUADS * 4;
-        static constexpr uint32_t s_MAX_INDICES  = s_MAX_QUADS * 6;
+        uint32_t FrameIndex = 0;
+
+        static constexpr uint32_t s_MAX_QUADS              = 2500;
+        static constexpr uint32_t s_MAX_VERTICES           = s_MAX_QUADS * 4;
+        static constexpr uint32_t s_MAX_INDICES            = s_MAX_QUADS * 6;
+        static constexpr uint32_t s_MAX_VERTEX_BUFFER_SIZE = s_MAX_VERTICES * sizeof(QuadVertex);
 
         Shared<Buffer> QuadIndexBuffer = nullptr;
 
@@ -62,13 +65,6 @@ class Renderer2D final : private Uncopyable, private Unmovable
             glm::vec3(-0.5f, 0.5f, 0.0f),   // top left
         };
 
-        static constexpr glm::vec2 QuadUVs[4] = {
-            glm::vec2(0.0f, 0.0f),  // bottom left
-            glm::vec2(1.0f, 0.0f),  // bottom right
-            glm::vec2(1.0f, 1.0f),  // top right
-            glm::vec2(0.0f, 1.0f),  // top left
-        };
-
         // FIXME: Currently wrong defined
         static constexpr glm::vec3 QuadNormals[4] = {
             glm::vec3(1.0f, 0.0f, 0.0f),   //  top right
@@ -77,17 +73,23 @@ class Renderer2D final : private Uncopyable, private Unmovable
             glm::vec3(0.0f, 1.0f, 0.0f),   // top left
         };
 
-        std::vector<Sprite> Sprites;
+        static constexpr glm::vec2 QuadUVs[4] = {
+            glm::vec2(0.0f, 0.0f),  // bottom left
+            glm::vec2(1.0f, 0.0f),  // bottom right
+            glm::vec2(1.0f, 1.0f),  // top right
+            glm::vec2(0.0f, 1.0f),  // top left
+        };
     };
     static inline Unique<RendererData2D> s_RendererData2D = nullptr;
 
     struct Renderer2DStats
     {
-        uint32_t BatchCount    = 0;
-        uint32_t QuadCount     = 0;
-        uint32_t TriangleCount = 0;
-        float GPUTime          = 0.0F;
-    } static inline s_Renderer2DStats = {};
+        uint32_t BatchCount;
+        uint32_t QuadCount;
+        uint32_t TriangleCount;
+        float GPUTime;
+    };
+    static inline Renderer2DStats s_Renderer2DStats = {};
 
     Renderer2D();
     ~Renderer2D() override;

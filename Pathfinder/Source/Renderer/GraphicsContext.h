@@ -26,11 +26,10 @@ class GraphicsContext : private Uncopyable, private Unmovable
     static Unique<GraphicsContext> Create(const ERendererAPI rendererApi);
 
   protected:
-
     static inline GraphicsContext* s_Instance = nullptr;
 
     GraphicsContext() noexcept = default;
-    virtual void Destroy() = 0;
+    virtual void Destroy()     = 0;
 };
 
 }  // namespace Pathfinder

@@ -134,3 +134,9 @@ add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 add_compile_options($<$<CONFIG:Debug>:-g>) # -lto
 add_compile_options($<$<CONFIG:Release>:-Ofast -lto>)
 
+# Dynamic MSVC runtime library linking
+if(MSVC)
+    set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>DLL$<$<NOT:$<CONFIG:Debug>>:>)
+else()
+    add_compile_options(-static-libstdc++)
+endif()

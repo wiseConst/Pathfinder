@@ -38,13 +38,10 @@ class VulkanImage final : public Image
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE void* GetView() const { return m_View; }
     NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const final override { return m_Index; }
-    NODISCARD FORCEINLINE const VkDescriptorImageInfo GetDescriptorInfo() const
-    {
-        VkDescriptorImageInfo descriptorInfo = {VK_NULL_HANDLE, m_View, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
-        return descriptorInfo;
-    }
+    NODISCARD FORCEINLINE const auto& GetDescriptorInfo() const { return m_DescriptorInfo; }
 
     void SetLayout(const EImageLayout newLayout) final override;
+    void SetData(const void* data, size_t dataSize) final override;
 
     FORCEINLINE void Resize(const uint32_t width, const uint32_t height) final override
     {
@@ -55,10 +52,11 @@ class VulkanImage final : public Image
     }
 
   private:
-    VkImage m_Handle                   = VK_NULL_HANDLE;
-    VmaAllocation m_Allocation         = VK_NULL_HANDLE;
-    VkImageView m_View                 = VK_NULL_HANDLE;
-    ImageSpecification m_Specification = {};
+    VkImage m_Handle                       = VK_NULL_HANDLE;
+    VmaAllocation m_Allocation             = VK_NULL_HANDLE;
+    VkImageView m_View                     = VK_NULL_HANDLE;
+    VkDescriptorImageInfo m_DescriptorInfo = {};
+    ImageSpecification m_Specification     = {};
 
     friend class VulkanFramebuffer;
     friend class VulkanBindlessRenderer;

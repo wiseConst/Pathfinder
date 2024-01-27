@@ -33,6 +33,21 @@ class CommandBuffer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE virtual ECommandBufferLevel GetLevel() const = 0;
     NODISCARD FORCEINLINE virtual void* Get() const                    = 0;
 
+    NODISCARD FORCEINLINE static const auto& GetPipelineStatisticsNames() { return s_PipelineStatisticsNames; }
+    NODISCARD FORCEINLINE const auto& GetPipelineStatisticsResults() const { return m_PipelineStatisticsResults; }
+
+    // Returns raw vector of ticks.
+    NODISCARD FORCEINLINE const auto& GetRawTimestampsResults() const { return m_TimestampsResults; }
+
+    // Returns vector of computed timestamps in milliseconds.
+    virtual const std::vector<float> GetTimestampsResults() const = 0;
+
+    virtual void BeginPipelineStatisticsQuery()     = 0;
+    virtual void EndPipelineStatisticsQuery() const = 0;
+
+    virtual void BeginTimestampQuery(const EPipelineStage pipelineStage = EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT)  = 0;
+    virtual void EndTimestampQuery(const EPipelineStage pipelineStage = EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) = 0;
+
     virtual void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const = 0;
     virtual void EndDebugLabel() const                                                                   = 0;
 
@@ -58,6 +73,9 @@ class CommandBuffer : private Uncopyable, private Unmovable
                                    const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const                   = 0;
     virtual void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const = 0;
 
+    virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage, const EPipelineStage srcPipelineStage,
+                                  const EPipelineStage dstPipelineStage) const = 0;
+
     virtual void Submit(bool bWaitAfterSubmit = true) = 0;
     virtual void Reset()                              = 0;
 
@@ -65,6 +83,41 @@ class CommandBuffer : private Uncopyable, private Unmovable
                                         ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
 
   protected:
+    static constexpr uint32_t s_MAX_TIMESTAMPS          = 32;
+    static constexpr uint32_t s_MAX_PIPELINE_STATISITCS = 13;
+
+    static constexpr std::array<std::pair<const EQueryPipelineStatistic, std::string_view>, s_MAX_PIPELINE_STATISITCS>
+        s_PipelineStatisticsNames = {
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT,
+                      "Input assembly vertex count        "},  // IA vertex
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT,
+                      "Input assembly primitives count    "},  // IA primitives
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT,
+                      "Vertex shader invocations          "},  // VS
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT,
+                      "Geometry shader invocations        "},  // GS
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT,
+                      "Geometry shader primitives         "},  //
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT,
+                      "Clipping stage primitives processed"},  // Clipping
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT, "Clipping stage primitives output   "},  //
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT,
+                      "Fragment shader invocations        "},  // FS
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT,
+                      "Tess. Control shader invocations   "},  // TCS
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT,
+                      "Tess. Evaluation shader invocations"},  // TES
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT,
+                      "Compute shader invocations         "},  // CSCS
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT,
+                      "Task shader invocations            "},  // TS
+            std::pair{EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT,
+                      "Mesh shader invocations            "}  // MS
+        };
+
+    std::array<std::pair<EQueryPipelineStatistic, uint64_t>, s_MAX_PIPELINE_STATISITCS> m_PipelineStatisticsResults;
+    std::array<uint64_t, s_MAX_TIMESTAMPS> m_TimestampsResults = {0};
+
     CommandBuffer()        = default;
     virtual void Destroy() = 0;
 };

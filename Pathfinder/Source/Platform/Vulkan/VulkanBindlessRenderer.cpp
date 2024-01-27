@@ -6,6 +6,7 @@
 #include "VulkanDevice.h"
 #include "VulkanCommandBuffer.h"
 #include "VulkanImage.h"
+#include "VulkanTexture2D.h"
 
 #include "Core/Application.h"
 #include "Core/Window.h"
@@ -20,6 +21,7 @@ static constexpr uint32_t s_MAX_TEXTURES        = BIT(16);
 static constexpr uint32_t s_MAX_IMAGES          = BIT(16);
 static constexpr uint32_t s_MAX_STORAGE_BUFFERS = BIT(16);
 
+// TODO: Add shader defines for each binding and set
 VulkanBindlessRenderer::VulkanBindlessRenderer()
 {
     CreateDescriptorPools();
@@ -38,29 +40,33 @@ void VulkanBindlessRenderer::Bind(const Shared<CommandBuffer>& commandBuffer)
     vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), pipelineBindPoint, m_Layout, 0, 4, sets, 0, nullptr);
 }
 
-// TODO: Investigate how to make vector grow slower
+void VulkanBindlessRenderer::UpdateDataIfNeeded()
+{
+    if (m_Writes.empty()) return;
+
+    vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(m_Writes.size()), m_Writes.data(), 0,
+                           nullptr);
+
+    m_Writes.clear();
+}
+
 void VulkanBindlessRenderer::UpdateCameraData(const Shared<Buffer>& cameraUniformBuffer)
 {
-    const auto currentFrame   = Application::Get().GetWindow()->GetCurrentFrameIndex();
-    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-
     const auto vulkanCameraUniformBuffer = std::static_pointer_cast<VulkanBuffer>(cameraUniformBuffer);
     PFR_ASSERT(vulkanCameraUniformBuffer, "Failed to cast Buffer to VulkanBuffer!");
 
+    const auto currentFrame             = Application::Get().GetWindow()->GetCurrentFrameIndex();
     VkWriteDescriptorSet cameraWriteSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     cameraWriteSet.descriptorCount      = 1;
     cameraWriteSet.descriptorType       = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
     cameraWriteSet.dstBinding           = 0;
     cameraWriteSet.dstSet               = m_CameraSet[currentFrame];
     cameraWriteSet.pBufferInfo          = &vulkanCameraUniformBuffer->GetDescriptorInfo();
-
-    vkUpdateDescriptorSets(logicalDevice, 1, &cameraWriteSet, 0, nullptr);
+    m_Writes.emplace_back(cameraWriteSet);
 }
 
 void VulkanBindlessRenderer::LoadImage(const ImagePerFrame& images)
 {
-    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-
     for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
         auto vulkanImage = std::static_pointer_cast<VulkanImage>(images[frame]);
@@ -77,23 +83,19 @@ void VulkanBindlessRenderer::LoadImage(const ImagePerFrame& images)
             m_ImageIndicesPool.push_back(vulkanImage->m_Index);
         }
 
-        const auto imageInfo          = vulkanImage->GetDescriptorInfo();
         VkWriteDescriptorSet writeSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         writeSet.descriptorCount      = 1;
         writeSet.descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         writeSet.dstSet               = m_ImageSet[frame];
         writeSet.dstBinding           = 0;
         writeSet.dstArrayElement      = vulkanImage->m_Index;
-        writeSet.pImageInfo           = &imageInfo;
-
-        vkUpdateDescriptorSets(logicalDevice, 1, &writeSet, 0, nullptr);
+        writeSet.pImageInfo           = &vulkanImage->GetDescriptorInfo();
+        m_Writes.emplace_back(writeSet);
     }
 }
 
 void VulkanBindlessRenderer::LoadImage(const Shared<Image>& image)
 {
-    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-
     auto vulkanImage = std::static_pointer_cast<VulkanImage>(image);
     PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
 
@@ -110,89 +112,73 @@ void VulkanBindlessRenderer::LoadImage(const Shared<Image>& image)
 
     for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
-        const auto imageInfo          = vulkanImage->GetDescriptorInfo();
         VkWriteDescriptorSet writeSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         writeSet.descriptorCount      = 1;
         writeSet.descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_IMAGE;
         writeSet.dstSet               = m_ImageSet[frame];
         writeSet.dstBinding           = 0;
         writeSet.dstArrayElement      = vulkanImage->m_Index;
-        writeSet.pImageInfo           = &imageInfo;
+        writeSet.pImageInfo           = &vulkanImage->GetDescriptorInfo();
+        m_Writes.emplace_back(writeSet);
+    }
+}
 
-        vkUpdateDescriptorSets(logicalDevice, 1, &writeSet, 0, nullptr);
+void VulkanBindlessRenderer::LoadTexture(const Shared<Texture2D>& texture)
+{
+    auto vulkanTexture = std::static_pointer_cast<VulkanTexture2D>(texture);
+    PFR_ASSERT(vulkanTexture, "Failed to cast Texture2D to VulkanTexture2D!");
+
+    if (m_FreeTextureIndicesPool.empty())
+    {
+        vulkanTexture->m_Index = m_TextureIndicesPool.size();
+        m_TextureIndicesPool.emplace_back(vulkanTexture->m_Index);
+    }
+    else
+    {
+        vulkanTexture->m_Index = m_FreeTextureIndicesPool.back();
+        m_FreeTextureIndicesPool.pop_back();
+    }
+
+    for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
+    {
+        VkWriteDescriptorSet writeSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
+        writeSet.descriptorType       = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+        writeSet.descriptorCount      = 1;
+        writeSet.dstSet               = m_TextureSet[frame];
+        writeSet.dstBinding           = 0;
+        writeSet.dstArrayElement      = vulkanTexture->m_Index;
+        writeSet.pImageInfo           = &vulkanTexture->GetDescriptorInfo();
+        m_Writes.emplace_back(writeSet);
     }
 }
 
 void VulkanBindlessRenderer::LoadVertexPosBuffer(const Shared<Buffer>& buffer)
 {
-    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-
-    auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
-    PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
-
-    if (!m_FreeStorageBufferIndicesPool.empty())
-    {
-        vulkanBuffer->m_Index = m_FreeStorageBufferIndicesPool.back();
-        m_FreeStorageBufferIndicesPool.pop_back();
-    }
-    else
-    {
-        vulkanBuffer->m_Index = static_cast<uint32_t>(m_StorageBufferIndicesPool.size());
-        m_StorageBufferIndicesPool.push_back(vulkanBuffer->m_Index);
-    }
-
-    for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
-    {
-        const auto bufferInfo         = vulkanBuffer->GetDescriptorInfo();
-        VkWriteDescriptorSet writeSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        writeSet.descriptorCount      = 1;
-        writeSet.descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writeSet.dstSet               = m_StorageBufferSet[frame];
-        writeSet.dstBinding           = 0;
-        writeSet.dstArrayElement      = vulkanBuffer->m_Index;
-        writeSet.pBufferInfo          = &bufferInfo;
-
-        vkUpdateDescriptorSets(logicalDevice, 1, &writeSet, 0, nullptr);
-    }
+    LoadStorageBufferInternal(buffer, STORAGE_BUFFER_VERTEX_POS_BINDING);
 }
 
 void VulkanBindlessRenderer::LoadVertexAttribBuffer(const Shared<Buffer>& buffer)
 {
-    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-
-    auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
-    PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
-
-    if (!m_FreeStorageBufferIndicesPool.empty())
-    {
-        vulkanBuffer->m_Index = m_FreeStorageBufferIndicesPool.back();
-        m_FreeStorageBufferIndicesPool.pop_back();
-    }
-    else
-    {
-        vulkanBuffer->m_Index = static_cast<uint32_t>(m_StorageBufferIndicesPool.size());
-        m_StorageBufferIndicesPool.push_back(vulkanBuffer->m_Index);
-    }
-
-    for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
-    {
-        const auto bufferInfo         = vulkanBuffer->GetDescriptorInfo();
-        VkWriteDescriptorSet writeSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        writeSet.descriptorCount      = 1;
-        writeSet.descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-        writeSet.dstSet               = m_StorageBufferSet[frame];
-        writeSet.dstBinding           = 1;
-        writeSet.dstArrayElement      = vulkanBuffer->m_Index;
-        writeSet.pBufferInfo          = &bufferInfo;
-
-        vkUpdateDescriptorSets(logicalDevice, 1, &writeSet, 0, nullptr);
-    }
+    LoadStorageBufferInternal(buffer, STORAGE_BUFFER_VERTEX_ATTRIB_BINDING);
 }
 
 void VulkanBindlessRenderer::LoadMeshletBuffer(const Shared<Buffer>& buffer)
 {
-    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+    LoadStorageBufferInternal(buffer, STORAGE_BUFFER_MESHLET_BINDING);
+}
 
+void VulkanBindlessRenderer::LoadMeshletVerticesBuffer(const Shared<Buffer>& buffer)
+{
+    LoadStorageBufferInternal(buffer, STORAGE_BUFFER_MESHLET_VERTEX_BINDING);
+}
+
+void VulkanBindlessRenderer::LoadMeshletTrianglesBuffer(const Shared<Buffer>& buffer)
+{
+    LoadStorageBufferInternal(buffer, STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING);
+}
+
+void VulkanBindlessRenderer::LoadStorageBufferInternal(const Shared<Buffer>& buffer, const uint32_t binding)
+{
     auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
     PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
 
@@ -209,29 +195,33 @@ void VulkanBindlessRenderer::LoadMeshletBuffer(const Shared<Buffer>& buffer)
 
     for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
-        const auto bufferInfo         = vulkanBuffer->GetDescriptorInfo();
         VkWriteDescriptorSet writeSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
         writeSet.descriptorCount      = 1;
         writeSet.descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
         writeSet.dstSet               = m_StorageBufferSet[frame];
-        writeSet.dstBinding           = 2;
+        writeSet.dstBinding           = binding;
         writeSet.dstArrayElement      = vulkanBuffer->m_Index;
-        writeSet.pBufferInfo          = &bufferInfo;
-
-        vkUpdateDescriptorSets(logicalDevice, 1, &writeSet, 0, nullptr);
+        writeSet.pBufferInfo          = &vulkanBuffer->GetDescriptorInfo();
+        m_Writes.emplace_back(writeSet);
     }
 }
 
 void VulkanBindlessRenderer::FreeImage(uint32_t& imageIndex)
 {
-    m_FreeImageIndicesPool.push_back(imageIndex);
+    m_FreeImageIndicesPool.emplace_back(imageIndex);
     imageIndex = UINT32_MAX;
 }
 
 void VulkanBindlessRenderer::FreeBuffer(uint32_t& bufferIndex)
 {
-    m_FreeStorageBufferIndicesPool.push_back(bufferIndex);
+    m_FreeStorageBufferIndicesPool.emplace_back(bufferIndex);
     bufferIndex = UINT32_MAX;
+}
+
+void VulkanBindlessRenderer::FreeTexture(uint32_t& textureIndex)
+{
+    m_FreeTextureIndicesPool.emplace_back(textureIndex);
+    textureIndex = UINT32_MAX;
 }
 
 // TODO: Clean it, remove redundant shader stages
@@ -285,14 +275,24 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
                                                                    VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
                                                                        VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_MESH_BIT_EXT};
 
-        VkDescriptorBindingFlags bindingFlags[3]                             = {bindingFlag, bindingFlag, bindingFlag};
-        const VkDescriptorSetLayoutBindingFlagsCreateInfo bufferExtendedInfo = {
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, 3, bindingFlags};
+        const VkDescriptorSetLayoutBinding meshletVerticesBufferBinding = {3, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS,
+                                                                           VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
+                                                                               VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_MESH_BIT_EXT};
 
-        const VkDescriptorSetLayoutBinding bindings[] = {vertexPosBufferBinding, vertexAttribBufferBinding, meshletBufferBinding};
+        const VkDescriptorSetLayoutBinding meshletTrianglesBufferBinding = {4, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS,
+                                                                            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
+                                                                                VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_MESH_BIT_EXT};
+
+        const std::vector<VkDescriptorBindingFlags> bindingFlags(5, bindingFlag);
+        const VkDescriptorSetLayoutBindingFlagsCreateInfo bufferExtendedInfo = {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, static_cast<uint32_t>(bindingFlags.size()),
+            bindingFlags.data()};
+
+        const std::vector<VkDescriptorSetLayoutBinding> bindings = {vertexPosBufferBinding, vertexAttribBufferBinding, meshletBufferBinding,
+                                                                    meshletVerticesBufferBinding, meshletTrianglesBufferBinding};
         const VkDescriptorSetLayoutCreateInfo storageBufferSetLayoutCI = {
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &bufferExtendedInfo,
-            VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT, 3, bindings};
+            VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT, static_cast<uint32_t>(bindings.size()), bindings.data()};
 
         VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &storageBufferSetLayoutCI, nullptr, &m_StorageBufferSetLayout),
                  "Failed to create storage buffer set layout!");
@@ -402,17 +402,18 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
     m_PCBlock.offset     = 0;
     m_PCBlock.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
     if (Renderer::GetRendererSettings().bMeshShadingSupport) m_PCBlock.stageFlags |= VK_SHADER_STAGE_MESH_BIT_EXT;
-    m_PCBlock.size = sizeof(PCBlock);
+    m_PCBlock.size = sizeof(PushConstantBlock);
     PFR_ASSERT(m_PCBlock.size <= 128, "Exceeding minimum limit of push constant block!");
 
-    std::vector<VkDescriptorSetLayout> setLayouts     = {m_TextureSetLayout, m_ImageSetLayout, m_StorageBufferSetLayout, m_CameraSetLayout};
-    const VkPipelineLayoutCreateInfo pipelineLayoutCI = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
-                                                         nullptr,
-                                                         0,
-                                                         static_cast<uint32_t>(setLayouts.size()),
-                                                         setLayouts.data(),
-                                                         1,
-                                                         &m_PCBlock};
+    const std::vector<VkDescriptorSetLayout> setLayouts = {m_TextureSetLayout, m_ImageSetLayout, m_StorageBufferSetLayout,
+                                                           m_CameraSetLayout};
+    const VkPipelineLayoutCreateInfo pipelineLayoutCI   = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
+                                                           nullptr,
+                                                           0,
+                                                           static_cast<uint32_t>(setLayouts.size()),
+                                                           setLayouts.data(),
+                                                           1,
+                                                           &m_PCBlock};
     VK_CHECK(vkCreatePipelineLayout(logicalDevice, &pipelineLayoutCI, nullptr, &m_Layout), "Failed to create bindless pipeline layout!");
     VK_SetDebugName(logicalDevice, &m_Layout, VK_OBJECT_TYPE_PIPELINE_LAYOUT, "VK_BINDLESS_PIPELINE_LAYOUT");
 }

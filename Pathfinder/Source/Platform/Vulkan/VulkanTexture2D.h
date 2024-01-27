@@ -15,22 +15,28 @@ class VulkanTexture2D final : public Texture2D
     VulkanTexture2D() = delete;
     ~VulkanTexture2D() override { Destroy(); }
 
+    NODISCARD FORCEINLINE const TextureSpecification& GetSpecification() const final override { return m_Specification; }
     NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const final override { return m_Index; }
-    NODISCARD FORCEINLINE const VkDescriptorImageInfo GetDescriptorInfo() const
+
+    // NOTE: Since image layout changes frequently it's done like this:
+    NODISCARD FORCEINLINE const auto& GetDescriptorInfo()
     {
-        const auto imageDescriptorInfo       = m_Image->GetDescriptorInfo();
-        VkDescriptorImageInfo descriptorInfo = {m_Sampler, imageDescriptorInfo.imageView, imageDescriptorInfo.imageLayout};
-        return descriptorInfo;
+        m_DescriptorInfo         = m_Image->GetDescriptorInfo();
+        m_DescriptorInfo.sampler = m_Sampler;
+        return m_DescriptorInfo;
     }
 
   private:
+    TextureSpecification m_Specification = {};
     Shared<VulkanImage> m_Image;
-    VkSampler m_Sampler = VK_NULL_HANDLE;
+    VkDescriptorImageInfo m_DescriptorInfo = {};
+    VkSampler m_Sampler                    = VK_NULL_HANDLE;
 
     friend class VulkanBindlessRenderer;
     uint32_t m_Index = UINT32_MAX;  // bindless array purposes
 
     void Destroy() final override;
+    void Invalidate() final override;
 };
 
 }  // namespace Pathfinder

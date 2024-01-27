@@ -177,14 +177,16 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         memcpy(mapped, data, dataSize);
         VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(stagingAllocation);
 
-        const auto copyCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
-        copyCommandBuffer->BeginRecording(true);
+        {
+            const auto copyCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+            copyCommandBuffer->BeginRecording(true);
 
-        const VkBufferCopy region = {0, 0, dataSize};
-        copyCommandBuffer->CopyBuffer(stagingBuffer, m_Handle, 1, &region);
+            const VkBufferCopy region = {0, 0, dataSize};
+            copyCommandBuffer->CopyBuffer(stagingBuffer, m_Handle, 1, &region);
 
-        copyCommandBuffer->EndRecording();
-        copyCommandBuffer->Submit();
+            copyCommandBuffer->EndRecording();
+            copyCommandBuffer->Submit();
+        }
 
         BufferUtils::DestroyBuffer(stagingBuffer, stagingAllocation);
     }
@@ -203,10 +205,7 @@ void VulkanBuffer::Destroy()
 
     if (m_Index != UINT32_MAX)
     {
-        auto vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
-        PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
-
-        vulkanBR->FreeBuffer(m_Index);
+        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index);
     }
 }
 

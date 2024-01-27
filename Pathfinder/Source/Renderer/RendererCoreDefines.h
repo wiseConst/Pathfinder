@@ -55,6 +55,30 @@ enum EPipelineStage : uint64_t
     PIPELINE_STAGE_MESH_SHADER_BIT                      = BIT(23),
 };
 
+enum class EQueryPipelineStatistic
+{
+    QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT                    = BIT(0),
+    QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT                  = BIT(1),
+    QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT                  = BIT(2),
+    QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT                = BIT(3),
+    QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT                 = BIT(4),
+    QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT                       = BIT(5),
+    QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT                        = BIT(6),
+    QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT                = BIT(7),
+    QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT        = BIT(8),
+    QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT = BIT(9),
+    QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT                 = BIT(10),
+    QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT                    = BIT(11),
+    QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT                    = BIT(12)
+};
+
+enum class EPolygonMode : uint8_t
+{
+    POLYGON_MODE_FILL = 0,
+    POLYGON_MODE_LINE,
+    POLYGON_MODE_POINT
+};
+
 enum class ECompareOp : uint8_t
 {
     COMPARE_OP_NEVER = 0,
@@ -65,6 +89,21 @@ enum class ECompareOp : uint8_t
     COMPARE_OP_NOT_EQUAL,
     COMPARE_OP_GREATER_OR_EQUAL,
     COMPARE_OP_ALWAYS,
+};
+
+enum class ESamplerFilter : uint8_t
+{
+    SAMPLER_FILTER_NEAREST = 0,
+    SAMPLER_FILTER_LINEAR
+};
+
+enum class ESamplerWrap : uint8_t
+{
+    SAMPLER_WRAP_REPEAT = 0,
+    SAMPLER_WRAP_MIRRORED_REPEAT,
+    SAMPLER_WRAP_CLAMP_TO_EDGE,
+    SAMPLER_WRAP_CLAMP_TO_BORDER,
+    SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE,
 };
 
 struct QuadVertex
@@ -80,17 +119,8 @@ struct CameraData
     glm::mat4 Projection  = glm::mat4(1.0f);
     glm::mat4 InverseView = glm::mat4(1.0f);
     glm::vec3 Position    = glm::vec3(0.0f);
-};
-
-struct PCBlock
-{
-    glm::mat4 Transform              = glm::mat4(1.0);
-    uint32_t StorageImageIndex       = 0;
-    uint32_t AlbedoTextureIndex      = 0;
-    uint32_t NormalTextureIndex      = 0;
-    uint32_t VertexPosBufferIndex    = 0;
-    uint32_t VertexAttribBufferIndex = 0;
-    uint32_t MeshletBufferIndex      = 0;
+    float zNear           = 0.0f;
+    float zFar            = 1.0f;
 };
 
 struct PBRData

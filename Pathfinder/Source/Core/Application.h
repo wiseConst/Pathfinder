@@ -21,10 +21,10 @@ struct CommandLineArguments final
 struct ApplicationSpecification final
 {
     ERendererAPI RendererAPI         = ERendererAPI::RENDERER_API_VULKAN;
-    CommandLineArguments CmdLineArgs = {};
     uint32_t Width                   = 1280;
     uint32_t Height                  = 720;
     std::string_view Title           = "Pathfinder";
+    CommandLineArguments CmdLineArgs = {};
 };
 
 class Application : private Unmovable, private Uncopyable
@@ -54,16 +54,15 @@ class Application : private Unmovable, private Uncopyable
     }
 
   private:
+    static inline Application* s_Instance = nullptr;
+    ApplicationSpecification m_Specification;
+
     Unique<Window> m_Window;
     Unique<GraphicsContext> m_GraphicsContext;
     Unique<LayerQueue> m_LayerQueue;
 
-    inline static Application* s_Instance = nullptr;
-    ApplicationSpecification m_Specification;
-
+    float m_DeltaTime               = 0.0f;
     static inline bool s_bIsRunning = false;
-
-    float m_DeltaTime = 0.0f;
 
     void OnEvent(Event& e);
 };

@@ -42,8 +42,8 @@ struct FramebufferAttachment
 struct FramebufferSpecification
 {
     std::string Name = "None";
-    uint32_t Width   = 1280;
-    uint32_t Height  = 720;
+    uint32_t Width   = 0;
+    uint32_t Height  = 0;
 
     std::vector<FramebufferAttachmentSpecification> AttachmentsToCreate;
 
@@ -59,7 +59,7 @@ class Framebuffer : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE virtual const FramebufferSpecification& GetSpecification() const         = 0;
     NODISCARD FORCEINLINE virtual const std::vector<FramebufferAttachment>& GetAttachments() const = 0;
-    virtual const Shared<Image> GetDepthAttachment() const                                         = 0;
+    virtual Shared<Image> GetDepthAttachment() const                                               = 0;
 
     virtual void Resize(const uint32_t width, const uint32_t height)   = 0;
     virtual void BeginPass(const Shared<CommandBuffer>& commandBuffer) = 0;

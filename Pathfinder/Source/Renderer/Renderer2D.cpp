@@ -31,14 +31,14 @@ void Renderer2D::Init()
     std::ranges::for_each(s_RendererData2D->QuadVertexBuffer,
                           [](auto& vertexBuffer)
                           {
-                              BufferSpecification vbSpec = {};
-                              vbSpec.BufferCapacity      = s_RendererData2D->s_MAX_VERTICES * sizeof(QuadVertex);
-                              vbSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_VERTEX;
+                              BufferSpecification vbSpec = {EBufferUsage::BUFFER_TYPE_VERTEX};
+                              vbSpec.BufferCapacity      = s_RendererData2D->s_MAX_VERTEX_BUFFER_SIZE;
 
                               vertexBuffer = Buffer::Create(vbSpec);
                           });
 
     {
+        // TODO: Use here memory allocator
         uint32_t* indices = new uint32_t[s_RendererData2D->s_MAX_INDICES];
 
         // Counter-Clockwise order
@@ -56,9 +56,7 @@ void Renderer2D::Init()
             offset += 4;
         }
 
-        BufferSpecification ibSpec = {};
-        ibSpec.BufferCapacity      = sizeof(uint32_t) * s_RendererData2D->s_MAX_INDICES;
-        ibSpec.BufferUsage         = EBufferUsage::BUFFER_TYPE_INDEX;
+        BufferSpecification ibSpec = {EBufferUsage::BUFFER_TYPE_INDEX};
         ibSpec.Data                = indices;
         ibSpec.DataSize            = sizeof(uint32_t) * s_RendererData2D->s_MAX_INDICES;
 
@@ -71,7 +69,10 @@ void Renderer2D::Init()
     quadPipelineSpec.Shader                = ShaderLibrary::Get("Quad2D");
     quadPipelineSpec.bBindlessCompatible   = true;
     quadPipelineSpec.FrontFace             = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
-    quadPipelineSpec.TargetFramebuffer     = Renderer::GetRendererData()->CompositeFramebuffer;
+    quadPipelineSpec.TargetFramebuffer     = Renderer::GetRendererData()->GBuffer;
+    //quadPipelineSpec.bDepthTest            = true;
+    //quadPipelineSpec.bDepthWrite           = true;  // Do I rly need this? since im using depth pre pass of my static meshes
+   // quadPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
     PipelineBuilder::Push(s_RendererData2D->QuadPipeline, quadPipelineSpec);
 
     PipelineBuilder::Build();
@@ -113,12 +114,12 @@ void Renderer2D::FlushBatch()
     auto& br = Renderer::GetBindlessRenderer();
     br->Bind(renderCommandBuffer);
 
-    rd->CompositeFramebuffer[s_RendererData2D->FrameIndex]->BeginPass(renderCommandBuffer);
+    rd->GBuffer[s_RendererData2D->FrameIndex]->BeginPass(renderCommandBuffer);
 
     s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]->SetData(
         s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], dataSize);
 
-    PCBlock pc = {};
+    PushConstantBlock pc = {};
     renderCommandBuffer->BindPipeline(s_RendererData2D->QuadPipeline);
     renderCommandBuffer->BindPushConstants(s_RendererData2D->QuadPipeline, 0, 0, sizeof(pc), &pc);
 
@@ -128,7 +129,7 @@ void Renderer2D::FlushBatch()
 
     renderCommandBuffer->DrawIndexed(s_Renderer2DStats.QuadCount * 6);
 
-    rd->CompositeFramebuffer[s_RendererData2D->FrameIndex]->EndPass(renderCommandBuffer);
+    rd->GBuffer[s_RendererData2D->FrameIndex]->EndPass(renderCommandBuffer);
 
     renderCommandBuffer->EndRecording();
     renderCommandBuffer->Submit();

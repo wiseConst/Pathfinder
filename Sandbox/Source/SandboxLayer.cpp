@@ -5,8 +5,8 @@ namespace Pathfinder
 
 void SandboxLayer::Init()
 {
-    m_Dummy  = Mesh::Create("Assets/Meshes/kitten/scene.gltf");
-    m_Camera = Camera::Create(ECameraType::CAMERA_TYPE_ORTHOGRAPHIC);
+    m_Dummy  = Mesh::Create("Assets/Meshes/sponza/scene.gltf");
+    m_Camera = Camera::Create(ECameraType::CAMERA_TYPE_PERSPECTIVE);
 }
 
 void SandboxLayer::Destroy() {}
@@ -24,18 +24,17 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 
     Renderer::SubmitMesh(m_Dummy);
 
-    /*
-    constexpr float limit = 5.0f;
-    for (float y = -limit; y < limit; y += limit / 10.0f)
-    {
-        for (float x = -limit; x < limit; x += limit / 10.0f)
-        {
-            const glm::mat4 transform =
-                glm::translate(glm::mat4(1.0f), glm::vec3(x, y, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.45f, 0.45f, 0.0));
-            Renderer2D::DrawQuad(transform, glm::vec4((x + limit) / (limit * 2), 0.4f, (y + limit) / (limit * 2), 1.0f));
-        }
-    }
-    */
+    
+   /*constexpr float limit = 5.0f;
+   for (float y = -limit; y < limit; y += limit / 10.0f)
+   {
+       for (float x = -limit; x < limit; x += limit / 10.0f)
+       {
+           const glm::mat4 transform =
+               glm::translate(glm::mat4(1.0f), glm::vec3(x, y, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.45f, 0.45f, 0.0));
+           Renderer2D::DrawQuad(transform, glm::vec4((x + limit) / (limit * 2), 0.4f, (y + limit) / (limit * 2), 1.0f));
+       }
+   }*/
 
     Renderer::EndScene();
 

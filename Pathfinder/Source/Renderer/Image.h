@@ -7,7 +7,6 @@
 namespace Pathfinder
 {
 
-// Mostly stolen from vulkan_core.h
 enum class EImageLayout : uint8_t
 {
     IMAGE_LAYOUT_UNDEFINED = 0,
@@ -82,8 +81,8 @@ enum class EImageFormat : uint8_t
 
 struct ImageSpecification
 {
-    uint32_t Width             = 1280;
-    uint32_t Height            = 720;
+    uint32_t Width             = 0;
+    uint32_t Height            = 0;
     EImageFormat Format        = EImageFormat::FORMAT_UNDEFINED;
     EImageLayout Layout        = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
     ImageUsageFlags UsageFlags = 0;
@@ -100,8 +99,9 @@ class Image : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE virtual void* Get() const                                  = 0;
     NODISCARD FORCEINLINE virtual uint32_t GetBindlessIndex() const                  = 0;
 
-    virtual void Resize(const uint32_t width, const uint32_t height)                 = 0;
-    virtual void SetLayout(const EImageLayout newLayout)                             = 0;
+    virtual void Resize(const uint32_t width, const uint32_t height) = 0;
+    virtual void SetLayout(const EImageLayout newLayout)             = 0;
+    virtual void SetData(const void* data, size_t dataSize)          = 0;
 
     static Shared<Image> Create(const ImageSpecification& imageSpec);
 
@@ -110,6 +110,113 @@ class Image : private Uncopyable, private Unmovable
 
     virtual void Invalidate() = 0;
     virtual void Destroy()    = 0;
+};
+
+struct SamplerSpecification
+{
+    ESamplerFilter Filter;
+    ESamplerWrap Wrap;
+    bool bAnisotropyEnable;
+    bool bCompareEnable;
+    float MipLodBias;
+    float MaxAnisotropy;
+    float MinLod;
+    float MaxLod;
+    ECompareOp CompareOp;
+
+    struct Hash
+    {
+        std::size_t operator()(const SamplerSpecification& key) const
+        {
+            std::size_t hash = std::hash<std::uint64_t>{}(
+                static_cast<uint64_t>(key.Filter) + static_cast<uint64_t>(key.Wrap) + static_cast<uint64_t>(key.CompareOp) +
+                static_cast<uint64_t>(key.bAnisotropyEnable) + static_cast<uint64_t>(key.bCompareEnable));
+
+            hash ^= std::hash<int>{}(key.MipLodBias) + std::hash<int>{}(key.MaxAnisotropy) + std::hash<int>{}(key.MinLod) +
+                    std::hash<int>{}(key.MaxLod);
+
+            hash ^= 0x9e3779b9 + (hash << 6) + (hash >> 2);
+            return hash;
+        }
+    };
+
+    bool operator==(const SamplerSpecification& other) const
+    {
+        if (Filter == other.Filter &&                        //
+            Wrap == other.Wrap &&                            //
+            bAnisotropyEnable == other.bAnisotropyEnable &&  //
+            bCompareEnable == other.bCompareEnable &&        //
+            CompareOp == other.CompareOp &&                  //
+            MipLodBias == other.MipLodBias &&                //
+            MaxAnisotropy == other.MaxAnisotropy &&          //
+            MinLod == other.MinLod &&                        //
+            MaxLod == other.MaxLod)
+        {
+            return true;
+        }
+
+        return false;
+    }
+};
+
+// TODO: Refactor sampler management
+class SamplerStorage final : private Uncopyable, private Unmovable
+{
+  public:
+    NODISCARD FORCEINLINE static uint32_t GetSamplerCount() { return static_cast<uint32_t>(s_Samplers.size()); }
+
+    NODISCARD FORCEINLINE static void* RetrieveCachedSampler(const SamplerSpecification& samplerSpec)
+    {
+        if (auto it = s_Samplers.find(samplerSpec); it == s_Samplers.end()) return nullptr;
+
+        auto& pair = s_Samplers[samplerSpec];
+
+        ++pair.first;
+        return pair.second;
+    }
+
+    FORCEINLINE static void AddNewSampler(const SamplerSpecification& samplerSpec, void* sampler,
+                                          const uint32_t numOfImagesUsingSampler = 0)
+    {
+        auto& pair  = s_Samplers[samplerSpec];
+        pair.first  = numOfImagesUsingSampler;
+        pair.second = sampler;
+    }
+
+    NODISCARD FORCEINLINE static bool DoesSamplerNeedDestruction(const SamplerSpecification& samplerSpec)
+    {
+        if (auto it = s_Samplers.find(samplerSpec); it != s_Samplers.end())
+        {
+            if ((*it).second.first == 1) return true;
+        }
+
+        return false;
+    }
+
+    FORCEINLINE static void DecrementSamplerImageUsage(const SamplerSpecification& samplerSpec)
+    {
+        if (auto it = s_Samplers.find(samplerSpec); it != s_Samplers.end())
+        {
+            if (uint32_t& numOfImagesUsingSampler = (*it).second.first; numOfImagesUsingSampler > 0) --numOfImagesUsingSampler;
+        }
+    }
+
+    FORCEINLINE static void DestroySampler(const SamplerSpecification& samplerSpec)
+    {
+        if (!DoesSamplerNeedDestruction(samplerSpec)) return;
+
+        if (auto it = s_Samplers.find(samplerSpec); it != s_Samplers.end())
+        {
+            s_Samplers.erase(it);
+        }
+    }
+
+  private:
+    static inline std::unordered_map<SamplerSpecification, std::pair<uint32_t, void*>, SamplerSpecification::Hash>
+        s_Samplers;  // cached samples, pair<NumOfImagesUsingSampler, Sampler>
+
+    SamplerStorage()  = delete;
+    ~SamplerStorage() = default;
 };
 
 namespace ImageUtils
@@ -130,6 +237,13 @@ static bool IsDepthFormat(const EImageFormat imageFormat)
     PFR_ASSERT(false, "Unknown image format!");
     return false;
 }
+
+void* LoadRawImage(std::string_view path, int32_t* x, int32_t* y, int32_t* nChannels);
+
+void* LoadRawImageFromMemory(const uint8_t* data, size_t dataSize, int32_t* x, int32_t* y, int32_t* nChannels);
+
+void UnloadRawImage(void* data);
+
 }  // namespace ImageUtils
 
 }  // namespace Pathfinder

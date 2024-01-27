@@ -3,11 +3,12 @@
 
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
+#include "VulkanCommandBuffer.h"
+#include "VulkanBuffer.h"
 
 #include "Core/Application.h"
 #include "Core/Window.h"
 
-#include "VulkanCommandBuffer.h"
 #include "Renderer/Renderer.h"
 #include "VulkanBindlessRenderer.h"
 
@@ -175,7 +176,41 @@ void VulkanImage::SetLayout(const EImageLayout newLayout)
     vulkanCommandBuffer->EndRecording();
     vulkanCommandBuffer->Submit(true);
 
-    m_Specification.Layout = newLayout;
+    m_Specification.Layout       = newLayout;
+    m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
+}
+
+void VulkanImage::SetData(const void* data, size_t dataSize)
+{
+    SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+
+    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+    vulkanCommandBuffer->BeginRecording(true);
+
+    VkBuffer stagingBuffer          = VK_NULL_HANDLE;
+    VmaAllocation stagingAllocation = VK_NULL_HANDLE;
+
+    BufferUtils::CreateBuffer(stagingBuffer, stagingAllocation, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+
+    void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(stagingAllocation);
+    memcpy(mapped, data, dataSize);
+    VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(stagingAllocation);
+
+    VkBufferImageCopy copyRegion               = {};
+    copyRegion.imageExtent                     = {m_Specification.Width, m_Specification.Height, 1};
+    copyRegion.imageSubresource.mipLevel       = 0;  // ???
+    copyRegion.imageSubresource.baseArrayLayer = 0;  // ???
+    copyRegion.imageSubresource.layerCount     = 1;  // ???
+    copyRegion.imageSubresource.aspectMask =
+        ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+
+    vulkanCommandBuffer->CopyBufferToImage(stagingBuffer, m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), 1,
+                                           &copyRegion);
+
+    vulkanCommandBuffer->EndRecording();
+    vulkanCommandBuffer->Submit(true);
+
+    BufferUtils::DestroyBuffer(stagingBuffer, stagingAllocation);
 }
 
 // TODO: Add cube map support
@@ -190,7 +225,12 @@ void VulkanImage::Invalidate()
     ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat,
                                 ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT);
 
-    SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
+    if (m_Specification.Layout == EImageLayout::IMAGE_LAYOUT_UNDEFINED)
+        SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
+    else
+        SetLayout(m_Specification.Layout);
+
+    m_DescriptorInfo = {VK_NULL_HANDLE, m_View, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
 }
 
 void VulkanImage::Destroy()
@@ -203,12 +243,11 @@ void VulkanImage::Destroy()
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_View, nullptr);
     m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
 
+    m_DescriptorInfo = {};
+
     if (m_Index != UINT32_MAX)
     {
-        auto vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
-        PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
-
-        vulkanBR->FreeImage(m_Index);
+        Renderer::GetBindlessRenderer()->FreeImage(m_Index);
     }
 }
 

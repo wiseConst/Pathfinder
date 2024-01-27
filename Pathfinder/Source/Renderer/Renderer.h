@@ -65,8 +65,8 @@ class Renderer : private Uncopyable, private Unmovable
   private:
     struct RendererData
     {
-        Weak<CommandBuffer> CurrentRenderCommandBuffer;
         CommandBufferPerFrame RenderCommandBuffer;
+        Weak<CommandBuffer> CurrentRenderCommandBuffer;
 
         Weak<CommandBuffer> CurrentComputeCommandBuffer;
         CommandBufferPerFrame ComputeCommandBuffer;
@@ -75,9 +75,8 @@ class Renderer : private Uncopyable, private Unmovable
         ImagePerFrame PathtracedImage;
         FramebufferPerFrame CompositeFramebuffer;
 
-        FramebufferPerFrame GBuffer;
-
         // NOTE: Forward+ renderer
+        FramebufferPerFrame GBuffer;
         Shared<Pipeline> ForwardRenderingPipeline = nullptr;
 
         FramebufferPerFrame DepthPrePassFramebuffer;
@@ -85,7 +84,9 @@ class Renderer : private Uncopyable, private Unmovable
 
         std::vector<Shared<Submesh>> OpaqueObjects;
         std::vector<Shared<Submesh>> TransparentObjects;
-        //  Shared<Texture2D> WhiteTexture = nullptr;
+        Shared<Texture2D> WhiteTexture = nullptr;
+
+        Shared<Pipeline> GridPipeline = nullptr;
 
         // MISC
         uint32_t FrameIndex = 0;
@@ -97,21 +98,24 @@ class Renderer : private Uncopyable, private Unmovable
 
     struct RendererSettings
     {
-        bool bMeshShadingSupport = false;
-        bool bRTXSupport         = false;
-        bool bBDASupport         = false;
-    } static inline s_RendererSettings = {};
+        bool bMeshShadingSupport;
+        bool bRTXSupport;
+        bool bBDASupport;
+    };
+    static inline RendererSettings s_RendererSettings = {};
 
     struct RendererStats
     {
-        uint32_t TriangleCount       = 0;
-        uint32_t DescriptorSetCount  = 0;
-        uint32_t DescriptorPoolCount = 0;
-        uint32_t MeshletCount        = 0;
-        float GPUTime                = 0.0F;
-    } static inline s_RendererStats = {};
+        uint32_t TriangleCount;
+        uint32_t DescriptorSetCount;
+        uint32_t DescriptorPoolCount;
+        uint32_t MeshletCount;
+        float GPUTime;
+    };
+    static inline RendererStats s_RendererStats = {};
 
     static void DepthPrePass();
+    static void LightCullingPass();
     static void GeometryPass();
 };
 

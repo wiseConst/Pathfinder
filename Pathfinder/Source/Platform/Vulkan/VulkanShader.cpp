@@ -432,8 +432,8 @@ void VulkanShader::Reflect(ShaderDescription& shaderDescription, const std::vect
             auto& inputVar    = m_InputVars.emplace_back();
             inputVar.location = reflectedInputVar->location;
             inputVar.format   = SpvReflectFormatToVulkan(reflectedInputVar->format);
-            inputVar.binding  = 0;  // TODO: Should it be hardcoded like this??
-            inputVar.offset   = 0;  // ???
+            inputVar.binding  = 0;  // NOTE: Correct binding will be chosen at the pipeline creation stage
+            inputVar.offset   = 0;  // NOTE: Same thing for this, at the pipeline creation stage
         }
     }
 
@@ -454,25 +454,21 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
                                                             shaderc_shader_kind shaderKind)
 {
     // Firstly check if cache exists and retrieve it
-#if !VK_FORCE_SHADER_COMPILATION
     const std::filesystem::path cachedShaderPath = std::string("Assets/Cached/Shaders/") + std::string(shaderName) + ".spv";
+#if !VK_FORCE_SHADER_COMPILATION
     if (std::filesystem::exists(cachedShaderPath)) return LoadData<std::vector<uint32_t>>(cachedShaderPath.string());
 #endif
 
     // Got no cache, let's compile then
-    static shaderc::Compiler compiler;
-    static shaderc::CompileOptions compileOptions;
-    static std::atomic<bool> s_bIsCompilerShaderCompilerSetup = false;
-    if (!s_bIsCompilerShaderCompilerSetup)
-    {
-        compileOptions.SetOptimizationLevel(shaderc_optimization_level_zero);
-        compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
-        compileOptions.SetTargetSpirv(shaderc_spirv_version_1_4);
-        compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
-        compileOptions.SetWarningsAsErrors();
-        compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
-        s_bIsCompilerShaderCompilerSetup = true;
-    }
+    thread_local shaderc::Compiler compiler;
+    thread_local shaderc::CompileOptions compileOptions;
+    thread_local bool bIsCompilerShaderCompilerSetup = false;
+    compileOptions.SetOptimizationLevel(shaderc_optimization_level_zero);
+    compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
+    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_4);
+    compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
+    compileOptions.SetWarningsAsErrors();
+    compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
 
     const auto shaderSrc = LoadData<std::string>(localShaderPath);
     // Preprocess

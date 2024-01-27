@@ -5,8 +5,6 @@ source_group("Source" FILES ${CORE_SOURCES})
 
 add_executable(${PROJECT_NAME} ${CORE_SOURCES})
 
-# NOTE: Disable console, ship as fully standalone
-# TODO: Check if it works with g++
 if(MSVC)
     target_link_options(${PROJECT_NAME} PRIVATE "$<$<CONFIG:RELEASE>:/SUBSYSTEM:WINDOWS>")
 endif()

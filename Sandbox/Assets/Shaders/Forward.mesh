@@ -5,14 +5,15 @@
 #extension GL_GOOGLE_include_directive : require
 #include "Assets/Shaders/Include/Globals.h"
 
-layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
-layout(triangles, max_vertices = 64, max_primitives = 124) out; // 126 optimal nvidia
+layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out; // 126 optimal nvidia
 
 layout(location = 0) out VertexOutput
 {
     vec4 Color;
     vec3 Normal;
     vec3 Tangent;
+    vec2 UV;
 } o_VertexOutput[];
 
 #if DEBUG_PRINTF
@@ -40,26 +41,30 @@ void main()
         const vec3 mcolor = vec3(float(mhash & 255), float((mhash >> 8) & 255), float((mhash >> 16) & 255)) / 255.0;
     #endif
 
-    for(uint i = ti; i < vertexCount; i+=32)
+    const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
+    for(uint i = ti; i < vertexCount; i+=MESHLET_LOCAL_GROUP_SIZE)
     {
-        const uint vi =  s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertices[i];
+        const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
 
         gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);  
         
-        o_VertexOutput[i].Color = vec4(s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color.xyz * 0.2 + s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal.xyz * 0.5, s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color.w);
+        o_VertexOutput[i].Color = vec4(s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color.xyz * 0.2 + s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal.xyz * 0.5, s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color.a);
         #if DEBUG_MESHLETS
               o_VertexOutput[i].Color = vec4(mcolor, 1.0);
         #endif
 
         o_VertexOutput[i].Normal = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal;
         o_VertexOutput[i].Tangent = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Tangent;
+        o_VertexOutput[i].UV =  s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].UV;
     }
 
-    for(uint i = ti; i < primitiveCount; i+=32)
+
+    const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;
+    for(uint i = ti; i < primitiveCount; i+=MESHLET_LOCAL_GROUP_SIZE)
     {
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
-            s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangles[3*i+0], 
-            s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangles[3*i+1], 
-            s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangles[3*i+2]);
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+0], 
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+1], 
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+2]);
     }
 }

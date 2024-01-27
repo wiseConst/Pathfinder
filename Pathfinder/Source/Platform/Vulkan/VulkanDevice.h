@@ -38,10 +38,12 @@ struct QueueFamilyIndices
             if (family.queueFlags & VK_QUEUE_GRAPHICS_BIT && indices.GraphicsFamily == UINT32_MAX)
             {
                 indices.GraphicsFamily = i;
+                PFR_ASSERT(family.timestampValidBits != 0, "Queue family doesn't support timestamp queries!");
             }
             else if (family.queueFlags & VK_QUEUE_COMPUTE_BIT && indices.ComputeFamily == UINT32_MAX)  // dedicated compute queue
             {
                 indices.ComputeFamily = i;
+                PFR_ASSERT(family.timestampValidBits != 0, "Queue family doesn't support timestamp queries!");
             }
             else if (family.queueFlags & VK_QUEUE_TRANSFER_BIT && indices.TransferFamily == UINT32_MAX)  // dedicated transfer queue
             {
@@ -208,38 +210,40 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     }
 
   private:
+    // NOTE: Struct looks messy to keep structure memory aligned(thanks to updated MVS 2024)
     struct GPUInfo
     {
-        VkDevice LogicalDevice          = VK_NULL_HANDLE;
-        VkPhysicalDevice PhysicalDevice = VK_NULL_HANDLE;
-        std::vector<VkFormat> SupportedDepthStencilFormats;
-
-        Pathfinder::QueueFamilyIndices QueueFamilyIndices = {};
-        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> GraphicsCommandPools;
-        VkQueue GraphicsQueue = VK_NULL_HANDLE;
-        VkQueue PresentQueue  = VK_NULL_HANDLE;
-
-        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> TransferCommandPools;
-        VkQueue TransferQueue = VK_NULL_HANDLE;
-
-        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> ComputeCommandPools;
-        VkQueue ComputeQueue = VK_NULL_HANDLE;
-
-        VkPhysicalDeviceProperties GPUProperties             = {};
-        VkPhysicalDeviceFeatures GPUFeatures                 = {};
+        VkPhysicalDeviceProperties GPUProperties             = {};  // 824_8
         VkPhysicalDeviceMemoryProperties GPUMemoryProperties = {};
-        VkPhysicalDeviceDriverProperties GPUDriverProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
-
-        VkPhysicalDeviceMeshShaderPropertiesEXT MSProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};
-        bool bMeshShaderSupport                              = true;
+        VkPhysicalDeviceFeatures GPUFeatures                 = {};
+        std::vector<VkFormat> SupportedDepthStencilFormats;
 
         VkPhysicalDeviceRayTracingPipelinePropertiesKHR RTProperties = {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+        bool bMeshShaderSupport = true;
+        bool bRTXSupport        = true;
+        bool bBDASupport        = true;
+        uint8_t pad0            = 0;
+
+        VkPhysicalDeviceDriverProperties GPUDriverProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};           // 536_8
+        VkPhysicalDeviceMeshShaderPropertiesEXT MSProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};  // 160_8
         VkPhysicalDeviceAccelerationStructurePropertiesKHR ASProperties = {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
-        bool bRTXSupport = true;
- 
-        bool bBDASupport = true;
+
+        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> GraphicsCommandPools;
+        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> TransferCommandPools;
+        std::array<VkCommandPool, s_WORKER_THREAD_COUNT> ComputeCommandPools;
+
+        Pathfinder::QueueFamilyIndices QueueFamilyIndices = {};
+
+        VkDevice LogicalDevice          = VK_NULL_HANDLE;
+        VkPhysicalDevice PhysicalDevice = VK_NULL_HANDLE;
+
+        VkQueue GraphicsQueue = VK_NULL_HANDLE;
+        VkQueue PresentQueue  = VK_NULL_HANDLE;
+        VkQueue TransferQueue = VK_NULL_HANDLE;
+        VkQueue ComputeQueue  = VK_NULL_HANDLE;
+
     } m_GPUInfo;
     Unique<VulkanAllocator> m_VMA;
     Unique<VulkanDescriptorAllocator> m_VDA;

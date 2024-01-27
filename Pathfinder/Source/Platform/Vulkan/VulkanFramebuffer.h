@@ -16,7 +16,7 @@ class VulkanFramebuffer final : public Framebuffer
 
     NODISCARD FORCEINLINE const FramebufferSpecification& GetSpecification() const final override { return m_Specification; }
     NODISCARD FORCEINLINE const std::vector<FramebufferAttachment>& GetAttachments() const final override { return m_Attachments; }
-    const Shared<Image> GetDepthAttachment() const final override;
+    Shared<Image> GetDepthAttachment() const final override;
 
     FORCEINLINE void Resize(const uint32_t width, const uint32_t height) final override
     {

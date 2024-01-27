@@ -23,18 +23,10 @@ class VulkanDescriptorAllocator final : private Unmovable, private Uncopyable
     FORCEINLINE const uint32_t GetAllocatedDescriptorSetsCount() { return m_AllocatedDescriptorSets; }
 
   private:
-    VkDevice& m_LogicalDevice;
-
-    std::vector<VkDescriptorPool> m_Pools;
-    VkDescriptorPool m_CurrentPool          = VK_NULL_HANDLE;
-    const uint32_t m_BasePoolSizeMultiplier = 250;
-    uint32_t m_CurrentPoolSizeMultiplier    = m_BasePoolSizeMultiplier;
-    uint32_t m_AllocatedDescriptorSets      = 0;
-
     std::mutex m_Mutex;
 #define VDA_LOCK_GUARD_MUTEX std::lock_guard lock(m_Mutex)
 
-    static inline constexpr std::vector<std::pair<VkDescriptorType, float>> s_DefaultPoolSizes = {
+    static inline std::vector<std::pair<VkDescriptorType, float>> s_DefaultPoolSizes = {
         {VK_DESCRIPTOR_TYPE_SAMPLER, 0.5f},                 //
         {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 4.f},   //
         {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 4.f},            //
@@ -46,7 +38,15 @@ class VulkanDescriptorAllocator final : private Unmovable, private Uncopyable
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 2.f},           //
         {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 0.5f},  //
         {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 0.5f}         //
-    };                                                      //
+    };
+
+    std::vector<VkDescriptorPool> m_Pools;
+
+    VkDevice& m_LogicalDevice;
+    VkDescriptorPool m_CurrentPool          = VK_NULL_HANDLE;
+    const uint32_t m_BasePoolSizeMultiplier = 250;
+    uint32_t m_CurrentPoolSizeMultiplier    = m_BasePoolSizeMultiplier;
+    uint32_t m_AllocatedDescriptorSets      = 0;
 
     NODISCARD VkDescriptorPool CreatePool(const uint32_t count, VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0);
     void Destroy();

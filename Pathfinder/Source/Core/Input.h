@@ -10,11 +10,15 @@ namespace Pathfinder
 class Input final : private Uncopyable, private Unmovable
 {
   public:
-    // TODO: implement other functions like is mouse button pressed
-
     static bool IsKeyPressed(const EKey key);
     static bool IsKeyReleased(const EKey key);
     static bool IsKeyRepeated(const EKey key);
+
+    static bool IsMouseButtonPressed(const EKey button);
+    static bool IsMouseButtonReleased(const EKey button);
+    static bool IsMouseButtonRepeated(const EKey button);
+
+    static std::pair<int32_t, int32_t> GetMousePosition();
 
   private:
     Input()           = default;

@@ -26,10 +26,10 @@ class VulkanPipeline final : public Pipeline
     }
 
   private:
-    VkPipeline m_Handle                   = VK_NULL_HANDLE;
-    VkPipelineLayout m_Layout             = VK_NULL_HANDLE;
     PipelineSpecification m_Specification = {};
     std::vector<VkPushConstantRange> m_PushConstants;  // FIXME: Wasting memory, but convenient way to bind push constants
+    VkPipeline m_Handle       = VK_NULL_HANDLE;
+    VkPipelineLayout m_Layout = VK_NULL_HANDLE;
 
     void CreateLayout();
 

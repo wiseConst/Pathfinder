@@ -48,7 +48,7 @@ VulkanFramebuffer::VulkanFramebuffer(const FramebufferSpecification& framebuffer
     Invalidate();
 }
 
-const Shared<Image> VulkanFramebuffer::GetDepthAttachment() const
+Shared<Image> VulkanFramebuffer::GetDepthAttachment() const
 {
     // In case we own attachments
     for (const auto& framebufferAttachment : m_Attachments)
@@ -251,7 +251,8 @@ void VulkanFramebuffer::Invalidate()
                                                          ? EImageUsage::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
                                                          : EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
             imageSpec.UsageFlags                   = EImageUsage::IMAGE_USAGE_SAMPLED_BIT | additionalImageUsage;
-            if (fbAttachment.bCopyable) imageSpec.UsageFlags |= EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT;
+            if (fbAttachment.bCopyable)
+                imageSpec.UsageFlags |= EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
 
             newfbAttachment.Attachment    = Image::Create(imageSpec);
             newfbAttachment.Specification = fbAttachment;  // Copy the whole framebuffer attachment specification

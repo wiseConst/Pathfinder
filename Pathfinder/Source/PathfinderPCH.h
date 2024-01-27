@@ -24,6 +24,7 @@
 #include <map>
 #include <unordered_map>
 
+#include <variant>
 #include <format>
 #include <chrono>
 

@@ -15,13 +15,6 @@ enum class ECullMode : uint8_t
     CULL_MODE_FRONT_AND_BACK
 };
 
-enum class EPolygonMode : uint8_t
-{
-    POLYGON_MODE_FILL = 0,
-    POLYGON_MODE_LINE,
-    POLYGON_MODE_POINT
-};
-
 enum class EFrontFace : uint8_t
 {
     FRONT_FACE_COUNTER_CLOCKWISE = 0,
@@ -54,18 +47,21 @@ enum class EPipelineType : uint8_t
 class Shader;
 struct PipelineSpecification
 {
-    std::string DebugName                = "None";
+    std::string DebugName = "None";
+
     EPipelineType PipelineType           = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     ECullMode CullMode                   = ECullMode::CULL_MODE_NONE;
     EFrontFace FrontFace                 = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
     EPrimitiveTopology PrimitiveTopology = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-    float LineWidth                      = 1.0f;
-    bool bMeshShading                    = false;
-    bool bBindlessCompatible             = false;
-    bool bSeparateVertexBuffers          = false;
 
-    Shared<Pathfinder::Shader> Shader = nullptr;
+    float LineWidth = 1.0f;
+
     FramebufferPerFrame TargetFramebuffer;
+    Shared<Pathfinder::Shader> Shader = nullptr;
+
+    bool bMeshShading           = false;
+    bool bBindlessCompatible    = false;
+    bool bSeparateVertexBuffers = false;
 
     bool bBlendEnable    = false;
     EBlendMode BlendMode = EBlendMode::BLEND_MODE_ADDITIVE;

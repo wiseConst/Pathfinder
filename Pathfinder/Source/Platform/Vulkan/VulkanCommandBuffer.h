@@ -19,6 +19,19 @@ class VulkanCommandBuffer final : public CommandBuffer
     NODISCARD FORCEINLINE ECommandBufferType GetType() const final override { return m_Type; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE ECommandBufferLevel GetLevel() const final override { return m_Level; }
+    const std::vector<float> GetTimestampsResults() const final override;
+
+    void BeginPipelineStatisticsQuery() final override;
+    FORCEINLINE void EndPipelineStatisticsQuery() const final override { vkCmdEndQuery(m_Handle, m_PipelineStatisticsQuery, 0); }
+
+    void BeginTimestampQuery(const EPipelineStage pipelineStage) final override;
+    FORCEINLINE void EndTimestampQuery(const EPipelineStage pipelineStage) final override
+    {
+        PFR_ASSERT(m_CurrentTimestampIndex + 1 < s_MAX_TIMESTAMPS, "Timestamp query limit reached!");
+        vkCmdWriteTimestamp(m_Handle, (VkPipelineStageFlagBits)VulkanUtility::PathfinderPipelineStageToVulkan(pipelineStage),
+                            m_TimestampQuery, m_CurrentTimestampIndex);
+        ++m_CurrentTimestampIndex;
+    }
 
     void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const final override
     {
@@ -45,7 +58,7 @@ class VulkanCommandBuffer final : public CommandBuffer
 
     void Submit(bool bWaitAfterSubmit = true) final override;
     void TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
-                               const VkImageAspectFlags aspectMask);
+                               const VkImageAspectFlags aspectMask) const;
 
     FORCEINLINE void BeginRendering(const VkRenderingInfo* renderingInfo) const { vkCmdBeginRendering(m_Handle, renderingInfo); }
     FORCEINLINE void EndRendering() const { vkCmdEndRendering(m_Handle); }
@@ -136,11 +149,8 @@ class VulkanCommandBuffer final : public CommandBuffer
         vkCmdCopyBufferToImage(m_Handle, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
     }
 
-    FORCEINLINE void CopyImageToImage(const VkImage& srcImage, const VkImageLayout srcImageLayout, VkImage& dstImage,
-                                      const VkImageLayout dstImageLayout, const uint32_t regionCount, const VkImageCopy* regions) const
-    {
-        vkCmdCopyImage(m_Handle, srcImage, srcImageLayout, dstImage, dstImageLayout, regionCount, regions);
-    }
+    void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage, const EPipelineStage srcPipelineStage,
+                          const EPipelineStage dstPipelineStage) const final override;
 
     FORCEINLINE void BlitImage(const VkImage& srcImage, const VkImageLayout srcImageLayout, VkImage& dstImage,
                                const VkImageLayout dstImageLayout, const uint32_t regionCount, const VkImageBlit* pRegions,
@@ -150,13 +160,18 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
   private:
-    VkCommandBuffer m_Handle    = VK_NULL_HANDLE;
+    VkCommandBuffer m_Handle = VK_NULL_HANDLE;
+    VkFence m_SubmitFence    = VK_NULL_HANDLE;
+
+    VkQueryPool m_PipelineStatisticsQuery = VK_NULL_HANDLE;
+
+    VkQueryPool m_TimestampQuery     = VK_NULL_HANDLE;
+    uint32_t m_CurrentTimestampIndex = 0;
+
     ECommandBufferLevel m_Level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY;
     ECommandBufferType m_Type   = ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS;
-    VkFence m_SubmitFence       = VK_NULL_HANDLE;
 
     void Destroy() final override;
-    void CreateSyncResourcesAndQueries();
 };
 
 }  // namespace Pathfinder

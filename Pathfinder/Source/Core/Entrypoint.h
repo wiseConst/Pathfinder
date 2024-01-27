@@ -23,14 +23,10 @@ inline int32_t Main(int32_t argc, char** argv)
 
 #if PFR_RELEASE
 
-#if _MSC_VER
-
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     return Pathfinder::Main(__argc, __argv);
 }
-
-#endif
 
 #else
 

@@ -16,7 +16,7 @@
 namespace Pathfinder
 {
 
-VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
+static VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
 {
     switch (frontFace)
     {
@@ -27,7 +27,7 @@ VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
     return VK_FRONT_FACE_CLOCKWISE;
 }
 
-VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveTopology primitiveTopology)
+static VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveTopology primitiveTopology)
 {
     switch (primitiveTopology)
     {
@@ -43,20 +43,9 @@ VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveTopology
     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 }
 
-VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode polygonMode)
-{
-    switch (polygonMode)
-    {
-        case EPolygonMode::POLYGON_MODE_FILL: return VK_POLYGON_MODE_FILL;
-        case EPolygonMode::POLYGON_MODE_LINE: return VK_POLYGON_MODE_LINE;
-        case EPolygonMode::POLYGON_MODE_POINT: return VK_POLYGON_MODE_POINT;
-    }
 
-    PFR_ASSERT(false, "Unknown polygon mode!");
-    return VK_POLYGON_MODE_FILL;
-}
 
-VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode)
+static VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode)
 {
     switch (cullMode)
     {
@@ -392,7 +381,7 @@ void VulkanPipeline::Invalidate()
             VkPipelineRasterizationStateCreateInfo RasterizationState = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
             RasterizationState.cullMode                               = PathfinderCullModeToVulkan(m_Specification.CullMode);
             RasterizationState.lineWidth                              = m_Specification.LineWidth;
-            RasterizationState.polygonMode                            = PathfinderPolygonModeToVulkan(m_Specification.PolygonMode);
+            RasterizationState.polygonMode                            = VulkanUtility::PathfinderPolygonModeToVulkan(m_Specification.PolygonMode);
             RasterizationState.frontFace                              = PathfinderFrontFaceToVulkan(m_Specification.FrontFace);
             RasterizationState.rasterizerDiscardEnable                = VK_FALSE;
 

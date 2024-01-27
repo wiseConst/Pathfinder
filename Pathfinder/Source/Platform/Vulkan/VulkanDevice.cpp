@@ -123,7 +123,9 @@ void VulkanDevice::PickPhysicalDevice(const VkInstance& instance)
     std::multimap<uint32_t, GPUInfo> candidates;
     for (const auto& physicalDevice : physicalDevices)
     {
-        GPUInfo currentGPU = {VK_NULL_HANDLE, physicalDevice};
+        GPUInfo currentGPU        = {};
+        currentGPU.LogicalDevice  = VK_NULL_HANDLE;
+        currentGPU.PhysicalDevice = physicalDevice;
 
         candidates.insert(std::make_pair(RateDeviceSuitability(currentGPU), currentGPU));
     }
@@ -159,10 +161,11 @@ void VulkanDevice::CreateLogicalDevice()
     deviceCI.pNext = &vulkan13Features;
     void** ppNext  = &vulkan13Features.pNext;
 
-    VkPhysicalDeviceVulkan12Features vulkan12Features          = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    vulkan12Features.shaderSampledImageArrayNonUniformIndexing = VK_TRUE;  // AMD issues
-    vulkan12Features.shaderStorageImageArrayNonUniformIndexing = VK_TRUE;
-    vulkan12Features.storageBuffer8BitAccess                   = VK_TRUE;
+    VkPhysicalDeviceVulkan12Features vulkan12Features           = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    vulkan12Features.shaderSampledImageArrayNonUniformIndexing  = VK_TRUE;  // AMD issues
+    vulkan12Features.shaderStorageImageArrayNonUniformIndexing  = VK_TRUE;
+    vulkan12Features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
+    vulkan12Features.storageBuffer8BitAccess                    = VK_TRUE;
 
     // Bindless
     vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
@@ -361,6 +364,9 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
     gpuInfo.ASProperties.pNext = &gpuInfo.MSProperties;
 
     vkGetPhysicalDeviceProperties2(gpuInfo.PhysicalDevice, &GPUProperties2);
+
+    // TODO: Leave it like this? Or have queries depend on this value
+    PFR_ASSERT(gpuInfo.GPUProperties.limits.timestampPeriod != 0, "Timestamp queries not supported!");
 
 #if VK_LOG_INFO
     LOG_INFO("GPU info:");

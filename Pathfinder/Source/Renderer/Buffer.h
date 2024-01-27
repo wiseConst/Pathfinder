@@ -24,10 +24,10 @@ typedef uint32_t BufferUsageFlags;
 struct BufferSpecification
 {
     BufferUsageFlags BufferUsage = 0;
+    bool bMapPersistent          = false;  // In case it's UBO
+    size_t BufferCapacity        = 0;
     const void* Data             = nullptr;
     size_t DataSize              = 0;
-    size_t BufferCapacity        = 0;
-    bool bMapPersistent          = false;  // In case it's UBO
 };
 
 class Buffer : private Uncopyable, private Unmovable
@@ -37,7 +37,7 @@ class Buffer : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE virtual const BufferSpecification& GetSpecification() = 0;
     NODISCARD FORCEINLINE virtual void* Get() const                             = 0;
-    NODISCARD FORCEINLINE virtual uint32_t GetBindlessIndex() const = 0;
+    NODISCARD FORCEINLINE virtual uint32_t GetBindlessIndex() const             = 0;
 
     virtual void SetData(const void* data, const size_t dataSize) = 0;
 

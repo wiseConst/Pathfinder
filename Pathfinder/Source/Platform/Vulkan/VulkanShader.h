@@ -56,17 +56,20 @@ class VulkanShader final : public Shader
   private:
     struct ShaderDescription
     {
-        EShaderStage Stage                   = EShaderStage::SHADER_STAGE_VERTEX;
-        VkShaderModule Module                = VK_NULL_HANDLE;
-        SpvReflectShaderModule ReflectModule = {};
-        std::string EntrypointName           = "main";
+        EShaderStage Stage = EShaderStage::SHADER_STAGE_VERTEX;
 
-        std::unordered_map<std::string, VkPushConstantRange> PushConstants;
+        std::string EntrypointName = "main";
+        VkShaderModule Module      = VK_NULL_HANDLE;
 
         // NOTE: Array index is the descriptor set number
         std::vector<std::unordered_map<std::string, VkDescriptorSetLayoutBinding>> DescriptorSetBindings;
+
         std::vector<VkDescriptorSetLayout> SetLayouts;
         std::vector<DescriptorSetPerFrame> Sets;
+
+        std::unordered_map<std::string, VkPushConstantRange> PushConstants;
+
+        SpvReflectShaderModule ReflectModule = {};
     };
 
     std::vector<ShaderDescription> m_ShaderDescriptions;

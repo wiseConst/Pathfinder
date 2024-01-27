@@ -25,11 +25,11 @@ class VulkanBuffer final : public Buffer
     void SetData(const void* data, const size_t dataSize) final override;
 
   private:
+    BufferSpecification m_Specification     = {};
+    VkDescriptorBufferInfo m_DescriptorInfo = {};
     VkBuffer m_Handle                       = VK_NULL_HANDLE;
     VmaAllocation m_Allocation              = VK_NULL_HANDLE;
-    BufferSpecification m_Specification     = {};
     bool m_bIsMapped                        = false;
-    VkDescriptorBufferInfo m_DescriptorInfo = {};
 
     friend class VulkanBindlessRenderer;
     uint32_t m_Index = UINT32_MAX;  // bindless array purposes

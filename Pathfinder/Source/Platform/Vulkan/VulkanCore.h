@@ -13,7 +13,7 @@ namespace Pathfinder
 #define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
 
 #define VK_FORCE_VALIDATION 1
-#define VK_FORCE_SHADER_COMPILATION 1
+#define VK_FORCE_SHADER_COMPILATION 0
 #define VK_FORCE_PIPELINE_COMPILATION 0
 
 #define VK_LOG_INFO 0
@@ -324,6 +324,82 @@ NODISCARD static VkPushConstantRange GetPushConstantRange(const VkShaderStageFla
 {
     const VkPushConstantRange pushConstantRange = {stageFlags, offset, size};
     return pushConstantRange;
+}
+
+NODISCARD static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode polygonMode)
+{
+    switch (polygonMode)
+    {
+        case EPolygonMode::POLYGON_MODE_FILL: return VK_POLYGON_MODE_FILL;
+        case EPolygonMode::POLYGON_MODE_LINE: return VK_POLYGON_MODE_LINE;
+        case EPolygonMode::POLYGON_MODE_POINT: return VK_POLYGON_MODE_POINT;
+    }
+
+    PFR_ASSERT(false, "Unknown polygon mode!");
+    return VK_POLYGON_MODE_FILL;
+}
+
+NODISCARD static VkPipelineStageFlags PathfinderPipelineStageToVulkan(const EPipelineStage pipelineStage)
+{
+    switch (pipelineStage)
+    {
+        case EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT: return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+        case EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT: return VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+        case EPipelineStage::PIPELINE_STAGE_VERTEX_INPUT_BIT: return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+        case EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT: return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+        case EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT: return VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT;
+        case EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT: return VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+        case EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT: return VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
+        case EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT: return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        case EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT: return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        case EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT: return VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        case EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT: return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+        case EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT: return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        case EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT: return VK_PIPELINE_STAGE_TRANSFER_BIT;
+        case EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT: return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+        case EPipelineStage::PIPELINE_STAGE_HOST_BIT: return VK_PIPELINE_STAGE_HOST_BIT;
+        case EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT: return VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+        case EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT: return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        case EPipelineStage::PIPELINE_STAGE_NONE: return VK_PIPELINE_STAGE_NONE;
+        case EPipelineStage::PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT: return VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT;
+        case EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT: return VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+        case EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT: return VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+        case EPipelineStage::PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT: return VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT;
+        case EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT:
+            return VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+        case EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT: return VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT;
+        case EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT: return VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
+    }
+
+    PFR_ASSERT(false, "Unknown pipeline stage!");
+    return VK_PIPELINE_STAGE_NONE;
+}
+
+NODISCARD static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)
+{
+    switch (filter)
+    {
+        case ESamplerFilter::SAMPLER_FILTER_NEAREST: return VK_FILTER_NEAREST;
+        case ESamplerFilter::SAMPLER_FILTER_LINEAR: return VK_FILTER_LINEAR;
+    }
+
+    PFR_ASSERT(false, "Unknown sampler filter!");
+    return VK_FILTER_LINEAR;
+}
+
+NODISCARD static VkSamplerAddressMode PathfinderSamplerWrapToVulkan(const ESamplerWrap wrap)
+{
+    switch (wrap)
+    {
+        case ESamplerWrap::SAMPLER_WRAP_REPEAT: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        case ESamplerWrap::SAMPLER_WRAP_MIRRORED_REPEAT: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+        case ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_BORDER: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        case ESamplerWrap::SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+    }
+
+    PFR_ASSERT(false, "Unknown sampler wrap!");
+    return VK_SAMPLER_ADDRESS_MODE_REPEAT;
 }
 
 }  // namespace VulkanUtility
