@@ -29,6 +29,7 @@ void Renderer::Init()
     ShaderLibrary::Init();
     PipelineBuilder::Init();
     s_BindlessRenderer = BindlessRenderer::Create();
+    SamplerStorage::Init();
 
     ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "GBuffer", "Forward", "DepthPrePass", "Utils/InfiniteGrid"});
 
@@ -64,15 +65,11 @@ void Renderer::Init()
                           {
                               FramebufferSpecification framebufferSpec = {"Composite"};
 
-                              FramebufferAttachmentSpecification compositeAttachmentSpec = {};
-                              compositeAttachmentSpec.Format =
-                                  EImageFormat::FORMAT_RGBA8_UNORM;  // /*EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32*/
-                              compositeAttachmentSpec.ClearColor = glm::vec4(0.15f);
-                              compositeAttachmentSpec.LoadOp     = ELoadOp::CLEAR;
-                              compositeAttachmentSpec.StoreOp    = EStoreOp::STORE;
-                              compositeAttachmentSpec.bCopyable  = true;
+                              const FramebufferAttachmentSpecification compositeAttachmentSpec = {
+                                  EImageFormat::FORMAT_RGBA8_UNORM,  // /*EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32*/
+                                  ELoadOp::CLEAR, EStoreOp::STORE, false, glm::vec4(0.15f)};
 
-                              framebufferSpec.AttachmentsToCreate.emplace_back(compositeAttachmentSpec);
+                              framebufferSpec.Attachments.emplace_back(compositeAttachmentSpec);
                               framebuffer = Framebuffer::Create(framebufferSpec);
                           });
 
@@ -80,59 +77,15 @@ void Renderer::Init()
         [&](uint32_t width, uint32_t height)
         { std::ranges::for_each(s_RendererData->CompositeFramebuffer, [&](auto& framebuffer) { framebuffer->Resize(width, height); }); });
 
-    std::ranges::for_each(s_RendererData->GBuffer,
-                          [&](auto& framebuffer)
-                          {
-                              FramebufferSpecification framebufferSpec = {"GBuffer"};
-
-                              FramebufferAttachmentSpecification attachmentSpec = {};
-                              attachmentSpec.LoadOp                             = ELoadOp::CLEAR;
-                              attachmentSpec.StoreOp                            = EStoreOp::STORE;
-                              attachmentSpec.bCopyable                          = true;
-
-                              attachmentSpec.Format = EImageFormat::FORMAT_RGBA8_UNORM;
-                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
-
-                              /*
-                              // positions
-                              attachmentSpec.Format = EImageFormat::FORMAT_RGBA16F;
-                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
-
-                              // normals
-                              attachmentSpec.Format = EImageFormat::FORMAT_RGBA16F;
-                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
-
-                              // albedo
-                              attachmentSpec.Format = EImageFormat::FORMAT_RGBA8_UNORM;
-                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
-                              */
-
-                              // depth
-                              attachmentSpec.LoadOp    = ELoadOp::LOAD;
-                              attachmentSpec.Format    = EImageFormat::FORMAT_D32F;
-                              attachmentSpec.bCopyable = true;
-                              framebufferSpec.AttachmentsToCreate.push_back(attachmentSpec);
-
-                              framebuffer = Framebuffer::Create(framebufferSpec);
-                          });
-
-    Application::Get().GetWindow()->AddResizeCallback(
-        [&](uint32_t width, uint32_t height)
-        { std::ranges::for_each(s_RendererData->GBuffer, [&](auto& framebuffer) { framebuffer->Resize(width, height); }); });
-
     std::ranges::for_each(s_RendererData->DepthPrePassFramebuffer,
                           [&](auto& framebuffer)
                           {
                               FramebufferSpecification framebufferSpec = {"DepthPrePass"};
 
-                              FramebufferAttachmentSpecification depthAttachmentSpec = {};
-                              depthAttachmentSpec.Format                             = EImageFormat::FORMAT_D32F;
-                              depthAttachmentSpec.ClearColor                         = glm::vec4(1.0f);
-                              depthAttachmentSpec.LoadOp                             = ELoadOp::CLEAR;
-                              depthAttachmentSpec.StoreOp                            = EStoreOp::STORE;
-                              depthAttachmentSpec.bCopyable                          = true;
+                              const FramebufferAttachmentSpecification depthAttachmentSpec = {
+                                  EImageFormat::FORMAT_D32F, ELoadOp::CLEAR, EStoreOp::STORE, false, glm::vec4(1.0f, glm::vec3(0.0f))};
 
-                              framebufferSpec.AttachmentsToCreate.emplace_back(depthAttachmentSpec);
+                              framebufferSpec.Attachments.emplace_back(depthAttachmentSpec);
                               framebuffer = Framebuffer::Create(framebufferSpec);
                           });
 
@@ -152,6 +105,30 @@ void Renderer::Init()
     depthPrePassPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
     PipelineBuilder::Push(s_RendererData->DepthPrePassPipeline, depthPrePassPipelineSpec);
 
+    for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
+    {
+        FramebufferSpecification framebufferSpec = {"GBuffer"};
+
+        // NOTE: For now I copy albedo into swapchain
+        // Albedo
+        FramebufferAttachmentSpecification attachmentSpec = {EImageFormat::FORMAT_RGBA8_UNORM, ELoadOp::CLEAR, EStoreOp::STORE, true,
+                                                             glm::vec4(1.0f)};
+        framebufferSpec.Attachments.emplace_back(attachmentSpec);
+
+        // Depth from depth pre pass
+        framebufferSpec.ExistingAttachments[1] = s_RendererData->DepthPrePassFramebuffer[frame]->GetDepthAttachment();
+        attachmentSpec.LoadOp                  = ELoadOp::LOAD;
+        attachmentSpec.StoreOp                 = EStoreOp::STORE;
+        attachmentSpec.Format                  = EImageFormat::FORMAT_D32F;
+        framebufferSpec.Attachments.emplace_back(attachmentSpec);
+
+        s_RendererData->GBuffer[frame] = Framebuffer::Create(framebufferSpec);
+    }
+
+    Application::Get().GetWindow()->AddResizeCallback(
+        [&](uint32_t width, uint32_t height)
+        { std::ranges::for_each(s_RendererData->GBuffer, [&](auto& framebuffer) { framebuffer->Resize(width, height); }); });
+
     PipelineSpecification forwardPipelineSpec  = {"Forward+", EPipelineType::PIPELINE_TYPE_GRAPHICS};
     forwardPipelineSpec.Shader                 = ShaderLibrary::Get("Forward");
     forwardPipelineSpec.bBindlessCompatible    = true;
@@ -159,7 +136,7 @@ void Renderer::Init()
     forwardPipelineSpec.CullMode               = ECullMode::CULL_MODE_BACK;
     forwardPipelineSpec.bDepthTest             = true;
     forwardPipelineSpec.bDepthWrite =
-        true;  // is it true?? Since I copy depth from depth pre pass, no need to write, everything is done already
+        false;  // NOTE: Since I use depth from depth pre pass, I can not event write new depth, everything is done already
     forwardPipelineSpec.DepthCompareOp    = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
     forwardPipelineSpec.TargetFramebuffer = s_RendererData->GBuffer;
     forwardPipelineSpec.bMeshShading      = s_RendererSettings.bMeshShadingSupport;
@@ -212,6 +189,8 @@ void Renderer::Shutdown()
 
     s_RendererData.reset();
     s_BindlessRenderer.reset();
+
+    SamplerStorage::Shutdown();
     LOG_TAG_TRACE(RENDERER_3D, "Renderer3D destroyed!");
 }
 
@@ -223,7 +202,6 @@ void Renderer::Begin()
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginRecording(true);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginPipelineStatisticsQuery();
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();  // overall gpu time
 
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginRecording(true);
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginPipelineStatisticsQuery();
@@ -250,7 +228,6 @@ void Renderer::Flush()
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndPipelineStatisticsQuery();
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
 
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();  // overall gpu time
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndPipelineStatisticsQuery();
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
 
@@ -261,9 +238,10 @@ void Renderer::Flush()
     const auto& computePipelineStats = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->GetPipelineStatisticsResults();
 
     const auto& renderTimestamps = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->GetTimestampsResults();
-    s_RendererStats.GPUTime      = renderTimestamps[0];
-    LOG_TAG_INFO(RENDERER, "DepthPrePass: %0.4f (ms)", renderTimestamps[1] * 1000.f);
-    LOG_TAG_INFO(RENDERER, "GeometryPass: %0.4f (ms)", renderTimestamps[2] * 1000.f);
+    s_RendererStats.GPUTime      = std::accumulate(renderTimestamps.begin(), renderTimestamps.end(), s_RendererStats.GPUTime);
+
+    LOG_TAG_INFO(RENDERER, "DepthPrePass: %0.4f (ms)", renderTimestamps[0]);
+    LOG_TAG_INFO(RENDERER, "GeometryPass: %0.4f (ms)", renderTimestamps[1]);
 
     LOG_TAG_INFO(SAMPLER_STORAGE, "Sampler count: %u", SamplerStorage::GetSamplerCount());
 
@@ -315,12 +293,21 @@ void Renderer::BeginScene(const Camera& camera)
 
 void Renderer::EndScene() {}
 
+void Renderer::DrawGrid()
+{
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(__FUNCTION__, glm::vec3(0));
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->GridPipeline);
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(6);
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+}
+
 void Renderer::DepthPrePass()
 {
     if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(__FUNCTION__, glm::vec3(0.2f, 0.2f, 0.2f));
-
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
 
     s_RendererData->DepthPrePassFramebuffer[s_RendererData->FrameIndex]->BeginPass(
@@ -402,19 +389,11 @@ void Renderer::GeometryPass()
 {
     if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
 
-    // Copy depth from depth pre pass, to not overdraw geometry and minimize fragment shader invocations
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->CopyImageToImage(
-        s_RendererData->DepthPrePassFramebuffer[s_RendererData->FrameIndex]->GetDepthAttachment(),
-        s_RendererData->GBuffer[s_RendererData->FrameIndex]->GetDepthAttachment(), EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
-        EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT);
-
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(__FUNCTION__, glm::vec3(0.9f, 0.5f, 0.2f));
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
     s_RendererData->GBuffer[s_RendererData->FrameIndex]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
-    // TODO: Move grid rendering outside
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->GridPipeline);
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(6);
+    DrawGrid();
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPipeline(s_RendererData->ForwardRenderingPipeline);
 

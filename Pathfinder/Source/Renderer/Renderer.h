@@ -18,8 +18,8 @@ class Submesh;
 class Mesh;
 
 // TODO: Implement RT_Renderer / RayTracingModule / RayTracingBuilder
-
 // NOTE: It's not final cuz in future SceneRenderer may derive from this class
+
 class Renderer : private Uncopyable, private Unmovable
 {
   public:
@@ -114,6 +114,7 @@ class Renderer : private Uncopyable, private Unmovable
     };
     static inline RendererStats s_RendererStats = {};
 
+    static void DrawGrid();
     static void DepthPrePass();
     static void LightCullingPass();
     static void GeometryPass();

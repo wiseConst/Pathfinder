@@ -23,6 +23,7 @@
 #include <unordered_set>
 #include <map>
 #include <unordered_map>
+#include <numeric>
 
 #include <variant>
 #include <format>

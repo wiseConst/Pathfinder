@@ -102,9 +102,7 @@ void VulkanCommandBuffer::BeginPipelineStatisticsQuery()
 {
     if (!m_PipelineStatisticsQuery)
     {
-        VkQueryPoolCreateInfo queryPoolCI = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
-        queryPoolCI.queryType             = VK_QUERY_TYPE_PIPELINE_STATISTICS;
-        queryPoolCI.queryCount            = 1;
+        VkQueryPoolCreateInfo queryPoolCI = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, nullptr, 0, VK_QUERY_TYPE_PIPELINE_STATISTICS, 1};
         if (m_Type == ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS)
         {
             queryPoolCI.pipelineStatistics =
@@ -141,10 +139,8 @@ void VulkanCommandBuffer::BeginTimestampQuery(const EPipelineStage pipelineStage
 
     if (!m_TimestampQuery)
     {
-        VkQueryPoolCreateInfo queryPoolCI = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO};
-        queryPoolCI.queryType             = VK_QUERY_TYPE_TIMESTAMP;
-        queryPoolCI.queryCount            = s_MAX_TIMESTAMPS;
-
+        constexpr VkQueryPoolCreateInfo queryPoolCI = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, nullptr, 0, VK_QUERY_TYPE_TIMESTAMP,
+                                                       s_MAX_TIMESTAMPS};
         VK_CHECK(vkCreateQueryPool(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &queryPoolCI, nullptr, &m_TimestampQuery),
                  "Failed to create timestamp query pool!");
     }
@@ -251,72 +247,76 @@ void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkIm
     VkPipelineStageFlags dstStageMask = 0;
 
     // Determine stages and resource access:
-    if (oldLayout == VK_IMAGE_LAYOUT_UNDEFINED && newLayout == VK_IMAGE_LAYOUT_GENERAL)
+    switch (oldLayout)
     {
-        dstAccessMask = 0;  // GENERAL layout means resource can be affected by any operations
-
-        srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        case VK_IMAGE_LAYOUT_UNDEFINED:
+        {
+            srcAccessMask = 0;
+            srcStageMask  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            break;
+        }
+        case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
+        {
+            srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            break;
+        }
+        case VK_IMAGE_LAYOUT_GENERAL:  // NOTE: May be not optimal stage
+        {
+            srcAccessMask = 0;
+            srcStageMask  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            break;
+        }
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        {
+            srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            break;
+        }
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        {
+            srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            srcStageMask =
+                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;  // framebuffer and storage image case?
+            break;
+        }
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        {
+            srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            break;
+        }
+        default: PFR_ASSERT(false, "Old layout is not supported!");
     }
-    else if (oldLayout == VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-    {
-        srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-        dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
 
-        srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;  // framebuffer and storage image case?
-    }
-    else if ((oldLayout == VK_IMAGE_LAYOUT_UNDEFINED || oldLayout == VK_IMAGE_LAYOUT_GENERAL) &&
-             newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
+    switch (newLayout)
     {
-        dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-        srcStageMask = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    }
-    else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-    {
-        srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-        dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;  // framebuffer and storage image case?
-    }
-    else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL)
-    {
-        srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-
-        srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    }
-    else if (oldLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL)
-    {
-        srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
-        dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-
-        srcStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-    }
-    else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
-    {
-        srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
-
-        srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    }
-    else if (oldLayout == VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL && newLayout == VK_IMAGE_LAYOUT_GENERAL)
-    {
-        srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-        dstAccessMask = 0;
-
-        srcStageMask = VK_PIPELINE_STAGE_TRANSFER_BIT;
-        dstStageMask = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-    }
-    else
-    {
-        PFR_ASSERT(false, "Other transitions not supported!");
+        case VK_IMAGE_LAYOUT_GENERAL:
+        {
+            dstAccessMask = 0;  // GENERAL layout means resource can be affected by any operations
+            dstStageMask  = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            break;
+        }
+        case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
+        {
+            dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            dstStageMask =
+                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;  // framebuffer and storage image case?
+            break;
+        }
+        case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
+        {
+            dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
+            dstStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            break;
+        }
+        case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
+        {
+            dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
+            dstStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            break;
+        }
+        default: PFR_ASSERT(false, "New layout is not supported!");
     }
 
     InsertBarrier(srcStageMask, dstStageMask, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
@@ -385,7 +385,7 @@ void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Share
 
     if (descriptorSets.empty()) return;
 
-    // Since first 0,1,2 are busy by bindless stuff we make an offset
+    // Since first 0, 1, 2, 3 are busy by bindless stuff we make an offset
     const uint32_t firstSet = pipeline->GetSpecification().bBindlessCompatible ? 4 : 0;
     vkCmdBindDescriptorSets(m_Handle, pipelineBindPoint, vulkanPipeline->GetLayout(), firstSet,
                             static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
@@ -397,7 +397,7 @@ void VulkanCommandBuffer::BindPushConstants(Shared<Pipeline>& pipeline, const ui
     auto vulkanPipeline = std::static_pointer_cast<VulkanPipeline>(pipeline);
     PFR_ASSERT(vulkanPipeline, "Failed to cast Pipeline to VulkanPipeline!");
 
-    const VkShaderStageFlags vkShaderStageFlags = vulkanPipeline->GetPushConstantShaderStageByIndex(pushConstantIndex);
+    const auto vkShaderStageFlags = vulkanPipeline->GetPushConstantShaderStageByIndex(pushConstantIndex);
     vkCmdPushConstants(m_Handle, vulkanPipeline->GetLayout(), vkShaderStageFlags, offset, size, data);
 }
 

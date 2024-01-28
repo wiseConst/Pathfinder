@@ -32,7 +32,6 @@ class VulkanFramebuffer final : public Framebuffer
   private:
     FramebufferSpecification m_Specification = {};
     std::vector<VkRenderingAttachmentInfo> m_AttachmentInfos;
-
     std::vector<FramebufferAttachment> m_Attachments;
 
     void Invalidate() final override;

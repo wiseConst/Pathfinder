@@ -130,6 +130,7 @@ void VulkanDevice::PickPhysicalDevice(const VkInstance& instance)
         candidates.insert(std::make_pair(RateDeviceSuitability(currentGPU), currentGPU));
     }
 
+    PFR_ASSERT(candidates.rbegin()->first > 0, "No suitable device found!");
     m_GPUInfo = candidates.rbegin()->second;
 
     PFR_ASSERT(m_GPUInfo.PhysicalDevice, "Failed to find suitable GPU");
@@ -365,8 +366,13 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
 
     vkGetPhysicalDeviceProperties2(gpuInfo.PhysicalDevice, &GPUProperties2);
 
-    // TODO: Leave it like this? Or have queries depend on this value
     PFR_ASSERT(gpuInfo.GPUProperties.limits.timestampPeriod != 0, "Timestamp queries not supported!");
+
+
+    const bool bBindlessSupported = descriptorIndexingFeatures.runtimeDescriptorArray &&
+                                    descriptorIndexingFeatures.descriptorBindingPartiallyBound &&
+                                    descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount;
+    PFR_ASSERT(bBindlessSupported, "Bindless descriptor management not supported!");
 
 #if VK_LOG_INFO
     LOG_INFO("GPU info:");
@@ -384,9 +390,6 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
     LOG_INFO(" Min Storage Buffer Offset Alignment: %u", gpuInfo.GPUProperties.limits.minStorageBufferOffsetAlignment);
     LOG_INFO(" Max Memory Allocations: %u", gpuInfo.GPUProperties.limits.maxMemoryAllocationCount);
 
-    const bool bBindlessSupported = descriptorIndexingFeatures.runtimeDescriptorArray &&
-                                    descriptorIndexingFeatures.descriptorBindingPartiallyBound &&
-                                    descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount;
     LOG_INFO(" Bindless Renderer: %s", bBindlessSupported ? "SUPPORTED" : "NOT SUPPORTED");
 
     if (gpuInfo.RTProperties.maxRayRecursionDepth == 0 || !gpuInfo.bRTXSupport)
@@ -401,10 +404,7 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
     }
 
     // Mesh shader
-    if (!gpuInfo.bMeshShaderSupport)
-    {
-        LOG_INFO(" [MS] Not supported :(");
-    }
+    if (!gpuInfo.bMeshShaderSupport) LOG_INFO(" [MS] Not supported :(");
     else
     {
         LOG_INFO(" [MS]: Max Output Vertices: %u", gpuInfo.MSProperties.maxMeshOutputVertices);

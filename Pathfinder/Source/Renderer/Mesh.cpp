@@ -328,7 +328,8 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLT
                                     finalVertices.size(), sizeof(MeshoptimizeVertex));
 
         // OPTIMIZATION DONE, CREATE BUFFERS
-        BufferSpecification ibSpec = {EBufferUsage::BUFFER_TYPE_INDEX | EBufferUsage::BUFFER_TYPE_STORAGE};
+        // NOTE: Currently index buffer is not used in shaders, so they don't need STORAGE usage flag
+        BufferSpecification ibSpec = {EBufferUsage::BUFFER_TYPE_INDEX /* | EBufferUsage::BUFFER_TYPE_STORAGE */ };
         ibSpec.Data                = finalIndices.data();
         ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)

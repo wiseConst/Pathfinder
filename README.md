@@ -13,3 +13,6 @@
 
 * Mesh-shading!
 ![Alt text](/Resources/Images/4_1_sponza_ms.png)
+
+* Texture loading. Infinite grid(thanks to https://asliceofrendering.com/scene%20helper/2020/01/05/InfiniteGrid/).
+![Alt text](/Resources/Images/5.png)

@@ -14,7 +14,6 @@ namespace Pathfinder
 shaderc_include_result* GLSLShaderIncluder::GetInclude(const char* requested_source, shaderc_include_type type,
                                                        const char* requesting_source, size_t include_depth)
 {
-    // TODO: Sort out what is include_depth ???? How should I handle it, and should I?????
     auto* includeResult = new shaderc_include_result();
     PFR_ASSERT(includeResult, "Failed to allocate shaderc include result!");
 

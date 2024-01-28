@@ -45,6 +45,8 @@ class VulkanImage final : public Image
 
     FORCEINLINE void Resize(const uint32_t width, const uint32_t height) final override
     {
+        if (m_Specification.Width == width && m_Specification.Height == height) return;
+
         m_Specification.Width  = width;
         m_Specification.Height = height;
 
@@ -64,6 +66,16 @@ class VulkanImage final : public Image
 
     void Invalidate() final override;
     void Destroy() final override;
+};
+
+class VulkanSamplerStorage final : public SamplerStorage
+{
+  public:
+    VulkanSamplerStorage()  = default;
+    ~VulkanSamplerStorage() = default;
+
+    void* CreateSamplerImpl(const SamplerSpecification& samplerSpec) final override;
+    void DestroySamplerImpl(void* sampler) final override;
 };
 
 }  // namespace Pathfinder

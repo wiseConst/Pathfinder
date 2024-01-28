@@ -222,6 +222,7 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         const std::filesystem::path localShaderPath = std::string("Assets/Shaders/") + std::string(shaderName) + std::string(shaderExt);
         if (!std::filesystem::exists(localShaderPath)) continue;
 
+        // Detect shader type
         const std::string shaderNameExt = std::string(shaderName) + std::string(shaderExt);
         shaderc_shader_kind shaderKind  = shaderc_vertex_shader;
         DetectShaderKind(shaderKind, shaderExt);
@@ -234,21 +235,26 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
 
         auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToPathfinder(shaderKind));
 
+        // Compile or retrieve cache && load vulkan shader module
         const auto compiledShaderSrc = CompileOrRetrieveCached(shaderNameExt, localShaderPath.string(), shaderKind);
         LoadShaderModule(currentShaderDescription.Module, compiledShaderSrc);
 
+        const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+        VK_SetDebugName(logicalDevice, &currentShaderDescription.Module, VK_OBJECT_TYPE_SHADER_MODULE, shaderNameExt.data());
+
+        // Collect reflection data
         std::vector<SpvReflectDescriptorSet*> descriptorSets;
         std::vector<SpvReflectBlockVariable*> pushConstants;
         LOG_TAG_TRACE(VULKAN, "SHADER_REFLECTION:\"%s\"...", shaderNameExt.data());
         Reflect(currentShaderDescription, compiledShaderSrc, descriptorSets, pushConstants);
 
+        // Merge reflection data
         for (const auto& pc : pushConstants)
         {
             currentShaderDescription.PushConstants[pc->name] = VulkanUtility::GetPushConstantRange(
                 VulkanUtility::PathfinderShaderStageToVulkan(currentShaderDescription.Stage), pc->offset, pc->size);
         }
 
-        const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
         for (const auto& ds : descriptorSets)
         {
             auto& descriptorSetInfo = currentShaderDescription.DescriptorSetBindings.emplace_back();

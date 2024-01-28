@@ -43,8 +43,6 @@ static VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveT
     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 }
 
-
-
 static VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode)
 {
     switch (cullMode)
@@ -317,7 +315,6 @@ void VulkanPipeline::Invalidate()
 
     switch (m_Specification.PipelineType)
     {
-
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
             // Contains the configuration for what kind of topology will be drawn.
@@ -381,9 +378,9 @@ void VulkanPipeline::Invalidate()
             VkPipelineRasterizationStateCreateInfo RasterizationState = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
             RasterizationState.cullMode                               = PathfinderCullModeToVulkan(m_Specification.CullMode);
             RasterizationState.lineWidth                              = m_Specification.LineWidth;
-            RasterizationState.polygonMode                            = VulkanUtility::PathfinderPolygonModeToVulkan(m_Specification.PolygonMode);
-            RasterizationState.frontFace                              = PathfinderFrontFaceToVulkan(m_Specification.FrontFace);
-            RasterizationState.rasterizerDiscardEnable                = VK_FALSE;
+            RasterizationState.polygonMode             = VulkanUtility::PathfinderPolygonModeToVulkan(m_Specification.PolygonMode);
+            RasterizationState.frontFace               = PathfinderFrontFaceToVulkan(m_Specification.FrontFace);
+            RasterizationState.rasterizerDiscardEnable = VK_FALSE;
 
             // TODO: Make it configurable?
             RasterizationState.depthClampEnable        = VK_FALSE;
@@ -417,8 +414,8 @@ void VulkanPipeline::Invalidate()
                         case EBlendMode::BLEND_MODE_ALPHA:
                         {
                             // not used version: Color.rgb = (src.a * src.rgb) + ((1-src.a) * dst.rgb)
-                            blendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-                            blendState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                             blendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+                            blendState.dstColorBlendFactor   = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 
                             // Color.rgb = ((1-dst.a) * src.rgb) + (dst.a * dst.rgb)
                             // blendState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;

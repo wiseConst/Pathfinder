@@ -159,15 +159,30 @@ struct SamplerSpecification
     }
 };
 
-// TODO: Refactor sampler management
-class SamplerStorage final : private Uncopyable, private Unmovable
+class SamplerStorage : private Uncopyable, private Unmovable
 {
   public:
+    static void Init();
+    FORCEINLINE static void Shutdown()
+    {
+        for (auto& [samplerSpec, samplerPair] : s_Samplers)
+            DestroySampler(samplerSpec);
+
+        delete s_Instance;
+        s_Instance = nullptr;
+    }
+
     NODISCARD FORCEINLINE static uint32_t GetSamplerCount() { return static_cast<uint32_t>(s_Samplers.size()); }
 
-    NODISCARD FORCEINLINE static void* RetrieveCachedSampler(const SamplerSpecification& samplerSpec)
+    NODISCARD FORCEINLINE static void* CreateOrRetrieveCachedSampler(const SamplerSpecification& samplerSpec)
     {
-        if (auto it = s_Samplers.find(samplerSpec); it == s_Samplers.end()) return nullptr;
+        PFR_ASSERT(s_Instance, "Invalid sampler storage instance!");
+        if (auto it = s_Samplers.find(samplerSpec); it == s_Samplers.end())
+        {
+            s_Samplers[samplerSpec].first  = 1;
+            s_Samplers[samplerSpec].second = s_Instance->CreateSamplerImpl(samplerSpec);
+            return s_Samplers[samplerSpec].second;
+        }
 
         auto& pair = s_Samplers[samplerSpec];
 
@@ -175,48 +190,32 @@ class SamplerStorage final : private Uncopyable, private Unmovable
         return pair.second;
     }
 
-    FORCEINLINE static void AddNewSampler(const SamplerSpecification& samplerSpec, void* sampler,
-                                          const uint32_t numOfImagesUsingSampler = 0)
-    {
-        auto& pair  = s_Samplers[samplerSpec];
-        pair.first  = numOfImagesUsingSampler;
-        pair.second = sampler;
-    }
-
-    NODISCARD FORCEINLINE static bool DoesSamplerNeedDestruction(const SamplerSpecification& samplerSpec)
-    {
-        if (auto it = s_Samplers.find(samplerSpec); it != s_Samplers.end())
-        {
-            if ((*it).second.first == 1) return true;
-        }
-
-        return false;
-    }
-
-    FORCEINLINE static void DecrementSamplerImageUsage(const SamplerSpecification& samplerSpec)
-    {
-        if (auto it = s_Samplers.find(samplerSpec); it != s_Samplers.end())
-        {
-            if (uint32_t& numOfImagesUsingSampler = (*it).second.first; numOfImagesUsingSampler > 0) --numOfImagesUsingSampler;
-        }
-    }
-
     FORCEINLINE static void DestroySampler(const SamplerSpecification& samplerSpec)
     {
-        if (!DoesSamplerNeedDestruction(samplerSpec)) return;
-
+        PFR_ASSERT(s_Instance, "Invalid sampler storage instance!");
+        // Decrement image usage or destroy.
         if (auto it = s_Samplers.find(samplerSpec); it != s_Samplers.end())
         {
-            s_Samplers.erase(it);
+            if (it->second.first == 1 || it->second.first == 0)
+            {
+                s_Instance->DestroySamplerImpl(it->second.second);
+                s_Samplers.erase(it);
+            }
+            else
+                --it->second.first;
         }
     }
 
-  private:
+  protected:
+    static inline SamplerStorage* s_Instance = nullptr;
     static inline std::unordered_map<SamplerSpecification, std::pair<uint32_t, void*>, SamplerSpecification::Hash>
         s_Samplers;  // cached samples, pair<NumOfImagesUsingSampler, Sampler>
 
-    SamplerStorage()  = delete;
-    ~SamplerStorage() = default;
+    SamplerStorage()          = default;
+    virtual ~SamplerStorage() = default;
+
+    virtual void* CreateSamplerImpl(const SamplerSpecification& samplerSpec) = 0;
+    virtual void DestroySamplerImpl(void* sampler)                           = 0;
 };
 
 namespace ImageUtils

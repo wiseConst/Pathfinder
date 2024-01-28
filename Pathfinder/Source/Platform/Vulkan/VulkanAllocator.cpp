@@ -29,37 +29,54 @@ VulkanAllocator::VulkanAllocator(const VkDevice& device, const VkPhysicalDevice&
 
 void VulkanAllocator::CreateImage(const VkImageCreateInfo& imageCI, VkImage& image, VmaAllocation& allocation, VmaMemoryUsage memoryUsage)
 {
-    // VmaAllocationInfo allocationInfo;
+    VmaAllocationInfo allocationInfo = {};
 
     VmaAllocationCreateInfo allocationCI = {};
     allocationCI.usage                   = memoryUsage;
-    // allocationCI.flags         = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
-    allocationCI.requiredFlags = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    allocationCI.flags                   = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
+    allocationCI.requiredFlags           = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
+    allocationCI.preferredFlags          = allocationCI.requiredFlags;
 
-    VK_CHECK(vmaCreateImage(m_Handle, &imageCI, &allocationCI, &image, &allocation, VK_NULL_HANDLE /* &allocationInfo*/),
-             "Failed to create image!");
+    VK_CHECK(vmaCreateImage(m_Handle, &imageCI, &allocationCI, &image, &allocation, &allocationInfo), "Failed to create image!");
+
+    LOG_DEBUG("[VMA]: Created image with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
+              static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
 }
 
 void VulkanAllocator::CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer& buffer, VmaAllocation& allocation,
                                    VmaMemoryUsage memoryUsage)
 {
-    // VmaAllocationInfo allocationInfo;
+    VmaAllocationInfo allocationInfo = {};
 
     VmaAllocationCreateInfo allocationCI = {};
     allocationCI.usage                   = memoryUsage;
 
-    VK_CHECK(vmaCreateBuffer(m_Handle, &bufferCI, &allocationCI, &buffer, &allocation, VK_NULL_HANDLE /* &allocationInfo */),
-             "Failed to create buffer!");
+    VK_CHECK(vmaCreateBuffer(m_Handle, &bufferCI, &allocationCI, &buffer, &allocation, &allocationInfo), "Failed to create buffer!");
+
+    LOG_DEBUG("[VMA]: Created buffer with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
+              static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
 }
 
 void VulkanAllocator::DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation)
 {
+    VmaAllocationInfo allocationInfo = {};
+    vmaGetAllocationInfo(m_Handle, allocation, &allocationInfo);
+
     vmaDestroyBuffer(m_Handle, buffer, allocation);
+
+    LOG_DEBUG("[VMA]: Destroyed buffer with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
+              static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
 }
 
 void VulkanAllocator::DestroyImage(VkImage& image, VmaAllocation& allocation)
 {
+    VmaAllocationInfo allocationInfo = {};
+    vmaGetAllocationInfo(m_Handle, allocation, &allocationInfo);
+
     vmaDestroyImage(m_Handle, image, allocation);
+
+    LOG_DEBUG("[VMA]: Destroyed image with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
+              static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
 }
 
 void* VulkanAllocator::GetMapped(VmaAllocation& allocation)

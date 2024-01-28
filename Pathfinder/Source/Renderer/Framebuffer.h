@@ -20,12 +20,9 @@ enum class EStoreOp : uint8_t
     DONT_CARE
 };
 
-// TODO: Add texture filter when implement samplers and textures
 struct FramebufferAttachmentSpecification
 {
-    EImageFormat Format = EImageFormat::FORMAT_UNDEFINED;
-    // ETextureFilter Filter = ETextureFilter::LINEAR;
-    // ETextureWrap Wrap     = ETextureWrap::REPEAT;
+    EImageFormat Format  = EImageFormat::FORMAT_UNDEFINED;
     ELoadOp LoadOp       = ELoadOp::CLEAR;
     EStoreOp StoreOp     = EStoreOp::STORE;
     bool bCopyable       = false;
@@ -39,17 +36,18 @@ struct FramebufferAttachment
     Shared<Image> Attachment = nullptr;
 };
 
+// NOTE: USAGE GUIDE FOR ME
+// If you want to create attachments from existing, you have to specify info about them in "Attachments"
 struct FramebufferSpecification
 {
     std::string Name = "None";
     uint32_t Width   = 0;
     uint32_t Height  = 0;
 
-    std::vector<FramebufferAttachmentSpecification> AttachmentsToCreate;
+    std::vector<FramebufferAttachmentSpecification> Attachments;
 
-    std::vector<FramebufferAttachment> ExistingAttachments;
-    ELoadOp LoadOp   = ELoadOp::CLEAR;
-    EStoreOp StoreOp = EStoreOp::STORE;
+    // NOTE: uint32_t - index where to fill into Attachments.
+    std::map<uint32_t, Shared<Image>> ExistingAttachments;
 };
 
 class Framebuffer : private Uncopyable, private Unmovable

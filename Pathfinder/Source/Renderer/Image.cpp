@@ -58,4 +58,17 @@ Shared<Image> Image::Create(const ImageSpecification& imageSpec)
     return nullptr;
 }
 
+void SamplerStorage::Init()
+{
+    switch (RendererAPI::Get())
+    {
+        case ERendererAPI::RENDERER_API_VULKAN:
+        {
+            s_Instance = new VulkanSamplerStorage();
+            break;
+        }
+        default: PFR_ASSERT(false, "Unknown RendererAPI!");
+    }
+}
+
 }  // namespace Pathfinder
