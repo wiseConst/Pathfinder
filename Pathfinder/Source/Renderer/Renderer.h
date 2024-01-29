@@ -50,17 +50,7 @@ class Renderer : private Uncopyable, private Unmovable
     }
 
     NODISCARD FORCEINLINE static auto& GetRendererSettings() { return s_RendererSettings; }
-    NODISCARD FORCEINLINE static const auto& GetStats() { return s_RendererStats; }
-
-    FORCEINLINE static void SetDescriptorSetCount(const uint32_t descriptorSetCount)
-    {
-        s_RendererStats.DescriptorSetCount = descriptorSetCount;
-    }
-
-    FORCEINLINE static void SetDescriptorPoolCount(const uint32_t descriptorPoolCount)
-    {
-        s_RendererStats.DescriptorPoolCount = descriptorPoolCount;
-    }
+    NODISCARD FORCEINLINE static auto& GetStats() { return s_RendererStats; }
 
   private:
     struct RendererData
@@ -70,6 +60,9 @@ class Renderer : private Uncopyable, private Unmovable
 
         Weak<CommandBuffer> CurrentComputeCommandBuffer;
         CommandBufferPerFrame ComputeCommandBuffer;
+
+        Weak<CommandBuffer> CurrentTransferCommandBuffer;
+        CommandBufferPerFrame TransferCommandBuffer;
 
         Shared<Pipeline> PathtracingPipeline = nullptr;
         ImagePerFrame PathtracedImage;
@@ -92,6 +85,8 @@ class Renderer : private Uncopyable, private Unmovable
         uint32_t FrameIndex = 0;
         Pathfinder::CameraData CameraData;
         BufferPerFrame CameraUB;
+        BufferPerFrame UploadHeap;
+        static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;

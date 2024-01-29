@@ -57,8 +57,7 @@ class Mesh final : private Uncopyable, private Unmovable
   private:
     std::vector<Shared<Submesh>> m_Submeshes;
 
-    void LoadImages(const auto& asset);
-    void LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLTFsubmesh);
+    void TraverseNodes(const fastgltf::Asset& asset, const fastgltf::Node& node);
     void Destroy();
 };
 

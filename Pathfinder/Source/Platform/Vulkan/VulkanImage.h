@@ -36,7 +36,7 @@ class VulkanImage final : public Image
 
     NODISCARD FORCEINLINE const ImageSpecification& GetSpecification() const final override { return m_Specification; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
-    NODISCARD FORCEINLINE void* GetView() const { return m_View; }
+    NODISCARD FORCEINLINE const auto& GetView() const { return m_View; }
     NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const final override { return m_Index; }
     NODISCARD FORCEINLINE const auto& GetDescriptorInfo() const { return m_DescriptorInfo; }
 

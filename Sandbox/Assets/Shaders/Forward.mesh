@@ -16,10 +16,6 @@ layout(location = 0) out VertexOutput
     vec2 UV;
 } o_VertexOutput[];
 
-#if DEBUG_PRINTF
-#extension GL_EXT_debug_printf : require
-#endif
-
 #define DEBUG_MESHLETS 1
 
 void main()
@@ -42,13 +38,13 @@ void main()
     #endif
 
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
-    for(uint i = ti; i < vertexCount; i+=MESHLET_LOCAL_GROUP_SIZE)
+    for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
 
         gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);  
         
-        o_VertexOutput[i].Color = vec4(s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color.xyz * 0.2 + s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal.xyz * 0.5, s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color.a);
+        o_VertexOutput[i].Color = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color;
         #if DEBUG_MESHLETS
               o_VertexOutput[i].Color = vec4(mcolor, 1.0);
         #endif
@@ -60,7 +56,7 @@ void main()
 
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;
-    for(uint i = ti; i < primitiveCount; i+=MESHLET_LOCAL_GROUP_SIZE)
+    for(uint i = ti; i < primitiveCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
             s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+0], 

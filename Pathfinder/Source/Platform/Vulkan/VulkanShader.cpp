@@ -353,7 +353,6 @@ const std::vector<VkDescriptorSet> VulkanShader::GetDescriptorSetByShaderStage(c
         break;
     }
 
-    //   if (descriptorSets.empty()) LOG_TAG_WARN(VULKAN, "Returning empty descriptor sets from the shader!");
     return descriptorSets;
 }
 
@@ -509,9 +508,7 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
     }
 
     const std::vector<uint32_t> compiledShaderSrc{compiledShaderResult.cbegin(), compiledShaderResult.cend()};
-#if !VK_FORCE_SHADER_COMPILATION
     SaveData(cachedShaderPath.string(), compiledShaderSrc.data(), compiledShaderSrc.size() * sizeof(compiledShaderSrc[0]));
-#endif
 
     return compiledShaderSrc;
 }

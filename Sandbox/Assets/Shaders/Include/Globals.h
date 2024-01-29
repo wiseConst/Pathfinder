@@ -22,6 +22,10 @@ using vec4 = glm::vec4;
 
 #define DEBUG_PRINTF 0
 
+#if DEBUG_PRINTF
+#extension GL_EXT_debug_printf : require
+#endif
+
 // TODO: 0 index image/texture should be white or black(default)
 // NOTE: Mark things as Global to make sure that basic shader reflection won't catch it!
 
@@ -146,8 +150,7 @@ layout(push_constant, scalar) uniform PushConstantBlock
     
     uint32_t AlbedoTextureIndex;
     uint32_t NormalTextureIndex;
-    uint32_t MetallicTextureIndex;
-    uint32_t RoughnessTextureIndex;
+    uint32_t MetallicRoughnessTextureIndex;
     
     uint32_t VertexPosBufferIndex;
     uint32_t VertexAttribBufferIndex;
@@ -157,7 +160,7 @@ layout(push_constant, scalar) uniform PushConstantBlock
     uint32_t MeshletTrianglesBufferIndex;
     
     vec4 pad0;
-    vec2 pad1;
+    vec3 pad1;
 }
 #ifdef __cplusplus
 ;

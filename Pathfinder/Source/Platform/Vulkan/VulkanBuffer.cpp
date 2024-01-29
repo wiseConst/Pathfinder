@@ -14,14 +14,17 @@ namespace Pathfinder
 namespace BufferUtils
 {
 
-// TODO: Should I specify queue family indices?
 void CreateBuffer(VkBuffer& buffer, VmaAllocation& allocation, const size_t size, const VkBufferUsageFlags bufferUsage,
                   VmaMemoryUsage memoryUsage)
 {
     VkBufferCreateInfo bufferCI = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferCI.sharingMode        = VK_SHARING_MODE_EXCLUSIVE;
-    bufferCI.size               = size;
     bufferCI.usage              = bufferUsage;
+    bufferCI.size               = size;
+
+    // NOTE: No sharing between queues
+    bufferCI.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
+    bufferCI.queueFamilyIndexCount = 0;
+    bufferCI.pQueueFamilyIndices   = nullptr;
 
     VulkanContext::Get().GetDevice()->GetAllocator()->CreateBuffer(bufferCI, buffer, allocation, memoryUsage);
 }
@@ -89,7 +92,6 @@ VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUs
     else if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING)
         return VMA_MEMORY_USAGE_CPU_ONLY;
     else if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM)
-        //  return VMA_MEMORY_USAGE_CPU_ONLY;
         return VMA_MEMORY_USAGE_CPU_TO_GPU;
 
     return memoryUsage;
@@ -134,16 +136,7 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
     }
 
-    if (dataSize > m_Specification.BufferCapacity)
-    {
-        Destroy();
-        m_Specification.BufferCapacity = dataSize;
-        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
-                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
-                                  BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
-
-        m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
-    }
+    Resize(dataSize);
 
     if (m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_STAGING || m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM)
     {
@@ -165,31 +158,33 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
             m_bIsMapped = false;
         }
     }
-    else  // TODO: Refactor it to have separate staging buffer class / upload heap
+    else
     {
-        VkBuffer stagingBuffer          = VK_NULL_HANDLE;
-        VmaAllocation stagingAllocation = VK_NULL_HANDLE;
+        const auto& rd = Renderer::GetRendererData();
+        rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
 
-        BufferUtils::CreateBuffer(stagingBuffer, stagingAllocation, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
+        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+        vulkanCommandBuffer->BeginRecording(true);
 
-        void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(stagingAllocation);
-        PFR_ASSERT(mapped, "Failed to retrieve mapped chunk!");
-        memcpy(mapped, data, dataSize);
-        VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(stagingAllocation);
+        const VkBufferCopy region = {0, 0, dataSize};
+        vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
 
-        {
-            const auto copyCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
-            copyCommandBuffer->BeginRecording(true);
-
-            const VkBufferCopy region = {0, 0, dataSize};
-            copyCommandBuffer->CopyBuffer(stagingBuffer, m_Handle, 1, &region);
-
-            copyCommandBuffer->EndRecording();
-            copyCommandBuffer->Submit();
-        }
-
-        BufferUtils::DestroyBuffer(stagingBuffer, stagingAllocation);
+        vulkanCommandBuffer->EndRecording();
+        vulkanCommandBuffer->Submit(true, false);
     }
+}
+
+void VulkanBuffer::Resize(const size_t newBufferCapacity)
+{
+    if (newBufferCapacity <= m_Specification.BufferCapacity) return;
+
+    Destroy();
+    m_Specification.BufferCapacity = newBufferCapacity;
+    BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
+                              BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
+                              BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
+
+    m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
 }
 
 void VulkanBuffer::Destroy()

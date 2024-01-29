@@ -59,9 +59,12 @@ VulkanCommandBuffer::VulkanCommandBuffer(ECommandBufferType type, ECommandBuffer
     auto& context = VulkanContext::Get();
     context.GetDevice()->AllocateCommandBuffer(m_Handle, type, PathfinderCommandBufferLevelToVulkan(m_Level));
 
-    constexpr VkFenceCreateInfo fenceCreateInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
-    VK_CHECK(vkCreateFence(context.GetDevice()->GetLogicalDevice(), &fenceCreateInfo, VK_NULL_HANDLE, &m_SubmitFence),
-             "Failed to create fence!");
+    constexpr VkSemaphoreCreateInfo semaphoreCI = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+    VK_CHECK(vkCreateSemaphore(context.GetDevice()->GetLogicalDevice(), &semaphoreCI, VK_NULL_HANDLE, &m_WaitSemaphore),
+             "Failed to create semaphore!");
+
+    constexpr VkFenceCreateInfo fenceCI = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
+    VK_CHECK(vkCreateFence(context.GetDevice()->GetLogicalDevice(), &fenceCI, VK_NULL_HANDLE, &m_SubmitFence), "Failed to create fence!");
 
     std::string commandBufferTypeStr;
     switch (m_Type)
@@ -171,11 +174,27 @@ void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheri
     m_CurrentTimestampIndex = 0;
 }
 
-void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit)
+void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit, bool bSignalWaitSemaphore, const PipelineStageFlags pipelineStages,
+                                 const std::vector<void*>& semaphoresToWaitOn)
 {
     VkSubmitInfo submitInfo       = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &m_Handle;
+
+    if (bSignalWaitSemaphore)
+    {
+        submitInfo.signalSemaphoreCount = 1;
+        submitInfo.pSignalSemaphores    = &m_WaitSemaphore;
+    }
+
+    const VkPipelineStageFlags pipelineStageFlags = VulkanUtility::PathfinderPipelineStageToVulkan(pipelineStages);
+    if (!semaphoresToWaitOn.empty())
+    {
+        submitInfo.waitSemaphoreCount = static_cast<uint32_t>(semaphoresToWaitOn.size());
+        submitInfo.pWaitSemaphores    = (const VkSemaphore*)semaphoresToWaitOn.data();
+
+        submitInfo.pWaitDstStageMask = &pipelineStageFlags;
+    }
 
     auto& context = VulkanContext::Get();
     VkQueue queue = VK_NULL_HANDLE;
@@ -240,7 +259,7 @@ void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkIm
 
     VkAccessFlags srcAccessMask = 0;
     VkAccessFlags dstAccessMask = 0;
-    const VkImageMemoryBarrier imageMemoryBarrier =
+    VkImageMemoryBarrier imageMemoryBarrier =
         VulkanUtility::GetImageMemoryBarrier(image, aspectMask, oldLayout, newLayout, srcAccessMask, dstAccessMask, 1, 0, 1, 0);
 
     VkPipelineStageFlags srcStageMask = 0;
@@ -319,6 +338,8 @@ void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkIm
         default: PFR_ASSERT(false, "New layout is not supported!");
     }
 
+    imageMemoryBarrier.srcAccessMask = srcAccessMask;
+    imageMemoryBarrier.dstAccessMask = dstAccessMask;
     InsertBarrier(srcStageMask, dstStageMask, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
 }
 
@@ -407,10 +428,11 @@ void VulkanCommandBuffer::Destroy()
 
     auto& context = VulkanContext::Get();
     context.GetDevice()->WaitDeviceOnFinish();
-    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
-
     context.GetDevice()->FreeCommandBuffer(m_Handle, m_Type);
+
+    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
     vkDestroyFence(logicalDevice, m_SubmitFence, VK_NULL_HANDLE);
+    vkDestroySemaphore(logicalDevice, m_WaitSemaphore, VK_NULL_HANDLE);
 
     if (m_TimestampQuery) vkDestroyQueryPool(logicalDevice, m_TimestampQuery, nullptr);
     if (m_PipelineStatisticsQuery) vkDestroyQueryPool(logicalDevice, m_PipelineStatisticsQuery, nullptr);
@@ -500,9 +522,7 @@ void VulkanCommandBuffer::BindIndexBuffer(const Shared<Buffer>& indexBuffer, con
     vkCmdBindIndexBuffer(m_Handle, (VkBuffer)vulkanIndexBuffer->Get(), offset, bIndexType32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 }
 
-// TODO: Insert barrier with src/dst pipeline stage
-void VulkanCommandBuffer::CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage, const EPipelineStage srcPipelineStage,
-                                           const EPipelineStage dstPipelineStage) const
+void VulkanCommandBuffer::CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const
 {
     PFR_ASSERT(srcImage && dstImage, "Can't copy image to image if images are invalid!");
 

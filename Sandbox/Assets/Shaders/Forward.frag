@@ -15,5 +15,5 @@ layout(location = 0) in VertexInput
 
 void main()
 {
-    outFragColor = vec4(texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], i_VertexInput.UV).xyz, 1.0);// * i_VertexInput.Color;
+    outFragColor = vec4(texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], i_VertexInput.UV).xyz, 1.0); // i_VertexInput.Color;
 }

@@ -18,6 +18,9 @@
 namespace Pathfinder
 {
 
+namespace FasgtlfUtils
+{
+
 static ESamplerFilter FastgltfSamplerFilterToPathfinder(const fastgltf::Filter filter)
 {
     switch (filter)
@@ -45,19 +48,161 @@ static ESamplerWrap FastgltfSamplerWrapToPathfinder(const fastgltf::Wrap wrap)
     return ESamplerWrap::SAMPLER_WRAP_REPEAT;
 }
 
-// TODO: Refactor, optimize for RAM usage
+static Shared<Texture2D> FastgltfLoadTexture(const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor,
+                                             TextureSpecification& textureSpec)
+{
+    const auto textureIndex     = materialAccessor.pbrData.baseColorTexture->textureIndex;
+    const auto& fastgltfTexture = asset.textures[textureIndex];
+    const auto imageIndex       = fastgltfTexture.imageIndex;
+    PFR_ASSERT(imageIndex.has_value(), "Invalid image index!");
+
+    if (fastgltfTexture.samplerIndex.has_value())
+    {
+        const auto& fastgltfTextureSampler = asset.samplers[fastgltfTexture.samplerIndex.value()];
+
+        if (fastgltfTextureSampler.magFilter.has_value())
+            textureSpec.Filter = FastgltfSamplerFilterToPathfinder(fastgltfTextureSampler.magFilter.value());
+
+        textureSpec.Wrap = FastgltfSamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
+    }
+
+    Shared<Texture2D> texture = nullptr;
+    const auto& imageData     = asset.images[imageIndex.value()].data;
+    std::visit(fastgltf::visitor{[](auto& arg) {},
+                                 [&](const fastgltf::sources::URI& uri)
+                                 {
+                                     int32_t x = 1, y = 1, channels = 4;
+                                     void* data           = ImageUtils::LoadRawImage(uri.uri.path().data(), &x, &y, &channels);
+                                     textureSpec.Data     = data;
+                                     textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
+                                     textureSpec.Width    = x;
+                                     textureSpec.Height   = y;
+
+                                     texture = Texture2D::Create(textureSpec);
+                                     ImageUtils::UnloadRawImage(data);
+                                 },
+                                 [&](const fastgltf::sources::Vector& vector)
+                                 {
+                                     int32_t x = 1, y = 1, channels = 4;
+                                     void* data = ImageUtils::LoadRawImageFromMemory(
+                                         vector.bytes.data(), vector.bytes.size() * sizeof(vector.bytes[0]), &x, &y, &channels);
+
+                                     textureSpec.Data     = data;
+                                     textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
+                                     textureSpec.Width    = x;
+                                     textureSpec.Height   = y;
+
+                                     texture = Texture2D::Create(textureSpec);
+                                     ImageUtils::UnloadRawImage(data);
+                                 }},
+               imageData);
+
+    return texture;
+}
+
+}  // namespace FasgtlfUtils
+
+namespace MeshPreprocessorUtils
+{
+
+struct MeshoptimizeVertex
+{
+    glm::vec3 Position = glm::vec3(0.0f);
+    glm::vec4 Color    = glm::vec4(1.0f);
+    glm::vec3 Normal   = glm::vec3(0.0f);
+    glm::vec3 Tangent  = glm::vec3(0.0f);
+    glm::vec2 UV       = glm::vec2(0.0f);
+};
+
+static void OptimizeMesh(const std::vector<uint32_t>& srcIndices, const std::vector<MeshoptimizeVertex>& srcVertices,
+                         std::vector<uint32_t>& outIndices, std::vector<MeshoptimizeVertex>& outVertices)
+{
+    // #1 INDEXING
+    std::vector<uint32_t> remappedIndices(srcIndices.size());
+    const size_t remappedVertexCount = meshopt_generateVertexRemap(remappedIndices.data(), srcIndices.data(), srcIndices.size(),
+                                                                   srcVertices.data(), srcVertices.size(), sizeof(srcVertices[0]));
+
+    outIndices.resize(remappedIndices.size());
+    meshopt_remapIndexBuffer(outIndices.data(), srcIndices.data(), remappedIndices.size(), remappedIndices.data());
+
+    outVertices.resize(remappedVertexCount);
+    meshopt_remapVertexBuffer(outVertices.data(), srcVertices.data(), srcVertices.size(), sizeof(srcVertices[0]), remappedIndices.data());
+
+    // #2 VERTEX CACHE
+    meshopt_optimizeVertexCache(outIndices.data(), outIndices.data(), outIndices.size(), outVertices.size());
+
+    // #3 OVERDRAW
+    meshopt_optimizeOverdraw(outIndices.data(), outIndices.data(), outIndices.size(), &outVertices[0].Position.x, outVertices.size(),
+                             sizeof(outVertices[0]),
+                             1.05f);  // max 5% vertex cache hit ratio can be worse then before
+
+    // NOTE: I don't think I rly need to call these funcs twice since I'm using 2 vertex streams, cuz I've already merged them in
+    // MeshoptimizeVertex and then I unmerge them xd
+    // #4 VERTEX FETCH
+    meshopt_optimizeVertexFetch(outVertices.data(), outIndices.data(), outIndices.size(), outVertices.data(), outVertices.size(),
+                                sizeof(outVertices[0]));
+}
+
+static void BuildMeshlets(const std::vector<uint32_t>& indices, const std::vector<MeshPositionVertex>& vertexPositions,
+                          std::vector<Meshlet>& outMeshlets, std::vector<uint32_t>& outMeshletVertices,
+                          std::vector<uint8_t>& outMeshletTriangles)
+{
+    const size_t maxMeshletCount = meshopt_buildMeshletsBound(indices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_TRIANGLE_COUNT);
+    std::vector<meshopt_Meshlet> meshopt_meshlets(maxMeshletCount);
+    outMeshletVertices.resize(maxMeshletCount * MAX_MESHLET_VERTEX_COUNT);
+    outMeshletTriangles.resize(maxMeshletCount * MAX_MESHLET_TRIANGLE_COUNT * 3);
+
+    const size_t actualMeshletCount =
+        meshopt_buildMeshlets(meshopt_meshlets.data(), outMeshletVertices.data(), outMeshletTriangles.data(), indices.data(),
+                              indices.size(), &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(vertexPositions[0]),
+                              MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_TRIANGLE_COUNT, MESHLET_CONE_WEIGHT);
+
+    {
+        // Trimming
+        const meshopt_Meshlet& last = meshopt_meshlets[actualMeshletCount - 1];
+        outMeshletVertices.resize(last.vertex_offset + last.vertex_count);
+        outMeshletVertices.shrink_to_fit();
+
+        outMeshletTriangles.resize(last.triangle_offset + ((last.triangle_count * 3 + 3) & ~3));
+        outMeshletTriangles.shrink_to_fit();
+
+        meshopt_meshlets.resize(actualMeshletCount);
+        meshopt_meshlets.shrink_to_fit();
+    }
+
+    outMeshlets.resize(meshopt_meshlets.size());
+    for (size_t i = 0; i < actualMeshletCount; ++i)
+    {
+        const auto& meshopt_m       = meshopt_meshlets[i];
+        const meshopt_Bounds bounds = meshopt_computeMeshletBounds(
+            &outMeshletVertices[meshopt_m.vertex_offset], &outMeshletTriangles[meshopt_m.triangle_offset], meshopt_m.triangle_count,
+            &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(vertexPositions[0]));
+
+        auto& m          = outMeshlets[i];
+        m.vertexOffset   = meshopt_m.vertex_offset;
+        m.vertexCount    = meshopt_m.vertex_count;
+        m.triangleOffset = meshopt_m.triangle_offset;
+        m.triangleCount  = meshopt_m.triangle_count;
+
+        m.center[0] = bounds.center[0];
+        m.center[1] = bounds.center[1];
+        m.center[2] = bounds.center[2];
+
+        m.coneAxis[0] = bounds.cone_axis[0];
+        m.coneAxis[1] = bounds.cone_axis[1];
+        m.coneAxis[2] = bounds.cone_axis[2];
+
+        m.coneCutoff = bounds.cone_cutoff;
+    }
+}
+}  // namespace MeshPreprocessorUtils
+
 Mesh::Mesh(const std::string& meshPath)
 {
     // Optimally, you should reuse Parser instance across loads, but don't use it across threads.
-    // To enable extensions, you have to pass them into the parser's constructor.
     thread_local fastgltf::Parser parser;
 
     Timer t = {};
-
-    // The GltfDataBuffer class is designed for re-usability of the same JSON string. It contains
-    // utility functions to load data from a std::filesystem::path, copy from an existing buffer,
-    // or re-use an already existing allocation. Note that it has to outlive the process of every
-    // parsing function you call.
     fastgltf::GltfDataBuffer data;
     PFR_ASSERT(data.loadFromFile(meshPath), "Failed to load  fastgltf::GltfDataBuffer!");
 
@@ -79,9 +224,7 @@ Mesh::Mesh(const std::string& meshPath)
         asset = parser.loadGltfBinary(&data, fsMeshPath.parent_path(), gltfOptions);
     }
     else
-    {
         PFR_ASSERT(false, "[FASTGLTF]: Failed to determine glTF container");
-    }
 
     if (const auto error = asset.error(); error != fastgltf::Error::None)
     {
@@ -92,15 +235,12 @@ Mesh::Mesh(const std::string& meshPath)
     LOG_TAG_INFO(FASTGLTF, "\"%s\" has (%zu) buffers, (%zu) textures, (%zu) animations, (%zu) materials, (%zu) meshes.", meshPath.data(),
                  asset->buffers.size(), asset->animations.size(), asset->textures.size(), asset->materials.size(), asset->meshes.size());
 
-    for (auto& submesh : asset->meshes)
+    for (auto& node : asset->nodes)
     {
-        LoadSubmeshes(asset.get(), submesh);
+        TraverseNodes(asset.get(), node);
     }
 
 #if PFR_DEBUG
-    // Optionally, you can now also call the fastgltf::validate method. This will more strictly
-    // enforce the glTF spec and is not needed most of the time, though I would certainly
-    // recommend it in a development environment or when debugging to avoid mishaps.
     PFR_ASSERT(fastgltf::validate(asset.get()) == fastgltf::Error::None, "Asset is not valid after processing?");
 #endif
 
@@ -117,51 +257,47 @@ void Mesh::Destroy()
     m_Submeshes.clear();
 }
 
-void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLTFsubmesh)
+void Mesh::TraverseNodes(const fastgltf::Asset& asset, const fastgltf::Node& node)
 {
-    struct MeshoptimizeVertex
-    {
-        glm::vec3 Position = glm::vec3(0.0f);
-        glm::vec4 Color    = glm::vec4(1.0f);
-        glm::vec3 Normal   = glm::vec3(0.0f);
-        glm::vec3 Tangent  = glm::vec3(0.0f);
-        glm::vec2 UV       = glm::vec2(0.0f);
-    };
 
-    for (const auto& p : GLTFsubmesh.primitives)
+    PFR_ASSERT(node.meshIndex.has_value(), "Node hasn't mesh index!");
+    for (const auto& p : asset.meshes[node.meshIndex.value()].primitives)
     {
         const auto positionIt = p.findAttribute("POSITION");
         PFR_ASSERT(positionIt != p.attributes.end(), "Mesh doesn't contain positions?!");
         PFR_ASSERT(p.indicesAccessor.has_value(), "Non-indexed geometry is not supported!");
 
         // INDICES
-        const auto& indicesAccessor = asset.accessors[p.indicesAccessor.value()];  // out of scope cuz needed for meshlets
+        const auto& indicesAccessor = asset.accessors[p.indicesAccessor.value()];
         std::vector<uint32_t> indices(indicesAccessor.count);
         fastgltf::iterateAccessorWithIndex<std::uint32_t>(asset, indicesAccessor,
                                                           [&](uint32_t index, std::size_t idx) { indices[idx] = index; });
 
         // POSITION
-        const auto& positionAccessor = asset.accessors[positionIt->second];  // out of scope cuz needed for meshlets
+        const auto& positionAccessor = asset.accessors[positionIt->second];
         PFR_ASSERT(positionAccessor.type == fastgltf::AccessorType::Vec3, "Positions can only contain vec3!");
 
-        std::vector<MeshoptimizeVertex> meshoptimizeVertices(positionAccessor.count);
-        const auto& bufferView = asset.bufferViews[positionAccessor.bufferViewIndex.value()];
-        const auto& bufferData = asset.buffers[bufferView.bufferIndex].data;
-        PFR_ASSERT(std::holds_alternative<fastgltf::sources::Vector>(bufferData), "Only vector parsing support for now!");
+        std::vector<MeshPreprocessorUtils::MeshoptimizeVertex> meshoptimizeVertices(positionAccessor.count);
+        {
+            // Safety checks
+            const auto& bufferView = asset.bufferViews[positionAccessor.bufferViewIndex.value()];
+            const auto& bufferData = asset.buffers[bufferView.bufferIndex].data;
+            PFR_ASSERT(std::holds_alternative<fastgltf::sources::Vector>(bufferData), "Only vector parsing support for now!");
+        }
 
-        // TODO: What to do with asset.node.children when applying transforms?
         fastgltf::iterateAccessorWithIndex<glm::vec3>(
             asset, positionAccessor,
             [&](const glm::vec3& position, std::size_t idx)
             {
                 meshoptimizeVertices[idx].Position = position;
 
-                if (const fastgltf::Node::TRS* pTransform = std::get_if<fastgltf::Node::TRS>(&asset.nodes[0].transform))
                 {
-                    meshoptimizeVertices[idx].Position = vec4(meshoptimizeVertices[idx].Position, 1.0) *
-                                                         glm::translate(glm::mat4(1.0f), glm::make_vec3(pTransform->translation.data())) *
-                                                         glm::toMat4(glm::make_quat(pTransform->rotation.data())) *
-                                                         glm::scale(glm::mat4(1.0f), glm::make_vec3(pTransform->scale.data()));
+                    if (const fastgltf::Node::TRS* pTransform = std::get_if<fastgltf::Node::TRS>(&node.transform))
+                        meshoptimizeVertices[idx].Position =
+                            vec4(meshoptimizeVertices[idx].Position, 1.0) *
+                            glm::translate(glm::mat4(1.0f), glm::make_vec3(pTransform->translation.data())) *
+                            glm::toMat4(glm::make_quat(pTransform->rotation.data())) *
+                            glm::scale(glm::mat4(1.0f), glm::make_vec3(pTransform->scale.data()));
                 }
             });
 
@@ -173,16 +309,6 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLT
                                                           [&](const glm::vec3& normal, std::size_t idx)
                                                           { meshoptimizeVertices[idx].Normal = normal; });
         }
-        PFR_ASSERT(normalIt != p.attributes.end(), "Mesh doesn't contain normals?!");
-
-        // COLOR_0
-        const auto& color_0_It = p.findAttribute("COLOR_0");
-        if (color_0_It != p.attributes.end())
-        {
-            fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[color_0_It->second],
-                                                          [&](const glm::vec4& color, std::size_t idx)
-                                                          { meshoptimizeVertices[idx].Color = color; });
-        }
 
         // TANGENT
         const auto& tangentIt = p.findAttribute("TANGENT");
@@ -192,7 +318,15 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLT
                                                           [&](const glm::vec4& tangent, std::size_t idx)
                                                           { meshoptimizeVertices[idx].Tangent = tangent; });
         }
-        //  PFR_ASSERT(tangentIt != p.attributes.end(), "Mesh doesn't contain tangents?!");
+
+        // COLOR_0
+        const auto& color_0_It = p.findAttribute("COLOR_0");
+        if (color_0_It != p.attributes.end())
+        {
+            fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[color_0_It->second],
+                                                          [&](const glm::vec4& color, std::size_t idx)
+                                                          { meshoptimizeVertices[idx].Color = color; });
+        }
 
         // UV
         const auto& uvIT = p.findAttribute("TEXCOORD_0");
@@ -204,7 +338,7 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLT
 
         auto& submesh = m_Submeshes.emplace_back(MakeShared<Submesh>());
 
-        // PBR stuff
+        // PBR shading model materials
         if (p.materialIndex.has_value())
         {
             const auto& materialAccessor = asset.materials[p.materialIndex.value()];
@@ -213,123 +347,51 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLT
             auto& material = submesh->GetMaterial();
 
             PBRData pbrData   = {};
-            pbrData.BaseColor = glm::vec4(materialAccessor.pbrData.baseColorFactor[0], materialAccessor.pbrData.baseColorFactor[1],
-                                          materialAccessor.pbrData.baseColorFactor[2], materialAccessor.pbrData.baseColorFactor[3]);
+            pbrData.BaseColor = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data());
             pbrData.Metallic  = materialAccessor.pbrData.metallicFactor;
             pbrData.Roughness = materialAccessor.pbrData.roughnessFactor;
 
             material->SetPBRData(pbrData);
             material->SetIsOpaque(materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque);
 
-            for (auto& vertexAttribute : meshoptimizeVertices)
-            {
-                vertexAttribute.Color = pbrData.BaseColor;
-            }
-
             if (materialAccessor.pbrData.baseColorTexture.has_value())
             {
                 TextureSpecification albedoTextureSpec = {};
 
-                const auto textureIndex     = materialAccessor.pbrData.baseColorTexture->textureIndex;
-                const auto& fastgltfTexture = asset.textures[textureIndex];
-                const auto imageIndex       = fastgltfTexture.imageIndex;
-                PFR_ASSERT(imageIndex.has_value(), "Invalid image index!");
-                const auto& imageData = asset.images[imageIndex.value()].data;
-
-                if (fastgltfTexture.samplerIndex.has_value())
-                {
-                    const auto& fastgltfTextureSampler = asset.samplers[fastgltfTexture.samplerIndex.value()];
-
-                    if (fastgltfTextureSampler.magFilter.has_value())
-                        albedoTextureSpec.Filter = FastgltfSamplerFilterToPathfinder(fastgltfTextureSampler.magFilter.value());
-
-                    albedoTextureSpec.Wrap = FastgltfSamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
-                }
-
-                Shared<Texture2D> albedo = nullptr;
-                std::visit(fastgltf::visitor{[](auto& arg) {},
-                                             [&](const fastgltf::sources::URI& uri)
-                                             {
-                                                 int32_t x = 1, y = 1, channels = 4;
-                                                 void* data = ImageUtils::LoadRawImage(uri.uri.path().data(), &x, &y, &channels);
-                                                 albedoTextureSpec.Data     = data;
-                                                 albedoTextureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
-                                                 albedoTextureSpec.Width    = x;
-                                                 albedoTextureSpec.Height   = y;
-
-                                                 albedo = Texture2D::Create(albedoTextureSpec);
-                                                 ImageUtils::UnloadRawImage(data);
-                                             },
-                                             [&](const fastgltf::sources::Vector& vector)
-                                             {
-                                                 int32_t x = 1, y = 1, channels = 4;
-                                                 void* data = ImageUtils::LoadRawImageFromMemory(
-                                                     vector.bytes.data(), vector.bytes.size() * sizeof(vector.bytes[0]), &x, &y, &channels);
-
-                                                 albedoTextureSpec.Data     = data;
-                                                 albedoTextureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
-                                                 albedoTextureSpec.Width    = x;
-                                                 albedoTextureSpec.Height   = y;
-
-                                                 albedo = Texture2D::Create(albedoTextureSpec);
-                                                 ImageUtils::UnloadRawImage(data);
-                                             }},
-                           imageData);
+                Shared<Texture2D> albedo = FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, albedoTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(albedo);
                 material->SetAlbedo(albedo);
             }
 
-            // TODO: implement
-            /*if (materialAccessor.normalTexture.has_value())
+            if (materialAccessor.normalTexture.has_value())
             {
                 TextureSpecification normalMapTextureSpec = {};
 
-                material->SetNormalMap(Texture2D::Create(normalMapTextureSpec));
-            }*/
+                Shared<Texture2D> normalMap = FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, normalMapTextureSpec);
 
-            // TODO: Investigate on GLTF khronos
+                Renderer::GetBindlessRenderer()->LoadTexture(normalMap);
+                material->SetNormalMap(normalMap);
+            }
+
             if (materialAccessor.pbrData.metallicRoughnessTexture.has_value())
             {
-                /*  TextureSpecification metallicRoughnessTextureSpec = {};
+                TextureSpecification metallicRoughnessTextureSpec = {};
 
-                  material->SetRoughness(Texture2D::Create(metallicRoughnessTextureSpec));
-                  material->SetMetallic(Texture2D::Create(metallicRoughnessTextureSpec));*/
+                Shared<Texture2D> metallicRoughness =
+                    FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, metallicRoughnessTextureSpec);
+
+                Renderer::GetBindlessRenderer()->LoadTexture(metallicRoughness);
+                material->SetMetallicRoughness(metallicRoughness);
             }
         }
 
-        /* OPTIMIZATION: */
+        std::vector<uint32_t> finalIndices;
+        std::vector<MeshPreprocessorUtils::MeshoptimizeVertex> finalVertices;
+        MeshPreprocessorUtils::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
 
-        // #1 INDEXING
-        std::vector<uint32_t> remappedIndices(indices.size());
-        const size_t remappedVertexCount =
-            meshopt_generateVertexRemap(remappedIndices.data(), indices.data(), indices.size(), meshoptimizeVertices.data(),
-                                        meshoptimizeVertices.size(), sizeof(MeshoptimizeVertex));
-
-        std::vector<uint32_t> finalIndices(remappedIndices.size());
-        meshopt_remapIndexBuffer(finalIndices.data(), indices.data(), remappedIndices.size(), remappedIndices.data());
-
-        std::vector<MeshoptimizeVertex> finalVertices(remappedVertexCount);
-        meshopt_remapVertexBuffer(finalVertices.data(), meshoptimizeVertices.data(), meshoptimizeVertices.size(),
-                                  sizeof(MeshoptimizeVertex), remappedIndices.data());
-
-        // #2 VERTEX CACHE
-        meshopt_optimizeVertexCache(finalIndices.data(), finalIndices.data(), finalIndices.size(), finalVertices.size());
-
-        // #3 OVERDRAW
-        meshopt_optimizeOverdraw(finalIndices.data(), finalIndices.data(), finalIndices.size(), &finalVertices[0].Position.x,
-                                 finalVertices.size(), sizeof(MeshoptimizeVertex),
-                                 1.05f);  // max 5% vertex cache hit ratio can be worse then before
-
-        // NOTE: I don't think I rly need to call these funcs twice since I'm using 2 vertex streams, cuz I've already merged them in
-        // MeshoptimizeVertex and then I unmerge them xd
-        // #4 VERTEX FETCH
-        meshopt_optimizeVertexFetch(finalVertices.data(), finalIndices.data(), finalIndices.size(), finalVertices.data(),
-                                    finalVertices.size(), sizeof(MeshoptimizeVertex));
-
-        // OPTIMIZATION DONE, CREATE BUFFERS
         // NOTE: Currently index buffer is not used in shaders, so they don't need STORAGE usage flag
-        BufferSpecification ibSpec = {EBufferUsage::BUFFER_TYPE_INDEX /* | EBufferUsage::BUFFER_TYPE_STORAGE */ };
+        BufferSpecification ibSpec = {EBufferUsage::BUFFER_TYPE_INDEX /* | EBufferUsage::BUFFER_TYPE_STORAGE */};
         ibSpec.Data                = finalIndices.data();
         ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
@@ -352,6 +414,10 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLT
             vertexAttributes[i].Tangent = finalVertex.Tangent;
             vertexAttributes[i].UV      = finalVertex.UV;
         }
+
+        // NOTE: Do I free some RAM here?
+        indices.clear();
+        meshoptimizeVertices.clear();
 
         BufferSpecification vbPosSpec = {EBufferUsage::BUFFER_TYPE_VERTEX | EBufferUsage::BUFFER_TYPE_STORAGE};
         vbPosSpec.Data                = vertexPositions.data();
@@ -380,54 +446,10 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const fastgltf::Mesh& GLT
 
         if (Renderer::GetRendererSettings().bMeshShadingSupport)
         {
-            const size_t maxMeshletCount =
-                meshopt_buildMeshletsBound(finalIndices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_TRIANGLE_COUNT);
-            std::vector<meshopt_Meshlet> meshopt_meshlets(maxMeshletCount);
-            std::vector<uint32_t> meshletVertices(maxMeshletCount * MAX_MESHLET_VERTEX_COUNT);
-            std::vector<uint8_t> meshletTriangles(maxMeshletCount * MAX_MESHLET_TRIANGLE_COUNT * 3);
-
-            const size_t actualMeshletCount = meshopt_buildMeshlets(
-                meshopt_meshlets.data(), meshletVertices.data(), meshletTriangles.data(), finalIndices.data(), finalIndices.size(),
-                &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(MeshPositionVertex), MAX_MESHLET_VERTEX_COUNT,
-                MAX_MESHLET_TRIANGLE_COUNT, MESHLET_CONE_WEIGHT);
-
-            {
-                // Trimming
-                const meshopt_Meshlet& last = meshopt_meshlets[actualMeshletCount - 1];
-                meshletVertices.resize(last.vertex_offset + last.vertex_count);
-                meshletVertices.shrink_to_fit();
-
-                meshletTriangles.resize(last.triangle_offset + ((last.triangle_count * 3 + 3) & ~3));
-                meshletTriangles.shrink_to_fit();
-
-                meshopt_meshlets.resize(actualMeshletCount);
-                meshopt_meshlets.shrink_to_fit();
-            }
-
-            std::vector<Meshlet> meshlets(meshopt_meshlets.size());
-            for (size_t i = 0; i < actualMeshletCount; ++i)
-            {
-                const auto& meshopt_m       = meshopt_meshlets[i];
-                const meshopt_Bounds bounds = meshopt_computeMeshletBounds(
-                    &meshletVertices[meshopt_m.vertex_offset], &meshletTriangles[meshopt_m.triangle_offset], meshopt_m.triangle_count,
-                    &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(MeshPositionVertex));
-
-                auto& m          = meshlets[i];
-                m.vertexOffset   = meshopt_m.vertex_offset;
-                m.vertexCount    = meshopt_m.vertex_count;
-                m.triangleOffset = meshopt_m.triangle_offset;
-                m.triangleCount  = meshopt_m.triangle_count;
-
-                m.center[0] = bounds.center[0];
-                m.center[1] = bounds.center[1];
-                m.center[2] = bounds.center[2];
-
-                m.coneAxis[0] = bounds.cone_axis[0];
-                m.coneAxis[1] = bounds.cone_axis[1];
-                m.coneAxis[2] = bounds.cone_axis[2];
-
-                m.coneCutoff = bounds.cone_cutoff;
-            }
+            std::vector<uint32_t> meshletVertices;
+            std::vector<uint8_t> meshletTriangles;
+            std::vector<Meshlet> meshlets;
+            MeshPreprocessorUtils::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
 
             BufferSpecification mbSpec = {EBufferUsage::BUFFER_TYPE_STORAGE};
             mbSpec.Data                = meshlets.data();

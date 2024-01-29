@@ -387,11 +387,10 @@ void VulkanSwapchain::Recreate()
 
 void VulkanSwapchain::Destroy()
 {
-    auto& context             = VulkanContext::Get();
-    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
-
+    auto& context = VulkanContext::Get();
     context.GetDevice()->WaitDeviceOnFinish();
 
+    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
     vkDestroySwapchainKHR(logicalDevice, m_Handle, nullptr);
     vkDestroySurfaceKHR(context.GetInstance(), m_Surface, nullptr);
 

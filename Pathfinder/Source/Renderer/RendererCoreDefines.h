@@ -54,6 +54,7 @@ enum EPipelineStage : uint64_t
     PIPELINE_STAGE_TASK_SHADER_BIT                      = BIT(22),
     PIPELINE_STAGE_MESH_SHADER_BIT                      = BIT(23),
 };
+typedef uint32_t PipelineStageFlags;
 
 enum class EQueryPipelineStatistic
 {

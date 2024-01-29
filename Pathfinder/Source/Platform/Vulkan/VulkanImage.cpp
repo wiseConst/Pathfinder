@@ -74,16 +74,20 @@ void CreateImage(VkImage& image, VmaAllocation& allocation, const VkFormat forma
                  const VkExtent3D extent, const uint32_t mipLevels)
 {
     VkImageCreateInfo imageCI = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
+    imageCI.imageType         = VK_IMAGE_TYPE_2D;
     imageCI.extent            = extent;
     imageCI.format            = format;
     imageCI.usage             = imageUsage;
     imageCI.mipLevels         = mipLevels;
 
+    // NOTE: No sharing between queues
+    imageCI.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
+    imageCI.queueFamilyIndexCount = 0;
+    imageCI.pQueueFamilyIndices   = nullptr;
+
     // TODO: How do I handle tis? Hardcoding for now
     // imageCI.flags = VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT;
-    imageCI.imageType     = VK_IMAGE_TYPE_2D;
     imageCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
-    imageCI.sharingMode   = VK_SHARING_MODE_EXCLUSIVE;  // What if this img gonna be used in dedicated async compute queue and graphics
     imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
     imageCI.arrayLayers   = 1;
     imageCI.samples       = VK_SAMPLE_COUNT_1_BIT;
@@ -184,17 +188,8 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
 {
     SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
 
-    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
-    vulkanCommandBuffer->BeginRecording(true);
-
-    VkBuffer stagingBuffer          = VK_NULL_HANDLE;
-    VmaAllocation stagingAllocation = VK_NULL_HANDLE;
-
-    BufferUtils::CreateBuffer(stagingBuffer, stagingAllocation, dataSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, VMA_MEMORY_USAGE_CPU_ONLY);
-
-    void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(stagingAllocation);
-    memcpy(mapped, data, dataSize);
-    VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(stagingAllocation);
+    const auto& rd = Renderer::GetRendererData();
+    rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
 
     VkBufferImageCopy copyRegion               = {};
     copyRegion.imageExtent                     = {m_Specification.Width, m_Specification.Height, 1};
@@ -204,13 +199,14 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
     copyRegion.imageSubresource.aspectMask =
         ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
-    vulkanCommandBuffer->CopyBufferToImage(stagingBuffer, m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), 1,
-                                           &copyRegion);
+    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+    vulkanCommandBuffer->BeginRecording(true);
+
+    vulkanCommandBuffer->CopyBufferToImage((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle,
+                                           ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), 1, &copyRegion);
 
     vulkanCommandBuffer->EndRecording();
-    vulkanCommandBuffer->Submit(true);
-
-    BufferUtils::DestroyBuffer(stagingBuffer, stagingAllocation);
+    vulkanCommandBuffer->Submit(true, false);
 }
 
 // TODO: Add cube map support

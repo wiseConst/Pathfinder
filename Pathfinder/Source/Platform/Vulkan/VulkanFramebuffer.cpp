@@ -269,7 +269,7 @@ void VulkanFramebuffer::Invalidate()
 
         if (ImageUtils::IsDepthFormat(fbAttachment.Specification.Format))
         {
-            depthAttachmentInfo.imageView               = (VkImageView)vulkanImage->GetView();
+            depthAttachmentInfo.imageView               = vulkanImage->GetView();
             depthAttachmentInfo.imageLayout             = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             depthAttachmentInfo.storeOp                 = PathfinderStoreOpToVulkan(fbAttachment.Specification.StoreOp);
             depthAttachmentInfo.loadOp                  = PathfinderLoadOpToVulkan(fbAttachment.Specification.LoadOp);
@@ -278,7 +278,7 @@ void VulkanFramebuffer::Invalidate()
         else
         {
             auto& attachment            = m_AttachmentInfos.emplace_back(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO);
-            attachment.imageView        = (VkImageView)vulkanImage->GetView();
+            attachment.imageView        = vulkanImage->GetView();
             attachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             attachment.storeOp          = PathfinderStoreOpToVulkan(fbAttachment.Specification.StoreOp);
             attachment.loadOp           = PathfinderLoadOpToVulkan(fbAttachment.Specification.LoadOp);

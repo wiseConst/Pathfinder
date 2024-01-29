@@ -186,17 +186,6 @@ void VulkanDevice::CreateLogicalDevice()
     *ppNext = &vulkan12Features;
     ppNext  = &vulkan12Features.pNext;
 
-#if VK_SHADER_DEBUG_PRINTF
-    VkValidationFeaturesEXT validationInfo                           = {VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
-    constexpr VkValidationFeatureEnableEXT validationFeatureToEnable = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT;
-    validationInfo.enabledValidationFeatureCount                     = 1;
-    validationInfo.pEnabledValidationFeatures                        = &validationFeatureToEnable;
-
-    *ppNext               = &validationInfo;
-    void* validationPNext = (void*)validationInfo.pNext;
-    ppNext                = &validationPNext;
-#endif
-
     // Useful pipeline features that can be changed in real-time(for instance, polygon mode, primitive topology, etc..)
     VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3FeaturesEXT = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT};

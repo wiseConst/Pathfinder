@@ -31,7 +31,24 @@ void Renderer::Init()
     s_BindlessRenderer = BindlessRenderer::Create();
     SamplerStorage::Init();
 
-    ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "GBuffer", "Forward", "DepthPrePass", "Utils/InfiniteGrid"});
+    ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "Forward", "DepthPrePass", "Utils/InfiniteGrid"});
+
+    std::ranges::for_each(
+        s_RendererData->UploadHeap,
+        [&](auto& uploadHeap)
+        {
+            BufferSpecification uploadHeapSpec = {EBufferUsage::BUFFER_TYPE_STAGING, true, s_RendererData->s_MAX_UPLOAD_HEAP_CAPACITY};
+            uploadHeap                         = Buffer::Create(uploadHeapSpec);
+        });
+
+    std::ranges::for_each(s_RendererData->RenderCommandBuffer, [&](auto& commandBuffer)
+                          { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS); });
+
+    std::ranges::for_each(s_RendererData->ComputeCommandBuffer, [&](auto& commandBuffer)
+                          { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE); });
+
+    std::ranges::for_each(s_RendererData->TransferCommandBuffer, [&](auto& commandBuffer)
+                          { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER); });
 
     {
         TextureSpecification whiteTextureSpec = {1, 1};
@@ -42,12 +59,6 @@ void Renderer::Init()
 
         s_BindlessRenderer->LoadTexture(s_RendererData->WhiteTexture);
     }
-
-    std::ranges::for_each(s_RendererData->RenderCommandBuffer, [&](auto& commandBuffer)
-                          { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS); });
-
-    std::ranges::for_each(s_RendererData->ComputeCommandBuffer, [&](auto& commandBuffer)
-                          { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE); });
 
     std::ranges::for_each(s_RendererData->CameraUB,
                           [](Shared<Buffer>& cameraUB)
@@ -196,9 +207,13 @@ void Renderer::Shutdown()
 
 void Renderer::Begin()
 {
-    s_RendererData->FrameIndex                  = Application::Get().GetWindow()->GetCurrentFrameIndex();
-    s_RendererData->CurrentRenderCommandBuffer  = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex];
-    s_RendererData->CurrentComputeCommandBuffer = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex];
+    s_RendererData->FrameIndex                   = Application::Get().GetWindow()->GetCurrentFrameIndex();
+    s_RendererData->CurrentRenderCommandBuffer   = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex];
+    s_RendererData->CurrentComputeCommandBuffer  = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex];
+    s_RendererData->CurrentTransferCommandBuffer = s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex];
+
+    s_RendererData->UploadHeap[s_RendererData->FrameIndex]->Resize(s_RendererData->s_MAX_UPLOAD_HEAP_CAPACITY);
+    s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->BeginRecording(true);
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginRecording(true);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginPipelineStatisticsQuery();
@@ -208,7 +223,12 @@ void Renderer::Begin()
 
     s_BindlessRenderer->UpdateDataIfNeeded();
 
-    s_RendererStats                           = {};
+    uint32_t prevPoolCount              = s_RendererStats.DescriptorPoolCount;
+    uint32_t prevDescriptorSetCount     = s_RendererStats.DescriptorSetCount;
+    s_RendererStats                     = {};
+    s_RendererStats.DescriptorPoolCount = prevPoolCount;
+    s_RendererStats.DescriptorSetCount  = prevDescriptorSetCount;
+
     Renderer2D::GetRendererData()->FrameIndex = s_RendererData->FrameIndex;
     Renderer2D::Begin();
 
@@ -231,8 +251,11 @@ void Renderer::Flush()
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndPipelineStatisticsQuery();
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
 
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Submit();
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Submit();
+    s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
+
+    s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->Submit(true, false);
+    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Submit(true, false);
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Submit(true, false);
 
     const auto& renderPipelineStats  = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->GetPipelineStatisticsResults();
     const auto& computePipelineStats = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->GetPipelineStatisticsResults();
@@ -240,13 +263,19 @@ void Renderer::Flush()
     const auto& renderTimestamps = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->GetTimestampsResults();
     s_RendererStats.GPUTime      = std::accumulate(renderTimestamps.begin(), renderTimestamps.end(), s_RendererStats.GPUTime);
 
+    /*LOG_TAG_INFO(RENDERER, "RENDERER STATISTICS: ");
+    LOG_TAG_INFO(SAMPLER_STORAGE, "Sampler count: %u", SamplerStorage::GetSamplerCount());
     LOG_TAG_INFO(RENDERER, "DepthPrePass: %0.4f (ms)", renderTimestamps[0]);
     LOG_TAG_INFO(RENDERER, "GeometryPass: %0.4f (ms)", renderTimestamps[1]);
-
-    LOG_TAG_INFO(SAMPLER_STORAGE, "Sampler count: %u", SamplerStorage::GetSamplerCount());
+    for (const auto& renderPipelineStat : renderPipelineStats)
+    {
+        LOG_TAG_INFO(RENDERER, "%s %llu", CommandBuffer::ConvertQueryPipelineStatisticToCString(renderPipelineStat.first),
+                     renderPipelineStat.second);
+    }*/
 
     s_RendererData->CurrentRenderCommandBuffer.reset();
     s_RendererData->CurrentComputeCommandBuffer.reset();
+    s_RendererData->CurrentTransferCommandBuffer.reset();
 
     s_RendererData->OpaqueObjects.clear();
     s_RendererData->TransparentObjects.clear();
@@ -266,7 +295,7 @@ void Renderer::BeginScene(const Camera& camera)
     s_BindlessRenderer->UpdateCameraData(s_RendererData->CameraUB[s_RendererData->FrameIndex]);
 
     /* PATHTRACING TESTS from vk_mini_path_tracer */
-    if (s_RendererSettings.bRTXSupport)
+    // if (s_RendererSettings.bRTXSupport)
     {
         s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(
             s_RendererData->PathtracingPipeline->GetSpecification().DebugName, glm::vec3(0.8f, 0.8f, 0.1f));
@@ -317,8 +346,7 @@ void Renderer::DepthPrePass()
 
     auto renderMeshFunc = [&](const Shared<Submesh>& submesh)
     {
-        PushConstantBlock pc = {};
-        //  pc.Transform               = glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
+        PushConstantBlock pc    = {};
         pc.VertexPosBufferIndex = submesh->GetVertexPositionBuffer()->GetBindlessIndex();
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindShaderData(
@@ -399,14 +427,12 @@ void Renderer::GeometryPass()
 
     auto renderMeshFunc = [&](const Shared<Submesh>& submesh)
     {
-        PushConstantBlock pc = {};
-        // pc.Transform = glm::translate(glm::mat4(1.0f), glm::vec3(0.0f, 10.0f, 0.0f)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.05f));
-        pc.VertexPosBufferIndex    = submesh->GetVertexPositionBuffer()->GetBindlessIndex();
-        pc.VertexAttribBufferIndex = submesh->GetVertexAttributeBuffer()->GetBindlessIndex();
-        pc.AlbedoTextureIndex      = submesh->GetMaterial()->GetAlbedoIndex();
-        pc.NormalTextureIndex      = submesh->GetMaterial()->GetNormalMapIndex();
-        pc.MetallicTextureIndex    = submesh->GetMaterial()->GetMetallicIndex();
-        pc.RoughnessTextureIndex   = submesh->GetMaterial()->GetRoughnessIndex();
+        PushConstantBlock pc             = {};
+        pc.VertexPosBufferIndex          = submesh->GetVertexPositionBuffer()->GetBindlessIndex();
+        pc.VertexAttribBufferIndex       = submesh->GetVertexAttributeBuffer()->GetBindlessIndex();
+        pc.AlbedoTextureIndex            = submesh->GetMaterial()->GetAlbedoIndex();
+        pc.NormalTextureIndex            = submesh->GetMaterial()->GetNormalMapIndex();
+        pc.MetallicRoughnessTextureIndex = submesh->GetMaterial()->GetMetallicRoughnessIndex();
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindShaderData(
             s_RendererData->ForwardRenderingPipeline, s_RendererData->ForwardRenderingPipeline->GetSpecification().Shader);

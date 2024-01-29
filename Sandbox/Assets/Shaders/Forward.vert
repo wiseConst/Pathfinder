@@ -20,7 +20,7 @@ layout(location = 0) out VertexOutput
 void main()
 {
     gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * u_PC.Transform * vec4(inPos, 1.0);  
-    o_VertexOutput.Color = vec4(inColor.xyz * 0.2 + inNormal.xyz * 0.5, inColor.w);
+    o_VertexOutput.Color = inColor;
     o_VertexOutput.Normal = inNormal;
     o_VertexOutput.Tangent = inTangent;
     o_VertexOutput.UV = inUV;

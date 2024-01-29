@@ -40,6 +40,7 @@ class Buffer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE virtual uint32_t GetBindlessIndex() const             = 0;
 
     virtual void SetData(const void* data, const size_t dataSize) = 0;
+    virtual void Resize(const size_t newBufferCapacity)           = 0;
 
     NODISCARD static Shared<Buffer> Create(const BufferSpecification& bufferSpec);
 

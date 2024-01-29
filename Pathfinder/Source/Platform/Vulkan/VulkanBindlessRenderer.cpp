@@ -397,6 +397,9 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
             const std::string cameraSetDebugName = std::string("VK_BINDLESS_IMAGE_SET_") + std::to_string(frame);
             VK_SetDebugName(logicalDevice, &m_CameraSet[frame], VK_OBJECT_TYPE_DESCRIPTOR_SET, cameraSetDebugName.data());
         }
+
+        Renderer::GetStats().DescriptorSetCount += 4;
+        Renderer::GetStats().DescriptorPoolCount += 4;
     }
 
     m_PCBlock.offset     = 0;
@@ -421,6 +424,9 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
 void VulkanBindlessRenderer::Destroy()
 {
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+
+    Renderer::GetStats().DescriptorSetCount += 4;
+    Renderer::GetStats().DescriptorPoolCount += 4;
 
     std::ranges::for_each(m_TexturePool, [&](const VkDescriptorPool& pool) { vkDestroyDescriptorPool(logicalDevice, pool, nullptr); });
     vkDestroyDescriptorSetLayout(logicalDevice, m_TextureSetLayout, nullptr);

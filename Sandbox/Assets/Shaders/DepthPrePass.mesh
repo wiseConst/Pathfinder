@@ -18,7 +18,7 @@ void main()
     SetMeshOutputsEXT(vertexCount, primitiveCount);
 
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
-    for(uint i = ti; i < vertexCount; i+=MESHLET_LOCAL_GROUP_SIZE)
+    for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
 
@@ -26,11 +26,11 @@ void main()
     }
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;
-    for(uint i = ti; i < primitiveCount; i+=MESHLET_LOCAL_GROUP_SIZE)
+    for(uint i = ti; i < primitiveCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+0], 
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+1], 
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+2]);
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3*i + 0], 
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3*i + 1], 
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3*i + 2]);
     }
 }

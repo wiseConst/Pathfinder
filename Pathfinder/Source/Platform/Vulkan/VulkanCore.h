@@ -13,8 +13,8 @@ namespace Pathfinder
 #define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
 
 #define VK_FORCE_VALIDATION 1
-#define VK_FORCE_SHADER_COMPILATION 0
-#define VK_FORCE_PIPELINE_COMPILATION 0
+#define VK_FORCE_SHADER_COMPILATION 1
+#define VK_FORCE_PIPELINE_COMPILATION 1
 
 #define VK_LOG_INFO 0
 #define VK_SHADER_DEBUG_PRINTF 0
@@ -22,7 +22,7 @@ namespace Pathfinder
 #define VK_PREFER_IGPU 0
 
 #define VK_RTX 0
-#define VK_MESH_SHADING 0
+#define VK_MESH_SHADING 1
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -146,12 +146,12 @@ static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeve
     {
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
         {
-            if constexpr (VK_LOG_INFO) LOG_INFO(pCallbackData->pMessage);
+            if constexpr (VK_LOG_INFO || VK_SHADER_DEBUG_PRINTF) LOG_INFO(pCallbackData->pMessage);
             break;
         }
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
         {
-            if constexpr (VK_LOG_INFO) LOG_INFO(pCallbackData->pMessage);
+            if constexpr (VK_LOG_INFO || VK_SHADER_DEBUG_PRINTF) LOG_INFO(pCallbackData->pMessage);
             break;
         }
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:
@@ -339,40 +339,47 @@ NODISCARD static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode 
     return VK_POLYGON_MODE_FILL;
 }
 
-NODISCARD static VkPipelineStageFlags PathfinderPipelineStageToVulkan(const EPipelineStage pipelineStage)
+NODISCARD static VkPipelineStageFlags PathfinderPipelineStageToVulkan(const PipelineStageFlags pipelineStage)
 {
-    switch (pipelineStage)
-    {
-        case EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT: return VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-        case EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT: return VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-        case EPipelineStage::PIPELINE_STAGE_VERTEX_INPUT_BIT: return VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-        case EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT: return VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
-        case EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT: return VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT;
-        case EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT: return VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
-        case EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT: return VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
-        case EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT: return VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-        case EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT: return VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-        case EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT: return VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-        case EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT: return VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-        case EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT: return VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-        case EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT: return VK_PIPELINE_STAGE_TRANSFER_BIT;
-        case EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT: return VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-        case EPipelineStage::PIPELINE_STAGE_HOST_BIT: return VK_PIPELINE_STAGE_HOST_BIT;
-        case EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT: return VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-        case EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT: return VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-        case EPipelineStage::PIPELINE_STAGE_NONE: return VK_PIPELINE_STAGE_NONE;
-        case EPipelineStage::PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT: return VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT;
-        case EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT: return VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-        case EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT: return VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-        case EPipelineStage::PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT: return VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT;
-        case EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT:
-            return VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
-        case EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT: return VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT;
-        case EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT: return VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
-    }
+    VkPipelineStageFlags vkPipelineStageFlags = 0;
 
-    PFR_ASSERT(false, "Unknown pipeline stage!");
-    return VK_PIPELINE_STAGE_NONE;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_INPUT_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_TRANSFER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_HOST_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_HOST_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_NONE) vkPipelineStageFlags |= VK_PIPELINE_STAGE_NONE;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT)
+        vkPipelineStageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
+
+    return vkPipelineStageFlags;
 }
 
 NODISCARD static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)

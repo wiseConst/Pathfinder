@@ -37,7 +37,7 @@ bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const 
         {
             ++m_AllocatedDescriptorSets;
             outDescriptorSet.first = static_cast<uint32_t>(m_Pools.size()) - 1;
-            Renderer::SetDescriptorSetCount(m_AllocatedDescriptorSets);
+            ++Renderer::GetStats().DescriptorSetCount;
             return true;
         }
     }
@@ -54,7 +54,7 @@ bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const 
         {
             ++m_AllocatedDescriptorSets;
             outDescriptorSet.first = i;
-            Renderer::SetDescriptorSetCount(m_AllocatedDescriptorSets);
+            ++Renderer::GetStats().DescriptorSetCount;
             return true;
         }
     }
@@ -73,7 +73,7 @@ bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const 
         {
             ++m_AllocatedDescriptorSets;
             outDescriptorSet.first = static_cast<uint32_t>(m_Pools.size()) - 1;
-            Renderer::SetDescriptorSetCount(m_AllocatedDescriptorSets);
+            ++Renderer::GetStats().DescriptorSetCount;
             return true;
         }
     }
@@ -87,6 +87,7 @@ void VulkanDescriptorAllocator::ReleaseDescriptorSets(DescriptorSet* descriptorS
     VDA_LOCK_GUARD_MUTEX;
 
     // Since descriptor sets can be allocated through different pool I have to iterate them like dumb.
+    Renderer::GetStats().DescriptorSetCount -= descriptorSetCount;
     for (uint32_t i = 0; i < descriptorSetCount; ++i)
     {
         PFR_ASSERT(descriptorSets[i].first < UINT32_MAX, "Invalid Pool ID!");
@@ -101,7 +102,6 @@ void VulkanDescriptorAllocator::ReleaseDescriptorSets(DescriptorSet* descriptorS
         descriptorSets[i].second = VK_NULL_HANDLE;
         --m_AllocatedDescriptorSets;
     }
-    Renderer::SetDescriptorSetCount(m_AllocatedDescriptorSets);
 }
 
 VkDescriptorPool VulkanDescriptorAllocator::CreatePool(const uint32_t count, VkDescriptorPoolCreateFlags descriptorPoolCreateFlags)
@@ -127,6 +127,7 @@ VkDescriptorPool VulkanDescriptorAllocator::CreatePool(const uint32_t count, VkD
     VK_CHECK(vkCreateDescriptorPool(m_LogicalDevice, &descriptorPoolCreateInfo, nullptr, &newDescriptorPool),
              "Failed to create descriptor pool!");
 
+    Renderer::GetStats().DescriptorPoolCount += 1;
     return newDescriptorPool;
 }
 
@@ -135,6 +136,7 @@ void VulkanDescriptorAllocator::Destroy()
     VDA_LOCK_GUARD_MUTEX;
 
     // No need to reset pools since it's done by impl
+    Renderer::GetStats().DescriptorPoolCount -= m_Pools.size();
     std::ranges::for_each(m_Pools, [&](auto& pool) { vkDestroyDescriptorPool(m_LogicalDevice, pool, nullptr); });
     m_Pools.clear();
 

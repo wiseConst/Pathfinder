@@ -23,6 +23,7 @@ class VulkanBuffer final : public Buffer
     NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const final override { return m_Index; }
 
     void SetData(const void* data, const size_t dataSize) final override;
+    void Resize(const size_t newBufferCapacity) final override;
 
   private:
     BufferSpecification m_Specification     = {};

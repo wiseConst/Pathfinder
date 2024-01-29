@@ -65,6 +65,15 @@ void VulkanContext::CreateInstance()
         instanceCI.ppEnabledLayerNames = s_InstanceLayers.data();
     }
 
+#if VK_SHADER_DEBUG_PRINTF
+    VkValidationFeaturesEXT validationInfo                           = {VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
+    constexpr VkValidationFeatureEnableEXT validationFeatureToEnable = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT;
+    validationInfo.enabledValidationFeatureCount                     = 1;
+    validationInfo.pEnabledValidationFeatures                        = &validationFeatureToEnable;
+
+    instanceCI.pNext = &validationInfo;
+#endif
+
     VK_CHECK(vkCreateInstance(&instanceCI, nullptr, &m_VulkanInstance), "Failed to create vulkan instance!");
     volkLoadInstanceOnly(m_VulkanInstance);
 
