@@ -16,3 +16,6 @@
 
 * Texture loading. Infinite grid(thanks to https://asliceofrendering.com/scene%20helper/2020/01/05/InfiniteGrid/).
 ![Alt text](/Resources/Images/5.png)
+
+* Basic Blinn-Phong shading with normal mapping. Next PBR && multiple light sources with light culling.
+![Alt text](/Resources/Images/6.png)
