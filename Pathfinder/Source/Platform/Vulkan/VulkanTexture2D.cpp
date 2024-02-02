@@ -28,13 +28,12 @@ void VulkanTexture2D::Destroy()
     SamplerStorage::DestroySampler(samplerSpec);
 }
 
-// TODO: Move it into Texture2D since abstractions are good enough
 void VulkanTexture2D::Invalidate()
 {
     ImageSpecification imageSpec = {};
     imageSpec.Height             = m_Specification.Height;
     imageSpec.Width              = m_Specification.Width;
-    imageSpec.Format             = EImageFormat::FORMAT_RGBA8_UNORM;  // TODO: What format to choose? I don't remember...
+    imageSpec.Format             = EImageFormat::FORMAT_RGBA8_UNORM;
     imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
 
     m_Image = MakeShared<VulkanImage>(imageSpec);

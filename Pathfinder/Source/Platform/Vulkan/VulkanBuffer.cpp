@@ -38,7 +38,7 @@ VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUs
     if (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX) vkBufferUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM) vkBufferUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
     if (bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE)
-        vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+        vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
     if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING) vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
     if (bufferUsage & EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
@@ -136,7 +136,7 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
     }
 
-    Resize(dataSize);
+    if (dataSize > m_Specification.BufferCapacity) Resize(dataSize);
 
     if (m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_STAGING || m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM)
     {
@@ -176,7 +176,7 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
 
 void VulkanBuffer::Resize(const size_t newBufferCapacity)
 {
-    if (newBufferCapacity <= m_Specification.BufferCapacity) return;
+    if (newBufferCapacity == m_Specification.BufferCapacity) return;
 
     Destroy();
     m_Specification.BufferCapacity = newBufferCapacity;
@@ -191,7 +191,11 @@ void VulkanBuffer::Destroy()
 {
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
-    if (m_bIsMapped) VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(m_Allocation);
+    if (m_bIsMapped)
+    {
+        VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(m_Allocation);
+        m_bIsMapped = false;
+    }
 
     if (m_Handle) BufferUtils::DestroyBuffer(m_Handle, m_Allocation);
     m_Handle = VK_NULL_HANDLE;

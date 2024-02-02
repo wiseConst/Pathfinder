@@ -8,6 +8,7 @@
 using vec2 = glm::vec2;
 using vec3 = glm::vec3;
 using vec4 = glm::vec4;
+using mat4 = glm::mat4;
 
 #else
 
@@ -117,17 +118,6 @@ layout(set = 2, binding = STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, scalar) reado
 }
 s_GlobalMeshletTrianglesBuffers[];
 
-// CAMERA
-layout(set = 3, binding = 0, scalar) uniform CameraUB
-{
-    mat4 Projection;
-    mat4 InverseView;
-    vec3 Position;
-    float zNear;
-    float zFar;
-}
-u_GlobalCameraData;
-
 /*
 layout(set = 4, binding = 0, scalar) readonly buffer MaterialBuffer
 {
@@ -135,6 +125,26 @@ layout(set = 4, binding = 0, scalar) readonly buffer MaterialBuffer
 } s_GlobalMaterialBuffers[];
 */
 
+#endif
+
+// CAMERA
+#ifdef __cplusplus 
+struct CameraData
+#else
+layout(set = 3, binding = 0, scalar) uniform CameraUB
+#endif
+{
+    mat4 Projection;
+    mat4 InverseView;
+    mat4 ViewProjection;
+    vec3 Position;
+    float zNear;
+    float zFar;
+}
+#ifdef __cplusplus
+;
+#else
+u_GlobalCameraData;
 #endif
 
 #ifdef __cplusplus

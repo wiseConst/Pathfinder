@@ -359,7 +359,7 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
         {
             // STORAGE BUFFERS
             constexpr std::array<VkDescriptorPoolSize, 1> storageBufferPoolSizes = {
-                {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, s_MAX_STORAGE_BUFFERS}};
+                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5 * s_MAX_STORAGE_BUFFERS}};
             const VkDescriptorPoolCreateInfo storageBufferPoolCI = {
                 VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,        nullptr,
                 VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,      1,

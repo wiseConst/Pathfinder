@@ -357,7 +357,6 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
 
     PFR_ASSERT(gpuInfo.GPUProperties.limits.timestampPeriod != 0, "Timestamp queries not supported!");
 
-
     const bool bBindlessSupported = descriptorIndexingFeatures.runtimeDescriptorArray &&
                                     descriptorIndexingFeatures.descriptorBindingPartiallyBound &&
                                     descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount;
@@ -393,7 +392,8 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
     }
 
     // Mesh shader
-    if (!gpuInfo.bMeshShaderSupport) LOG_INFO(" [MS] Not supported :(");
+    if (!gpuInfo.bMeshShaderSupport)
+        LOG_INFO(" [MS] Not supported :(");
     else
     {
         LOG_INFO(" [MS]: Max Output Vertices: %u", gpuInfo.MSProperties.maxMeshOutputVertices);
@@ -425,6 +425,13 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
     for (uint32_t i = 0; i < gpuInfo.GPUMemoryProperties.memoryTypeCount; ++i)
     {
         LOG_INFO("  HeapIndex: %u", gpuInfo.GPUMemoryProperties.memoryTypes[i].heapIndex);
+
+        // ReBAR check
+        if (gpuInfo.GPUProperties.deviceType == VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU &&                        //
+            gpuInfo.GPUMemoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT &&  //
+            gpuInfo.GPUMemoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT &&  //
+            gpuInfo.GPUMemoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_HOST_COHERENT_BIT)
+            LOG_TRACE("  ReBAR supported!");
 
         if (gpuInfo.GPUMemoryProperties.memoryTypes[i].propertyFlags & VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT)
             LOG_TRACE("    DEVICE_LOCAL_BIT");

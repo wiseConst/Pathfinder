@@ -22,7 +22,7 @@ namespace Pathfinder
 #define VK_PREFER_IGPU 0
 
 #define VK_RTX 0
-#define VK_MESH_SHADING 1
+#define VK_MESH_SHADING 0
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -30,7 +30,13 @@ constexpr static bool s_bEnableValidationLayers = true;
 constexpr static bool s_bEnableValidationLayers = false;
 #endif
 
-static const std::vector<const char*> s_InstanceLayers     = {"VK_LAYER_KHRONOS_validation"};
+static const std::vector<const char*> s_InstanceLayers = {
+    "VK_LAYER_KHRONOS_validation",  // Validaiton layers
+#ifdef PFR_LINUX
+    "VK_LAYER_MESA_overlay",
+#endif
+
+};
 static const std::vector<const char*> s_InstanceExtensions = {
 #if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
@@ -117,14 +123,24 @@ static std::string VK_GetResultString(const VkResult result)
     return resultString;
 }
 
-static void VK_CHECK(const VkResult result, const char* message)
-{
-    const std::string finalMessage = std::string(message) + std::string(" The result is: ") + std::string(VK_GetResultString(result));
 #if PFR_RELEASE
-    if (result != VK_SUCCESS) LOG_TAG_ERROR(VULKAN, "%s", finalMessage.data());
+#define VK_CHECK(Vk_Result, message)                                                                                                       \
+    {                                                                                                                                      \
+        const auto result              = (Vk_Result);                                                                                      \
+        const std::string finalMessage = std::string(message) + std::string(" The result is: ") + std::string(VK_GetResultString(result)); \
+        if (result != VK_SUCCESS) LOG_TAG_ERROR(VULKAN, "%s", finalMessage.data());                                                        \
+        PFR_ASSERT(result == VK_SUCCESS, finalMessage.data());                                                                             \
+    }
+#elif PFR_DEBUG
+#define VK_CHECK(Vk_Result, message)                                                                                                       \
+    {                                                                                                                                      \
+        const auto result              = (Vk_Result);                                                                                      \
+        const std::string finalMessage = std::string(message) + std::string(" The result is: ") + std::string(VK_GetResultString(result)); \
+        PFR_ASSERT(result == VK_SUCCESS, finalMessage.data());                                                                             \
+    }
+#else
+#error Unknown configuration type!
 #endif
-    PFR_ASSERT(result == VK_SUCCESS, finalMessage.data());
-}
 
 // TODO: Make it #define, to reduce function calls in release mode.
 static void VK_SetDebugName(const VkDevice& logicalDevice, const void* objectHandle, const VkObjectType objectType, const char* objectName)

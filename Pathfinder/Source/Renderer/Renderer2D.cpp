@@ -24,7 +24,7 @@ void Renderer2D::Init()
     std::ranges::for_each(s_RendererData2D->QuadVertexBase,
                           [](auto& quadVertexBase)
                           {
-                              // TODO: Use here memory allocator
+                              // TODO: Use here CPU-side memory allocator
                               quadVertexBase = new QuadVertex[s_RendererData2D->s_MAX_VERTICES];
                           });
 

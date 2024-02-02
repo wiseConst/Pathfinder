@@ -1,0 +1,28 @@
+
+#extension GL_GOOGLE_include_directive : require
+#include "Assets/Shaders/Include/Lights.h"
+
+// NOTE: LightDirection here points towards object from light pos
+vec4 ApplyPhongShading(const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const vec3 lightColor, const vec3 lightDir)
+{
+    vec4 result = vec4(vec3(0), 1);
+    const vec3 N = normalize(normal);
+    const vec3 L = normalize(lightDir);
+  
+    const float kA = 0.1f;
+    const vec3 ambient = kA * lightColor;
+  
+    const float kD = max(dot(N, -L), 0.0);
+    const vec3 diffuse = kD * lightColor;
+    
+    const float kS = 1.f - kD; // PBR enjoyer
+    const vec3 viewDir = normalize(u_GlobalCameraData.Position - worldPos);
+  
+    const vec3 H = normalize(-L + viewDir);
+    const uint specPow = 64;
+    const float spec = pow(max(dot(viewDir, H), 0.0), specPow);
+    const vec3 specular = spec * kS * lightColor;
+    
+    result.xyz += ambient + diffuse + specular;
+    return result;
+}

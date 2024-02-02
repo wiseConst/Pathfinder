@@ -115,15 +115,6 @@ struct QuadVertex
     glm::vec4 Color    = glm::vec4(1.0f);
 };
 
-struct CameraData
-{
-    glm::mat4 Projection  = glm::mat4(1.0f);
-    glm::mat4 InverseView = glm::mat4(1.0f);
-    glm::vec3 Position    = glm::vec3(0.0f);
-    float zNear           = 0.0f;
-    float zFar            = 1.0f;
-};
-
 struct PBRData
 {
     glm::vec4 BaseColor = glm::vec4(1.0f);

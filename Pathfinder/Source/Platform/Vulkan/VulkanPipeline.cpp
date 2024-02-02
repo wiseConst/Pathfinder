@@ -167,7 +167,6 @@ void VulkanPipeline::CreateLayout()
 
     appendVecFunc(m_PushConstants, pushConstants);
 
-    // TODO: Add layouts from shader
     layoutCI.pSetLayouts    = setLayouts.data();
     layoutCI.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
 

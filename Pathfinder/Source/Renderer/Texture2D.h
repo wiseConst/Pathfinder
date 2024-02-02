@@ -14,6 +14,7 @@ struct TextureSpecification
     void* Data            = nullptr;
     size_t DataSize       = 0;
     bool bGenerateMips    = false;
+    bool bFlipOnLoad      = false;
     ESamplerWrap Wrap     = ESamplerWrap::SAMPLER_WRAP_REPEAT;
     ESamplerFilter Filter = ESamplerFilter::SAMPLER_FILTER_LINEAR;
 };

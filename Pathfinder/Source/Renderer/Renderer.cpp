@@ -23,8 +23,6 @@ Renderer::~Renderer() = default;
 
 void Renderer::Init()
 {
-    PFR_ASSERT(s_RendererSettings.bBDASupport, "BDA support required!");
-
     s_RendererData = MakeUnique<RendererData>();
     ShaderLibrary::Init();
     PipelineBuilder::Init();
@@ -65,8 +63,8 @@ void Renderer::Init()
                           {
                               BufferSpecification vbSpec = {EBufferUsage::BUFFER_TYPE_UNIFORM};
                               vbSpec.bMapPersistent      = true;
-                              vbSpec.Data                = &s_RendererData->CameraData;
-                              vbSpec.DataSize            = sizeof(s_RendererData->CameraData);
+                              vbSpec.Data                = &s_RendererData->CameraStruct;
+                              vbSpec.DataSize            = sizeof(s_RendererData->CameraStruct);
 
                               cameraUB = Buffer::Create(vbSpec);
                           });
@@ -288,14 +286,15 @@ void Renderer::Flush()
 
 void Renderer::BeginScene(const Camera& camera)
 {
-    s_RendererData->CameraData = {camera.GetProjection(), camera.GetView(), camera.GetPosition(), camera.GetNearPlaneDepth(),
-                                  camera.GetFarPlaneDepth()};
+    s_RendererData->CameraStruct = {camera.GetProjection(), camera.GetView(),           camera.GetViewProjection(),
+                                    camera.GetPosition(),   camera.GetNearPlaneDepth(),
+                                    camera.GetFarPlaneDepth()};
 
-    s_RendererData->CameraUB[s_RendererData->FrameIndex]->SetData(&s_RendererData->CameraData, sizeof(s_RendererData->CameraData));
+    s_RendererData->CameraUB[s_RendererData->FrameIndex]->SetData(&s_RendererData->CameraStruct, sizeof(s_RendererData->CameraStruct));
     s_BindlessRenderer->UpdateCameraData(s_RendererData->CameraUB[s_RendererData->FrameIndex]);
 
     /* PATHTRACING TESTS from vk_mini_path_tracer */
-    // if (s_RendererSettings.bRTXSupport)
+     if (s_RendererSettings.bRTXSupport)
     {
         s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel(
             s_RendererData->PathtracingPipeline->GetSpecification().DebugName, glm::vec3(0.8f, 0.8f, 0.1f));

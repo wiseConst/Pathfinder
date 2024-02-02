@@ -19,7 +19,7 @@
 
 #define MAX_MESHLET_VERTEX_COUNT 64u
 #define MAX_MESHLET_TRIANGLE_COUNT 124u
-#define MESHLET_LOCAL_GROUP_SIZE 64u // multiples of 32 - better
+#define MESHLET_LOCAL_GROUP_SIZE 32u // multiples of 32 - better
 #define MESHLET_CONE_WEIGHT 0.5f
 
 struct Meshlet

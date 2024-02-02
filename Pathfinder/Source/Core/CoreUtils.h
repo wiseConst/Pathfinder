@@ -2,6 +2,7 @@
 #define COREUTILS_H
 
 #include "Core/Core.h"
+#include "Core/Threading.h"
 
 namespace Pathfinder
 {

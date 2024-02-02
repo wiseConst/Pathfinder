@@ -1,6 +1,7 @@
 #include "PathfinderPCH.h"
 #include "Pipeline.h"
 
+#include "Core/CoreUtils.h"
 #include "Renderer/RendererAPI.h"
 #include "Platform/Vulkan/VulkanPipeline.h"
 

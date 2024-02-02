@@ -49,9 +49,8 @@ static ESamplerWrap FastgltfSamplerWrapToPathfinder(const fastgltf::Wrap wrap)
 }
 
 static Shared<Texture2D> FastgltfLoadTexture(const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor,
-                                             TextureSpecification& textureSpec)
+                                             const size_t textureIndex, TextureSpecification& textureSpec)
 {
-    const auto textureIndex     = materialAccessor.pbrData.baseColorTexture->textureIndex;
     const auto& fastgltfTexture = asset.textures[textureIndex];
     const auto imageIndex       = fastgltfTexture.imageIndex;
     PFR_ASSERT(imageIndex.has_value(), "Invalid image index!");
@@ -72,7 +71,8 @@ static Shared<Texture2D> FastgltfLoadTexture(const fastgltf::Asset& asset, const
                                  [&](const fastgltf::sources::URI& uri)
                                  {
                                      int32_t x = 1, y = 1, channels = 4;
-                                     void* data           = ImageUtils::LoadRawImage(uri.uri.path().data(), &x, &y, &channels);
+                                     void* data =
+                                         ImageUtils::LoadRawImage(uri.uri.path().data(), textureSpec.bFlipOnLoad, &x, &y, &channels);
                                      textureSpec.Data     = data;
                                      textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
                                      textureSpec.Width    = x;
@@ -84,8 +84,9 @@ static Shared<Texture2D> FastgltfLoadTexture(const fastgltf::Asset& asset, const
                                  [&](const fastgltf::sources::Vector& vector)
                                  {
                                      int32_t x = 1, y = 1, channels = 4;
-                                     void* data = ImageUtils::LoadRawImageFromMemory(
-                                         vector.bytes.data(), vector.bytes.size() * sizeof(vector.bytes[0]), &x, &y, &channels);
+                                     void* data = ImageUtils::LoadRawImageFromMemory(vector.bytes.data(),
+                                                                                     vector.bytes.size() * sizeof(vector.bytes[0]),
+                                                                                     textureSpec.bFlipOnLoad, &x, &y, &channels);
 
                                      textureSpec.Data     = data;
                                      textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
@@ -235,9 +236,9 @@ Mesh::Mesh(const std::string& meshPath)
     LOG_TAG_INFO(FASTGLTF, "\"%s\" has (%zu) buffers, (%zu) textures, (%zu) animations, (%zu) materials, (%zu) meshes.", meshPath.data(),
                  asset->buffers.size(), asset->animations.size(), asset->textures.size(), asset->materials.size(), asset->meshes.size());
 
-    for (auto& node : asset->nodes)
+    for (size_t meshIndex = 0; meshIndex < asset->meshes.size(); ++meshIndex)
     {
-        TraverseNodes(asset.get(), node);
+        LoadSubmeshes(asset.get(), meshIndex);
     }
 
 #if PFR_DEBUG
@@ -257,11 +258,19 @@ void Mesh::Destroy()
     m_Submeshes.clear();
 }
 
-void Mesh::TraverseNodes(const fastgltf::Asset& asset, const fastgltf::Node& node)
+void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
 {
+    fastgltf::Node fastGLTFnode = {};
+    for (auto& node : asset.nodes)
+    {
+        if (node.meshIndex.has_value() && meshIndex == node.meshIndex.value())
+        {
+            fastGLTFnode = node;
+            break;
+        }
+    }
 
-    PFR_ASSERT(node.meshIndex.has_value(), "Node hasn't mesh index!");
-    for (const auto& p : asset.meshes[node.meshIndex.value()].primitives)
+    for (const auto& p : asset.meshes[meshIndex].primitives)
     {
         const auto positionIt = p.findAttribute("POSITION");
         PFR_ASSERT(positionIt != p.attributes.end(), "Mesh doesn't contain positions?!");
@@ -291,13 +300,12 @@ void Mesh::TraverseNodes(const fastgltf::Asset& asset, const fastgltf::Node& nod
             {
                 meshoptimizeVertices[idx].Position = position;
 
+                if (const fastgltf::Node::TRS* pTransform = std::get_if<fastgltf::Node::TRS>(&fastGLTFnode.transform))
                 {
-                    if (const fastgltf::Node::TRS* pTransform = std::get_if<fastgltf::Node::TRS>(&node.transform))
-                        meshoptimizeVertices[idx].Position =
-                            vec4(meshoptimizeVertices[idx].Position, 1.0) *
-                            glm::translate(glm::mat4(1.0f), glm::make_vec3(pTransform->translation.data())) *
-                            glm::toMat4(glm::make_quat(pTransform->rotation.data())) *
-                            glm::scale(glm::mat4(1.0f), glm::make_vec3(pTransform->scale.data()));
+                    meshoptimizeVertices[idx].Position = vec4(meshoptimizeVertices[idx].Position, 1.0) *
+                                                         glm::translate(glm::mat4(1.0f), glm::make_vec3(pTransform->translation.data())) *
+                                                         glm::toMat4(glm::make_quat(pTransform->rotation.data())) *
+                                                         glm::scale(glm::mat4(1.0f), glm::make_vec3(pTransform->scale.data()));
                 }
             });
 
@@ -358,7 +366,8 @@ void Mesh::TraverseNodes(const fastgltf::Asset& asset, const fastgltf::Node& nod
             {
                 TextureSpecification albedoTextureSpec = {};
 
-                Shared<Texture2D> albedo = FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, albedoTextureSpec);
+                const auto textureIndex  = materialAccessor.pbrData.baseColorTexture->textureIndex;
+                Shared<Texture2D> albedo = FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, textureIndex, albedoTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(albedo);
                 material->SetAlbedo(albedo);
@@ -367,8 +376,11 @@ void Mesh::TraverseNodes(const fastgltf::Asset& asset, const fastgltf::Node& nod
             if (materialAccessor.normalTexture.has_value())
             {
                 TextureSpecification normalMapTextureSpec = {};
+              //  normalMapTextureSpec.bFlipOnLoad          = true;
 
-                Shared<Texture2D> normalMap = FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, normalMapTextureSpec);
+                const auto& textureInfo = materialAccessor.normalTexture.value();
+                Shared<Texture2D> normalMap =
+                    FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, textureInfo.textureIndex, normalMapTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(normalMap);
                 material->SetNormalMap(normalMap);
@@ -378,8 +390,9 @@ void Mesh::TraverseNodes(const fastgltf::Asset& asset, const fastgltf::Node& nod
             {
                 TextureSpecification metallicRoughnessTextureSpec = {};
 
+                const auto& textureInfo = materialAccessor.normalTexture.value();
                 Shared<Texture2D> metallicRoughness =
-                    FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, metallicRoughnessTextureSpec);
+                    FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, textureInfo.textureIndex, metallicRoughnessTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(metallicRoughness);
                 material->SetMetallicRoughness(metallicRoughness);
@@ -390,7 +403,7 @@ void Mesh::TraverseNodes(const fastgltf::Asset& asset, const fastgltf::Node& nod
         std::vector<MeshPreprocessorUtils::MeshoptimizeVertex> finalVertices;
         MeshPreprocessorUtils::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
 
-        // NOTE: Currently index buffer is not used in shaders, so they don't need STORAGE usage flag
+        // NOTE: Currently index buffer is not used in shaders, so it doesn't need STORAGE usage flag
         BufferSpecification ibSpec = {EBufferUsage::BUFFER_TYPE_INDEX /* | EBufferUsage::BUFFER_TYPE_STORAGE */};
         ibSpec.Data                = finalIndices.data();
         ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);

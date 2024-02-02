@@ -41,6 +41,10 @@ cmake-build-debug
 cmake-build-release
 .idea
 Sandbox/Assets/Cached
+# sponza_dubrovnik huge model, github won't allow to store it
+Sandbox/Assets/Meshes/sponza_dubrovnik/
 
 # Misc
 *.log
+TODO.focus
+Win64_Build.bat

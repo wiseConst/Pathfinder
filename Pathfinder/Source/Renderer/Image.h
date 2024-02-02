@@ -237,9 +237,9 @@ static bool IsDepthFormat(const EImageFormat imageFormat)
     return false;
 }
 
-void* LoadRawImage(std::string_view path, int32_t* x, int32_t* y, int32_t* nChannels);
+void* LoadRawImage(std::string_view path, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels);
 
-void* LoadRawImageFromMemory(const uint8_t* data, size_t dataSize, int32_t* x, int32_t* y, int32_t* nChannels);
+void* LoadRawImageFromMemory(const uint8_t* data, size_t dataSize, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels);
 
 void UnloadRawImage(void* data);
 

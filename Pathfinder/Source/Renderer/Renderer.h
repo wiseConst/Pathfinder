@@ -83,7 +83,7 @@ class Renderer : private Uncopyable, private Unmovable
 
         // MISC
         uint32_t FrameIndex = 0;
-        Pathfinder::CameraData CameraData;
+        CameraData CameraStruct;
         BufferPerFrame CameraUB;
         BufferPerFrame UploadHeap;
         static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB

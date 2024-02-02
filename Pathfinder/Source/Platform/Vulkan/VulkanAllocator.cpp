@@ -37,7 +37,21 @@ void VulkanAllocator::CreateImage(const VkImageCreateInfo& imageCI, VkImage& ima
     allocationCI.requiredFlags           = VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT;
     allocationCI.preferredFlags          = allocationCI.requiredFlags;
 
-    VK_CHECK(vmaCreateImage(m_Handle, &imageCI, &allocationCI, &image, &allocation, &allocationInfo), "Failed to create image!");
+    auto allocationResult = vmaCreateImage(m_Handle, &imageCI, &allocationCI, &image, &allocation, &allocationInfo);
+    if (allocationResult == VK_ERROR_OUT_OF_HOST_MEMORY)
+    {
+        PFR_ASSERT(false, "RAM limit reached!");
+    }
+    else if (allocationResult == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+    {
+        // Try to allocate on host.
+        allocationCI       = {};
+        allocationCI.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+        allocationResult   = vmaCreateImage(m_Handle, &imageCI, &allocationCI, &image, &allocation, &allocationInfo);
+        VK_CHECK(allocationResult, "Overall memory limit reached!");
+    }
+    else
+        VK_CHECK(allocationResult, "Failed to create image!");
 
     LOG_DEBUG("[VMA]: Created image with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
               static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
@@ -50,8 +64,23 @@ void VulkanAllocator::CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer&
 
     VmaAllocationCreateInfo allocationCI = {};
     allocationCI.usage                   = memoryUsage;
+    if (bufferCI.usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) allocationCI.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
 
-    VK_CHECK(vmaCreateBuffer(m_Handle, &bufferCI, &allocationCI, &buffer, &allocation, &allocationInfo), "Failed to create buffer!");
+    auto allocationResult = vmaCreateBuffer(m_Handle, &bufferCI, &allocationCI, &buffer, &allocation, &allocationInfo);
+    if (allocationResult == VK_ERROR_OUT_OF_HOST_MEMORY)
+    {
+        PFR_ASSERT(false, "RAM limit reached!");
+    }
+    else if (allocationResult == VK_ERROR_OUT_OF_DEVICE_MEMORY)
+    {
+        // Try to allocate on host.
+        allocationCI       = {};
+        allocationCI.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
+        allocationResult   = vmaCreateBuffer(m_Handle, &bufferCI, &allocationCI, &buffer, &allocation, &allocationInfo);
+        VK_CHECK(allocationResult, "Overall memory limit reached!");
+    }
+    else
+        VK_CHECK(allocationResult, "Failed to create buffer!");
 
     LOG_DEBUG("[VMA]: Created buffer with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
               static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);

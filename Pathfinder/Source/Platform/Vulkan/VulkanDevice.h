@@ -40,13 +40,23 @@ struct QueueFamilyIndices
                 indices.GraphicsFamily = i;
                 PFR_ASSERT(family.timestampValidBits != 0, "Queue family doesn't support timestamp queries!");
             }
-            else if (family.queueFlags & VK_QUEUE_COMPUTE_BIT && indices.ComputeFamily == UINT32_MAX)  // dedicated compute queue
+            else if (family.queueFlags & VK_QUEUE_COMPUTE_BIT && indices.ComputeFamily == UINT32_MAX)  // Dedicated async-compute queue
             {
                 indices.ComputeFamily = i;
                 PFR_ASSERT(family.timestampValidBits != 0, "Queue family doesn't support timestamp queries!");
             }
-            else if (family.queueFlags & VK_QUEUE_TRANSFER_BIT && indices.TransferFamily == UINT32_MAX)  // dedicated transfer queue
+
+            const bool bDMAQueue = (family.queueFlags & VK_QUEUE_TRANSFER_BIT) &&           //
+                                   !(family.queueFlags & VK_QUEUE_GRAPHICS_BIT) &&          //
+                                   !(family.queueFlags & VK_QUEUE_COMPUTE_BIT) &&           //
+                                   !(family.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) &&  //
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+                                   !(family.queueFlags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR) &&  //
+#endif
+                                   !(family.queueFlags & VK_QUEUE_OPTICAL_FLOW_BIT_NV);
+            if (bDMAQueue && indices.TransferFamily == UINT32_MAX)  // Dedicated transfer queue for DMA
             {
+                LOG_TAG_TRACE(VULKAN, "Found DMA queue!");
                 indices.TransferFamily = i;
             }
 
@@ -96,6 +106,16 @@ struct QueueFamilyIndices
                 ++i;
                 continue;
             }
+
+            const bool bDMAQueue = (family.queueFlags & VK_QUEUE_TRANSFER_BIT) &&           //
+                                   !(family.queueFlags & VK_QUEUE_GRAPHICS_BIT) &&          //
+                                   !(family.queueFlags & VK_QUEUE_COMPUTE_BIT) &&           //
+                                   !(family.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) &&  //
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+                                   !(family.queueFlags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR) &&  //
+#endif
+                                   !(family.queueFlags & VK_QUEUE_OPTICAL_FLOW_BIT_NV);
+            if (bDMAQueue) LOG_INFO("  DMA queue found!");
 
             if (family.queueFlags & VK_QUEUE_GRAPHICS_BIT)
             {

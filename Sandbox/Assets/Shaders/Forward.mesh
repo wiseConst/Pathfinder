@@ -11,12 +11,12 @@ layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_
 layout(location = 0) out VertexOutput
 {
     vec4 Color;
-    vec3 Normal;
-    vec3 Tangent;
     vec2 UV;
+    vec3 WorldPos;
+    mat3 TBNtoWorld;
 } o_VertexOutput[];
 
-#define DEBUG_MESHLETS 1
+#define DEBUG_MESHLETS 0
 
 void main()
 {
@@ -30,28 +30,38 @@ void main()
 
     const uint primitiveCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleCount;
     const uint vertexCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexCount;
-    SetMeshOutputsEXT(vertexCount, primitiveCount);
+    if (ti == 0) SetMeshOutputsEXT(vertexCount, primitiveCount);
 
     #if DEBUG_MESHLETS
         const uint mhash = hash(mi);
         const vec3 mcolor = vec3(float(mhash & 255), float((mhash >> 8) & 255), float((mhash >> 16) & 255)) / 255.0;
     #endif
-
+    
+    const mat3 normalMatrix = mat3(transpose(inverse(u_PC.Transform)));
+ 
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
     for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
-
-        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);  
+        const vec4 WorldPos = u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
+        
+        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * WorldPos; // Rough ViewProjection gives artefacts WTF?  
         
         o_VertexOutput[i].Color = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color;
         #if DEBUG_MESHLETS
               o_VertexOutput[i].Color = vec4(mcolor, 1.0);
         #endif
-
-        o_VertexOutput[i].Normal = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal;
-        o_VertexOutput[i].Tangent = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Tangent;
+    
         o_VertexOutput[i].UV =  s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].UV;
+        o_VertexOutput[i].WorldPos = WorldPos.xyz;
+        
+        vec3 T = normalize(normalMatrix * s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Tangent);
+        const vec3 N = normalize(normalMatrix * s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal);
+        T = normalize(T - dot(T, N) * N);
+        const vec3 B = cross(N, T);
+    
+        const mat3 TBNtoWorld = mat3(T, B, N);
+        o_VertexOutput[i].TBNtoWorld = TBNtoWorld;
     }
 
 

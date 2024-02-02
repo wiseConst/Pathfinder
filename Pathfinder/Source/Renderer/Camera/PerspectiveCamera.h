@@ -109,7 +109,7 @@ class PerspectiveCamera final : public Camera
     float m_Sensitivity = 0.2f;
     bool m_bFirstInput  = true;
 
-    // NOTE: again fucking math, but here's simple explanation
+    // NOTE: again fucking math, but here's simple explanation(assuming column-major matrix order)
     // View matrix (inversed) constructs like this: Mview = (R)^(-1) * T = (R)^(Transpose) * T - only for rotation matrices
     // So you want to move your objects to camera origin instead of moving "cam"
     // T is mat4 E, with its 3rd column looks like negated camera position to move objects back to the camera
@@ -121,30 +121,26 @@ class PerspectiveCamera final : public Camera
         // To imitate true fps cam, I don't need to change my constant m_Up, but create new Up vec based on new Right and Forward vectors.
         const auto upVec = glm::cross(m_Right, m_Forward);
 
+        // NOTE: Using formula: R^(transpose) * T; m_Right, upVec, m_Forward - orthogonal basis
         // Inverse rotation back to canonical view direction since I assume that cam always look towards -Z(RH coordinate system)
-        glm::mat4 viewTransform{1.0f};
-        viewTransform[0][0] = m_Right.x;
-        viewTransform[0][1] = upVec.x;
-
-        viewTransform[2][0] = m_Right.z;
-        viewTransform[2][1] = upVec.z;
-
-        viewTransform[1][0] = m_Right.y;
-        viewTransform[1][1] = upVec.y;
-
-        // Firstly, thing below is transposed, next since we've constructed orthonormal basis through all my functions here where you see
-        // glm::cross/glm::normalize
+        
         // You'll notice that XY(-Z)=RUF => Z=-F, that's fucking why
-        viewTransform[0][2] = -m_Forward.x;
-        viewTransform[1][2] = -m_Forward.y;
-        viewTransform[2][2] = -m_Forward.z;
+        m_View[0][0] = m_Right.x;
+        m_View[0][1] = upVec.x;
+        m_View[0][2] = -m_Forward.x;
+
+        m_View[1][0] = m_Right.y;
+        m_View[1][1] = upVec.y;
+        m_View[1][2] = -m_Forward.y;
+
+        m_View[2][0] = m_Right.z;
+        m_View[2][1] = upVec.z;
+        m_View[2][2] = -m_Forward.z;
 
         // Translate objects back to the camera origin that's why negating
-        viewTransform[3][0] = -glm::dot(m_Right, m_Position);
-        viewTransform[3][1] = -glm::dot(upVec, m_Position);
-        viewTransform[3][2] = glm::dot(m_Forward, m_Position);  // No "-" cuz -Pos * -F  gives "+"
-
-        m_View = viewTransform;
+        m_View[3][0] = -glm::dot(m_Right, m_Position);
+        m_View[3][1] = -glm::dot(upVec, m_Position);
+        m_View[3][2] = glm::dot(m_Forward, m_Position);  // No "-": -Pos * -F
     }
 
     bool OnMouseMoved(const MouseMovedEvent& e) final override
@@ -170,7 +166,7 @@ class PerspectiveCamera final : public Camera
 
         if (Input::IsMouseButtonPressed(EKey::MOUSE_BUTTON_RIGHT))
         {
-            m_Position.y += deltaY * m_DeltaTime * s_MovementSpeed;
+            m_Position.y += deltaY * m_DeltaTime * s_MovementSpeed / 2;
             RecalculateViewMatrix();
         }
 

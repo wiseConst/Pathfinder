@@ -9,9 +9,9 @@ layout(location = 4) in vec2 inUV;
 layout(location = 0) out VertexOutput
 {
     vec4 Color;
-    vec3 Normal;
-    vec3 Tangent;
     vec2 UV;
+    vec3 WorldPos;
+    mat3 TBNtoWorld;
 } o_VertexOutput;
 
 #extension GL_GOOGLE_include_directive : require
@@ -19,9 +19,19 @@ layout(location = 0) out VertexOutput
 
 void main()
 {
-    gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * u_PC.Transform * vec4(inPos, 1.0);  
+    const vec4 WorldPos = u_PC.Transform * vec4(inPos, 1.0);
+    gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * WorldPos;
+    
     o_VertexOutput.Color = inColor;
-    o_VertexOutput.Normal = inNormal;
-    o_VertexOutput.Tangent = inTangent;
     o_VertexOutput.UV = inUV;
+    o_VertexOutput.WorldPos = WorldPos.xyz;
+    
+    const mat3 normalMatrix = transpose(inverse(mat3(u_PC.Transform)));
+    vec3 T = normalize(normalMatrix * inTangent);
+    const vec3 N = normalize(normalMatrix * inNormal);
+    T = normalize(T - dot(T, N) * N);
+    const vec3 B = cross(N, T);
+    
+    const mat3 TBNtoWorld = mat3(T, B, N);
+    o_VertexOutput.TBNtoWorld = TBNtoWorld;
 }

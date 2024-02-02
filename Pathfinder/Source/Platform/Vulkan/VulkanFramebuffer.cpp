@@ -61,7 +61,7 @@ Shared<Image> VulkanFramebuffer::GetDepthAttachment() const
 
 void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
 {
-    auto vulkanCommandBuffer = static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+    auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
     PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer");
 
     // To batch pipeline barriers submits
@@ -72,7 +72,7 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
     VkRenderingAttachmentInfo depthAttachmentInfo = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
     for (size_t i = 0; i < m_AttachmentInfos.size(); ++i)
     {
-        const auto vulkanImage = static_pointer_cast<VulkanImage>(m_Attachments[i].Attachment);
+        const auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Attachments[i].Attachment);
         PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage");
 
         VkImageMemoryBarrier imageBarrier            = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -148,7 +148,7 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
 
 void VulkanFramebuffer::EndPass(const Shared<CommandBuffer>& commandBuffer)
 {
-    auto vulkanCommandBuffer = static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+    auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
     PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer");
 
     vulkanCommandBuffer->EndRendering();
@@ -158,7 +158,7 @@ void VulkanFramebuffer::EndPass(const Shared<CommandBuffer>& commandBuffer)
     VkImageMemoryBarrier depthImageBarrier = {};
     for (size_t i = 0; i < m_AttachmentInfos.size(); ++i)
     {
-        auto vulkanImage = static_pointer_cast<VulkanImage>(m_Attachments[i].Attachment);
+        auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Attachments[i].Attachment);
         PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage");
 
         VkImageMemoryBarrier imageBarrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
@@ -264,7 +264,7 @@ void VulkanFramebuffer::Invalidate()
     for (size_t attachmentIndex = 0; attachmentIndex < m_Attachments.size(); ++attachmentIndex)
     {
         const auto& fbAttachment = m_Attachments[attachmentIndex];
-        const auto vulkanImage   = static_pointer_cast<VulkanImage>(fbAttachment.Attachment);
+        const auto vulkanImage   = std::static_pointer_cast<VulkanImage>(fbAttachment.Attachment);
         PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
 
         if (ImageUtils::IsDepthFormat(fbAttachment.Specification.Format))
