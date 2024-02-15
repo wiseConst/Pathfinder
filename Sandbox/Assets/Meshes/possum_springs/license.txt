@@ -1,0 +1,11 @@
+Model Information:
+* title:	Possum Springs
+* source:	https://sketchfab.com/3d-models/possum-springs-bd755222c78a443398e521fc7b7fd9ea
+* author:	Powerbyte7 (https://sketchfab.com/Powerbyte7)
+
+Model License:
+* license type:	CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)
+* requirements:	Author must be credited. No commercial use. Modified versions must have the same license.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Possum Springs" (https://sketchfab.com/3d-models/possum-springs-bd755222c78a443398e521fc7b7fd9ea) by Powerbyte7 (https://sketchfab.com/Powerbyte7) licensed under CC-BY-NC-SA-4.0 (http://creativecommons.org/licenses/by-nc-sa/4.0/)

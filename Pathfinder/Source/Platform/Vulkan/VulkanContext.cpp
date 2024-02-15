@@ -77,10 +77,18 @@ void VulkanContext::CreateInstance()
     VK_CHECK(vkCreateInstance(&instanceCI, nullptr, &m_VulkanInstance), "Failed to create vulkan instance!");
     volkLoadInstanceOnly(m_VulkanInstance);
 
-#if PFR_DEBUG && VK_LOG_INFO
+#if PFR_DEBUG
     LOG_INFO("Using vulkan version: %u.%u.%u.%u", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
              VK_API_VERSION_MAJOR(supportedApiVersionFromDLL), VK_API_VERSION_MINOR(supportedApiVersionFromDLL),
              VK_API_VERSION_PATCH(supportedApiVersionFromDLL));
+
+    LOG_TAG_TRACE(VULKAN, "Enabled instance extensions:");
+    for (const auto& ext : enabledInstanceExtensions)
+        LOG_TAG_TRACE(VULKAN, "  %s", ext);
+
+    LOG_TAG_TRACE(VULKAN, "Enabled instance layers:");
+    for (const auto& layer : s_InstanceLayers)
+        LOG_TAG_TRACE(VULKAN, "  %s", layer);
 #endif
 }
 

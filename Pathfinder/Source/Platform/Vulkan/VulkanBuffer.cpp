@@ -33,36 +33,43 @@ VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUs
 {
     VkBufferUsageFlags vkBufferUsage = 0;
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX)
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX)
         vkBufferUsage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX) vkBufferUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM) vkBufferUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE)
-        vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING) vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX)
+        vkBufferUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM)
+        vkBufferUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE)
+        vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE) vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_DESTINATION) vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     // RTX
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
         vkBufferUsage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_STORAGE)
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE)
         vkBufferUsage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE_BIT_KHR;
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_SHADER_BINDING_TABLE) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR;
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_SHADER_BINDING_TABLE) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR;
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING &&
-        (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX || bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE || bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM))
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE &&
+        (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
+         bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM))
         PFR_ASSERT(false, "Buffer usage that has STAGING usage can't have any other flags!");
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM &&
-        (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX || bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE || bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING))
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM &&
+        (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
+         bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE))
         PFR_ASSERT(false, "Buffer usage that has UNIFORM usage can't have any other flags!");
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX && bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX)
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX && bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX)
         PFR_ASSERT(false, "Buffer usage can't be both VERTEX and INDEX!");
 
     PFR_ASSERT(vkBufferUsage > 0, "Buffer should have any usage!");
@@ -73,28 +80,33 @@ VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUs
 {
     VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_AUTO;
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING &&
-        (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX || bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE || bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM))
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE &&
+        (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
+         bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM))
         PFR_ASSERT(false, "Buffer usage that has STAGING usage can't have any other flags!");
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM &&
-        (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX || bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE || bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING))
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM &&
+        (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
+         bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE))
         PFR_ASSERT(false, "Buffer usage that has UNIFORM usage can't have any other flags!");
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX && bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX)
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX && bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX)
         PFR_ASSERT(false, "Buffer usage can't be both VERTEX and INDEX!");
 
-    if (bufferUsage & EBufferUsage::BUFFER_TYPE_VERTEX || bufferUsage & EBufferUsage::BUFFER_TYPE_INDEX ||
-        bufferUsage & EBufferUsage::BUFFER_TYPE_STORAGE)
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX || bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX ||
+        bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE)
         return VMA_MEMORY_USAGE_GPU_ONLY;
-    else if (bufferUsage & EBufferUsage::BUFFER_TYPE_STAGING)
+    else if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE)
         return VMA_MEMORY_USAGE_CPU_ONLY;
-    else if (bufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM)
+    else if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM)
         return VMA_MEMORY_USAGE_CPU_TO_GPU;
 
     return memoryUsage;
+}
+
+bool IsMappable(const VmaAllocation& allocation)
+{
+    return VulkanContext::Get().GetDevice()->GetAllocator()->IsMappable(allocation);
 }
 
 void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation)
@@ -138,7 +150,9 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
 
     if (dataSize > m_Specification.BufferCapacity) Resize(dataSize);
 
-    if (m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_STAGING || m_Specification.BufferUsage & EBufferUsage::BUFFER_TYPE_UNIFORM)
+    // NOTE: Check for uniform buffer's memory because I force them to be on BAR(host & device) memory
+    if (m_Specification.BufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE ||
+        m_Specification.BufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM && BufferUtils::IsMappable(m_Allocation))
     {
         void* mapped = nullptr;
         if (!m_bIsMapped)
@@ -162,6 +176,12 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
     {
         const auto& rd = Renderer::GetRendererData();
         rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
+
+       /* auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(rd->TransferCommandBuffer[rd->FrameIndex]);
+        PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
+
+        const VkBufferCopy region = {0, 0, dataSize};
+        vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);*/
 
         auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
         vulkanCommandBuffer->BeginRecording(true);
@@ -202,9 +222,9 @@ void VulkanBuffer::Destroy()
 
     m_DescriptorInfo = {};
 
-    if (m_Index != UINT32_MAX)
+    if (m_Index != UINT32_MAX && m_BufferBinding != UINT32_MAX)
     {
-        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index);
+        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index, m_BufferBinding);
     }
 }
 

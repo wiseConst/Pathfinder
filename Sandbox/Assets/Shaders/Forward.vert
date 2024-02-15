@@ -20,16 +20,16 @@ layout(location = 0) out VertexOutput
 void main()
 {
     const vec4 WorldPos = u_PC.Transform * vec4(inPos, 1.0);
-    gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * WorldPos;
+    gl_Position = u_GlobalCameraData.ViewProjection * WorldPos;
     
     o_VertexOutput.Color = inColor;
     o_VertexOutput.UV = inUV;
     o_VertexOutput.WorldPos = WorldPos.xyz;
     
-    const mat3 normalMatrix = transpose(inverse(mat3(u_PC.Transform)));
-    vec3 T = normalize(normalMatrix * inTangent);
+    const mat3 normalMatrix = transpose(inverse(mat3(u_PC.Transform))); // Better to calculate it on CPU
     const vec3 N = normalize(normalMatrix * inNormal);
-    T = normalize(T - dot(T, N) * N);
+    vec3 T = normalize(normalMatrix * inTangent);
+    T = normalize(T - dot(T, N) * N); // Reorthogonalization around N via Gramm-Schmidt.
     const vec3 B = cross(N, T);
     
     const mat3 TBNtoWorld = mat3(T, B, N);

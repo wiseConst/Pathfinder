@@ -67,10 +67,9 @@ struct QueueFamilyIndices
 #if PFR_WINDOWS
                 bPresentSupport = vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevice, i);
 #elif PFR_LINUX
-                // TODO:
-                bPresentSupport = vkGetPhysicalDeviceWaylandPresentationSupportKHR();
+                bPresentSupport = vkGetPhysicalDeviceWaylandPresentationSupportKHR(physicalDevice, i, glfwGetWaylandDisplay());
 #elif PFR_MACOS
-                // TODO:
+                // NOTE:
                 // On macOS, all physical devices and queue families must be capable of presentation with any layer.
                 // As a result there is no macOS-specific query for these capabilities.
                 bPresentSupport = true;
@@ -136,10 +135,9 @@ struct QueueFamilyIndices
 #if PFR_WINDOWS
             bPresentSupport = vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevice, i);
 #elif PFR_LINUX
-            // TODO:
-            bPresentSupport = vkGetPhysicalDeviceWaylandPresentationSupportKHR();
+            bPresentSupport = vkGetPhysicalDeviceWaylandPresentationSupportKHR(physicalDevice, i, glfwGetWaylandDisplay());
 #elif PFR_MACOS
-            // TODO:
+            // NOTE:
             // On macOS, all physical devices and queue families must be capable of presentation with any layer.
             // As a result there is no macOS-specific query for these capabilities.
             bPresentSupport = true;

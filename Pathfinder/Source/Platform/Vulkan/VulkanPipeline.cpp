@@ -73,10 +73,9 @@ void VulkanPipeline::CreateLayout()
         const auto& vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
         PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
 
-        setLayouts.push_back(vulkanBR->GetTextureSetLayout());
-        setLayouts.push_back(vulkanBR->GetImageSetLayout());
+        setLayouts.push_back(vulkanBR->GetTextureStorageImageSetLayout());
         setLayouts.push_back(vulkanBR->GetStorageBufferSetLayout());
-        setLayouts.push_back(vulkanBR->GetCameraSetLayout());
+        setLayouts.push_back(vulkanBR->GetUniformBufferSetLayout());
 
         pushConstants.push_back(vulkanBR->GetPushConstantBlock());
     }
@@ -412,13 +411,10 @@ void VulkanPipeline::Invalidate()
                     {
                         case EBlendMode::BLEND_MODE_ALPHA:
                         {
-                            // not used version: Color.rgb = (src.a * src.rgb) + ((1-src.a) * dst.rgb)
-                             blendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
-                            blendState.dstColorBlendFactor   = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
+                            // Color.rgb = (src.a * src.rgb) + ((1-src.a) * dst.rgb)
+                            blendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
+                            blendState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
 
-                            // Color.rgb = ((1-dst.a) * src.rgb) + (dst.a * dst.rgb)
-                            // blendState.srcColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_DST_ALPHA;
-                            // blendState.dstColorBlendFactor = VK_BLEND_FACTOR_DST_ALPHA;
                             break;
                         }
                         case EBlendMode::BLEND_MODE_ADDITIVE:
@@ -464,11 +460,9 @@ void VulkanPipeline::Invalidate()
             DepthStencilState.maxDepthBounds = 1.0f;
 
             std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-
             if (m_Specification.bDynamicPolygonMode) dynamicStates.emplace_back(VK_DYNAMIC_STATE_POLYGON_MODE_EXT);
             if (m_Specification.LineWidth != 1.0F) dynamicStates.emplace_back(VK_DYNAMIC_STATE_LINE_WIDTH);
 
-            // TODO: Make it configurable?
             VkPipelineDynamicStateCreateInfo dynamicState = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
             dynamicState.dynamicStateCount                = static_cast<uint32_t>(dynamicStates.size());
             dynamicState.pDynamicStates                   = dynamicStates.data();
@@ -539,19 +533,16 @@ void VulkanPipeline::Invalidate()
             VkRayTracingPipelineCreateInfoKHR pipelineCreateInfo = {VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
             pipelineCreateInfo.layout                            = m_Layout;
             pipelineCreateInfo.stageCount                        = static_cast<uint32_t>(shaderStages.size());
-            pipelineCreateInfo.pStages                           = shaderStages.data();
 
-            // TODO: Fill here
-            VkDeferredOperationKHR op = {};  // ?
-
-            VK_CHECK(vkCreateRayTracingPipelinesKHR(logicalDevice, op, pipelineCache, 1, &pipelineCreateInfo, VK_NULL_HANDLE, &m_Handle),
+            VK_CHECK(vkCreateRayTracingPipelinesKHR(logicalDevice, VK_NULL_HANDLE, pipelineCache, 1, &pipelineCreateInfo, VK_NULL_HANDLE,
+                                                    &m_Handle),
                      "Failed to create RAY_TRACING pipeline!");
             break;
         }
         default: PFR_ASSERT(false, "Unknown pipeline type!"); break;
     }
 
-    VK_SetDebugName(logicalDevice, &m_Handle, VK_OBJECT_TYPE_PIPELINE, m_Specification.DebugName.data());
+    VK_SetDebugName(logicalDevice, m_Handle, VK_OBJECT_TYPE_PIPELINE, m_Specification.DebugName.data());
     SavePipelineCache(pipelineCache, m_Specification.DebugName);
 }
 

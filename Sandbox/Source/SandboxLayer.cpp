@@ -22,19 +22,43 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 
     Renderer::BeginScene(*m_Camera);
 
-    Renderer::SubmitMesh(m_Dummy);
+    Renderer::SubmitMesh(m_Dummy /*, glm::rotate(glm::mat4(1.0f), glm::radians(-90.f), glm::vec3(1, 0, 0)) *
+                                       glm::rotate(glm::mat4(1.0f), glm::radians(-90.f), glm::vec3(0, 0, 1))*/
+                         /* ,glm::rotate(glm::mat4(1.f),glm::radians(-180.f), glm::vec3(0, 0, 1))*/);
 
-    
-   /*constexpr float limit = 5.0f;
-   for (float y = -limit; y < limit; y += limit / 10.0f)
-   {
-       for (float x = -limit; x < limit; x += limit / 10.0f)
-       {
-           const glm::mat4 transform =
-               glm::translate(glm::mat4(1.0f), glm::vec3(x, y, 0)) * glm::scale(glm::mat4(1.0f), glm::vec3(0.45f, 0.45f, 0.0));
-           Renderer2D::DrawQuad(transform, glm::vec4((x + limit) / (limit * 2), 0.4f, (y + limit) / (limit * 2), 1.0f));
-       }
-   }*/
+    /*   DirectionalLight dl = {};
+          dl.Color            = glm::vec3(.5f, .5f, .9f);
+          dl.Direction        = glm::vec3(0, -3.f, -5.f);
+          dl.Intensity        = 1.f;
+          Renderer::AddDirectionalLight(dl);*/
+
+    {
+        // blueish
+        PointLight pl = {};
+        pl.Color      = glm::vec3(.5f, .5f, .9f);
+        pl.Position   = glm::vec3(0, 2, 0.f);
+        pl.Intensity  = 1.5f;
+        pl.MinRadius  = .1f;
+        pl.Radius     = 3.3f;
+
+        Renderer::AddPointLight(pl);
+    }
+
+    {
+        // greenish
+        PointLight pl = {};
+        pl.Color      = glm::vec3(.5f, .9f, 0.5f);
+        pl.Position   = glm::vec3(0, 5, -15.f);
+        pl.Intensity  = 1.5f;
+        pl.MinRadius  = 3.3f;
+        pl.Radius     = 7.3f;
+
+        Renderer::AddPointLight(pl);
+    }
+
+    /*const SpotLight sl = {m_Camera->GetPosition(),      m_Camera->GetForwardVector(), glm::vec3(.4f, .4f, .2f), 1.f,
+                          glm::cos(glm::radians(7.f)), glm::cos(glm::radians(20.f))};
+    Renderer::AddSpotLight(sl);*/
 
     Renderer::EndScene();
 

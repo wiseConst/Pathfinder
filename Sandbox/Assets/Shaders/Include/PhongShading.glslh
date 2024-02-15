@@ -1,28 +1,92 @@
 
-#extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Lights.h"
+// #extension GL_GOOGLE_include_directive : require
+// #include "Assets/Shaders/Include/Lights.h"
 
 // NOTE: LightDirection here points towards object from light pos
-vec4 ApplyPhongShading(const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const vec3 lightColor, const vec3 lightDir)
+vec3 CalcDirLights(const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const DirectionalLight dl, const vec3 albedo, const float ao)
 {
-    vec4 result = vec4(vec3(0), 1);
     const vec3 N = normalize(normal);
-    const vec3 L = normalize(lightDir);
+    const vec3 L = normalize(dl.Direction);
   
-    const float kA = 0.1f;
-    const vec3 ambient = kA * lightColor;
+    const vec3 ambient = albedo * ao * 0.3f;
   
     const float kD = max(dot(N, -L), 0.0);
-    const vec3 diffuse = kD * lightColor;
+    const vec3 diffuse = kD * albedo * dl.Color * dl.Intensity;
     
-    const float kS = 1.f - kD; // PBR enjoyer
-    const vec3 viewDir = normalize(u_GlobalCameraData.Position - worldPos);
+    const float kS = 1.f - kD;
+    const vec3 viewDir = normalize(cameraPos - worldPos);
   
     const vec3 H = normalize(-L + viewDir);
     const uint specPow = 64;
     const float spec = pow(max(dot(viewDir, H), 0.0), specPow);
-    const vec3 specular = spec * kS * lightColor;
+    const vec3 specular = spec * kS * dl.Color;
     
-    result.xyz += ambient + diffuse + specular;
+    return ambient + diffuse + specular;
+}
+
+vec3 CalcPointLights(const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const PointLight pl, const vec3 albedo, const float ao)
+{
+     const vec3 ambient = 0.3f * albedo * ao;
+
+     const float fragToPlDist = abs(length(worldPos - pl.Position));
+     if(fragToPlDist - pl.MinRadius > pl.Radius) 
+     {
+         const float kDeem = abs(fragToPlDist - pl.Radius) + 0.0001f;
+         return kDeem < 1.f ? ambient : ambient / kDeem;
+     }
+
+    const vec3 N = normalize(normal);
+    const vec3 L = normalize(worldPos - pl.Position);
+
+    const float kD = max(dot(N, -L), 0.0);
+    const vec3 diffuse = kD * pl.Color * albedo * pl.Intensity;
+    
+    const float kS = 1.f - kD; // PBR enjoyer
+    const vec3 viewDir = normalize(cameraPos - worldPos);
+  
+    const vec3 H = normalize(-L + viewDir);
+    const uint specPow = 64;
+    const float spec = pow(max(dot(viewDir, H), 0.0), specPow);
+    const vec3 specular = spec * kS * pl.Color;
+         
+    const float epsilon = pl.MinRadius - pl.Radius;
+    const float plIntensity = clamp((fragToPlDist - pl.Radius) / epsilon, 0.0, 1.0);
+
+    const float distance = length(L);
+    const float attenuation = 1.0f / (1.0f + 0.05 * distance + 0.005 * distance * distance);
+    return ambient + (diffuse + specular) * attenuation * plIntensity;
+}
+
+vec3 CalcSpotLights(const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const SpotLight sl)
+{
+    const vec3 N = normalize(normal);
+    const vec3 L = normalize(worldPos - sl.Position);
+  
+    const float kA = 0.1f;
+    const vec3 ambient = kA * sl.Color;
+    vec3 result = ambient;
+  
+    const float kD = max(dot(N, -L), 0.0);
+    const vec3 diffuse = kD * sl.Color * sl.Intensity;
+    
+    const float kS = 1.f - kD; // PBR enjoyer
+    const vec3 viewDir = normalize(cameraPos - worldPos);
+  
+    const vec3 H = normalize(-L + viewDir);
+    const uint specPow = 64;
+    const float spec = pow(max(dot(viewDir, H), 0.0), specPow);
+    const vec3 specular = spec * kS * sl.Color;
+    
+    // NOTE: How it works
+    // theta: angle between spotlight direction and light dir
+    // epsilon used for spotIntensity which gives us intensity in clamped range [0, 1]: 
+    // 1) outerCutOff > innerCutOff > theta -> max light
+    // 2) outerCutOff > theta > innerCutOff -> medium
+    // 3) theta > outerCutOff > innerCutOff -> zero light
+    const float theta = dot(normalize(sl.SpotDirection), L);
+    const float epsilon = sl.InnerCutOff - sl.OuterCutOff;
+    const float spotIntensity = clamp((theta - sl.OuterCutOff) / epsilon, 0.0, 1.0);
+    
+    result += (diffuse + specular) * spotIntensity;
     return result;
 }

@@ -4,25 +4,21 @@
 #extension GL_GOOGLE_include_directive : require
 #include "Assets/Shaders/Include/Globals.h"
 
-#if DEBUG_PRINTF
-#extension GL_EXT_debug_printf : require
-#endif
-
 
 // 128 invocations (threads) in parallel
 layout(local_size_x = 16, local_size_y = 8, local_size_z = 1) in;
 
 void main()
 {
-    #if DEBUG_PRINTF
-    debugPrintfEXT("Hello from invocation (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
+    #if DEBUG_PRINTF && 0
+    debugPrintfEXT("PT:Hello from invocation (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
     #endif
 
     const uvec2 resolution = imageSize(u_GlobalImages_RGBA8[u_PC.StorageImageIndex]);
     const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
     if ((pixel.x >= resolution.x) || (pixel.y >= resolution.y))
     {
-        #if DEBUG_PRINTF
+        #if DEBUG_PRINTF && 0
         debugPrintfEXT("Out of bounds! (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
         #endif
         return;

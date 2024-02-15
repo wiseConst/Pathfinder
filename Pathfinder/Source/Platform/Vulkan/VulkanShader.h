@@ -19,6 +19,11 @@ class VulkanShader final : public Shader
     ~VulkanShader() override { Destroy(); }
 
     void Set(const std::string_view name, const Shared<Buffer> buffer) final override;
+    void Set(const std::string_view name, const Shared<Image> attachment) final override;
+    void Set(const std::string_view name, const Shared<Texture2D> texture) final override;
+
+    void Set(const std::string_view name, const BufferPerFrame& buffers) final override;
+    void Set(const std::string_view name, const ImagePerFrame& attachments) final override;
 
     NODISCARD FORCEINLINE const auto& GetDescriptions() const { return m_ShaderDescriptions; }
     NODISCARD FORCEINLINE const std::vector<VkVertexInputAttributeDescription>& GetInputVars() const { return m_InputVars; }
@@ -62,14 +67,13 @@ class VulkanShader final : public Shader
         VkShaderModule Module      = VK_NULL_HANDLE;
 
         // NOTE: Array index is the descriptor set number
+        // WARN: Assuming descriptor sets are contiguous. 0..N, but not 0,1,3,8!
         std::vector<std::unordered_map<std::string, VkDescriptorSetLayoutBinding>> DescriptorSetBindings;
 
         std::vector<VkDescriptorSetLayout> SetLayouts;
         std::vector<DescriptorSetPerFrame> Sets;
 
         std::unordered_map<std::string, VkPushConstantRange> PushConstants;
-
-        SpvReflectShaderModule ReflectModule = {};
     };
 
     std::vector<ShaderDescription> m_ShaderDescriptions;
@@ -78,8 +82,9 @@ class VulkanShader final : public Shader
     // TODO: In case I'd like to add DX12, I'll have to make this function virtual in shader base class
     std::vector<uint32_t> CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
                                                   shaderc_shader_kind shaderKind);
-    void Reflect(ShaderDescription& shaderDescription, const std::vector<uint32_t>& compiledShaderSrc,
-                 std::vector<SpvReflectDescriptorSet*>& outSets, std::vector<SpvReflectBlockVariable*>& outPushConstants);
+    void Reflect(SpvReflectShaderModule& reflectModule, ShaderDescription& shaderDescription,
+                 const std::vector<uint32_t>& compiledShaderSrc, std::vector<SpvReflectDescriptorSet*>& outSets,
+                 std::vector<SpvReflectBlockVariable*>& outPushConstants);
     void LoadShaderModule(VkShaderModule& module, const std::vector<uint32_t>& shaderSrcSpv) const;
     void Destroy() final override;
 };

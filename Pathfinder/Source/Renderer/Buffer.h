@@ -6,21 +6,22 @@
 namespace Pathfinder
 {
 
-// TODO: Replace staging with SRC, and add DST
 enum EBufferUsage : uint32_t
 {
-    BUFFER_TYPE_VERTEX                                       = BIT(0),
-    BUFFER_TYPE_INDEX                                        = BIT(1),
-    BUFFER_TYPE_STORAGE                                      = BIT(2),
-    BUFFER_TYPE_STAGING                                      = BIT(3),
-    BUFFER_TYPE_UNIFORM                                      = BIT(4),
-    BUFFER_TYPE_SHADER_DEVICE_ADDRESS                        = BIT(5),
-    BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(6),
-    BUFFER_TYPE_ACCELERATION_STRUCTURE_STORAGE               = BIT(7),
-    BUFFER_TYPE_SHADER_BINDING_TABLE                         = BIT(8),
+    BUFFER_USAGE_VERTEX                                       = BIT(0),
+    BUFFER_USAGE_INDEX                                        = BIT(1),
+    BUFFER_USAGE_STORAGE                                      = BIT(2),
+    BUFFER_USAGE_TRANSFER_SOURCE                              = BIT(3),  // Staging buffer
+    BUFFER_USAGE_TRANSFER_DESTINATION                         = BIT(4),
+    BUFFER_USAGE_UNIFORM                                      = BIT(5),
+    BUFFER_USAGE_SHADER_DEVICE_ADDRESS                        = BIT(6),
+    BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(7),
+    BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE               = BIT(8),
+    BUFFER_USAGE_SHADER_BINDING_TABLE                         = BIT(9),
 };
 typedef uint32_t BufferUsageFlags;
 
+// NOTE: If no buffer capacity specified when DataSize is, then will be resized to DataSize.
 struct BufferSpecification
 {
     BufferUsageFlags BufferUsage = 0;

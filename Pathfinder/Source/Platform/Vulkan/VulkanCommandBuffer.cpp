@@ -59,9 +59,12 @@ VulkanCommandBuffer::VulkanCommandBuffer(ECommandBufferType type, ECommandBuffer
     auto& context = VulkanContext::Get();
     context.GetDevice()->AllocateCommandBuffer(m_Handle, type, PathfinderCommandBufferLevelToVulkan(m_Level));
 
-    constexpr VkSemaphoreCreateInfo semaphoreCI = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-    VK_CHECK(vkCreateSemaphore(context.GetDevice()->GetLogicalDevice(), &semaphoreCI, VK_NULL_HANDLE, &m_WaitSemaphore),
-             "Failed to create semaphore!");
+    constexpr VkSemaphoreTypeCreateInfo semaphoreTypeCI = {VK_STRUCTURE_TYPE_SEMAPHORE_TYPE_CREATE_INFO, nullptr,
+                                                           VK_SEMAPHORE_TYPE_TIMELINE, 0};
+
+    VkSemaphoreCreateInfo semaphoreCI = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO, &semaphoreTypeCI};
+    VK_CHECK(vkCreateSemaphore(context.GetDevice()->GetLogicalDevice(), &semaphoreCI, VK_NULL_HANDLE, &m_TimelineSemaphore),
+             "Failed to create timeline semaphore!");
 
     constexpr VkFenceCreateInfo fenceCI = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO};
     VK_CHECK(vkCreateFence(context.GetDevice()->GetLogicalDevice(), &fenceCI, VK_NULL_HANDLE, &m_SubmitFence), "Failed to create fence!");
@@ -75,7 +78,10 @@ VulkanCommandBuffer::VulkanCommandBuffer(ECommandBufferType type, ECommandBuffer
     }
 
     const std::string fenceDebugName = "VK_SUBMIT_FENCE_" + commandBufferTypeStr;
-    VK_SetDebugName(context.GetDevice()->GetLogicalDevice(), &m_SubmitFence, VK_OBJECT_TYPE_FENCE, fenceDebugName.data());
+    VK_SetDebugName(context.GetDevice()->GetLogicalDevice(), m_SubmitFence, VK_OBJECT_TYPE_FENCE, fenceDebugName.data());
+
+    const std::string semaphoreDebugName = "VK_WAIT_TIMELINE_SEMAPHORE_" + commandBufferTypeStr;
+    VK_SetDebugName(context.GetDevice()->GetLogicalDevice(), m_TimelineSemaphore, VK_OBJECT_TYPE_SEMAPHORE, semaphoreDebugName.data());
 }
 
 const std::vector<float> VulkanCommandBuffer::GetTimestampsResults() const
@@ -154,6 +160,13 @@ void VulkanCommandBuffer::BeginTimestampQuery(const EPipelineStage pipelineStage
     ++m_CurrentTimestampIndex;
 }
 
+void VulkanCommandBuffer::InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EPipelineStage dstPipelineStage) const
+{
+    vkCmdPipelineBarrier(m_Handle, VulkanUtility::PathfinderPipelineStageToVulkan(srcPipelineStage),
+                         VulkanUtility::PathfinderPipelineStageToVulkan(dstPipelineStage), VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0,
+                         nullptr, 0, nullptr);
+}
+
 void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheritanceInfo)
 {
     VkCommandBufferBeginInfo commandBufferBeginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -174,17 +187,29 @@ void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheri
     m_CurrentTimestampIndex = 0;
 }
 
+void VulkanCommandBuffer::WaitForSubmitFence()
+{
+    auto& context             = VulkanContext::Get();
+    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
+
+    VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_SubmitFence, VK_TRUE, UINT64_MAX), "Failed to wait for fence!");
+    VK_CHECK(vkResetFences(logicalDevice, 1, &m_SubmitFence), "Failed to reset fence!");
+}
+
 void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit, bool bSignalWaitSemaphore, const PipelineStageFlags pipelineStages,
-                                 const std::vector<void*>& semaphoresToWaitOn)
+                                 const std::vector<void*>& semaphoresToWaitOn, const uint32_t waitSemaphoreValueCount,
+                                 const uint64_t* pWaitSemaphoreValues, const uint32_t signalSemaphoreValueCount,
+                                 const uint64_t* pSignalSemaphoreValues)
 {
     VkSubmitInfo submitInfo       = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers    = &m_Handle;
 
+    std::vector<VkSemaphore> signalSemaphores = {m_TimelineSemaphore};
     if (bSignalWaitSemaphore)
     {
-        submitInfo.signalSemaphoreCount = 1;
-        submitInfo.pSignalSemaphores    = &m_WaitSemaphore;
+        submitInfo.signalSemaphoreCount = static_cast<uint32_t>(signalSemaphores.size());
+        submitInfo.pSignalSemaphores    = signalSemaphores.data();
     }
 
     const VkPipelineStageFlags pipelineStageFlags = VulkanUtility::PathfinderPipelineStageToVulkan(pipelineStages);
@@ -217,13 +242,18 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit, bool bSignalWaitSemaphor
         }
     }
 
+    VkTimelineSemaphoreSubmitInfo timelineSemaphoreSI = {VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO,
+                                                         nullptr,
+                                                         waitSemaphoreValueCount,
+                                                         pWaitSemaphoreValues,
+                                                         signalSemaphoreValueCount,
+                                                         pSignalSemaphoreValues};
+    submitInfo.pNext                                  = &timelineSemaphoreSI;
+
     const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
-    VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, m_SubmitFence), "Failed to submit command buffer!");
-    if (bWaitAfterSubmit)
-    {
-        VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_SubmitFence, VK_TRUE, UINT64_MAX), "Failed to wait for fence!");
-        VK_CHECK(vkResetFences(logicalDevice, 1, &m_SubmitFence), "Failed to reset fence!");
-    }
+    VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, bSignalWaitSemaphore ? VK_NULL_HANDLE : m_SubmitFence),
+             "Failed to submit command buffer!");
+    if (bWaitAfterSubmit) WaitForSubmitFence();
 
     if (m_CurrentTimestampIndex != 0)
     {
@@ -406,8 +436,8 @@ void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Share
 
     if (descriptorSets.empty()) return;
 
-    // Since first 0, 1, 2, 3 are busy by bindless stuff we make an offset
-    const uint32_t firstSet = pipeline->GetSpecification().bBindlessCompatible ? 4 : 0;
+    // Since first 0, 1, 2 are busy by bindless stuff we make an offset
+    const uint32_t firstSet = pipeline->GetSpecification().bBindlessCompatible ? LAST_BINDLESS_SET + 1 : 0;
     vkCmdBindDescriptorSets(m_Handle, pipelineBindPoint, vulkanPipeline->GetLayout(), firstSet,
                             static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
 }
@@ -432,7 +462,7 @@ void VulkanCommandBuffer::Destroy()
 
     const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
     vkDestroyFence(logicalDevice, m_SubmitFence, VK_NULL_HANDLE);
-    vkDestroySemaphore(logicalDevice, m_WaitSemaphore, VK_NULL_HANDLE);
+    vkDestroySemaphore(logicalDevice, m_TimelineSemaphore, VK_NULL_HANDLE);
 
     if (m_TimestampQuery) vkDestroyQueryPool(logicalDevice, m_TimestampQuery, nullptr);
     if (m_PipelineStatisticsQuery) vkDestroyQueryPool(logicalDevice, m_PipelineStatisticsQuery, nullptr);

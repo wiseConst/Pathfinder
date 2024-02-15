@@ -404,13 +404,13 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
         MeshPreprocessorUtils::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
 
         // NOTE: Currently index buffer is not used in shaders, so it doesn't need STORAGE usage flag
-        BufferSpecification ibSpec = {EBufferUsage::BUFFER_TYPE_INDEX /* | EBufferUsage::BUFFER_TYPE_STORAGE */};
+        BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_INDEX /* | EBufferUsage::BUFFER_USAGE_STORAGE */};
         ibSpec.Data                = finalIndices.data();
         ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
         {
             ibSpec.BufferUsage |=
-                EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS;
+                EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         }
         submesh->m_IndexBuffer = Buffer::Create(ibSpec);
 
@@ -432,23 +432,23 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
         indices.clear();
         meshoptimizeVertices.clear();
 
-        BufferSpecification vbPosSpec = {EBufferUsage::BUFFER_TYPE_VERTEX | EBufferUsage::BUFFER_TYPE_STORAGE};
+        BufferSpecification vbPosSpec = {EBufferUsage::BUFFER_USAGE_VERTEX | EBufferUsage::BUFFER_USAGE_STORAGE};
         vbPosSpec.Data                = vertexPositions.data();
         vbPosSpec.DataSize            = vertexPositions.size() * sizeof(vertexPositions[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
         {
             vbPosSpec.BufferUsage |=
-                EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS;
+                EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         }
         submesh->m_VertexPositionBuffer = Buffer::Create(vbPosSpec);
 
-        BufferSpecification vbAttribSpec = {EBufferUsage::BUFFER_TYPE_VERTEX | EBufferUsage::BUFFER_TYPE_STORAGE};
+        BufferSpecification vbAttribSpec = {EBufferUsage::BUFFER_USAGE_VERTEX | EBufferUsage::BUFFER_USAGE_STORAGE};
         vbAttribSpec.Data                = vertexAttributes.data();
         vbAttribSpec.DataSize            = vertexAttributes.size() * sizeof(vertexAttributes[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
         {
             vbAttribSpec.BufferUsage |=
-                EBufferUsage::BUFFER_TYPE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_TYPE_SHADER_DEVICE_ADDRESS;
+                EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         }
         submesh->m_VertexAttributeBuffer = Buffer::Create(vbAttribSpec);
 
@@ -464,17 +464,17 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
             std::vector<Meshlet> meshlets;
             MeshPreprocessorUtils::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
 
-            BufferSpecification mbSpec = {EBufferUsage::BUFFER_TYPE_STORAGE};
+            BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE};
             mbSpec.Data                = meshlets.data();
             mbSpec.DataSize            = meshlets.size() * sizeof(meshlets[0]);
             submesh->m_MeshletBuffer   = Buffer::Create(mbSpec);
 
-            BufferSpecification mbVertSpec   = {EBufferUsage::BUFFER_TYPE_STORAGE};
+            BufferSpecification mbVertSpec   = {EBufferUsage::BUFFER_USAGE_STORAGE};
             mbVertSpec.Data                  = meshletVertices.data();
             mbVertSpec.DataSize              = meshletVertices.size() * sizeof(meshletVertices[0]);
             submesh->m_MeshletVerticesBuffer = Buffer::Create(mbVertSpec);
 
-            BufferSpecification mbTriSpec     = {EBufferUsage::BUFFER_TYPE_STORAGE};
+            BufferSpecification mbTriSpec     = {EBufferUsage::BUFFER_USAGE_STORAGE};
             mbTriSpec.Data                    = meshletTriangles.data();
             mbTriSpec.DataSize                = meshletTriangles.size() * sizeof(meshletTriangles[0]);
             submesh->m_MeshletTrianglesBuffer = Buffer::Create(mbTriSpec);

@@ -113,15 +113,15 @@ class OrthographicCamera final : public Camera
         dispatcher.Dispatch<WindowResizeEvent>([&](const WindowResizeEvent& e) { return OnWindowResized(e); });
     }
 
-    Frustum GetFrustum() final override
+     Frustum GetFrustum() final override
     {
         Frustum fr = {};
-        fr.Bottom  = glm::vec3(m_Position.x, m_Position.y, m_Forward.z);
+       /* fr.Bottom  = glm::vec3(m_Position.x, m_Position.y, m_Forward.z);
         fr.Top     = glm::vec3(0, 0, 0);
         fr.Left    = glm::vec3(0, 0, 0);
         fr.Right   = glm::vec3(0, 0, 0);
         fr.Far     = glm::vec3(0, 0, m_ZoomLevel * m_Position.z);
-        fr.Near    = glm::vec3(0, 0, m_ZoomLevel * m_Position.z);
+        fr.Near    = glm::vec3(0, 0, m_ZoomLevel * m_Position.z);*/
 
         return fr;
     }

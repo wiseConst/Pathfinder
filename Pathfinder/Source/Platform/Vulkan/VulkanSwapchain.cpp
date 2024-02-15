@@ -127,12 +127,12 @@ VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(w
 
 void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
 {
-    const auto& rendererData = Renderer::GetRendererData();
+    const auto& rd = Renderer::GetRendererData();
 
-    const auto& commandBuffer = rendererData->CurrentRenderCommandBuffer.lock();
+    const auto& commandBuffer = rd->CurrentRenderCommandBuffer.lock();
     PFR_ASSERT(commandBuffer, "Failed to retrieve current render command buffer!");
 
-    const auto& vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+    const auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
     PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
 
     vulkanCommandBuffer->BeginDebugLabel("SwapchainClearColor", clearColor);
@@ -259,6 +259,7 @@ void VulkanSwapchain::Invalidate()
 
     if (context.GetDevice()->GetQueueFamilyIndices().GraphicsFamily != context.GetDevice()->GetQueueFamilyIndices().PresentFamily)
     {
+        PFR_ASSERT(false, "This shouldn't happen: GraphicsFamily != PresentFamily!");
         const uint32_t indices[]                  = {context.GetDevice()->GetQueueFamilyIndices().GraphicsFamily,
                                                      context.GetDevice()->GetQueueFamilyIndices().PresentFamily};
         swapchainCreateInfo.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
@@ -290,9 +291,9 @@ void VulkanSwapchain::Invalidate()
                                     1);
 
         std::string debugName = "Swapchain image[" + std::to_string(i) + "]";
-        VK_SetDebugName(logicalDevice, &m_Images[i], VK_OBJECT_TYPE_IMAGE, debugName.data());
+        VK_SetDebugName(logicalDevice, m_Images[i], VK_OBJECT_TYPE_IMAGE, debugName.data());
         debugName = "Swapchain image view[" + std::to_string(i) + "]";
-        VK_SetDebugName(logicalDevice, &m_ImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW, debugName.data());
+        VK_SetDebugName(logicalDevice, m_ImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW, debugName.data());
     }
 
     m_ImageLayouts.resize(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
@@ -311,7 +312,10 @@ void VulkanSwapchain::AcquireImage()
 
     const auto result =
         vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphores[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
-    if (result == VK_SUCCESS) return;
+    if (result == VK_SUCCESS)
+    {
+        return;
+    }
 
     if (result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR)
     {
@@ -335,7 +339,6 @@ void VulkanSwapchain::PresentImage()
             VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
                                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, 0, 1, 0, 1, 0);
 
-        // NOTE: TBH idk which stages to use here
         vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &srcImageBarrier);
 
@@ -343,12 +346,14 @@ void VulkanSwapchain::PresentImage()
         vulkanCommandBuffer->Submit();
     }
 
-    VkPresentInfoKHR presentInfo   = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-    presentInfo.pImageIndices      = &m_ImageIndex;
-    presentInfo.swapchainCount     = 1;
-    presentInfo.pSwapchains        = &m_Handle;
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores    = &m_ImageAcquiredSemaphores[m_FrameIndex];
+    VkPresentInfoKHR presentInfo = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
+    presentInfo.pImageIndices    = &m_ImageIndex;
+    presentInfo.swapchainCount   = 1;
+    presentInfo.pSwapchains      = &m_Handle;
+
+    std::vector<VkSemaphore> waitSemaphores = {m_ImageAcquiredSemaphores[m_FrameIndex]};
+    presentInfo.waitSemaphoreCount          = static_cast<uint32_t>(waitSemaphores.size());
+    presentInfo.pWaitSemaphores             = waitSemaphores.data();
 
     const auto imagePresentBegin                = Timer::Now();
     const auto result                           = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &presentInfo);

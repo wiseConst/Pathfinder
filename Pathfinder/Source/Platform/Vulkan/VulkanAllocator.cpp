@@ -65,6 +65,11 @@ void VulkanAllocator::CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer&
     VmaAllocationCreateInfo allocationCI = {};
     allocationCI.usage                   = memoryUsage;
     if (bufferCI.usage & VK_BUFFER_USAGE_TRANSFER_SRC_BIT) allocationCI.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT;
+    if (bufferCI.usage & VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT)  // Try allocate on host & device memory(if fails it prefers device)
+    {
+        allocationCI.flags |=
+            VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_HOST_ACCESS_ALLOW_TRANSFER_INSTEAD_BIT;
+    }
 
     auto allocationResult = vmaCreateBuffer(m_Handle, &bufferCI, &allocationCI, &buffer, &allocation, &allocationInfo);
     if (allocationResult == VK_ERROR_OUT_OF_HOST_MEMORY)
@@ -123,6 +128,14 @@ void* VulkanAllocator::Map(VmaAllocation& allocation)
 void VulkanAllocator::Unmap(VmaAllocation& allocation)
 {
     vmaUnmapMemory(m_Handle, allocation);
+}
+
+bool VulkanAllocator::IsMappable(const VmaAllocation& allocation)
+{
+    VkMemoryPropertyFlags memPropFlags = {};
+    vmaGetAllocationMemoryProperties(m_Handle, allocation, &memPropFlags);
+
+    return memPropFlags & VK_MEMORY_PROPERTY_HOST_VISIBLE_BIT;
 }
 
 VulkanAllocator::~VulkanAllocator()

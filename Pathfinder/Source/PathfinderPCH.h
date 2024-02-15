@@ -28,6 +28,7 @@
 #include <variant>
 #include <format>
 #include <chrono>
+#include <random>
 
 #include "Core/Log.h"
 #include "Core/Timer.h"

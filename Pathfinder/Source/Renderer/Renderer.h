@@ -35,7 +35,10 @@ class Renderer : private Uncopyable, private Unmovable
     static void BeginScene(const Camera& camera);
     static void EndScene();
 
-    static void SubmitMesh(const Shared<Mesh>& mesh);
+    static void SubmitMesh(const Shared<Mesh>& mesh, const glm::mat4& transform = glm::mat4(1.0f));
+    static void AddDirectionalLight(const DirectionalLight& dl);
+    static void AddPointLight(const PointLight& pl);
+    static void AddSpotLight(const SpotLight& sl);
 
     NODISCARD FORCEINLINE static const auto& GetRendererData()
     {
@@ -53,40 +56,68 @@ class Renderer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE static auto& GetStats() { return s_RendererStats; }
 
   private:
+    struct RenderObject
+    {
+        Shared<Submesh> submesh = nullptr;
+        glm::mat4 Transform     = glm::mat4(1.0f);
+    };
+    // TODO: Realign structure
     struct RendererData
     {
+        // MISC
+        LightsData LightStruct;
+        CameraData CameraStruct;
+
+        BufferPerFrame LightsUB;
+        BufferPerFrame CameraUB;
+        BufferPerFrame UploadHeap;
+
+        static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB
+        uint32_t FrameIndex                                = 0;
+
+        // Rendering
         CommandBufferPerFrame RenderCommandBuffer;
-        Weak<CommandBuffer> CurrentRenderCommandBuffer;
-
-        Weak<CommandBuffer> CurrentComputeCommandBuffer;
         CommandBufferPerFrame ComputeCommandBuffer;
-
-        Weak<CommandBuffer> CurrentTransferCommandBuffer;
         CommandBufferPerFrame TransferCommandBuffer;
 
-        Shared<Pipeline> PathtracingPipeline = nullptr;
+        Weak<CommandBuffer> CurrentRenderCommandBuffer;
+        Weak<CommandBuffer> CurrentComputeCommandBuffer;
+        Weak<CommandBuffer> CurrentTransferCommandBuffer;
+
         ImagePerFrame PathtracedImage;
+        Shared<Pipeline> PathtracingPipeline = nullptr;
         FramebufferPerFrame CompositeFramebuffer;
+        Shared<Pipeline> CompositePipeline = nullptr;
 
         // NOTE: Forward+ renderer
         FramebufferPerFrame GBuffer;
-        Shared<Pipeline> ForwardRenderingPipeline = nullptr;
+        Shared<Pipeline> ForwardPlusPipeline = nullptr;
 
         FramebufferPerFrame DepthPrePassFramebuffer;
         Shared<Pipeline> DepthPrePassPipeline = nullptr;
 
-        std::vector<Shared<Submesh>> OpaqueObjects;
-        std::vector<Shared<Submesh>> TransparentObjects;
+        std::vector<RenderObject> OpaqueObjects;
+        std::vector<RenderObject> TransparentObjects;
         Shared<Texture2D> WhiteTexture = nullptr;
 
         Shared<Pipeline> GridPipeline = nullptr;
 
-        // MISC
-        uint32_t FrameIndex = 0;
-        CameraData CameraStruct;
-        BufferPerFrame CameraUB;
-        BufferPerFrame UploadHeap;
-        static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB
+        ImagePerFrame FrustumDebugImage;
+        Shared<Pipeline> LightCullingPipeline = nullptr;
+        BufferPerFrame PointLightIndicesStorageBuffer;
+        // NOTE: Instead of creating this shit manually, shader can create you this
+        // in e.g. you got writeonly buffer -> shader can create it,
+        // in e.g. you got readonly  buffer -> shader gonna wait for you to give it him
+        // unordored_map<string,BufferPerFrame>, string maps to set and binding
+        BufferPerFrame SpotLightIndicesStorageBuffer;  // TODO: Implement
+
+        // TODO: Add HBAO, GTAO, RTAO
+        // AO
+        Shared<Pipeline> SSAOPipeline = nullptr;
+        FramebufferPerFrame SSAOFramebuffer;
+        Shared<Texture2D> SSAONoiseTexture = nullptr;
+        Shared<Pipeline> SSAOBlurPipeline  = nullptr;
+        FramebufferPerFrame SSAOBlurFramebuffer;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
@@ -111,7 +142,10 @@ class Renderer : private Uncopyable, private Unmovable
 
     static void DrawGrid();
     static void DepthPrePass();
+
     static void LightCullingPass();
+    static void SSAOPass();
+
     static void GeometryPass();
 };
 

@@ -19,6 +19,8 @@
 #define DEBUGBREAK() __builtin_trap()
 #endif
 
+// TODO: Add VERIFY for release mode since assert is descended
+
 #if PFR_RELEASE
 #define PFR_ASSERT(x, msg) (x)
 #elif PFR_DEBUG

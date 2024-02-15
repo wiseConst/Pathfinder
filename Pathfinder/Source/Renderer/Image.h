@@ -53,6 +53,8 @@ enum class EImageFormat : uint8_t
     FORMAT_RGBA8_UNORM,
     FORMAT_A2R10G10B10_UNORM_PACK32,
 
+    FORMAT_R8_UNORM,
+
     FORMAT_R16_UNORM,
     FORMAT_R16F,
 
@@ -85,6 +87,8 @@ struct ImageSpecification
     uint32_t Height            = 0;
     EImageFormat Format        = EImageFormat::FORMAT_UNDEFINED;
     EImageLayout Layout        = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+    ESamplerWrap Wrap          = ESamplerWrap::SAMPLER_WRAP_REPEAT;
+    ESamplerFilter Filter      = ESamplerFilter::SAMPLER_FILTER_NEAREST;
     ImageUsageFlags UsageFlags = 0;
     uint32_t Mips              = 1;
 };
@@ -114,15 +118,15 @@ class Image : private Uncopyable, private Unmovable
 
 struct SamplerSpecification
 {
-    ESamplerFilter Filter;
-    ESamplerWrap Wrap;
-    bool bAnisotropyEnable;
-    bool bCompareEnable;
-    float MipLodBias;
-    float MaxAnisotropy;
-    float MinLod;
-    float MaxLod;
-    ECompareOp CompareOp;
+    ESamplerFilter Filter  = ESamplerFilter::SAMPLER_FILTER_LINEAR;
+    ESamplerWrap Wrap      = ESamplerWrap::SAMPLER_WRAP_REPEAT;
+    bool bAnisotropyEnable = false;
+    bool bCompareEnable    = false;
+    float MipLodBias       = 0.0f;
+    float MaxAnisotropy    = 0.0f;
+    float MinLod           = 0.0f;
+    float MaxLod           = 0.0f;
+    ECompareOp CompareOp   = ECompareOp::COMPARE_OP_NEVER;
 
     struct Hash
     {
@@ -174,6 +178,7 @@ class SamplerStorage : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE static uint32_t GetSamplerCount() { return static_cast<uint32_t>(s_Samplers.size()); }
 
+    // NOTE: Increments image usage of retrieve sampler on every invocation.
     NODISCARD FORCEINLINE static void* CreateOrRetrieveCachedSampler(const SamplerSpecification& samplerSpec)
     {
         PFR_ASSERT(s_Instance, "Invalid sampler storage instance!");
@@ -190,9 +195,11 @@ class SamplerStorage : private Uncopyable, private Unmovable
         return pair.second;
     }
 
+    // NOTE: Decrements image usage of retrieved sampler on every invocation, in the end destroys.
     FORCEINLINE static void DestroySampler(const SamplerSpecification& samplerSpec)
     {
         PFR_ASSERT(s_Instance, "Invalid sampler storage instance!");
+
         // Decrement image usage or destroy.
         if (auto it = s_Samplers.find(samplerSpec); it != s_Samplers.end())
         {

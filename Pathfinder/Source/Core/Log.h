@@ -53,8 +53,7 @@ class Logger final : private Uncopyable, private Unmovable
     static void Init();
     static void Shutdown();
 
-    template <typename... Args>
-    static void Log(const ELogLevel level, const char* tag, const char* message, Args&&... args)
+    template <typename... Args> static void Log(const ELogLevel level, const char* tag, const char* message, Args&&... args)
     {
         std::lock_guard lock(s_LogMutex);
 
@@ -62,6 +61,7 @@ class Logger final : private Uncopyable, private Unmovable
         static char s_TempMessageBuffer[s_MaxMessageLength] = {0};
         memset(s_TempMessageBuffer, 0, sizeof(s_TempMessageBuffer[0]) * s_MaxMessageLength);
 
+        // TODO: buffer resize
         if (strlen(message) > s_MaxMessageLength)
         {
             puts("TODO: Logger message length resize?");

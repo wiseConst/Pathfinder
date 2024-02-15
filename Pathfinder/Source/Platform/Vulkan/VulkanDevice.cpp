@@ -50,9 +50,9 @@ VulkanDevice::VulkanDevice(const VkInstance& instance)
     m_VDA = MakeUnique<VulkanDescriptorAllocator>(m_GPUInfo.LogicalDevice);
 
     const std::string logicalDeviceDebugName("[LogicalDevice]:" + std::string(m_GPUInfo.GPUProperties.deviceName));
-    VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.LogicalDevice, VK_OBJECT_TYPE_DEVICE, logicalDeviceDebugName.data());
+    VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.LogicalDevice, VK_OBJECT_TYPE_DEVICE, logicalDeviceDebugName.data());
     const std::string physicalDeviceDebugName("[PhysicalDevice]:" + std::string(m_GPUInfo.GPUProperties.deviceName));
-    VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.PhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE, physicalDeviceDebugName.data());
+    VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.PhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE, physicalDeviceDebugName.data());
 }
 
 void VulkanDevice::CreateCommandPools()
@@ -74,19 +74,19 @@ void VulkanDevice::CreateCommandPools()
         VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &graphicsCommandPoolCreateInfo, nullptr, &m_GPUInfo.GraphicsCommandPools[i]),
                  "Failed to create graphics command pool!");
         const std::string graphicsCommandPoolDebugName = "GRAPHICS_COMMAND_POOL_" + std::to_string(i);
-        VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.GraphicsCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
                         graphicsCommandPoolDebugName.data());
 
         VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &computeCommandPoolCreateInfo, nullptr, &m_GPUInfo.ComputeCommandPools[i]),
                  "Failed to create compute command pool!");
         const std::string computeCommandPoolDebugName = "ASYNC_COMPUTE_COMMAND_POOL_" + std::to_string(i);
-        VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.ComputeCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
                         computeCommandPoolDebugName.data());
 
         VK_CHECK(vkCreateCommandPool(m_GPUInfo.LogicalDevice, &transferCommandPoolCreateInfo, nullptr, &m_GPUInfo.TransferCommandPools[i]),
                  "Failed to create transfer command pool!");
         const std::string transferCommandPoolDebugName = "ASYNC_TRANSFER_COMMAND_POOL_" + std::to_string(i);
-        VK_SetDebugName(m_GPUInfo.LogicalDevice, &m_GPUInfo.TransferCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
+        VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferCommandPools[i], VK_OBJECT_TYPE_COMMAND_POOL,
                         transferCommandPoolDebugName.data());
     }
 }
@@ -162,7 +162,11 @@ void VulkanDevice::CreateLogicalDevice()
     deviceCI.pNext = &vulkan13Features;
     void** ppNext  = &vulkan13Features.pNext;
 
-    VkPhysicalDeviceVulkan12Features vulkan12Features           = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    VkPhysicalDeviceVulkan12Features vulkan12Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+
+    // Async submits/waits feature
+    vulkan12Features.timelineSemaphore = VK_TRUE;
+
     vulkan12Features.shaderSampledImageArrayNonUniformIndexing  = VK_TRUE;  // AMD issues
     vulkan12Features.shaderStorageImageArrayNonUniformIndexing  = VK_TRUE;
     vulkan12Features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
@@ -272,6 +276,14 @@ void VulkanDevice::CreateLogicalDevice()
     vkGetDeviceQueue(m_GPUInfo.LogicalDevice, m_GPUInfo.QueueFamilyIndices.TransferFamily, 0, &m_GPUInfo.TransferQueue);
     vkGetDeviceQueue(m_GPUInfo.LogicalDevice, m_GPUInfo.QueueFamilyIndices.ComputeFamily, 0, &m_GPUInfo.ComputeQueue);
 
+    VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsQueue, VK_OBJECT_TYPE_QUEUE, "VK_QUEUE_GRAPHICS");
+    VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.PresentQueue, VK_OBJECT_TYPE_QUEUE,
+                    m_GPUInfo.QueueFamilyIndices.PresentFamily == m_GPUInfo.QueueFamilyIndices.GraphicsFamily ? "VK_QUEUE_PRESENT_GRAPHICS"
+                        : "VK_QUEUE_PRESENT");
+    VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferQueue, VK_OBJECT_TYPE_QUEUE, "VK_QUEUE_TRANSFER");
+    VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeQueue, VK_OBJECT_TYPE_QUEUE, "VK_QUEUE_COMPUTE");
+    
+
     PFR_ASSERT(m_GPUInfo.GraphicsQueue && m_GPUInfo.PresentQueue && m_GPUInfo.TransferQueue && m_GPUInfo.ComputeQueue,
                "Failed to retrieve queue handles!");
 
@@ -279,6 +291,12 @@ void VulkanDevice::CreateLogicalDevice()
     Renderer::GetRendererSettings().bRTXSupport         = VK_RTX && m_GPUInfo.bRTXSupport;
     Renderer::GetRendererSettings().bBDASupport         = m_GPUInfo.bBDASupport;
     if (Renderer::GetRendererSettings().bRTXSupport) PFR_ASSERT(Renderer::GetRendererSettings().bBDASupport, "RTX requires BDA!");
+
+#if PFR_DEBUG
+    LOG_TAG_TRACE(VULKAN, "Enabled device extensions:");
+    for (const auto& ext : deviceExtensions)
+        LOG_TAG_TRACE(VULKAN, "  %s", ext);
+#endif
 }
 
 uint32_t VulkanDevice::RateDeviceSuitability(GPUInfo& gpuInfo)

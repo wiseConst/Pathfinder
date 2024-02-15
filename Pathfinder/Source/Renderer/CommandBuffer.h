@@ -69,7 +69,7 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
                                    const void* data = nullptr) const                            = 0;
 
-    FORCEINLINE virtual void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) = 0;
+    FORCEINLINE virtual void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ = 1) = 0;
 
     FORCEINLINE virtual void DrawIndexed(const uint32_t indexCount, const uint32_t instanceCount = 1, const uint32_t firstIndex = 0,
                                          const int32_t vertexOffset = 0, const uint32_t firstInstance = 0) const = 0;
@@ -84,11 +84,15 @@ class CommandBuffer : private Uncopyable, private Unmovable
                                    const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const                   = 0;
     virtual void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const = 0;
 
-    virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const = 0;
+    virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const                               = 0;
+    virtual void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EPipelineStage dstPipelineStage) const = 0;
 
+    virtual void WaitForSubmitFence()                                     = 0;
     virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, const PipelineStageFlags pipelineStages = 0,
-                        const std::vector<void*>& semaphoresToWaitOn = {}) = 0;
-    virtual void Reset()                                                   = 0;
+                        const std::vector<void*>& semaphoresToWaitOn = {}, const uint32_t waitSemaphoreValueCount = 0,
+                        const uint64_t* pWaitSemaphoreValues = nullptr, const uint32_t signalSemaphoreValueCount = 0,
+                        const uint64_t* pSignalSemaphoreValues = nullptr) = 0;
+    virtual void Reset()                                                  = 0;
 
     static Shared<CommandBuffer> Create(ECommandBufferType type,
                                         ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);

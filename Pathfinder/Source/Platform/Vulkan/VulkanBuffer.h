@@ -32,8 +32,10 @@ class VulkanBuffer final : public Buffer
     VmaAllocation m_Allocation              = VK_NULL_HANDLE;
     bool m_bIsMapped                        = false;
 
+    // Bindless array purposes
     friend class VulkanBindlessRenderer;
-    uint32_t m_Index = UINT32_MAX;  // bindless array purposes
+    uint32_t m_Index         = UINT32_MAX;
+    uint32_t m_BufferBinding = UINT32_MAX;
 
     void Destroy() final override;
 };
@@ -47,6 +49,8 @@ void CreateBuffer(VkBuffer& buffer, VmaAllocation& allocation, const size_t size
 VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUsage);
 
 VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUsage);
+
+bool IsMappable(const VmaAllocation& allocation);
 
 void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation);
 

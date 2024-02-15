@@ -3,6 +3,7 @@
 
 #include "Core/Core.h"
 #include "RendererCoreDefines.h"
+#include "Image.h"
 
 namespace Pathfinder
 {
@@ -17,6 +18,7 @@ struct TextureSpecification
     bool bFlipOnLoad      = false;
     ESamplerWrap Wrap     = ESamplerWrap::SAMPLER_WRAP_REPEAT;
     ESamplerFilter Filter = ESamplerFilter::SAMPLER_FILTER_LINEAR;
+    EImageFormat Format   = EImageFormat::FORMAT_RGBA8_UNORM;
 };
 
 class Texture2D : private Uncopyable, private Unmovable

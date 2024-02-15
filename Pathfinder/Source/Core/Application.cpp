@@ -75,7 +75,8 @@ void Application::Run()
             ss << std::string("PATHFINDER x64 / ") + std::to_string(frameCount) + std::string(" FPS ");
             ss << std::string("[mesh-shaders]: ") << (Renderer::GetRendererSettings().bMeshShadingSupport ? "on " : "off ");
             ss << std::string("[cpu]: ") + std::to_string(t.GetElapsedMilliseconds()) + std::string("ms ");
-            ss << std::string("[gpu]: ") + std::to_string(Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime) + std::string("ms ");
+            ss << std::string("[gpu]: ") + std::to_string(Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime) +
+                      std::string("ms ");
             ss << std::string(" [tris]: ") << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
             ss << std::string(" [meshlets]: ") << Renderer::GetStats().MeshletCount;
             ss << std::string(" [2D batches]: ") << Renderer2D::GetStats().BatchCount;

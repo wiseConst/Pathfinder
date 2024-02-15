@@ -38,7 +38,11 @@ class VulkanImage final : public Image
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE const auto& GetView() const { return m_View; }
     NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const final override { return m_Index; }
-    NODISCARD FORCEINLINE const auto& GetDescriptorInfo() const { return m_DescriptorInfo; }
+    NODISCARD FORCEINLINE const auto& GetDescriptorInfo()
+    {
+        m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
+        return m_DescriptorInfo;
+    }
 
     void SetLayout(const EImageLayout newLayout) final override;
     void SetData(const void* data, size_t dataSize) final override;

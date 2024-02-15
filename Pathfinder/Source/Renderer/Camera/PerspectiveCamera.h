@@ -93,6 +93,16 @@ class PerspectiveCamera final : public Camera
     Frustum GetFrustum() final override
     {
         Frustum fr = {};
+        /* const float halfVSide   = GetFarPlaneDepth() * tanf(m_FOV * .5f);
+          const float halfHSide        = halfVSide * m_AR;
+          const glm::vec3 frontMultFar = GetFarPlaneDepth() * m_Forward;
+
+          fr.Planes[0] = {m_Position, glm::cross(m_Up, frontMultFar + m_Right * halfHSide)};
+          fr.Planes[1] = {m_Position, glm::cross(frontMultFar - m_Right * halfHSide, m_Up)};
+          fr.Planes[2] = {m_Position, glm::cross(m_Right, frontMultFar - m_Up * halfVSide)};
+          fr.Planes[3] = {m_Position, glm::cross(frontMultFar + m_Up * halfVSide, m_Right)};
+          fr.Planes[4] = {m_Position + GetNearPlaneDepth() * m_Forward, glm::length(m_Forward)};
+          fr.Planes[5] = {m_Position + frontMultFar, glm::length(-m_Forward)};*/
 
         return fr;
     }
@@ -123,7 +133,7 @@ class PerspectiveCamera final : public Camera
 
         // NOTE: Using formula: R^(transpose) * T; m_Right, upVec, m_Forward - orthogonal basis
         // Inverse rotation back to canonical view direction since I assume that cam always look towards -Z(RH coordinate system)
-        
+
         // You'll notice that XY(-Z)=RUF => Z=-F, that's fucking why
         m_View[0][0] = m_Right.x;
         m_View[0][1] = upVec.x;
@@ -164,7 +174,7 @@ class PerspectiveCamera final : public Camera
         m_LastX = newPosX;
         m_LastY = newPosY;
 
-        if (Input::IsMouseButtonPressed(EKey::MOUSE_BUTTON_RIGHT))
+        if (Input::IsMouseButtonPressed(EKey::MOUSE_BUTTON_RIGHT) && Input::IsKeyPressed(EKey::KEY_LEFT_SHIFT))
         {
             m_Position.y += deltaY * m_DeltaTime * s_MovementSpeed / 2;
             RecalculateViewMatrix();

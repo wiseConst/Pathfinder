@@ -31,7 +31,7 @@ void Renderer2D::Init()
     std::ranges::for_each(s_RendererData2D->QuadVertexBuffer,
                           [](auto& vertexBuffer)
                           {
-                              BufferSpecification vbSpec = {EBufferUsage::BUFFER_TYPE_VERTEX};
+                              BufferSpecification vbSpec = {EBufferUsage::BUFFER_USAGE_VERTEX};
                               vbSpec.BufferCapacity      = s_RendererData2D->s_MAX_VERTEX_BUFFER_SIZE;
 
                               vertexBuffer = Buffer::Create(vbSpec);
@@ -56,7 +56,7 @@ void Renderer2D::Init()
             offset += 4;
         }
 
-        BufferSpecification ibSpec = {EBufferUsage::BUFFER_TYPE_INDEX};
+        BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_INDEX};
         ibSpec.Data                = indices;
         ibSpec.DataSize            = sizeof(uint32_t) * s_RendererData2D->s_MAX_INDICES;
 

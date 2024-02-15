@@ -15,14 +15,15 @@ void main()
 
     const uint primitiveCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleCount;
     const uint vertexCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexCount;
-    SetMeshOutputsEXT(vertexCount, primitiveCount);
+    if(ti == 0) SetMeshOutputsEXT(vertexCount, primitiveCount);
 
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
     for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
 
-        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
+        // NOTE: u_PC.Transform = ViewProj * Transform. Done on CPU side
+        gl_MeshVerticesEXT[i].gl_Position = u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
     }
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;

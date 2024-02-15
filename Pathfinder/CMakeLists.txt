@@ -73,9 +73,11 @@ set_target_properties(meshoptimizer PROPERTIES FOLDER "ThirdParty" POSITION_INDE
 if (WIN32)
     set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WIN32_KHR)
 elseif (APPLE)
-    set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_XLIB_KHR)
-elseif (UNIX)
     set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_MACOS_MVK)
+elseif (UNIX)
+    # TODO: Add proper wayland/x11 support
+    # set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_XLIB_KHR)
+    set(VOLK_STATIC_DEFINES VK_USE_PLATFORM_WAYLAND_KHR)
 endif ()
 
 add_subdirectory(${VENDOR_DIR}/volk)

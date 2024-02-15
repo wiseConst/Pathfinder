@@ -25,6 +25,8 @@ class VulkanAllocator final : private Uncopyable, private Unmovable
     void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation);
     void DestroyImage(VkImage& image, VmaAllocation& allocation);
 
+    bool IsMappable(const VmaAllocation& allocation);
+
     NODISCARD void* GetMapped(VmaAllocation& allocation);
     NODISCARD void* Map(VmaAllocation& allocation);
     void Unmap(VmaAllocation& allocation);

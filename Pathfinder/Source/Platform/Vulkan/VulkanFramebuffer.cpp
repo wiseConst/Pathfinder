@@ -245,6 +245,9 @@ void VulkanFramebuffer::Invalidate()
             else
             {
                 ImageSpecification imageSpec = {m_Specification.Width, m_Specification.Height, fbAttachmentSpec.Format};
+                imageSpec.Layout             = fbAttachmentSpec.Layout;
+                imageSpec.Wrap               = fbAttachmentSpec.Wrap;
+                imageSpec.Filter             = fbAttachmentSpec.Filter;
 
                 const auto imageUsage = ImageUtils::IsDepthFormat(imageSpec.Format) ? EImageUsage::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
                                                                                     : EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT;

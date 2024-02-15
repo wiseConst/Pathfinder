@@ -20,13 +20,8 @@ layout(location = 0) out VertexOutput
 
 void main()
 {
-    const uint mi = gl_WorkGroupID.x; // current work group
-    const uint ti = gl_LocalInvocationID.x; // invocation of current work group
-
-    #if DEBUG_PRINTF
-        debugPrintfEXT("Hello from workGroup (%d, %d)!", gl_WorkGroupID.x, gl_WorkGroupID.y);
-        debugPrintfEXT("Hello from global invocation (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-    #endif
+    const uint mi = gl_WorkGroupID.x;
+    const uint ti = gl_LocalInvocationID.x;
 
     const uint primitiveCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleCount;
     const uint vertexCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexCount;
@@ -37,7 +32,7 @@ void main()
         const vec3 mcolor = vec3(float(mhash & 255), float((mhash >> 8) & 255), float((mhash >> 16) & 255)) / 255.0;
     #endif
     
-    const mat3 normalMatrix = mat3(transpose(inverse(u_PC.Transform)));
+    const mat3 normalMatrix = transpose(inverse(mat3(u_PC.Transform)));
  
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
     for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
@@ -45,25 +40,24 @@ void main()
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
         const vec4 WorldPos = u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
         
-        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * WorldPos; // Rough ViewProjection gives artefacts WTF?  
+        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.ViewProjection * WorldPos;
         
         o_VertexOutput[i].Color = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color;
         #if DEBUG_MESHLETS
               o_VertexOutput[i].Color = vec4(mcolor, 1.0);
         #endif
     
-        o_VertexOutput[i].UV =  s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].UV;
+        o_VertexOutput[i].UV = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].UV;
         o_VertexOutput[i].WorldPos = WorldPos.xyz;
         
-        vec3 T = normalize(normalMatrix * s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Tangent);
         const vec3 N = normalize(normalMatrix * s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Normal);
+        vec3 T = normalize(normalMatrix * s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Tangent);
         T = normalize(T - dot(T, N) * N);
         const vec3 B = cross(N, T);
     
         const mat3 TBNtoWorld = mat3(T, B, N);
         o_VertexOutput[i].TBNtoWorld = TBNtoWorld;
     }
-
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;
     for(uint i = ti; i < primitiveCount; i += MESHLET_LOCAL_GROUP_SIZE)

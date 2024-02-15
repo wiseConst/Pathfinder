@@ -17,7 +17,7 @@ namespace Pathfinder
 #define VK_FORCE_PIPELINE_COMPILATION 1
 
 #define VK_LOG_INFO 0
-#define VK_SHADER_DEBUG_PRINTF 0
+#define VK_SHADER_DEBUG_PRINTF 1
 
 #define VK_PREFER_IGPU 0
 
@@ -33,14 +33,11 @@ constexpr static bool s_bEnableValidationLayers = false;
 static const std::vector<const char*> s_InstanceLayers = {
     "VK_LAYER_KHRONOS_validation",  // Validaiton layers
 #ifdef PFR_LINUX
-    "VK_LAYER_MESA_overlay",
+    "VK_LAYER_MESA_overlay",  // Linux statistics overlay(framerate graph etc)
 #endif
 
 };
 static const std::vector<const char*> s_InstanceExtensions = {
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
-    VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
-#endif
     VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,        // Required by full screen ext
     VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,  // Required by full screen ext
 };
@@ -49,6 +46,7 @@ static const std::vector<const char*> s_DeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,          // For rendering into OS-window
     VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,  // To get advanced info about gpu
     VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,  // To neglect renderpasses as my target is desktop only
+    VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME, // To do async work with proper synchronization on device side.
 
 #if VK_EXCLUSIVE_FULL_SCREEN_TEST
     VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,  // Borderless fullscreen window
@@ -142,18 +140,19 @@ static std::string VK_GetResultString(const VkResult result)
 #error Unknown configuration type!
 #endif
 
-// TODO: Make it #define, to reduce function calls in release mode.
-static void VK_SetDebugName(const VkDevice& logicalDevice, const void* objectHandle, const VkObjectType objectType, const char* objectName)
-{
-    if constexpr (!VK_FORCE_VALIDATION && !s_bEnableValidationLayers) return;
-    PFR_ASSERT(objectHandle, "Object handle is not valid!");
-
-    VkDebugUtilsObjectNameInfoEXT objectNameInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};
-    objectNameInfo.objectHandle                  = *(uint64_t*)objectHandle;
-    objectNameInfo.objectType                    = objectType;
-    objectNameInfo.pObjectName                   = objectName;
-    VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo), "Failed to set debug name!");
-}
+#if (VK_FORCE_VALIDATION || s_bEnableValidationLayers)
+#define VK_SetDebugName(logicalDevice, handle, type, name)                                                               \
+    {                                                                                                                                      \
+        PFR_ASSERT(handle, "Object handle is not valid!");                                                                           \
+        VkDebugUtilsObjectNameInfoEXT objectNameInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};                               \
+        objectNameInfo.objectHandle                  = (uint64_t)handle;                                                             \
+        objectNameInfo.objectType                    = type;                                                                         \
+        objectNameInfo.pObjectName                   = name;                                                                         \
+        VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo), "Failed to set debug name!");                               \
+    }
+#else
+#define VK_SetDebugName(logicalDevice, objectHandle, objectType, objectName)
+#endif
 
 static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes,
                               const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)

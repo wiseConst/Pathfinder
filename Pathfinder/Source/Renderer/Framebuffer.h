@@ -22,11 +22,14 @@ enum class EStoreOp : uint8_t
 
 struct FramebufferAttachmentSpecification
 {
-    EImageFormat Format  = EImageFormat::FORMAT_UNDEFINED;
-    ELoadOp LoadOp       = ELoadOp::CLEAR;
-    EStoreOp StoreOp     = EStoreOp::STORE;
-    bool bCopyable       = false;
-    glm::vec4 ClearColor = glm::vec4(1.0f);
+    EImageFormat Format   = EImageFormat::FORMAT_UNDEFINED;
+    EImageLayout Layout   = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+    ELoadOp LoadOp        = ELoadOp::CLEAR;
+    EStoreOp StoreOp      = EStoreOp::STORE;
+    glm::vec4 ClearColor  = glm::vec4(1.0f);
+    bool bCopyable        = false;
+    ESamplerWrap Wrap     = ESamplerWrap::SAMPLER_WRAP_REPEAT;
+    ESamplerFilter Filter = ESamplerFilter::SAMPLER_FILTER_NEAREST;
 };
 
 class Image;

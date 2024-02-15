@@ -30,7 +30,9 @@ class Camera : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE auto GetViewProjection() const { return m_Projection * m_View; }
     NODISCARD FORCEINLINE const auto& GetProjection() const { return m_Projection; }
+    NODISCARD FORCEINLINE auto GetInverseProjection() const { return glm::inverse(m_Projection); }
     NODISCARD FORCEINLINE const auto& GetPosition() const { return m_Position; }
+    NODISCARD FORCEINLINE const auto& GetForwardVector() const { return m_Forward; }
 
     NODISCARD FORCEINLINE virtual const float GetNearPlaneDepth() const = 0;
     NODISCARD FORCEINLINE virtual const float GetFarPlaneDepth() const  = 0;

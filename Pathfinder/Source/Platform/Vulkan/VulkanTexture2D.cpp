@@ -33,7 +33,7 @@ void VulkanTexture2D::Invalidate()
     ImageSpecification imageSpec = {};
     imageSpec.Height             = m_Specification.Height;
     imageSpec.Width              = m_Specification.Width;
-    imageSpec.Format             = EImageFormat::FORMAT_RGBA8_UNORM;
+    imageSpec.Format             = m_Specification.Format;
     imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
 
     m_Image = MakeShared<VulkanImage>(imageSpec);

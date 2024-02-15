@@ -45,6 +45,7 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
         case EImageFormat::FORMAT_RGB8_UNORM: return VK_FORMAT_R8G8B8_UNORM;
         case EImageFormat::FORMAT_RGBA8_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
         case EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32: return VK_FORMAT_A2R10G10B10_UNORM_PACK32;
+        case EImageFormat::FORMAT_R8_UNORM: return VK_FORMAT_R8_UNORM;
         case EImageFormat::FORMAT_R16_UNORM: return VK_FORMAT_R16_UNORM;
         case EImageFormat::FORMAT_R16F: return VK_FORMAT_R16_SFLOAT;
         case EImageFormat::FORMAT_R32F: return VK_FORMAT_R32_SFLOAT;
@@ -221,12 +222,22 @@ void VulkanImage::Invalidate()
     ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat,
                                 ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT);
 
-    if (m_Specification.Layout == EImageLayout::IMAGE_LAYOUT_UNDEFINED)
-        SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
-    else
-        SetLayout(m_Specification.Layout);
+    // NOTE: Small crutch since SetLayout() doesn't assume using inside Invalidate() but I find it convenient.
+    // On image creation it has undefined layout. Store newLayout and set it to specification after transition.
+    // Because SetLayout uses oldLayout as m_Specification.Layout and newLayout I specify as m_Specification.Layout,
+    // so layouts are equal and no transition happens.
+    {
+        const EImageLayout newLayout =
+            m_Specification.Layout == EImageLayout::IMAGE_LAYOUT_UNDEFINED ? EImageLayout::IMAGE_LAYOUT_GENERAL : m_Specification.Layout;
 
-    m_DescriptorInfo = {VK_NULL_HANDLE, m_View, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
+        m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+        SetLayout(newLayout);
+        m_Specification.Layout = newLayout;
+    }
+
+    m_DescriptorInfo = {
+        (VkSampler)SamplerStorage::CreateOrRetrieveCachedSampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap}),
+        m_View, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
 }
 
 void VulkanImage::Destroy()
@@ -237,7 +248,9 @@ void VulkanImage::Destroy()
     m_Handle = VK_NULL_HANDLE;
 
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_View, nullptr);
-    m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+
+    if (m_DescriptorInfo.sampler)
+        SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
 
     m_DescriptorInfo = {};
 

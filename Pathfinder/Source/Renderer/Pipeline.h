@@ -85,7 +85,6 @@ class Pipeline : private Uncopyable, private Unmovable
 
     FORCEINLINE virtual void SetPolygonMode(const EPolygonMode polygonMode) = 0;
 
-    // TODO: Revisit with Unique/Shared approach
     NODISCARD static Shared<Pipeline> Create(const PipelineSpecification& pipelineSpec);
 
   protected:

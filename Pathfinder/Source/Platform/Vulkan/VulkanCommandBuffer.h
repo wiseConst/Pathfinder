@@ -18,7 +18,7 @@ class VulkanCommandBuffer final : public CommandBuffer
 
     NODISCARD FORCEINLINE ECommandBufferType GetType() const final override { return m_Type; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
-    NODISCARD FORCEINLINE void* GetWaitSemaphore() const final override { return m_WaitSemaphore; }
+    NODISCARD FORCEINLINE void* GetWaitSemaphore() const final override { return m_TimelineSemaphore; }
     NODISCARD FORCEINLINE ECommandBufferLevel GetLevel() const final override { return m_Level; }
     const std::vector<float> GetTimestampsResults() const final override;
 
@@ -54,11 +54,16 @@ class VulkanCommandBuffer final : public CommandBuffer
 
     FORCEINLINE void Reset() final override { VK_CHECK(vkResetCommandBuffer(m_Handle, 0), "Failed to reset command buffer!"); }
 
+    void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EPipelineStage dstPipelineStage) const final override;
+
     void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = VK_NULL_HANDLE) final override;
     FORCEINLINE void EndRecording() final override { VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer"); }
 
+    void WaitForSubmitFence() final override;
     void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, const PipelineStageFlags pipelineStages = 0,
-                const std::vector<void*>& semaphoresToWaitOn = {}) final override;
+                const std::vector<void*>& semaphoresToWaitOn = {}, const uint32_t waitSemaphoreValueCount = 0,
+                const uint64_t* pWaitSemaphoreValues = nullptr, const uint32_t signalSemaphoreValueCount = 0,
+                const uint64_t* pSignalSemaphoreValues = nullptr) final override;
     void TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
                                const VkImageAspectFlags aspectMask) const;
 
@@ -161,9 +166,9 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
   private:
-    VkCommandBuffer m_Handle    = VK_NULL_HANDLE;
-    VkFence m_SubmitFence       = VK_NULL_HANDLE;
-    VkSemaphore m_WaitSemaphore = VK_NULL_HANDLE;
+    VkCommandBuffer m_Handle        = VK_NULL_HANDLE;
+    VkFence m_SubmitFence           = VK_NULL_HANDLE;
+    VkSemaphore m_TimelineSemaphore = VK_NULL_HANDLE;
 
     VkQueryPool m_PipelineStatisticsQuery = VK_NULL_HANDLE;
 
