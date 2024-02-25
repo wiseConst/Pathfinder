@@ -48,7 +48,7 @@ void VulkanBindlessRenderer::Bind(const Shared<CommandBuffer>& commandBuffer, co
     }
 
     const std::vector<VkDescriptorSet> sets = {m_TextureStorageImageSet[currentFrame], m_StorageBufferSet[currentFrame],
-                                               m_UniformBufferSet[currentFrame]};
+                                               m_FrameDataSet[currentFrame]};
     vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), pipelineBindPoint, m_Layout, 0, static_cast<uint32_t>(sets.size()),
                             sets.data(), 0, nullptr);
 }
@@ -72,8 +72,8 @@ void VulkanBindlessRenderer::UpdateCameraData(const Shared<Buffer>& cameraUnifor
     VkWriteDescriptorSet cameraWriteSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     cameraWriteSet.descriptorCount      = 1;
     cameraWriteSet.descriptorType       = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    cameraWriteSet.dstBinding           = UNIFORM_BUFFER_CAMERA_BINDING;
-    cameraWriteSet.dstSet               = m_UniformBufferSet[currentFrame];
+    cameraWriteSet.dstBinding           = FRAME_DATA_BUFFER_CAMERA_BINDING;
+    cameraWriteSet.dstSet               = m_FrameDataSet[currentFrame];
     cameraWriteSet.pBufferInfo          = &vulkanCameraUniformBuffer->GetDescriptorInfo();
     m_Writes.emplace_back(cameraWriteSet);
 }
@@ -86,9 +86,9 @@ void VulkanBindlessRenderer::UpdateLightData(const Shared<Buffer>& lightDataUnif
     const auto currentFrame             = Application::Get().GetWindow()->GetCurrentFrameIndex();
     VkWriteDescriptorSet cameraWriteSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
     cameraWriteSet.descriptorCount      = 1;
-    cameraWriteSet.descriptorType       = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-    cameraWriteSet.dstBinding           = UNIFORM_BUFFER_LIGHTS_BINDING;
-    cameraWriteSet.dstSet               = m_UniformBufferSet[currentFrame];
+    cameraWriteSet.descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
+    cameraWriteSet.dstBinding           = FRAME_DATA_BUFFER_LIGHTS_BINDING;
+    cameraWriteSet.dstSet               = m_FrameDataSet[currentFrame];
     cameraWriteSet.pBufferInfo          = &vulkanLightDataUniformBuffer->GetDescriptorInfo();
     m_Writes.emplace_back(cameraWriteSet);
 }
@@ -332,12 +332,12 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
                         "VK_BINDLESS_STORAGE_BUFFER_SET_LAYOUT");
     }
 
-    // UNIFORM BUFFER SET
+    // FRAME DATA BUFFER SET
     {
-        VkDescriptorSetLayoutBinding cameraBinding    = {UNIFORM_BUFFER_CAMERA_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+        VkDescriptorSetLayoutBinding cameraBinding    = {FRAME_DATA_BUFFER_CAMERA_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
                                                          VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
                                                              VK_SHADER_STAGE_VERTEX_BIT};
-        VkDescriptorSetLayoutBinding lightDataBinding = {UNIFORM_BUFFER_LIGHTS_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
+        VkDescriptorSetLayoutBinding lightDataBinding = {FRAME_DATA_BUFFER_LIGHTS_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
                                                          VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
                                                              VK_SHADER_STAGE_VERTEX_BIT};
         if (Renderer::GetRendererSettings().bMeshShadingSupport)
@@ -348,17 +348,16 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
 
         const std::vector<VkDescriptorSetLayoutBinding> bindings = {cameraBinding, lightDataBinding};
         const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), bindingFlag);
-        VkDescriptorSetLayoutBindingFlagsCreateInfo uniformBufferExtendedInfo = {
+        VkDescriptorSetLayoutBindingFlagsCreateInfo frameDataExtendedInfo = {
             VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, static_cast<uint32_t>(bindingFlags.size()),
             bindingFlags.data()};
 
-        const VkDescriptorSetLayoutCreateInfo ubSetLayoutCI = {
-            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &uniformBufferExtendedInfo,
+        const VkDescriptorSetLayoutCreateInfo frameDataSetLayoutCI = {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &frameDataExtendedInfo,
             VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT, static_cast<uint32_t>(bindings.size()), bindings.data()};
-        VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &ubSetLayoutCI, nullptr, &m_UniformBufferSetLayout),
-                 "Failed to create uniform buffer set layout!");
-        VK_SetDebugName(logicalDevice, m_UniformBufferSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT,
-                        "VK_BINDLESS_UNIFORM_BUFFER_SET_LAYOUT");
+        VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &frameDataSetLayoutCI, nullptr, &m_FrameDataSetLayout),
+                 "Failed to create frame data set layout!");
+        VK_SetDebugName(logicalDevice, m_FrameDataSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, "VK_BINDLESS_FRAME_DATA_SET_LAYOUT");
     }
 
     for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
@@ -415,24 +414,25 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
         }
 
         {
-            // UNIFORM BUFFER SET
-            constexpr std::array<VkDescriptorPoolSize, 1> uniformBufferPoolSizes = {{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 2}};
-            const VkDescriptorPoolCreateInfo ubPoolCI                            = {
-                VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,        nullptr,
-                VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,      1,
-                static_cast<uint32_t>(uniformBufferPoolSizes.size()), uniformBufferPoolSizes.data()};
+            // FRAME DATA SET
+            std::array<VkDescriptorPoolSize, 2> frameDataPoolSizes = {VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+                                                                      VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
+            const VkDescriptorPoolCreateInfo frameDataPoolCI       = {
+                VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,    nullptr,
+                VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,  1,
+                static_cast<uint32_t>(frameDataPoolSizes.size()), frameDataPoolSizes.data()};
 
-            VK_CHECK(vkCreateDescriptorPool(logicalDevice, &ubPoolCI, nullptr, &m_UniformBufferPool[frame]),
-                     "Failed to create bindless descriptor uniform buffer pool!");
-            const std::string ubPoolDebugName = std::string("VK_BINDLESS_UNIFORM_BUFFER_POOL_") + std::to_string(frame);
-            VK_SetDebugName(logicalDevice, m_UniformBufferPool[frame], VK_OBJECT_TYPE_DESCRIPTOR_POOL, ubPoolDebugName.data());
+            VK_CHECK(vkCreateDescriptorPool(logicalDevice, &frameDataPoolCI, nullptr, &m_FrameDataPool[frame]),
+                     "Failed to create bindless descriptor frame data pool!");
+            const std::string frameDataPoolDebugName = std::string("VK_BINDLESS_FRAME_DATA_POOL_") + std::to_string(frame);
+            VK_SetDebugName(logicalDevice, m_FrameDataPool[frame], VK_OBJECT_TYPE_DESCRIPTOR_POOL, frameDataPoolDebugName.data());
 
-            const VkDescriptorSetAllocateInfo ubDescriptorSetAI = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr,
-                                                                   m_UniformBufferPool[frame], 1, &m_UniformBufferSetLayout};
-            VK_CHECK(vkAllocateDescriptorSets(logicalDevice, &ubDescriptorSetAI, &m_UniformBufferSet[frame]),
-                     "Failed to allocate uniform buffer set!");
-            const std::string ubSetDebugName = std::string("VK_BINDLESS_UNIFORM_BUFFER_SET_") + std::to_string(frame);
-            VK_SetDebugName(logicalDevice, m_UniformBufferSet[frame], VK_OBJECT_TYPE_DESCRIPTOR_SET, ubSetDebugName.data());
+            const VkDescriptorSetAllocateInfo frameDataDescriptorSetAI = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr,
+                                                                          m_FrameDataPool[frame], 1, &m_FrameDataSetLayout};
+            VK_CHECK(vkAllocateDescriptorSets(logicalDevice, &frameDataDescriptorSetAI, &m_FrameDataSet[frame]),
+                     "Failed to allocate frame data set!");
+            const std::string frameDataSetDebugName = std::string("VK_BINDLESS_FRAME_DATA_SET_") + std::to_string(frame);
+            VK_SetDebugName(logicalDevice, m_FrameDataSet[frame], VK_OBJECT_TYPE_DESCRIPTOR_SET, frameDataSetDebugName.data());
         }
 
         Renderer::GetStats().DescriptorSetCount += 3;
@@ -447,7 +447,7 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
     PFR_ASSERT(m_PCBlock.size <= 128, "Exceeding minimum limit of push constant block!");
 
     const std::vector<VkDescriptorSetLayout> setLayouts = {m_TextureStorageImageSetLayout, m_StorageBufferSetLayout,
-                                                           m_UniformBufferSetLayout};
+                                                           m_FrameDataSetLayout};
     const VkPipelineLayoutCreateInfo pipelineLayoutCI   = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                                                            nullptr,
                                                            0,
@@ -473,9 +473,8 @@ void VulkanBindlessRenderer::Destroy()
                           [&](const VkDescriptorPool& pool) { vkDestroyDescriptorPool(logicalDevice, pool, nullptr); });
     vkDestroyDescriptorSetLayout(logicalDevice, m_StorageBufferSetLayout, nullptr);
 
-    std::ranges::for_each(m_UniformBufferPool,
-                          [&](const VkDescriptorPool& pool) { vkDestroyDescriptorPool(logicalDevice, pool, nullptr); });
-    vkDestroyDescriptorSetLayout(logicalDevice, m_UniformBufferSetLayout, nullptr);
+    std::ranges::for_each(m_FrameDataPool, [&](const VkDescriptorPool& pool) { vkDestroyDescriptorPool(logicalDevice, pool, nullptr); });
+    vkDestroyDescriptorSetLayout(logicalDevice, m_FrameDataSetLayout, nullptr);
 
     vkDestroyPipelineLayout(logicalDevice, m_Layout, nullptr);
 

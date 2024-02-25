@@ -38,7 +38,7 @@ class VulkanBindlessRenderer final : public BindlessRenderer
 
     NODISCARD FORCEINLINE const auto& GetTextureStorageImageSetLayout() const { return m_TextureStorageImageSetLayout; }
     NODISCARD FORCEINLINE const auto& GetStorageBufferSetLayout() const { return m_StorageBufferSetLayout; }
-    NODISCARD FORCEINLINE const auto& GetUniformBufferSetLayout() const { return m_UniformBufferSetLayout; }
+    NODISCARD FORCEINLINE const auto& GetFrameDataSetLayout() const { return m_FrameDataSetLayout; }
     NODISCARD FORCEINLINE const VkPushConstantRange& GetPushConstantBlock() const { return m_PCBlock; }
     NODISCARD FORCEINLINE const auto& GetPipelineLayout() const { return m_Layout; }
 
@@ -64,14 +64,14 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     VulkanDescriptorPoolPerFrame m_StorageBufferPool;
     VulkanDescriptorSetPerFrame m_StorageBufferSet;
 
-    VulkanDescriptorPoolPerFrame m_UniformBufferPool;
-    VulkanDescriptorSetPerFrame m_UniformBufferSet;
+    VulkanDescriptorPoolPerFrame m_FrameDataPool;
+    VulkanDescriptorSetPerFrame m_FrameDataSet;
 
     VkPushConstantRange m_PCBlock = {};
 
     VkDescriptorSetLayout m_TextureStorageImageSetLayout = VK_NULL_HANDLE;
     VkDescriptorSetLayout m_StorageBufferSetLayout       = VK_NULL_HANDLE;
-    VkDescriptorSetLayout m_UniformBufferSetLayout       = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_FrameDataSetLayout           = VK_NULL_HANDLE;
 
     VkPipelineLayout m_Layout = VK_NULL_HANDLE;
 

@@ -479,7 +479,7 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
             LOG_TAG_ERROR(SHADERC, "Failed to compile \"%s\" shader! %s", shaderName.data(), compiledShaderResult.GetErrorMessage().data());
 
         const std::string shaderErrorMessage = std::string("Shader compilation failed! ") + std::string(shaderName);
-        PFR_ASSERT(false, shaderErrorMessage.data());
+            PFR_ASSERT(false, shaderErrorMessage.data());
     }
 
     const std::vector<uint32_t> compiledShaderSrc{compiledShaderResult.cbegin(), compiledShaderResult.cend()};
@@ -518,7 +518,7 @@ void VulkanShader::Set(const std::string_view name, const Shared<Image> attachme
     std::vector<VkWriteDescriptorSet> writes;
     for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
-        for (auto& shaderDesc : m_ShaderDescriptions)
+        for (const auto& shaderDesc : m_ShaderDescriptions)
         {
             for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)
             {
@@ -537,6 +537,11 @@ void VulkanShader::Set(const std::string_view name, const Shared<Image> attachme
         }
     }
 
+    if (writes.empty())
+    {
+        LOG_TAG_ERROR(SHADER, "Failed to update: %s", name.data());
+        PFR_ASSERT(false, "Failed to update shader data!");
+    }
     vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
 }
@@ -550,7 +555,7 @@ void VulkanShader::Set(const std::string_view name, const Shared<Texture2D> text
     std::vector<VkWriteDescriptorSet> writes;
     for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
-        for (auto& shaderDesc : m_ShaderDescriptions)
+        for (const auto& shaderDesc : m_ShaderDescriptions)
         {
             for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)
             {
@@ -569,6 +574,11 @@ void VulkanShader::Set(const std::string_view name, const Shared<Texture2D> text
         }
     }
 
+    if (writes.empty())
+    {
+        LOG_TAG_ERROR(SHADER, "Failed to update: %s", name.data());
+        PFR_ASSERT(false, "Failed to update shader data!");
+    }
     vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
 }
@@ -582,7 +592,7 @@ void VulkanShader::Set(const std::string_view name, const Shared<Buffer> buffer)
     std::vector<VkWriteDescriptorSet> writes;
     for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
-        for (auto& shaderDesc : m_ShaderDescriptions)
+        for (const auto& shaderDesc : m_ShaderDescriptions)
         {
             for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)
             {
@@ -601,6 +611,11 @@ void VulkanShader::Set(const std::string_view name, const Shared<Buffer> buffer)
         }
     }
 
+    if (writes.empty())
+    {
+        LOG_TAG_ERROR(SHADER, "Failed to update: %s", name.data());
+        PFR_ASSERT(false, "Failed to update shader data!");
+    }
     vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
 }
@@ -613,8 +628,7 @@ void VulkanShader::Set(const std::string_view name, const BufferPerFrame& buffer
         const auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffers[frame]);
         PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
 
-        VkWriteDescriptorSet wds = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        for (auto& shaderDesc : m_ShaderDescriptions)
+        for (const auto& shaderDesc : m_ShaderDescriptions)
         {
             for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)
             {
@@ -622,6 +636,7 @@ void VulkanShader::Set(const std::string_view name, const BufferPerFrame& buffer
                 {
                     if (strcmp(bindingName.data(), name.data()) != 0) continue;
 
+                    auto& wds           = writes.emplace_back(VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
                     wds.dstBinding      = descriptor.binding;
                     wds.descriptorCount = descriptor.descriptorCount;
                     wds.descriptorType  = descriptor.descriptorType;
@@ -630,15 +645,13 @@ void VulkanShader::Set(const std::string_view name, const BufferPerFrame& buffer
                 }
             }
         }
-        writes.push_back(wds);
     }
 
     if (writes.empty())
     {
-        LOG_TAG_WARN(SHADER, "Failed to update %s", name.data());
-        return;
+        LOG_TAG_ERROR(SHADER, "Failed to update: %s", name.data());
+        PFR_ASSERT(false, "Failed to update shader data!");
     }
-
     vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
 }
@@ -651,8 +664,7 @@ void VulkanShader::Set(const std::string_view name, const ImagePerFrame& attachm
         const auto vulkanImage = std::static_pointer_cast<VulkanImage>(attachments[frame]);
         PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
 
-        VkWriteDescriptorSet wds = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-        for (auto& shaderDesc : m_ShaderDescriptions)
+        for (const auto& shaderDesc : m_ShaderDescriptions)
         {
             for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)
             {
@@ -660,6 +672,7 @@ void VulkanShader::Set(const std::string_view name, const ImagePerFrame& attachm
                 {
                     if (strcmp(bindingName.data(), name.data()) != 0) continue;
 
+                    auto& wds           = writes.emplace_back(VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
                     wds.dstBinding      = descriptor.binding;
                     wds.descriptorCount = descriptor.descriptorCount;
                     wds.descriptorType  = descriptor.descriptorType;
@@ -668,9 +681,53 @@ void VulkanShader::Set(const std::string_view name, const ImagePerFrame& attachm
                 }
             }
         }
-        writes.push_back(wds);
     }
 
+    if (writes.empty())
+    {
+        LOG_TAG_ERROR(SHADER, "Failed to update: %s", name.data());
+        PFR_ASSERT(false, "Failed to update shader data!");
+    }
+    vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
+                           nullptr);
+}
+
+void VulkanShader::Set(const std::string_view name, const std::vector<ImagePerFrame>& attachments)
+{
+    std::vector<VkWriteDescriptorSet> writes;
+    for (size_t i{}; i < attachments.size(); ++i)
+    {
+        for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
+        {
+            const auto vulkanImage = std::static_pointer_cast<VulkanImage>(attachments[i][frame]);
+            PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+
+            for (const auto& shaderDesc : m_ShaderDescriptions)
+            {
+                for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)
+                {
+                    for (auto& [bindingName, descriptor] : shaderDesc.DescriptorSetBindings[iSet])
+                    {
+                        if (strcmp(bindingName.data(), name.data()) != 0) continue;
+
+                        auto& wds           = writes.emplace_back(VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
+                        wds.dstBinding      = descriptor.binding;
+                        wds.descriptorCount = 1;  // descriptor.descriptorCount;
+                        wds.descriptorType  = descriptor.descriptorType;
+                        wds.dstArrayElement = i;
+                        wds.dstSet          = shaderDesc.Sets[iSet][frame].second;
+                        wds.pImageInfo      = &vulkanImage->GetDescriptorInfo();
+                    }
+                }
+            }
+        }
+    }
+
+    if (writes.empty())
+    {
+        LOG_TAG_ERROR(SHADER, "Failed to update: %s", name.data());
+        PFR_ASSERT(false, "Failed to update shader data!");
+    }
     vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
                            nullptr);
 }

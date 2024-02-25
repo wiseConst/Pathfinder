@@ -55,7 +55,6 @@ Shared<Image> VulkanFramebuffer::GetDepthAttachment() const
         if (ImageUtils::IsDepthFormat(framebufferAttachment.Specification.Format)) return framebufferAttachment.Attachment;
     }
 
-    LOG_TAG_WARN(VULKAN, "No depth attachments found!");
     return nullptr;
 }
 

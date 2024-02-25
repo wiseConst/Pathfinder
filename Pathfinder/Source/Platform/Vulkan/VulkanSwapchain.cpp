@@ -115,6 +115,12 @@ VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(w
 
     Invalidate();
 
+    for (auto& fence : m_RenderFenceRef)
+        fence = VK_NULL_HANDLE;
+
+    for (auto& semaphore : m_RenderSemaphoreRef)
+        semaphore = VK_NULL_HANDLE;
+
 #if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     m_SurfaceFullScreenExclusiveWin32Info.pNext = nullptr;
     m_SurfaceFullScreenExclusiveWin32Info.hmonitor =
@@ -310,10 +316,20 @@ void VulkanSwapchain::AcquireImage()
 
     m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_UNDEFINED;
 
+    if (m_RenderFenceRef[m_FrameIndex] != VK_NULL_HANDLE)
+    {
+        VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_RenderFenceRef[m_FrameIndex], VK_TRUE, UINT64_MAX),
+                 "Failed to wait on swapchain-render submit fence!");
+    }
+
     const auto result =
         vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphores[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
     if (result == VK_SUCCESS)
     {
+        if (m_RenderFenceRef[m_FrameIndex] != VK_NULL_HANDLE)
+        {
+            VK_CHECK(vkResetFences(logicalDevice, 1, &m_RenderFenceRef[m_FrameIndex]), "Failed to reset swapchain-render submit fence!");
+        }
         return;
     }
 
@@ -351,9 +367,12 @@ void VulkanSwapchain::PresentImage()
     presentInfo.swapchainCount   = 1;
     presentInfo.pSwapchains      = &m_Handle;
 
-    std::vector<VkSemaphore> waitSemaphores = {m_ImageAcquiredSemaphores[m_FrameIndex]};
-    presentInfo.waitSemaphoreCount          = static_cast<uint32_t>(waitSemaphores.size());
-    presentInfo.pWaitSemaphores             = waitSemaphores.data();
+    // Here I assume that waiting on image acquiring done outside swapchain(Renderer::Flush main graphics submit)
+    VkSemaphore waitSemaphore =
+        m_RenderSemaphoreRef[m_FrameIndex] ? m_RenderSemaphoreRef[m_FrameIndex] : m_ImageAcquiredSemaphores[m_FrameIndex];
+
+    presentInfo.waitSemaphoreCount = 1;
+    presentInfo.pWaitSemaphores    = &waitSemaphore;
 
     const auto imagePresentBegin                = Timer::Now();
     const auto result                           = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &presentInfo);
@@ -406,8 +425,23 @@ void VulkanSwapchain::Destroy()
 
 void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
 {
-    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
-    vulkanCommandBuffer->BeginRecording(true);
+    Shared<VulkanCommandBuffer> vulkanCommandBuffer = nullptr;
+
+    bool bFromRenderer = false;
+    const auto& rd     = Renderer::GetRendererData();
+    if (const auto& commandBuffer = rd->CurrentRenderCommandBuffer.lock())
+    {
+        vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+        PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
+
+        bFromRenderer = true;
+    }
+    else
+    {
+        vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+        vulkanCommandBuffer->BeginRecording(true);
+    }
+
     vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain", glm::vec3(0.9f, 0.1f, 0.1f));
 
     {
@@ -458,8 +492,12 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
     }
 
     vulkanCommandBuffer->EndDebugLabel();
-    vulkanCommandBuffer->EndRecording();
-    vulkanCommandBuffer->Submit();
+
+    if (!bFromRenderer)
+    {
+        vulkanCommandBuffer->EndRecording();
+        vulkanCommandBuffer->Submit();
+    }
 }
 
 }  // namespace Pathfinder

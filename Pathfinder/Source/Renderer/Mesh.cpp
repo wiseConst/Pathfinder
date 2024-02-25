@@ -18,10 +18,10 @@
 namespace Pathfinder
 {
 
-namespace FasgtlfUtils
+namespace FastGLTFUtils
 {
 
-static ESamplerFilter FastgltfSamplerFilterToPathfinder(const fastgltf::Filter filter)
+static ESamplerFilter SamplerFilterToPathfinder(const fastgltf::Filter filter)
 {
     switch (filter)
     {
@@ -34,7 +34,7 @@ static ESamplerFilter FastgltfSamplerFilterToPathfinder(const fastgltf::Filter f
     return ESamplerFilter::SAMPLER_FILTER_LINEAR;
 }
 
-static ESamplerWrap FastgltfSamplerWrapToPathfinder(const fastgltf::Wrap wrap)
+static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
 {
     switch (wrap)
     {
@@ -48,8 +48,8 @@ static ESamplerWrap FastgltfSamplerWrapToPathfinder(const fastgltf::Wrap wrap)
     return ESamplerWrap::SAMPLER_WRAP_REPEAT;
 }
 
-static Shared<Texture2D> FastgltfLoadTexture(const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor,
-                                             const size_t textureIndex, TextureSpecification& textureSpec)
+static Shared<Texture2D> LoadTexture(const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor, const size_t textureIndex,
+                                     TextureSpecification& textureSpec)
 {
     const auto& fastgltfTexture = asset.textures[textureIndex];
     const auto imageIndex       = fastgltfTexture.imageIndex;
@@ -60,9 +60,9 @@ static Shared<Texture2D> FastgltfLoadTexture(const fastgltf::Asset& asset, const
         const auto& fastgltfTextureSampler = asset.samplers[fastgltfTexture.samplerIndex.value()];
 
         if (fastgltfTextureSampler.magFilter.has_value())
-            textureSpec.Filter = FastgltfSamplerFilterToPathfinder(fastgltfTextureSampler.magFilter.value());
+            textureSpec.Filter = SamplerFilterToPathfinder(fastgltfTextureSampler.magFilter.value());
 
-        textureSpec.Wrap = FastgltfSamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
+        textureSpec.Wrap = SamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
     }
 
     Shared<Texture2D> texture = nullptr;
@@ -101,10 +101,55 @@ static Shared<Texture2D> FastgltfLoadTexture(const fastgltf::Asset& asset, const
     return texture;
 }
 
-}  // namespace FasgtlfUtils
+}  // namespace FastGLTFUtils
 
 namespace MeshPreprocessorUtils
 {
+
+// TODO: SIMDify it?
+static AABB GenerateAABB(const std::vector<MeshPositionVertex>& points)
+{
+    glm::vec3 min = glm::vec3(.0f);
+    glm::vec3 max = glm::vec3(.0f);
+    for (const auto& point : points)
+    {
+        min = glm::min(point.Position, min);
+        max = glm::max(point.Position, max);
+    }
+
+    const glm::vec3 center = (max + min) * .5f;
+    return {center, max - center};
+}
+
+static Sphere GenerateBoundingSphere(const std::vector<MeshPositionVertex>& points)
+{
+    glm::vec3 farthestVtx[2] = {points[0].Position, points[0].Position};
+    glm::vec3 averagedVertexPos(0.0f);
+
+    // First pass - find averaged vertex pos.
+    for (const auto& point : points)
+        averagedVertexPos += point.Position;
+
+    averagedVertexPos /= points.size();
+    const auto aabb = GenerateAABB(points);
+
+    // Second pass - find farthest vertices for both averaged vertex position and AABB centroid.
+    for (const auto& point : points)
+    {
+        if (glm::distance2(averagedVertexPos, point.Position) > glm::distance2(averagedVertexPos, farthestVtx[0]))
+            farthestVtx[0] = point.Position;
+        if (glm::distance2(aabb.Center, point.Position) > glm::distance2(aabb.Center, farthestVtx[1])) farthestVtx[1] = point.Position;
+    }
+
+    const float averagedVtxToFarthestDistance  = glm::distance(farthestVtx[0], averagedVertexPos);
+    const float aabbCentroidToFarthestDistance = glm::distance(farthestVtx[1], aabb.Center);
+
+    Sphere sphere = {};
+    sphere.Center = averagedVtxToFarthestDistance < aabbCentroidToFarthestDistance ? averagedVertexPos : aabb.Center;
+    sphere.Radius = glm::min(averagedVtxToFarthestDistance, aabbCentroidToFarthestDistance);
+
+    return sphere;
+}
 
 struct MeshoptimizeVertex
 {
@@ -354,10 +399,11 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
             submesh->SetMaterial(MakeShared<Material>());
             auto& material = submesh->GetMaterial();
 
-            PBRData pbrData   = {};
-            pbrData.BaseColor = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data());
-            pbrData.Metallic  = materialAccessor.pbrData.metallicFactor;
-            pbrData.Roughness = materialAccessor.pbrData.roughnessFactor;
+            PBRData pbrData        = {};
+            pbrData.BaseColor      = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data());
+            pbrData.Metallic       = materialAccessor.pbrData.metallicFactor;
+            pbrData.Roughness      = materialAccessor.pbrData.roughnessFactor;
+            pbrData.EmissiveFactor = glm::make_vec3(materialAccessor.emissiveFactor.data());
 
             material->SetPBRData(pbrData);
             material->SetIsOpaque(materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque);
@@ -366,8 +412,8 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
             {
                 TextureSpecification albedoTextureSpec = {};
 
-                const auto textureIndex  = materialAccessor.pbrData.baseColorTexture->textureIndex;
-                Shared<Texture2D> albedo = FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, textureIndex, albedoTextureSpec);
+                const auto textureIndex = materialAccessor.pbrData.baseColorTexture->textureIndex;
+                auto albedo             = FastGLTFUtils::LoadTexture(asset, materialAccessor, textureIndex, albedoTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(albedo);
                 material->SetAlbedo(albedo);
@@ -376,11 +422,9 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
             if (materialAccessor.normalTexture.has_value())
             {
                 TextureSpecification normalMapTextureSpec = {};
-              //  normalMapTextureSpec.bFlipOnLoad          = true;
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
-                Shared<Texture2D> normalMap =
-                    FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, textureInfo.textureIndex, normalMapTextureSpec);
+                auto normalMap = FastGLTFUtils::LoadTexture(asset, materialAccessor, textureInfo.textureIndex, normalMapTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(normalMap);
                 material->SetNormalMap(normalMap);
@@ -391,11 +435,22 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
                 TextureSpecification metallicRoughnessTextureSpec = {};
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
-                Shared<Texture2D> metallicRoughness =
-                    FasgtlfUtils::FastgltfLoadTexture(asset, materialAccessor, textureInfo.textureIndex, metallicRoughnessTextureSpec);
+                auto metallicRoughness =
+                    FastGLTFUtils::LoadTexture(asset, materialAccessor, textureInfo.textureIndex, metallicRoughnessTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(metallicRoughness);
                 material->SetMetallicRoughness(metallicRoughness);
+            }
+
+            if (materialAccessor.emissiveTexture.has_value())
+            {
+                TextureSpecification emissiveTextureSpec = {};
+
+                const auto& textureInfo = materialAccessor.emissiveTexture.value();
+                auto emissiveMap = FastGLTFUtils::LoadTexture(asset, materialAccessor, textureInfo.textureIndex, emissiveTextureSpec);
+
+                Renderer::GetBindlessRenderer()->LoadTexture(emissiveMap);
+                material->SetEmissiveMap(emissiveMap);
             }
         }
 
@@ -403,8 +458,7 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
         std::vector<MeshPreprocessorUtils::MeshoptimizeVertex> finalVertices;
         MeshPreprocessorUtils::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
 
-        // NOTE: Currently index buffer is not used in shaders, so it doesn't need STORAGE usage flag
-        BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_INDEX /* | EBufferUsage::BUFFER_USAGE_STORAGE */};
+        BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_INDEX};
         ibSpec.Data                = finalIndices.data();
         ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
@@ -427,8 +481,6 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
             vertexAttributes[i].Tangent = finalVertex.Tangent;
             vertexAttributes[i].UV      = finalVertex.UV;
         }
-
-        // NOTE: Do I free some RAM here?
         indices.clear();
         meshoptimizeVertices.clear();
 
@@ -452,9 +504,11 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
         }
         submesh->m_VertexAttributeBuffer = Buffer::Create(vbAttribSpec);
 
+        submesh->m_BoundingSphere = MeshPreprocessorUtils::GenerateBoundingSphere(vertexPositions);
+
         if (Renderer::GetRendererSettings().bRTXSupport)
         {
-            // TODO:
+            // TODO: AccelerationStructureBuilder
         }
 
         if (Renderer::GetRendererSettings().bMeshShadingSupport)

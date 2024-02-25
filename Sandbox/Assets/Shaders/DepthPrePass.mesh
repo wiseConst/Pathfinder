@@ -22,8 +22,7 @@ void main()
     {
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
 
-        // NOTE: u_PC.Transform = ViewProj * Transform. Done on CPU side
-        gl_MeshVerticesEXT[i].gl_Position = u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
+        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.ViewProjection * u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
     }
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;

@@ -30,7 +30,8 @@ vec3 GetViewPositionFromDepth(vec2 coords) {
         const float fragmentDepth = texture(u_DepthTex, coords).r;
       
         // UV space -> ndc
-        const vec4 ndc = vec4(coords * 2.0 - 1.0, fragmentDepth * 2.0 - 1.0, 1.0);
+        // NOTE: For OpenGL should be (fragmentDepth * 2.f - .1f)
+        const vec4 ndc = vec4(coords * 2.0 - 1.0, fragmentDepth, 1.0);
         
         // ndc -> view space
         vec4 posVS = u_GlobalCameraData.InverseProjection * ndc;

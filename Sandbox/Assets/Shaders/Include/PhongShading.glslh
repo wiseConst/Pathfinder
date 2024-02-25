@@ -3,43 +3,41 @@
 // #include "Assets/Shaders/Include/Lights.h"
 
 // NOTE: LightDirection here points towards object from light pos
-vec3 CalcDirLights(const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const DirectionalLight dl, const vec3 albedo, const float ao)
+vec3 CalcDirLights(const float kShadow, const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const DirectionalLight dl, const vec3 albedo, const float ao)
 {
-    const vec3 N = normalize(normal);
     const vec3 L = normalize(dl.Direction);
-  
-    const vec3 ambient = albedo * ao * 0.3f;
-  
+    const vec3 N = normalize(normal);
+
     const float kD = max(dot(N, -L), 0.0);
-    const vec3 diffuse = kD * albedo * dl.Color * dl.Intensity;
-    
-    const float kS = 1.f - kD;
+    const vec3 diffuse = kD * dl.Color * albedo;
+
     const vec3 viewDir = normalize(cameraPos - worldPos);
   
     const vec3 H = normalize(-L + viewDir);
     const uint specPow = 64;
     const float spec = pow(max(dot(viewDir, H), 0.0), specPow);
-    const vec3 specular = spec * kS * dl.Color;
+    const vec3 specular = spec * dl.Color * (1.f - kD);
     
-    return ambient + diffuse + specular;
+    const vec3 ambient = albedo * ao * 0.08f;
+    return ambient + (diffuse + specular) * dl.Intensity * kShadow;
 }
 
 vec3 CalcPointLights(const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const PointLight pl, const vec3 albedo, const float ao)
 {
-     const vec3 ambient = 0.3f * albedo * ao;
+    const vec3 ambient = 0.08f * albedo * ao;
 
-     const float fragToPlDist = abs(length(worldPos - pl.Position));
-     if(fragToPlDist - pl.MinRadius > pl.Radius) 
-     {
-         const float kDeem = abs(fragToPlDist - pl.Radius) + 0.0001f;
-         return kDeem < 1.f ? ambient : ambient / kDeem;
-     }
+    const float fragToPlDist = abs(length(worldPos - pl.Position));
+    if(fragToPlDist - pl.MinRadius > pl.Radius) 
+    {
+        const float kDeem = abs(fragToPlDist - pl.Radius) + 0.0001f;
+        return kDeem < 1.f ? ambient : ambient / kDeem;
+    }
 
     const vec3 N = normalize(normal);
     const vec3 L = normalize(worldPos - pl.Position);
 
     const float kD = max(dot(N, -L), 0.0);
-    const vec3 diffuse = kD * pl.Color * albedo * pl.Intensity;
+    const vec3 diffuse = kD * pl.Color * albedo;
     
     const float kS = 1.f - kD; // PBR enjoyer
     const vec3 viewDir = normalize(cameraPos - worldPos);
@@ -48,13 +46,10 @@ vec3 CalcPointLights(const vec3 worldPos, const vec3 normal, const vec3 cameraPo
     const uint specPow = 64;
     const float spec = pow(max(dot(viewDir, H), 0.0), specPow);
     const vec3 specular = spec * kS * pl.Color;
-         
-    const float epsilon = pl.MinRadius - pl.Radius;
-    const float plIntensity = clamp((fragToPlDist - pl.Radius) / epsilon, 0.0, 1.0);
-
+   
     const float distance = length(L);
-    const float attenuation = 1.0f / (1.0f + 0.05 * distance + 0.005 * distance * distance);
-    return ambient + (diffuse + specular) * attenuation * plIntensity;
+    const float attenuation = clamp(1.0 - distance * distance / (pl.Radius * pl.Radius), 0.0, 1.0);
+    return ambient + (diffuse + specular) * attenuation * pl.Intensity;
 }
 
 vec3 CalcSpotLights(const vec3 worldPos, const vec3 normal, const vec3 cameraPos, const SpotLight sl)
@@ -83,7 +78,7 @@ vec3 CalcSpotLights(const vec3 worldPos, const vec3 normal, const vec3 cameraPos
     // 1) outerCutOff > innerCutOff > theta -> max light
     // 2) outerCutOff > theta > innerCutOff -> medium
     // 3) theta > outerCutOff > innerCutOff -> zero light
-    const float theta = dot(normalize(sl.SpotDirection), L);
+    const float theta = dot(normalize(sl.Direction), L);
     const float epsilon = sl.InnerCutOff - sl.OuterCutOff;
     const float spotIntensity = clamp((theta - sl.OuterCutOff) / epsilon, 0.0, 1.0);
     

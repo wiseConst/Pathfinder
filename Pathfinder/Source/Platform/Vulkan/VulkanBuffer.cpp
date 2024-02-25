@@ -177,20 +177,28 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         const auto& rd = Renderer::GetRendererData();
         rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
 
-       /* auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(rd->TransferCommandBuffer[rd->FrameIndex]);
-        PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
+#if TODO
+        if (auto commandBuffer = rd->CurrentTransferCommandBuffer.lock())
+        {
+            // TODO: Use semaphore from transfer cmd buf
+            auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+            PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
 
-        const VkBufferCopy region = {0, 0, dataSize};
-        vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);*/
+            const VkBufferCopy region = {0, 0, dataSize};
+            vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
+        }
+        else
+#endif
+        {
+            auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+            vulkanCommandBuffer->BeginRecording(true);
 
-        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
-        vulkanCommandBuffer->BeginRecording(true);
+            const VkBufferCopy region = {0, 0, dataSize};
+            vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
 
-        const VkBufferCopy region = {0, 0, dataSize};
-        vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
-
-        vulkanCommandBuffer->EndRecording();
-        vulkanCommandBuffer->Submit(true, false);
+            vulkanCommandBuffer->EndRecording();
+            vulkanCommandBuffer->Submit(true, false);
+        }
     }
 }
 

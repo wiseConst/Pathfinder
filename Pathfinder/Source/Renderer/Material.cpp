@@ -21,6 +21,13 @@ const uint32_t Material::GetNormalMapIndex() const
     return Renderer::GetRendererData()->WhiteTexture->GetBindlessIndex();
 }
 
+const uint32_t Material::GetEmissiveMapIndex() const
+{
+    if (m_EmissiveMap) return m_EmissiveMap->GetBindlessIndex();
+
+    return Renderer::GetRendererData()->WhiteTexture->GetBindlessIndex();
+}
+
 const uint32_t Material::GetMetallicRoughnessIndex() const
 {
     if (m_MetallicRoughness) return m_MetallicRoughness->GetBindlessIndex();

@@ -22,10 +22,12 @@ void main()
     barrier();
 
     Meshlet meshlet =  s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi];
-    vec3 coneApex = vec3(meshlet.coneApex[0],meshlet.coneApex[1],meshlet.coneApex[2]);
-    vec3 coneAxis = vec3(meshlet.coneAxis[0],meshlet.coneAxis[1],meshlet.coneAxis[2]);
-    if (dot(normalize(coneApex - u_GlobalCameraData.Position), coneAxis) < meshlet.coneCutoff)  
+    vec3 coneApex = vec3(meshlet.coneApex[0], meshlet.coneApex[1], meshlet.coneApex[2]);
+    vec3 coneAxis = vec3(meshlet.coneAxis[0], meshlet.coneAxis[1], meshlet.coneAxis[2]);
+    if (dot(normalize(coneApex - u_GlobalCameraData.Position), coneAxis) < meshlet.coneCutoff)
+    {
         atomicAdd(passedMeshletCount, 1);
+    }
 
     barrier();
     EmitMeshTasksEXT(passedMeshletCount, 1, 1);

@@ -67,8 +67,9 @@ class Renderer : private Uncopyable, private Unmovable
         // MISC
         LightsData LightStruct;
         CameraData CameraStruct;
+        Frustum CullFrustum;
 
-        BufferPerFrame LightsUB;
+        BufferPerFrame LightsSSBO;
         BufferPerFrame CameraUB;
         BufferPerFrame UploadHeap;
 
@@ -89,12 +90,17 @@ class Renderer : private Uncopyable, private Unmovable
         FramebufferPerFrame CompositeFramebuffer;
         Shared<Pipeline> CompositePipeline = nullptr;
 
-        // NOTE: Forward+ renderer
+        // Forward+ renderer
         FramebufferPerFrame GBuffer;
         Shared<Pipeline> ForwardPlusPipeline = nullptr;
 
         FramebufferPerFrame DepthPrePassFramebuffer;
         Shared<Pipeline> DepthPrePassPipeline = nullptr;
+
+        // TODO: CASCADED SHADOW MAPS
+        // DirShadowMaps
+        std::vector<FramebufferPerFrame> DirShadowMaps;
+        Shared<Pipeline> DirShadowMapPipeline = nullptr;
 
         std::vector<RenderObject> OpaqueObjects;
         std::vector<RenderObject> TransparentObjects;
@@ -103,20 +109,25 @@ class Renderer : private Uncopyable, private Unmovable
         Shared<Pipeline> GridPipeline = nullptr;
 
         ImagePerFrame FrustumDebugImage;
+        ImagePerFrame LightHeatMapImage;
         Shared<Pipeline> LightCullingPipeline = nullptr;
         BufferPerFrame PointLightIndicesStorageBuffer;
         // NOTE: Instead of creating this shit manually, shader can create you this
         // in e.g. you got writeonly buffer -> shader can create it,
         // in e.g. you got readonly  buffer -> shader gonna wait for you to give it him
         // unordored_map<string,BufferPerFrame>, string maps to set and binding
-        BufferPerFrame SpotLightIndicesStorageBuffer;  // TODO: Implement
+        BufferPerFrame SpotLightIndicesStorageBuffer;
 
         // TODO: Add HBAO, GTAO, RTAO
         // AO
-        Shared<Pipeline> SSAOPipeline = nullptr;
-        FramebufferPerFrame SSAOFramebuffer;
-        Shared<Texture2D> SSAONoiseTexture = nullptr;
-        Shared<Pipeline> SSAOBlurPipeline  = nullptr;
+        Shared<Texture2D> AONoiseTexture = nullptr;
+        struct AO
+        {
+            Shared<Pathfinder::Pipeline> Pipeline = nullptr;
+            FramebufferPerFrame Framebuffer;
+        };
+        AO SSAO                           = {};
+        Shared<Pipeline> SSAOBlurPipeline = nullptr;
         FramebufferPerFrame SSAOBlurFramebuffer;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
@@ -140,11 +151,16 @@ class Renderer : private Uncopyable, private Unmovable
     };
     static inline RendererStats s_RendererStats = {};
 
+    // TODO: GPU-side frustum culling
+    static bool IsInsideFrustum(const auto& renderObject);
     static void DrawGrid();
     static void DepthPrePass();
 
+    static void DirShadowMapPass();
+
     static void LightCullingPass();
     static void SSAOPass();
+    static void HBAOPass();
 
     static void GeometryPass();
 };

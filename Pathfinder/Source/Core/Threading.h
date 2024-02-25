@@ -39,7 +39,10 @@ class JobSystem final : private Uncopyable, private Unmovable
     static void Init();
     static void Shutdown();
 
-    FORCEINLINE static uint32_t GetNumThreads() { return std::thread::hardware_concurrency() - 1; }
+    FORCEINLINE static uint32_t GetNumThreads()
+    {
+        return std::clamp(std::thread::hardware_concurrency() - 1u, 1u, (uint32_t)s_WORKER_THREAD_COUNT);
+    }
 
   private:
     static inline bool s_bShutdownRequested = false;

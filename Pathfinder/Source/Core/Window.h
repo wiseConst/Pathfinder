@@ -38,7 +38,8 @@ class Window : private Uncopyable, private Unmovable
   public:
     virtual ~Window();
 
-    NODISCARD FORCEINLINE virtual void* Get() const                                   = 0;
+    NODISCARD FORCEINLINE virtual void* Get() const = 0;
+    NODISCARD FORCEINLINE const auto& GetSwapchain() const { return m_Swapchain; }
     NODISCARD FORCEINLINE virtual const WindowSpecification& GetSpecification() const = 0;
     NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const         = 0;
 

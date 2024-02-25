@@ -7,6 +7,5 @@ layout(location = 0) in vec3 inPos;
 
 void main()
 {
-    // NOTE: u_PC.Transform = ViewProj * Transform. Done on CPU side
-    gl_Position = u_PC.Transform * vec4(inPos, 1.0);  
+    gl_Position = u_GlobalCameraData.ViewProjection * u_PC.Transform * vec4(inPos, 1.0);  
 }

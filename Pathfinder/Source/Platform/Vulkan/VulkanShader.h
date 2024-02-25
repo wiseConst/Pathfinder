@@ -24,6 +24,7 @@ class VulkanShader final : public Shader
 
     void Set(const std::string_view name, const BufferPerFrame& buffers) final override;
     void Set(const std::string_view name, const ImagePerFrame& attachments) final override;
+    void Set(const std::string_view name, const std::vector<ImagePerFrame>& attachments) final override;
 
     NODISCARD FORCEINLINE const auto& GetDescriptions() const { return m_ShaderDescriptions; }
     NODISCARD FORCEINLINE const std::vector<VkVertexInputAttributeDescription>& GetInputVars() const { return m_InputVars; }

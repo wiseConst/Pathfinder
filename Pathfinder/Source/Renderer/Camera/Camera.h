@@ -42,9 +42,11 @@ class Camera : private Uncopyable, private Unmovable
     virtual void OnEvent(Event& e)               = 0;
     virtual void OnUpdate(const float deltaTime) = 0;
 
-    virtual Frustum GetFrustum() = 0;
+    const auto& GetFrustum() const { return m_CullFrustum; }
 
   protected:
+    Frustum m_CullFrustum = {};
+
     glm::mat4 m_View       = glm::mat4(1.0f);
     glm::mat4 m_Projection = glm::mat4(1.0f);
     glm::vec3 m_Position   = glm::vec3(0.0f);
@@ -60,9 +62,11 @@ class Camera : private Uncopyable, private Unmovable
 
     Camera()                                                  = default;
     virtual void RecalculateViewMatrix()                      = 0;
+    virtual void RecalculateProjectionMatrix()                      = 0;
     virtual bool OnMouseMoved(const MouseMovedEvent& e)       = 0;
     virtual bool OnMouseScrolled(const MouseScrolledEvent& e) = 0;
     virtual bool OnWindowResized(const WindowResizeEvent& e)  = 0;
+    virtual void RecalculateCullFrustum()                     = 0;
 };
 
 }  // namespace Pathfinder

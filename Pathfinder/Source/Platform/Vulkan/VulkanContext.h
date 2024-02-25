@@ -2,9 +2,7 @@
 #define VULKANCONTEXT_H
 
 #include "Renderer/GraphicsContext.h"
-
 #include "VulkanCore.h"
-#include <volk/volk.h>
 
 namespace Pathfinder
 {

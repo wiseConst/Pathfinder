@@ -3,13 +3,11 @@
 
 #include "PlatformDetection.h"
 #include "Inheritance.h"
-
-#include <memory>
-#include <string_view>
+#include "CoreDefines.h"
 
 #include "Memory/Memory.h"
-#include "Math.h"
 #include "Log.h"
+#include "Math.h"
 
 #if PFR_WINDOWS
 #define DEBUGBREAK() __debugbreak()
@@ -34,24 +32,10 @@
     }
 #endif
 
-#ifdef FORCEINLINE
-#undef FORCEINLINE
-#endif
-
-#if _MSC_VER
-#define FORCEINLINE __forceinline
-#else
-#define FORCEINLINE __attribute__((always_inline))
-#endif
-
-#define NODISCARD [[nodiscard]]
-
-#define BIT(x) (1 << x)
-
 namespace Pathfinder
 {
 
-static constexpr uint16_t s_WORKER_THREAD_COUNT = 8;
+static constexpr uint16_t s_WORKER_THREAD_COUNT = 16;
 
 template <typename T> using Weak = std::weak_ptr<T>;
 

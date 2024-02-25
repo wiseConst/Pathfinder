@@ -6,17 +6,17 @@
 
 namespace Pathfinder
 {
-Shared<CommandBuffer> CommandBuffer::Create(ECommandBufferType type, ECommandBufferLevel level)
+Shared<CommandBuffer> CommandBuffer::Create(ECommandBufferType type, bool bSignaledFence, ECommandBufferLevel level)
 {
     switch (RendererAPI::Get())
     {
         case ERendererAPI::RENDERER_API_VULKAN:
         {
-            return MakeShared<VulkanCommandBuffer>(type, level);
+            return MakeShared<VulkanCommandBuffer>(type, bSignaledFence, level);
         }
     }
 
     PFR_ASSERT(false, "Unknown RendererAPI!");
     return nullptr;
 }
-}  // namespace Gauntlet
+}  // namespace Pathfinder

@@ -16,7 +16,22 @@ class VulkanSwapchain final : public Swapchain
     virtual ~VulkanSwapchain() override { Destroy(); }
 
     NODISCARD FORCEINLINE const uint32_t GetCurrentFrameIndex() const { return m_FrameIndex; }
+    NODISCARD FORCEINLINE void* GetImageAvailableSemaphore() const final override { return m_ImageAcquiredSemaphores[m_FrameIndex]; }
 
+    void SetWaitSemaphore(const std::array<void*, s_FRAMES_IN_FLIGHT>& waitSemaphore)
+    {
+        for (uint32_t i{}; i < s_FRAMES_IN_FLIGHT; ++i)
+        {
+            m_RenderSemaphoreRef[i] = (VkSemaphore)waitSemaphore[i];
+        }
+    }
+    void SetRenderFence(const std::array<void*, s_FRAMES_IN_FLIGHT>& renderFence) final override
+    {
+        for (uint32_t i{}; i < s_FRAMES_IN_FLIGHT; ++i)
+        {
+            m_RenderFenceRef[i] = (VkFence)renderFence[i];
+        }
+    }
     void SetClearColor(const glm::vec3& clearColor) final override;
     void SetVSync(bool bVSync) final override
     {
@@ -24,7 +39,7 @@ class VulkanSwapchain final : public Swapchain
 
         m_bVSync = bVSync;
         Recreate();
-        LOG_WARN("VSync: %s.", m_bVSync ? "ON" : "OFF");
+        LOG_DEBUG("VSync: %s.", m_bVSync ? "ON" : "OFF");
     }
     void SetWindowMode(const EWindowMode windowMode) final override;
 
@@ -39,6 +54,8 @@ class VulkanSwapchain final : public Swapchain
     VkSwapchainKHR m_Handle = VK_NULL_HANDLE;
     void* m_WindowHandle    = nullptr;
 
+    VulkanSemaphorePerFrame m_RenderSemaphoreRef;
+    VulkanFencePerFrame m_RenderFenceRef;
     VulkanSemaphorePerFrame m_ImageAcquiredSemaphores;
     std::vector<ResizeCallback> m_ResizeCallbacks;
 

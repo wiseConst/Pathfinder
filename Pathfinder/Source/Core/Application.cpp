@@ -52,9 +52,8 @@ void Application::Run()
         Timer t = {};
         if (!m_Window->IsMinimized())
         {
-            Renderer::Begin();
-
             m_Window->BeginFrame();
+            Renderer::Begin();
 
             m_LayerQueue->OnUpdate(m_DeltaTime);
 

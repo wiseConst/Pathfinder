@@ -28,3 +28,5 @@
 #include "Renderer/Camera/Camera.h"
 #include "Renderer/Camera/OrthographicCamera.h"
 #include "Renderer/Mesh.h"
+
+#include "PathfinderPCH.h"

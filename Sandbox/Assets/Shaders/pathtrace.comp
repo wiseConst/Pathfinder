@@ -1,29 +1,20 @@
 #version 460
 
-#extension GL_EXT_nonuniform_qualifier : require
 #extension GL_GOOGLE_include_directive : require
 #include "Assets/Shaders/Include/Globals.h"
 
+// #extension GL_EXT_ray_query : require
 
-// 128 invocations (threads) in parallel
-layout(local_size_x = 16, local_size_y = 8, local_size_z = 1) in;
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+// layout(set = LAST_BINDLESS_SET + 1, binding = 0) uniform accelerationStructureEXT u_TLAS;
 
 void main()
 {
-    #if DEBUG_PRINTF && 0
-    debugPrintfEXT("PT:Hello from invocation (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-    #endif
-
     const uvec2 resolution = imageSize(u_GlobalImages_RGBA8[u_PC.StorageImageIndex]);
-    const ivec2 pixel = ivec2(gl_GlobalInvocationID.xy);
-    if ((pixel.x >= resolution.x) || (pixel.y >= resolution.y))
-    {
-        #if DEBUG_PRINTF && 0
-        debugPrintfEXT("Out of bounds! (%d, %d)!", gl_GlobalInvocationID.x, gl_GlobalInvocationID.y);
-        #endif
-        return;
-    }
+    const ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    if(any(greaterThanEqual(uvec2(pixelCoords), resolution))) return;
 
-    const vec4 pixelColor = vec4(float(pixel.x) / resolution.x, float(pixel.y) / resolution.y, 0.0, 0.0);
-    imageStore(u_GlobalImages_RGBA8[nonuniformEXT(u_PC.StorageImageIndex)], pixel, pixelColor);
+    const vec4 pixelColor = vec4(float(pixelCoords.x) / resolution.x, float(pixelCoords.y) / resolution.y, 0.0, 0.0);
+    imageStore(u_GlobalImages_RGBA8[nonuniformEXT(u_PC.StorageImageIndex)], pixelCoords, pixelColor);
 }

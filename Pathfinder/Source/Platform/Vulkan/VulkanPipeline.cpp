@@ -75,7 +75,7 @@ void VulkanPipeline::CreateLayout()
 
         setLayouts.push_back(vulkanBR->GetTextureStorageImageSetLayout());
         setLayouts.push_back(vulkanBR->GetStorageBufferSetLayout());
-        setLayouts.push_back(vulkanBR->GetUniformBufferSetLayout());
+        setLayouts.push_back(vulkanBR->GetFrameDataSetLayout());
 
         pushConstants.push_back(vulkanBR->GetPushConstantBlock());
     }
@@ -414,7 +414,6 @@ void VulkanPipeline::Invalidate()
                             // Color.rgb = (src.a * src.rgb) + ((1-src.a) * dst.rgb)
                             blendState.srcColorBlendFactor = VK_BLEND_FACTOR_SRC_ALPHA;
                             blendState.dstColorBlendFactor = VK_BLEND_FACTOR_ONE_MINUS_SRC_ALPHA;
-
                             break;
                         }
                         case EBlendMode::BLEND_MODE_ADDITIVE:

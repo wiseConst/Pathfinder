@@ -21,11 +21,11 @@ class OrthographicCamera final : public Camera
         const auto& window = Application::Get().GetWindow();
         m_AR               = static_cast<float>(window->GetSpecification().Width) / static_cast<float>(window->GetSpecification().Height);
 
-        m_Projection =
-            glm::ortho(-s_CameraWidth * m_AR, s_CameraWidth * m_AR, -s_CameraWidth, s_CameraWidth, -s_CameraWidth, s_CameraWidth);
-
         m_ZoomLevel = s_CameraWidth;
+
+        RecalculateProjectionMatrix();
         RecalculateViewMatrix();
+        RecalculateCullFrustum();
     }
 
     ~OrthographicCamera() override = default;
@@ -102,7 +102,11 @@ class OrthographicCamera final : public Camera
             bNeedsViewMatrixRecalculation = true;
         }
 
-        if (bNeedsViewMatrixRecalculation) RecalculateViewMatrix();
+        if (bNeedsViewMatrixRecalculation)
+        {
+            RecalculateViewMatrix();
+            RecalculateCullFrustum();
+        }
     }
 
     void OnEvent(Event& e) final override
@@ -111,19 +115,6 @@ class OrthographicCamera final : public Camera
         dispatcher.Dispatch<MouseMovedEvent>([&](const MouseMovedEvent& e) { return OnMouseMoved(e); });
         dispatcher.Dispatch<MouseScrolledEvent>([&](const MouseScrolledEvent& e) { return OnMouseScrolled(e); });
         dispatcher.Dispatch<WindowResizeEvent>([&](const WindowResizeEvent& e) { return OnWindowResized(e); });
-    }
-
-     Frustum GetFrustum() final override
-    {
-        Frustum fr = {};
-       /* fr.Bottom  = glm::vec3(m_Position.x, m_Position.y, m_Forward.z);
-        fr.Top     = glm::vec3(0, 0, 0);
-        fr.Left    = glm::vec3(0, 0, 0);
-        fr.Right   = glm::vec3(0, 0, 0);
-        fr.Far     = glm::vec3(0, 0, m_ZoomLevel * m_Position.z);
-        fr.Near    = glm::vec3(0, 0, m_ZoomLevel * m_Position.z);*/
-
-        return fr;
     }
 
   protected:
@@ -151,16 +142,35 @@ class OrthographicCamera final : public Camera
         m_ZoomLevel -= mouseScrolledEvent.GetOffsetY() * m_ZoomSpeed;
 
         if (m_ZoomLevel < m_ZoomSpeed * 2) m_ZoomLevel = m_ZoomSpeed * 2;
-        m_Projection = glm::ortho(-m_ZoomLevel * m_AR, m_ZoomLevel * m_AR, -m_ZoomLevel, m_ZoomLevel, -m_ZoomLevel, m_ZoomLevel);
+        RecalculateProjectionMatrix();
 
         return true;
     }
 
     bool OnWindowResized(const WindowResizeEvent& e) final override
     {
-        m_AR         = e.GetAspectRatio();
-        m_Projection = glm::ortho(-m_ZoomLevel * m_AR, m_ZoomLevel * m_AR, -m_ZoomLevel, m_ZoomLevel, -m_ZoomLevel, m_ZoomLevel);
+        m_AR = e.GetAspectRatio();
+        RecalculateProjectionMatrix();
+        RecalculateCullFrustum();
+
         return true;
+    }
+
+    void RecalculateProjectionMatrix() final override
+    {
+        m_Projection = glm::ortho(-m_ZoomLevel * m_AR, m_ZoomLevel * m_AR, -m_ZoomLevel, m_ZoomLevel, -m_ZoomLevel, m_ZoomLevel);
+    }
+
+    // TODO: Implement
+    void RecalculateCullFrustum() final override
+    {
+        // Left, Right, Top, Bottom, Near, Far
+        m_CullFrustum.Planes[0] = ComputePlane(m_Position, m_Forward - m_ZoomLevel * .5f);
+        m_CullFrustum.Planes[1] = ComputePlane(m_Position, m_Forward + m_ZoomLevel * .5f);
+        m_CullFrustum.Planes[2] = ComputePlane(m_Position, m_Up + m_ZoomLevel * .5f);
+        m_CullFrustum.Planes[3] = ComputePlane(m_Position, m_Up - m_ZoomLevel * .5f);
+        m_CullFrustum.Planes[4] = ComputePlane(m_Position + m_Forward * GetNearPlaneDepth(), m_Forward);
+        m_CullFrustum.Planes[5] = ComputePlane(m_Position + m_Forward * GetFarPlaneDepth(), -m_Forward);
     }
 };
 

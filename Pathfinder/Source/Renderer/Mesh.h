@@ -2,6 +2,7 @@
 #define MESH_H
 
 #include "Core/Core.h"
+#include "Globals.h"
 
 #include <fastgltf/types.hpp>
 
@@ -26,6 +27,7 @@ class Submesh final : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetMeshletTrianglesBuffer() const { return m_MeshletTrianglesBuffer; }
 
     NODISCARD FORCEINLINE auto& GetMaterial() const { return m_Material; }
+    NODISCARD FORCEINLINE const auto& GetBoundingSphere() const { return m_BoundingSphere; }
 
     void SetMaterial(const Shared<Material> material) { m_Material = material; }
 
@@ -37,6 +39,8 @@ class Submesh final : private Uncopyable, private Unmovable
     Shared<Buffer> m_MeshletTrianglesBuffer;
     Shared<Buffer> m_MeshletBuffer;
     Shared<Material> m_Material;
+
+    Sphere m_BoundingSphere = {};
 
     friend class Mesh;
 

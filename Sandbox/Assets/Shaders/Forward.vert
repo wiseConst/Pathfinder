@@ -1,5 +1,8 @@
 #version 460
 
+#extension GL_GOOGLE_include_directive : require
+#include "Assets/Shaders/Include/Globals.h"
+
 layout(location = 0) in vec3 inPos;
 layout(location = 1) in vec4 inColor;
 layout(location = 2) in vec3 inNormal;
@@ -7,15 +10,13 @@ layout(location = 3) in vec3 inTangent;
 layout(location = 4) in vec2 inUV;
 
 layout(location = 0) out VertexOutput
-{
+{   
+    vec4 FragPosLightSpace[MAX_DIR_LIGHTS]; // Dir shadowmap testing
     vec4 Color;
     vec2 UV;
     vec3 WorldPos;
     mat3 TBNtoWorld;
 } o_VertexOutput;
-
-#extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
 
 void main()
 {
@@ -34,4 +35,9 @@ void main()
     
     const mat3 TBNtoWorld = mat3(T, B, N);
     o_VertexOutput.TBNtoWorld = TBNtoWorld;
+    
+    for(uint i = 0; i < u_PC.StorageImageIndex; ++i)
+    {
+        o_VertexOutput.FragPosLightSpace[i] = u_Lights.DirLightViewProjMatrices[i] * WorldPos;
+    }
 }

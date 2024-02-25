@@ -1,0 +1,11 @@
+Model Information:
+* title:	Flintlock Pistol
+* source:	https://sketchfab.com/3d-models/flintlock-pistol-6c3788f102474476b57a8d9b7f4ee9e8
+* author:	tvtone2k1 (https://sketchfab.com/tvtone2k1)
+
+Model License:
+* license type:	CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)
+* requirements:	Author must be credited. Commercial use is allowed.
+
+If you use this 3D model in your project be sure to copy paste this credit wherever you share it:
+This work is based on "Flintlock Pistol" (https://sketchfab.com/3d-models/flintlock-pistol-6c3788f102474476b57a8d9b7f4ee9e8) by tvtone2k1 (https://sketchfab.com/tvtone2k1) licensed under CC-BY-4.0 (http://creativecommons.org/licenses/by/4.0/)

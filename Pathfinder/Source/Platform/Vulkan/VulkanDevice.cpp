@@ -202,6 +202,7 @@ void VulkanDevice::CreateLogicalDevice()
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
     VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccelerationStructureFeatures = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+    VkPhysicalDeviceRayQueryFeaturesKHR enabledRayQueryFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR};
     if (m_GPUInfo.bRTXSupport && VK_RTX)
     {
         enabledRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
@@ -213,6 +214,11 @@ void VulkanDevice::CreateLogicalDevice()
 
         *ppNext = &enabledAccelerationStructureFeatures;
         ppNext  = &enabledAccelerationStructureFeatures.pNext;
+
+        enabledRayQueryFeatures.rayQuery = VK_TRUE;
+
+        *ppNext = &enabledRayQueryFeatures;
+        ppNext  = &enabledRayQueryFeatures.pNext;
     }
 
     VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
@@ -279,10 +285,9 @@ void VulkanDevice::CreateLogicalDevice()
     VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsQueue, VK_OBJECT_TYPE_QUEUE, "VK_QUEUE_GRAPHICS");
     VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.PresentQueue, VK_OBJECT_TYPE_QUEUE,
                     m_GPUInfo.QueueFamilyIndices.PresentFamily == m_GPUInfo.QueueFamilyIndices.GraphicsFamily ? "VK_QUEUE_PRESENT_GRAPHICS"
-                        : "VK_QUEUE_PRESENT");
+                                                                                                              : "VK_QUEUE_PRESENT");
     VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.TransferQueue, VK_OBJECT_TYPE_QUEUE, "VK_QUEUE_TRANSFER");
     VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.ComputeQueue, VK_OBJECT_TYPE_QUEUE, "VK_QUEUE_COMPUTE");
-    
 
     PFR_ASSERT(m_GPUInfo.GraphicsQueue && m_GPUInfo.PresentQueue && m_GPUInfo.TransferQueue && m_GPUInfo.ComputeQueue,
                "Failed to retrieve queue handles!");

@@ -69,6 +69,7 @@ class Shader : private Uncopyable, private Unmovable
     // NOTE: Updates all frames
     virtual void Set(const std::string_view name, const BufferPerFrame& buffers)    = 0;
     virtual void Set(const std::string_view name, const ImagePerFrame& attachments) = 0;
+    virtual void Set(const std::string_view name, const std::vector<ImagePerFrame>& attachments) = 0;
 
     NODISCARD static Shared<Shader> Create(const std::string_view shaderName);
     virtual void DestroyGarbageIfNeeded() = 0;

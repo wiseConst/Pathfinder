@@ -5,7 +5,10 @@
 
 layout(local_size_x = LIGHT_CULLING_TILE_SIZE, local_size_y = LIGHT_CULLING_TILE_SIZE, local_size_z = 1) in;
 
-// TODO: Improve https://wickedengine.net/2018/01/10/optimizing-tile-based-light-culling/
+// TODO: Improve
+// https://www.3dgep.com/forward-plus/#Light_Culling
+// https://wickedengine.net/2018/01/10/optimizing-tile-based-light-culling/
+// https://rashmatash.github.io/posts/2023-05-19-light-culling-in-primal-engine.html
 
 layout(set = LAST_BINDLESS_SET + 1, binding = 0) uniform sampler2D u_DepthTex;
 layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) writeonly buffer VisiblePointLightIndicesBuffer
@@ -15,40 +18,7 @@ layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) writeonly buffer Visibl
 layout(set = LAST_BINDLESS_SET + 1, binding = 2, scalar) writeonly buffer VisibleSpotLightIndicesBuffer
 {
     uint32_t indices[];
-} s_VisibleSpotLightIndicesBuffer; // TODO: Implement
-
-
-// NOTE: RH coordinate system assuming.
-Plane ComputePlane(vec3 p0, vec3 p1, vec3 p2)
-{
-    Plane plane;
-    
-    plane.Normal = normalize(cross(p1 - p0, p2 - p0));
-    plane.Distance = dot(plane.Normal, p0); // signed distance to the origin using p0
-    
-    return plane;
-}
-
-vec4 ClipSpaceToView(const vec4 clip)
-{
-    vec4 view = u_GlobalCameraData.InverseProjection * clip;
-    return view / view.w;
-}
-
-vec4 ScreenSpaceToView(const vec4 screen, const ivec2 screenDimensions)
-{
-    const vec2 uv = screen.xy / screenDimensions; // convert from range [0, width],[0, height] to [0, 1], [0, 1] 
-    
-    /* If screen origin is top left like in DX: (uv.x, 1.0f - uv.y) */ 
-    const vec4 clip = vec4(vec2( uv.x, uv.y) * 2.f - 1.f, screen.z, screen.w); // convert from [0, 1] to NDC([-1, 1])
-    return ClipSpaceToView(clip);
-}
-
-struct Sphere
-{
-    vec3 Center;
-    float Radius;
-};  
+} s_VisibleSpotLightIndicesBuffer;
 
 // NOTE: Great explanation of why it is like that: https://www.youtube.com/watch?v=4p-E_31XOPM
 // Check to see if a sphere is fully behind (inside the negative halfspace of) a plane. (behind normal of the plane)
@@ -58,7 +28,6 @@ bool SphereInsidePlane( Sphere sphere, Plane plane )
     return dot( plane.Normal, sphere.Center ) - plane.Distance + sphere.Radius <= 0.0;
 }
 
-// Check to see of a light is partially contained within the frustum.
 bool SphereInsideFrustum( Sphere sphere, Frustum frustum, float zNear, float zFar )
 {
     // First check depth(behind the far plane of in front of near)
@@ -67,34 +36,247 @@ bool SphereInsideFrustum( Sphere sphere, Frustum frustum, float zNear, float zFa
     if ( sphere.Center.z - sphere.Radius > zNear || sphere.Center.z + sphere.Radius < zFar ) return false;
     
     for ( int i = 0; i < 4; i++ )
-    {
         if ( SphereInsidePlane( sphere, frustum.Planes[i] ) ) return false;
+
+    // TODO:
+    // Step2: bbox corner test (to reduce false positive), from: https://iquilezles.org/articles/frustumcorrect/
+    /*
+    const vec3 lightBBoxMax = sphere.Center + vec3(sphere.Radius);
+    const vec3 lightBBoxMin = sphere.Center - vec3(sphere.Radius);
+    int probe;
+    probe=0; for( int i=0; i<4; i++ ) probe += ((frustum.Planes[i].x > lightBBoxMax.x)?1:0); if( probe==8 ) return false;
+    probe=0; for( int i=0; i<4; i++ ) probe += ((frustum.Planes[i].x < lightBBoxMin.x)?1:0); if( probe==8 ) return false;
+    probe=0; for( int i=0; i<4; i++ ) probe += ((frustum.Planes[i].y > lightBBoxMax.y)?1:0); if( probe==8 ) return false;
+    probe=0; for( int i=0; i<4; i++ ) probe += ((frustum.Planes[i].y < lightBBoxMin.y)?1:0); if( probe==8 ) return false;
+    probe=0; for( int i=0; i<4; i++ ) probe += ((frustum.Planes[i].z > lightBBoxMax.z)?1:0); if( probe==8 ) return false;
+    probe=0; for( int i=0; i<4; i++ ) probe += ((frustum.Planes[i].z < lightBBoxMin.z)?1:0); if( probe==8 ) return false;
+    */
+
+    return true;
+}
+
+struct Cone
+{
+    vec3 Tip;
+    float Height;
+    vec3 Direction;
+    float Radius;
+};
+
+// Check to see if a point is fully behind (inside the negative halfspace of) a plane.
+bool PointInsidePlane(vec3 p, Plane plane)
+{
+    return dot(plane.Normal, p) - plane.Distance < 0;
+}
+
+bool ConeInsidePlane(Cone cone, Plane plane)
+{
+    // Compute the farthest point on the end of the cone to the positive space of the plane.
+    const vec3 m = cross(cross(plane.Normal, cone.Direction), cone.Direction);
+    const vec3 Q = cone.Tip + cone.Height * cone.Direction - cone.Radius * m;
+
+    // The cone is in the negative halfspace of the plane if both
+    // the tip of the cone and the farthest point on the end of the cone to the 
+    // positive halfspace of the plane are both inside the negative halfspace 
+    // of the plane.
+    return PointInsidePlane(cone.Tip, plane) && PointInsidePlane(Q, plane);
+}
+
+bool ConeInsideFrustum(Cone cone, Frustum frustum, float zNear, float zFar)
+{
+    // NOTE: View space, facing towards -Z
+    const Plane nearPlane = {vec3(0, 0, -1), -zNear};
+    const Plane farPlane = {vec3(0, 0, 1), zFar};
+
+    if(ConeInsidePlane(cone, nearPlane) || ConeInsidePlane(cone, farPlane)) return false;
+
+    for(uint i = 0; i < 4; ++i)
+    {
+        if(ConeInsidePlane(cone, frustum.Planes[i])) return false;
     }
 
     return true;
 }
 
-// TODO: Cone culling (spotligths)
-
+shared vec4 frustumPlanes[6];
 shared Frustum GroupFrustum;
 
 shared uint uMinDepth;
 shared uint uMaxDepth;
 shared uint visiblePointLightIndices[MAX_POINT_LIGHTS];
 shared uint visiblePointLightCount;
+shared uint visibleSpotLightIndices[MAX_SPOT_LIGHTS];
+shared uint visibleSpotLightCount;
 
-uint GetLinearGridIndex(vec2 pixelCoords, float viewWidth)
+#define FRUSTUM_IMAGE_DEBUG 1
+#define HEATMAP_IMAGE_DEBUG 1
+
+#if HEATMAP_IMAGE_DEBUG
+// From: https://github.com/turanszkij/WickedEngine/blob/8d89e305d0fc015d351e27b9bdb0fe8cea37dcc8/WickedEngine/shaders/lightCullingCS.hlsl#L269
+vec4 Heatmap(uint lightCount)
 {
-    const uint tileX = (uint(viewWidth) + LIGHT_CULLING_TILE_SIZE - 1) /
-            LIGHT_CULLING_TILE_SIZE;
-    return (uint(pixelCoords.x)/LIGHT_CULLING_TILE_SIZE)+(tileX* (uint(pixelCoords.y)/LIGHT_CULLING_TILE_SIZE));
+	const vec3 mapTex[] = {
+		vec3(0,0,0),
+		vec3(0,0,1),
+		vec3(0,1,1),
+		vec3(0,1,0),
+		vec3(1,1,0),
+		vec3(1,0,0),
+	};
+	const uint mapTexLen = 5;
+	const uint maxHeat = 40;
+	const float l = clamp(float(lightCount) / maxHeat, 0.0f, 1.0f) * mapTexLen;
+	const vec3 a = mapTex[int(floor(l))];
+	const vec3 b = mapTex[int(ceil(l))];
+    return vec4(mix(a, b, l - floor(l)), 1.);
 }
+#endif
 
 void main()
 {
-    const ivec2 screenDimensions = textureSize(u_DepthTex, 0);
-    if(gl_GlobalInvocationID.x >= uint(screenDimensions.x) || gl_GlobalInvocationID.y >= uint(screenDimensions.y)) return;
+// NOTE: More stable version
+#define WORKING_OGL 1
+#if WORKING_OGL
+	// Initialize shared global values for depth and light count
+	if (gl_LocalInvocationIndex == 0) {
+		uMinDepth = 0xFFFFFFFF;
+		uMaxDepth = 0;
+		visiblePointLightCount = 0;
+	}
 
+    const ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 screenDimensions = textureSize(u_DepthTex, 0);
+    if(any(greaterThanEqual(pixelCoords, uvec2(screenDimensions)))) return;
+
+	const ivec2 tileID = ivec2(gl_WorkGroupID.xy);
+	const ivec2 tileNumber = ivec2(gl_NumWorkGroups.xy);
+    const uint linearTileIndex = GetLinearGridIndex(pixelCoords, u_GlobalCameraData.FramebufferResolution.x);
+
+	barrier();
+
+    // Step 1: Calculate the minimum and maximum depth values (from the depth buffer) for this group's tile
+	const vec2 uv = vec2(pixelCoords) / screenDimensions;
+	// Linearize the depth value from depth buffer (must do this because we created it using projection)
+	float depth = LinearizeDepth(texture(u_DepthTex, uv).r, u_GlobalCameraData.zNear, u_GlobalCameraData.zFar);
+
+	// Convert depth to uint so we can do atomic min and max comparisons between the threads
+	uint depthInt = floatBitsToUint(depth);
+	atomicMin(uMinDepth, depthInt);
+	atomicMax(uMaxDepth, depthInt);
+
+	barrier();
+
+	// Step 2: One thread should calculate the frustum planes to be used for this tile
+	if (gl_LocalInvocationIndex == 0) {
+		// Convert the min and max across the entire tile back to float
+		float minDepth = uintBitsToFloat(uMinDepth);
+		float maxDepth = uintBitsToFloat(uMaxDepth);
+
+		// Steps based on tile sale
+        vec2 negativeStep = (vec2(tileID) * 2.0) / vec2(tileNumber);
+        vec2 positiveStep = (vec2(tileID + ivec2(1)) * 2.0) / vec2(tileNumber);
+        
+		// Set up starting values for planes using steps and min and max z values
+        frustumPlanes[0] = vec4(1.0, 0.0, 0.0, 1.0 - negativeStep.x); // Left
+        frustumPlanes[1] = vec4(-1.0, 0.0, 0.0, (-1.0) + positiveStep.x);  // Right
+        frustumPlanes[2] = vec4(0.0, 1.0, 0.0, 1.0 - negativeStep.y); // Bottom
+        frustumPlanes[3] = vec4(0.0, -1.0, 0.0, (-1.0) + positiveStep.y); // Top
+        frustumPlanes[4] = vec4(0.0, 0.0, -1.0, -minDepth); // Near
+        frustumPlanes[5] = vec4(0.0, 0.0, 1.0, maxDepth);  // Far
+
+		// Transform the first four planes
+		for (uint i = 0; i < 4; i++) {
+			frustumPlanes[i] *= u_GlobalCameraData.ViewProjection;
+			frustumPlanes[i] /= vec4(length(frustumPlanes[i].xyz));
+		}
+
+		// Transform the depth planes
+		frustumPlanes[4] *= u_GlobalCameraData.InverseView;
+		frustumPlanes[4] /= vec4(length(frustumPlanes[4].xyz));
+		frustumPlanes[5] *= u_GlobalCameraData.InverseView;
+		frustumPlanes[5] /= vec4(length(frustumPlanes[5].xyz));
+	}
+
+	barrier();
+
+#if FRUSTUM_IMAGE_DEBUG
+    const uint half_tile = LIGHT_CULLING_TILE_SIZE / 2;
+    vec3 frustumColor = abs(frustumPlanes[1].xyz);
+    const uint gridIndex = GetLinearGridIndex(pixelCoords, screenDimensions.x);
+
+    if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), screenDimensions.x) == gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),screenDimensions.x) == gridIndex)
+    {
+        frustumColor = abs(frustumPlanes[0].xyz);
+    }else if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), screenDimensions.x) != gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),screenDimensions.x) == gridIndex)
+    {
+        frustumColor = abs(frustumPlanes[2].xyz);
+    }else if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), screenDimensions.x) == gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),screenDimensions.x) != gridIndex)
+    {
+        frustumColor = abs(frustumPlanes[3].xyz);
+    }
+
+    imageStore(u_GlobalImages_RGBA8[u_PC.AlbedoTextureIndex], pixelCoords, vec4(frustumColor,1));
+ #endif
+
+	// Step 3: Cull lights.
+	// Parallelize the threads against the lights now.
+	// Can handle 256 simultaniously. Anymore lights than that and additional passes are performed
+	const uint threadCount = LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE;
+	const uint passCount = (u_Lights.PointLightCount + threadCount - 1) / threadCount;
+	for (uint i = 0; i < passCount; i++) {
+		// Get the lightIndex to test for this thread / pass. If the index is >= light count, then this thread can stop testing lights
+		const uint lightIndex = i * threadCount + gl_LocalInvocationIndex;
+		if (lightIndex >= u_Lights.PointLightCount) {
+			break;
+		}
+
+		const vec4 position = vec4(u_Lights.PointLights[lightIndex].Position, 1.f);
+		float radius = u_Lights.PointLights[lightIndex].Radius;
+        radius += (radius * 0.3);
+
+		// We check if the light exists in our frustum
+		float distance = 0.0;
+		for (uint j = 0; j < 6; j++) {
+			distance = dot(position, frustumPlanes[j]) + radius;
+
+			// If one of the tests fails, then there is no intersection
+			if (distance <= 0.0) break;
+		}
+
+		// If greater than zero, then it is a visible light
+		if (distance > 0.0) {
+			// Add index to the shared array of visible indices
+			const uint offset = atomicAdd(visiblePointLightCount, 1);
+			visiblePointLightIndices[offset] = int(lightIndex);
+		}
+	}
+
+	barrier();
+
+	// One thread should fill the global light buffer
+	if (gl_LocalInvocationIndex == 0) {
+		uint offset = linearTileIndex * MAX_POINT_LIGHTS; // Determine position in global buffer
+		for (uint i = 0; i < visiblePointLightCount; i++) {
+			s_VisiblePointLightIndicesBuffer.indices[offset + i] = visiblePointLightIndices[i];
+		}
+
+		if (visiblePointLightCount != MAX_POINT_LIGHTS) {
+			s_VisiblePointLightIndicesBuffer.indices[offset + visiblePointLightCount] = INVALID_LIGHT_INDEX;
+		}
+	}
+
+#if HEATMAP_IMAGE_DEBUG
+    imageStore(u_GlobalImages_RGBA8[u_PC.NormalTextureIndex], pixelCoords, Heatmap(visiblePointLightCount + visibleSpotLightCount));
+#endif
+
+#endif
+
+// NOTE: View space frustum culling, sometimes get artefacts
+#define MY_OLD 0
+#if MY_OLD
+    const ivec2 screenDimensions = textureSize(u_DepthTex, 0);
+    if(any(greaterThanEqual(gl_GlobalInvocationID.xy, uvec2(screenDimensions)))) return;
+   
     const uvec3 gti = gl_WorkGroupID;
     const uint lti = gl_LocalInvocationIndex;
 
@@ -124,35 +306,37 @@ void main()
         GroupFrustum.Planes[3] = ComputePlane(eyePos,  viewSpace[3], viewSpace[2]);
     
         visiblePointLightCount = 0;
-        uMinDepth = 0xffffffff;
-        uMaxDepth = 0;
+        visibleSpotLightCount = 0;
+        uMinDepth = 4294967295u;
+        uMaxDepth = 0u;
     }
 
     barrier();
 
-    const ivec2 UV = ivec2(gl_GlobalInvocationID.xy);
+    const ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
 
-    /* FRUSTUM IMAGE DEBUG */
-    const uint half_tile = LIGHT_CULLING_TILE_SIZE/2;
-    const uvec2 pos = uvec2(UV);
+#if FRUSTUM_IMAGE_DEBUG
+    const uint half_tile = LIGHT_CULLING_TILE_SIZE / 2;
     vec3 frustumColor = abs(GroupFrustum.Planes[1].Normal);
-    const uint gridIndex = GetLinearGridIndex(pos,screenDimensions.x);
+    const uint gridIndex = GetLinearGridIndex(pixelCoords, screenDimensions.x);
 
-    if(GetLinearGridIndex(vec2(pos.x+half_tile,pos.y),screenDimensions.x) == gridIndex && GetLinearGridIndex(vec2(pos.x,pos.y+half_tile),screenDimensions.x) == gridIndex)
+    if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), screenDimensions.x) == gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),screenDimensions.x) == gridIndex)
     {
         frustumColor = abs(GroupFrustum.Planes[0].Normal);
-    }else if(GetLinearGridIndex(vec2(pos.x+half_tile,pos.y),screenDimensions.x) != gridIndex && GetLinearGridIndex(vec2(pos.x,pos.y+half_tile),screenDimensions.x) == gridIndex)
+    }else if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), screenDimensions.x) != gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),screenDimensions.x) == gridIndex)
     {
         frustumColor = abs(GroupFrustum.Planes[2].Normal);
-    }else if(GetLinearGridIndex(vec2(pos.x+half_tile,pos.y),screenDimensions.x) == gridIndex && GetLinearGridIndex(vec2(pos.x,pos.y+half_tile),screenDimensions.x) != gridIndex)
+    }else if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), screenDimensions.x) == gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),screenDimensions.x) != gridIndex)
     {
         frustumColor = abs(GroupFrustum.Planes[3].Normal);
     }
 
-    imageStore(u_GlobalImages_RGBA8[u_PC.AlbedoTextureIndex],ivec2(gl_GlobalInvocationID.xy), vec4(frustumColor,1));
-    /* FRUSTUM IMAGE DEBUG */
+    imageStore(u_GlobalImages_RGBA8[u_PC.AlbedoTextureIndex], pixelCoords, vec4(frustumColor,1));
+ #endif
 
-    const float fDepth = texture(u_DepthTex, UV).r;
+    // Linearize the depth value from depth buffer (must do this because we created it using projection)
+    const vec2 UV = pixelCoords / screenDimensions;
+    float fDepth = LinearizeDepth(texture(u_DepthTex, UV).r, u_GlobalCameraData.zNear, u_GlobalCameraData.zFar);
     const uint uDepth = floatBitsToUint(fDepth);
 
     uMaxDepth = atomicMax(uMaxDepth, uDepth);
@@ -163,38 +347,86 @@ void main()
     const float fMinDepth = uintBitsToFloat(uMinDepth);
     const float fMaxDepth = uintBitsToFloat(uMaxDepth);
 
-    const float minDepthVS = ScreenSpaceToView(vec4(0,0,fMinDepth,1),screenDimensions).z;
-    const float maxDepthVS = ScreenSpaceToView(vec4(0,0,fMaxDepth,1),screenDimensions).z;
-    const float nearClipVS = ScreenSpaceToView(vec4(0,0,0,1),screenDimensions).z;
+    const float minDepthVS = ScreenSpaceToView(vec4(0, 0, fMinDepth, 1), screenDimensions).z;
+    const float maxDepthVS = ScreenSpaceToView(vec4(0, 0, fMaxDepth, 1), screenDimensions).z;
+    const float nearClipVS = ScreenSpaceToView(vec4(0, 0, 0, 1), screenDimensions).z;
 
     Plane minPlane = { vec3(0, 0, -1), -minDepthVS};
-   
     for(uint i = lti; i < u_Lights.PointLightCount; i += LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE)
     {
-      visiblePointLightIndices[visiblePointLightCount] = INVALID_LIGHT_INDEX;
-      if(visiblePointLightCount >= MAX_POINT_LIGHTS) break;
+      if(visiblePointLightCount >= u_Lights.PointLightCount) break;
 
       PointLight pl = u_Lights.PointLights[i];
       const vec3 plPosVS = vec3(u_GlobalCameraData.InverseView * vec4(pl.Position, 1));
       Sphere sphere = { plPosVS, pl.Radius};
+      //Sphere sphere = { pl.Position, pl.Radius};
       if ( SphereInsideFrustum( sphere, GroupFrustum, nearClipVS, maxDepthVS ) )
       {
-          if ( !SphereInsidePlane( sphere, minPlane ) )
-          {
-              uint offset = atomicAdd(visiblePointLightCount, 1);
-              if(offset < MAX_POINT_LIGHTS && offset < u_Lights.PointLightCount)
-                visiblePointLightIndices[offset] = i;
-          }
+          if ( SphereInsidePlane( sphere, minPlane ) ) continue;
+          
+          const uint offset = atomicAdd(visiblePointLightCount, 1);
+          if(offset < u_Lights.PointLightCount)
+             visiblePointLightIndices[offset] = i;
       }
+    }
+
+    for(uint i = lti; i < u_Lights.SpotLightCount; i += LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE)
+    {
+        if(visibleSpotLightCount >= u_Lights.SpotLightCount) break;
+
+        SpotLight spl = u_Lights.SpotLights[i];
+        const vec3 splPosVS = vec3(u_GlobalCameraData.InverseView * vec4(spl.Position, 1));
+        Cone cone = { splPosVS, spl.Height, spl.Direction ,spl.Radius};
+        if ( ConeInsideFrustum( cone, GroupFrustum, nearClipVS, maxDepthVS ) )
+        {
+            if ( ConeInsidePlane( cone, minPlane ) ) continue;
+            
+            const uint offset = atomicAdd(visibleSpotLightCount, 1);
+            if(offset < u_Lights.SpotLightCount)
+               visibleSpotLightIndices[offset] = i;
+            
+        }
     }
 
     barrier();
 
     if(lti == 0)
     { 
-        const uint tileIndex = gti.y * gl_WorkGroupSize.x + gti.x;
-        const uint offset = tileIndex * MAX_POINT_LIGHTS;
-        for(uint i = 0; i < visiblePointLightCount; ++i)
-            s_VisiblePointLightIndicesBuffer.indices[offset + i] = visiblePointLightIndices[i];
+        // TileID
+        const uint linearTileIndex = GetLinearGridIndex(pixelCoords, u_GlobalCameraData.FramebufferResolution.x);
+
+        // Handling point lights
+        {
+            const uint offset = linearTileIndex * MAX_POINT_LIGHTS;
+            s_VisiblePointLightIndicesBuffer.indices[offset] = INVALID_LIGHT_INDEX;
+            for(uint i = 0; i < visiblePointLightCount; ++i)
+                s_VisiblePointLightIndicesBuffer.indices[offset + i] = visiblePointLightIndices[i];
+
+            // NOTE: Since data is linearly packed I can do that.
+            // Mark that after visiblePointLightCount there's end.
+            if(visiblePointLightCount < u_Lights.PointLightCount)
+            {
+                s_VisiblePointLightIndicesBuffer.indices[offset + visiblePointLightCount] = INVALID_LIGHT_INDEX;
+            }
+        }
+
+        // Handling spot lights
+        {
+            const uint offset = linearTileIndex * MAX_SPOT_LIGHTS;
+            s_VisibleSpotLightIndicesBuffer.indices[offset] = INVALID_LIGHT_INDEX;
+            for(uint i = 0; i < visibleSpotLightCount; ++i)
+                s_VisibleSpotLightIndicesBuffer.indices[offset + i] = visibleSpotLightIndices[i];
+
+            if(visibleSpotLightCount < u_Lights.SpotLightCount)
+            {
+                s_VisibleSpotLightIndicesBuffer.indices[offset + visibleSpotLightCount] = INVALID_LIGHT_INDEX;
+            }
+        }
     }
+
+#if HEATMAP_IMAGE_DEBUG
+    imageStore(u_GlobalImages_RGBA8[u_PC.NormalTextureIndex], pixelCoords, Heatmap(visiblePointLightCount + visibleSpotLightCount));
+#endif
+
+#endif
 }

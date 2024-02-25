@@ -117,9 +117,10 @@ struct QuadVertex
 
 struct PBRData
 {
-    glm::vec4 BaseColor = glm::vec4(1.0f);
-    float Roughness     = 1.0f;
-    float Metallic      = 1.0f;
+    glm::vec4 BaseColor      = glm::vec4(1.f);
+    float Roughness          = 1.f;
+    float Metallic           = 1.f;
+    glm::vec3 EmissiveFactor = glm::vec3(1.f);
 };
 
 }  // namespace Pathfinder

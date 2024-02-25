@@ -22,7 +22,7 @@ using mat4 = glm::mat4;
 #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-#define DEBUG_PRINTF 1
+#define DEBUG_PRINTF 0
 
 #if DEBUG_PRINTF
 #extension GL_EXT_debug_printf : require
@@ -34,10 +34,14 @@ using mat4 = glm::mat4;
 #include "Assets/Shaders/Include/Meshlets.h"
 #include "Assets/Shaders/Include/Lights.h"
 
-#endif
+float LinearizeDepth(float depth, float znear, float zfar)
+{
+    float z = (znear * zfar) / (zfar + depth * (znear - zfar));
+    z /= zfar;  // Normalizing
+    return z;
+}
 
-const uint32_t LIGHT_CULLING_TILE_SIZE = 16u;
-const uint32_t INVALID_LIGHT_INDEX     = 1 << 16;
+#endif
 
 struct MeshPositionVertex
 {
@@ -55,8 +59,38 @@ struct MeshAttributeVertex
 
 struct Plane
 {
-    vec3 Normal;     // Should be normalized.
+    vec3 Normal;  // Should be normalized.
+    // LearnOpenGL:  distance from origin to the nearest point in the plane(PERPENDICULAR VECTOR FROM THE ORIGIN IN OTHER WORDS)
     float Distance;  // Signed distance from the plane to the origin of the world(or whatever coordinate space you're working in).
+};
+
+#ifdef __cplusplus
+static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
+{
+    Plane plane;
+    plane.Normal   = glm::normalize(normal);
+    plane.Distance = glm::dot(plane.Normal, p0);  // signed distance to the origin using p0
+
+    return plane;
+}
+#endif
+
+#ifndef __cplusplus
+Plane ComputePlane(const vec3 p0, const vec3 p1, const vec3 p2)
+{
+    Plane plane;
+
+    plane.Normal   = normalize(cross(p1 - p0, p2 - p0));
+    plane.Distance = dot(plane.Normal, p0);  // signed distance to the origin using p0
+
+    return plane;
+}
+#endif
+
+struct AABB
+{
+    vec3 Center;
+    vec3 Extents;
 };
 
 // Left, Right, Top, Bottom, Near, Far
@@ -65,6 +99,13 @@ struct Frustum
     Plane Planes[6];
 };
 
+struct Sphere
+{
+    vec3 Center;
+    float Radius;
+};
+
+// TODO: Implement PBR
 struct Material
 {
     vec4 BaseColor;
@@ -87,14 +128,14 @@ const uint32_t STORAGE_BUFFER_MESHLET_BINDING          = 2;
 const uint32_t STORAGE_BUFFER_MESHLET_VERTEX_BINDING   = 3;
 const uint32_t STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING = 4;
 
-// Uniform buffers
-const uint32_t UNIFORM_BUFFER_SET = 2;
+// Frame data set
+const uint32_t FRAME_DATA_BUFFER_SET = 2;
 
-const uint32_t UNIFORM_BUFFER_CAMERA_BINDING = 0;
-const uint32_t UNIFORM_BUFFER_LIGHTS_BINDING = 1;
+const uint32_t FRAME_DATA_BUFFER_CAMERA_BINDING = 0;
+const uint32_t FRAME_DATA_BUFFER_LIGHTS_BINDING = 1;
 
 // NOTE: I'll have to offset manually in other shaders from this set.
-const uint32_t LAST_BINDLESS_SET = UNIFORM_BUFFER_SET;
+const uint32_t LAST_BINDLESS_SET = FRAME_DATA_BUFFER_SET;
 
 #ifdef __cplusplus
 #else
@@ -153,7 +194,7 @@ layout(set = 2, binding = STORAGE_BUFFER_MESH_MATERIAL_BINDING, scalar) readonly
 #ifdef __cplusplus
 struct CameraData
 #else
-layout(set = UNIFORM_BUFFER_SET, binding = UNIFORM_BUFFER_CAMERA_BINDING, scalar) uniform CameraUB
+layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_CAMERA_BINDING, scalar) uniform CameraUB
 #endif
 {
     mat4 Projection;
@@ -171,15 +212,34 @@ layout(set = UNIFORM_BUFFER_SET, binding = UNIFORM_BUFFER_CAMERA_BINDING, scalar
 u_GlobalCameraData;
 #endif
 
+#ifndef __cplusplus
+vec4 ClipSpaceToView(const vec4 clip)
+{
+    vec4 view = u_GlobalCameraData.InverseProjection * clip;
+    return view / view.w;
+}
+
+vec4 ScreenSpaceToView(const vec4 screen, const ivec2 screenDimensions)
+{
+    const vec2 uv = screen.xy / screenDimensions;  // convert from range [0, width],[0, height] to [0, 1], [0, 1]
+
+    /* If screen origin is top left like in DX: (uv.x, 1.0f - uv.y) */
+    const vec4 clip = vec4(vec2(uv.x, uv.y) * 2.f - 1.f, screen.z, screen.w);  // convert from [0, 1] to NDC([-1, 1])
+    return ClipSpaceToView(clip);
+}
+#endif
+
+// TODO: Move from uniform to ssbo
 #ifdef __cplusplus
 struct LightsData
 #else
-layout(set = UNIFORM_BUFFER_SET, binding = UNIFORM_BUFFER_LIGHTS_BINDING, scalar) uniform LightsUB
+layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, scalar) readonly buffer LightsUB
 #endif
 {
     PointLight PointLights[MAX_POINT_LIGHTS];
     SpotLight SpotLights[MAX_SPOT_LIGHTS];
     DirectionalLight DirectionalLights[MAX_DIR_LIGHTS];
+    mat4 DirLightViewProjMatrices[MAX_DIR_LIGHTS];
     uint32_t PointLightCount;
     uint32_t SpotLightCount;
     uint32_t DirectionalLightCount;
@@ -205,6 +265,7 @@ layout(push_constant, scalar) uniform PushConstantBlock
     uint32_t AlbedoTextureIndex;
     uint32_t NormalTextureIndex;
     uint32_t MetallicRoughnessTextureIndex;
+    uint32_t EmissiveTextureIndex;
 
     uint32_t VertexPosBufferIndex;
     uint32_t VertexAttribBufferIndex;
@@ -214,7 +275,7 @@ layout(push_constant, scalar) uniform PushConstantBlock
     uint32_t MeshletTrianglesBufferIndex;
 
     vec4 pad0;
-    vec3 pad1;
+    vec2 pad1;
 }
 #ifdef __cplusplus
 ;

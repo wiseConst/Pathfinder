@@ -17,7 +17,7 @@ namespace Pathfinder
 #define VK_FORCE_PIPELINE_COMPILATION 1
 
 #define VK_LOG_INFO 0
-#define VK_SHADER_DEBUG_PRINTF 1
+#define VK_SHADER_DEBUG_PRINTF 0
 
 #define VK_PREFER_IGPU 0
 
@@ -43,10 +43,10 @@ static const std::vector<const char*> s_InstanceExtensions = {
 };
 
 static const std::vector<const char*> s_DeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,          // For rendering into OS-window
-    VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,  // To get advanced info about gpu
-    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,  // To neglect renderpasses as my target is desktop only
-    VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME, // To do async work with proper synchronization on device side.
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,           // For rendering into OS-window
+    VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,   // To get advanced info about gpu
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,   // To neglect renderpasses as my target is desktop only
+    VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,  // To do async work with proper synchronization on device side.
 
 #if VK_EXCLUSIVE_FULL_SCREEN_TEST
     VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,  // Borderless fullscreen window
@@ -62,6 +62,7 @@ static const std::vector<const char*> s_DeviceExtensions = {
     VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,    // To build acceleration structures
     VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,      // To use vkCmdTraceRaysKHR
     VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structures
+    VK_KHR_RAY_QUERY_EXTENSION_NAME,                 // To trace rays in every shader I want
 #endif
 #if VK_SHADER_DEBUG_PRINTF
     VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,  // debugPrintEXT shaders
@@ -72,6 +73,7 @@ class VulkanCommandBuffer;
 using VulkanCommandBufferPerFrame = std::array<Shared<VulkanCommandBuffer>, s_FRAMES_IN_FLIGHT>;
 
 using VulkanSemaphorePerFrame      = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>;
+using VulkanFencePerFrame          = std::array<VkFence, s_FRAMES_IN_FLIGHT>;
 using VulkanDescriptorPoolPerFrame = std::array<VkDescriptorPool, s_FRAMES_IN_FLIGHT>;
 using VulkanDescriptorSetPerFrame  = std::array<VkDescriptorSet, s_FRAMES_IN_FLIGHT>;
 
@@ -141,13 +143,13 @@ static std::string VK_GetResultString(const VkResult result)
 #endif
 
 #if (VK_FORCE_VALIDATION || s_bEnableValidationLayers)
-#define VK_SetDebugName(logicalDevice, handle, type, name)                                                               \
+#define VK_SetDebugName(logicalDevice, handle, type, name)                                                                                 \
     {                                                                                                                                      \
-        PFR_ASSERT(handle, "Object handle is not valid!");                                                                           \
+        PFR_ASSERT(handle, "Object handle is not valid!");                                                                                 \
         VkDebugUtilsObjectNameInfoEXT objectNameInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};                               \
-        objectNameInfo.objectHandle                  = (uint64_t)handle;                                                             \
-        objectNameInfo.objectType                    = type;                                                                         \
-        objectNameInfo.pObjectName                   = name;                                                                         \
+        objectNameInfo.objectHandle                  = (uint64_t)handle;                                                                   \
+        objectNameInfo.objectType                    = type;                                                                               \
+        objectNameInfo.pObjectName                   = name;                                                                               \
         VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo), "Failed to set debug name!");                               \
     }
 #else

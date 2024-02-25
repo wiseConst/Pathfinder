@@ -12,12 +12,11 @@
 
 namespace Pathfinder
 {
-
 static constexpr float s_MAX_FOV = 130.0F;
 static constexpr float s_MIN_FOV = 15.0F;
 
 static constexpr float s_MAX_ZFAR  = 10e2f;
-static constexpr float s_MIN_ZNEAR = 10e-3f;
+static constexpr float s_MIN_ZNEAR = 10e-4f;
 
 static constexpr float s_MAX_PITCH = 89.0F;
 
@@ -29,8 +28,9 @@ class PerspectiveCamera final : public Camera
         const auto& window = Application::Get().GetWindow();
         m_AR               = static_cast<float>(window->GetSpecification().Width) / static_cast<float>(window->GetSpecification().Height);
 
-        m_Projection = glm::perspective(glm::radians(m_FOV), m_AR, s_MIN_ZNEAR, s_MAX_ZFAR);
+        RecalculateProjectionMatrix();
         RecalculateViewMatrix();
+        RecalculateCullFrustum();
     }
 
     ~PerspectiveCamera() override = default;
@@ -78,7 +78,11 @@ class PerspectiveCamera final : public Camera
             bNeedsViewMatrixRecalculation = true;
         }
 
-        if (bNeedsViewMatrixRecalculation) RecalculateViewMatrix();
+        if (bNeedsViewMatrixRecalculation)
+        {
+            RecalculateViewMatrix();
+            RecalculateCullFrustum();
+        }
     }
 
     void OnEvent(Event& e) final override
@@ -87,24 +91,6 @@ class PerspectiveCamera final : public Camera
         dispatcher.Dispatch<MouseMovedEvent>([&](const auto& e) { return OnMouseMoved(e); });
         dispatcher.Dispatch<MouseScrolledEvent>([&](const auto& e) { return OnMouseScrolled(e); });
         dispatcher.Dispatch<WindowResizeEvent>([&](const auto& e) { return OnWindowResized(e); });
-    }
-
-    // TODO: Implement both in persp and ortho
-    Frustum GetFrustum() final override
-    {
-        Frustum fr = {};
-        /* const float halfVSide   = GetFarPlaneDepth() * tanf(m_FOV * .5f);
-          const float halfHSide        = halfVSide * m_AR;
-          const glm::vec3 frontMultFar = GetFarPlaneDepth() * m_Forward;
-
-          fr.Planes[0] = {m_Position, glm::cross(m_Up, frontMultFar + m_Right * halfHSide)};
-          fr.Planes[1] = {m_Position, glm::cross(frontMultFar - m_Right * halfHSide, m_Up)};
-          fr.Planes[2] = {m_Position, glm::cross(m_Right, frontMultFar - m_Up * halfVSide)};
-          fr.Planes[3] = {m_Position, glm::cross(frontMultFar + m_Up * halfVSide, m_Right)};
-          fr.Planes[4] = {m_Position + GetNearPlaneDepth() * m_Forward, glm::length(m_Forward)};
-          fr.Planes[5] = {m_Position + frontMultFar, glm::length(-m_Forward)};*/
-
-        return fr;
     }
 
   protected:
@@ -178,6 +164,7 @@ class PerspectiveCamera final : public Camera
         {
             m_Position.y += deltaY * m_DeltaTime * s_MovementSpeed / 2;
             RecalculateViewMatrix();
+            RecalculateCullFrustum();
         }
 
         if (!Input::IsMouseButtonPressed(EKey::MOUSE_BUTTON_LEFT)) return false;
@@ -193,6 +180,7 @@ class PerspectiveCamera final : public Camera
 
         m_Right = glm::normalize(glm::cross(m_Forward, m_Up));
         RecalculateViewMatrix();
+        RecalculateCullFrustum();
 
         return true;
     }
@@ -205,15 +193,40 @@ class PerspectiveCamera final : public Camera
         m_FOV -= mouseScrolledEvent.GetOffsetY() * m_FOVSpeed;
         m_FOV = std::clamp(m_FOV, s_MIN_FOV, s_MAX_FOV);
 
-        m_Projection = glm::perspective(glm::radians(m_FOV), m_AR, s_MIN_ZNEAR, s_MAX_ZFAR);
+        RecalculateProjectionMatrix();
+        RecalculateCullFrustum();
+
         return true;
     }
 
     bool OnWindowResized(const WindowResizeEvent& e) final override
     {
-        m_AR         = e.GetAspectRatio();
-        m_Projection = glm::perspective(glm::radians(m_FOV), m_AR, s_MIN_ZNEAR, s_MAX_ZFAR);
+        m_AR = e.GetAspectRatio();
+        RecalculateProjectionMatrix();
+        RecalculateCullFrustum();
+
         return true;
+    }
+
+    void RecalculateProjectionMatrix() final override
+    {
+        // NOTE: In case of reversed-z swap far and near.
+        m_Projection = glm::perspective(glm::radians(m_FOV), m_AR, s_MAX_ZFAR, s_MIN_ZNEAR);
+    }
+
+    void RecalculateCullFrustum()
+    {
+        const float halfVSide = GetFarPlaneDepth() * tanf(m_FOV * .5f);
+        const float halfHSide = halfVSide * m_AR;
+        const auto forwardFar = m_Forward * GetFarPlaneDepth();
+
+        // Left, Right, Top, Bottom, Near, Far
+        m_CullFrustum.Planes[0] = ComputePlane(m_Position, glm::cross(forwardFar - m_Right * halfHSide, m_Up));
+        m_CullFrustum.Planes[1] = ComputePlane(m_Position, glm::cross(m_Up, forwardFar + m_Right * halfHSide));
+        m_CullFrustum.Planes[2] = ComputePlane(m_Position, glm::cross(forwardFar + m_Up * halfVSide, m_Right));
+        m_CullFrustum.Planes[3] = ComputePlane(m_Position, glm::cross(m_Right, forwardFar - m_Up * halfVSide));
+        m_CullFrustum.Planes[4] = ComputePlane(m_Position + m_Forward * GetNearPlaneDepth(), m_Forward);
+        m_CullFrustum.Planes[5] = ComputePlane(m_Position + forwardFar, -m_Forward);
     }
 };
 

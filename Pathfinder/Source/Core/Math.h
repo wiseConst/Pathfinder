@@ -9,10 +9,36 @@
 #include <glm/gtc/quaternion.hpp>
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/random.hpp>
+
+
+#include "CoreDefines.h"
 
 namespace Pathfinder
 {
 
+constexpr const auto s_PFR_SMALL_NUMBER = 10.E-9f;
+
+NODISCARD FORCEINLINE bool IsNearlyZero(const double val)
+{
+    return glm::abs(val) <= s_PFR_SMALL_NUMBER;
 }
+
+NODISCARD FORCEINLINE bool IsNearlyZero(const float val)
+{
+    return glm::abs(val) <= s_PFR_SMALL_NUMBER;
+}
+
+NODISCARD FORCEINLINE bool IsNearlyEqual(const double lhs, const double rhs)
+{
+    return glm::abs(rhs - lhs) <= s_PFR_SMALL_NUMBER;
+}
+
+NODISCARD FORCEINLINE bool IsNearlyEqual(const float lhs, const float rhs)
+{
+    return glm::abs(rhs - lhs) <= s_PFR_SMALL_NUMBER;
+}
+
+}  // namespace Pathfinder
 
 #endif  // MATH_H

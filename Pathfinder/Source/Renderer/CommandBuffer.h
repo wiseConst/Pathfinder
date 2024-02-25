@@ -33,6 +33,7 @@ class CommandBuffer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE virtual ECommandBufferLevel GetLevel() const = 0;
     NODISCARD FORCEINLINE virtual void* Get() const                    = 0;
     NODISCARD FORCEINLINE virtual void* GetWaitSemaphore() const       = 0;
+    NODISCARD FORCEINLINE virtual void* GetSubmitFence() const         = 0;
 
     NODISCARD FORCEINLINE static const auto& GetPipelineStatisticsNames() { return s_PipelineStatisticsNames; }
     NODISCARD FORCEINLINE const auto& GetPipelineStatisticsResults() const { return m_PipelineStatisticsResults; }
@@ -45,7 +46,7 @@ class CommandBuffer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetRawTimestampsResults() const { return m_TimestampsResults; }
 
     // Returns vector of computed timestamps in milliseconds.
-    virtual const std::vector<float> GetTimestampsResults() const = 0;
+    virtual const std::vector<float> GetTimestampsResults() = 0;
 
     /* STATISTICS  */
     virtual void BeginPipelineStatisticsQuery()     = 0;
@@ -87,19 +88,20 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const                               = 0;
     virtual void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EPipelineStage dstPipelineStage) const = 0;
 
-    virtual void WaitForSubmitFence()                                     = 0;
     virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, const PipelineStageFlags pipelineStages = 0,
                         const std::vector<void*>& semaphoresToWaitOn = {}, const uint32_t waitSemaphoreValueCount = 0,
-                        const uint64_t* pWaitSemaphoreValues = nullptr, const uint32_t signalSemaphoreValueCount = 0,
-                        const uint64_t* pSignalSemaphoreValues = nullptr) = 0;
-    virtual void Reset()                                                  = 0;
+                        const uint64_t* pWaitSemaphoreValues = nullptr) = 0;
+    virtual void Reset()                                                = 0;
 
-    static Shared<CommandBuffer> Create(ECommandBufferType type,
+    static Shared<CommandBuffer> Create(ECommandBufferType type, bool bSignaledFence = false,
                                         ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
 
   protected:
     static constexpr uint32_t s_MAX_TIMESTAMPS          = 32;
     static constexpr uint32_t s_MAX_PIPELINE_STATISITCS = 13;
+
+    std::array<uint64_t, s_MAX_TIMESTAMPS> m_TimestampsResults = {0};
+    std::array<std::pair<EQueryPipelineStatistic, uint64_t>, s_MAX_PIPELINE_STATISITCS> m_PipelineStatisticsResults;
 
     static inline std::map<const EQueryPipelineStatistic, std::string_view> s_PipelineStatisticsNames = {
         {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT,
@@ -120,9 +122,6 @@ class CommandBuffer : private Uncopyable, private Unmovable
         {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT, "Task shader invocations            "},     // TS
         {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT, "Mesh shader invocations            "}      // MS
     };
-
-    std::array<std::pair<EQueryPipelineStatistic, uint64_t>, s_MAX_PIPELINE_STATISITCS> m_PipelineStatisticsResults;
-    std::array<uint64_t, s_MAX_TIMESTAMPS> m_TimestampsResults = {0};
 
     CommandBuffer()        = default;
     virtual void Destroy() = 0;
