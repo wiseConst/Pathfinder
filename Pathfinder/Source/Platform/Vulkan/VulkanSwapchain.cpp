@@ -144,22 +144,27 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
     vulkanCommandBuffer->BeginDebugLabel("SwapchainClearColor", clearColor);
     {
         const auto imageBarrier =
-            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-                                                 VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 1, 0, 1, 0);
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
+                                                 VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
+        m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_GENERAL;
+
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT,
+                                           0, nullptr, 0, nullptr, 1, &imageBarrier);
 
         const VkClearColorValue clearColorValue = {clearColor.x, clearColor.y, clearColor.z, 1.0f};
         constexpr VkImageSubresourceRange range = {VK_IMAGE_ASPECT_COLOR_BIT, 0, 1, 0, 1};
         const auto rawCommandBuffer             = static_cast<VkCommandBuffer>(commandBuffer->Get());
-        vkCmdClearColorImage(rawCommandBuffer, m_Images[m_ImageIndex], VK_IMAGE_LAYOUT_GENERAL, &clearColorValue, 1, &range);
+
+        vkCmdClearColorImage(rawCommandBuffer, m_Images[m_ImageIndex], m_ImageLayouts[m_ImageIndex], &clearColorValue, 1, &range);
     }
 
     {
         const auto imageBarrier =
-            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_GENERAL,
-                                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, 0, 1, 0, 1, 0);
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
+                                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_TRANSFER_WRITE_BIT, 0, 1, 0, 1, 0);
+        m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
     }
 
@@ -212,8 +217,8 @@ void VulkanSwapchain::Invalidate()
     const auto oldSwapchain = m_Handle;
     if (oldSwapchain)
     {
-        std::ranges::for_each(m_ImageAcquiredSemaphores, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
         std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
+        std::ranges::for_each(m_ImageAcquiredSemaphores, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
     }
 
     std::ranges::for_each(
@@ -302,19 +307,15 @@ void VulkanSwapchain::Invalidate()
         VK_SetDebugName(logicalDevice, m_ImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW, debugName.data());
     }
 
-    m_ImageLayouts.resize(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
+    m_ImageLayouts.assign(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
 
     m_bWasInvalidated = true;
 }
 
-void VulkanSwapchain::AcquireImage()
+bool VulkanSwapchain::AcquireImage()
 {
-    m_bWasInvalidated = false;
-
-    auto& context             = VulkanContext::Get();
+    m_bWasInvalidated         = false;
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-
-    m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_UNDEFINED;
 
     if (m_RenderFenceRef[m_FrameIndex] != VK_NULL_HANDLE)
     {
@@ -324,13 +325,16 @@ void VulkanSwapchain::AcquireImage()
 
     const auto result =
         vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphores[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
+
+    m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_UNDEFINED;
+
     if (result == VK_SUCCESS)
     {
         if (m_RenderFenceRef[m_FrameIndex] != VK_NULL_HANDLE)
         {
             VK_CHECK(vkResetFences(logicalDevice, 1, &m_RenderFenceRef[m_FrameIndex]), "Failed to reset swapchain-render submit fence!");
         }
-        return;
+        return true;
     }
 
     if (result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR)
@@ -340,6 +344,7 @@ void VulkanSwapchain::AcquireImage()
     }
 
     Recreate();
+    return false;
 }
 
 void VulkanSwapchain::PresentImage()
@@ -374,11 +379,9 @@ void VulkanSwapchain::PresentImage()
     presentInfo.waitSemaphoreCount = 1;
     presentInfo.pWaitSemaphores    = &waitSemaphore;
 
-    const auto imagePresentBegin                = Timer::Now();
-    const auto result                           = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &presentInfo);
-    const std::chrono::duration<float> duration = Timer::Now() - imagePresentBegin;
-    // LOG_WARN("Swapchain image[%u] present took: %0.2fms", m_ImageIndex, duration.count() * 1000.0f);
-    // Renderer::GetStats().PresentTime = imagePresentEnd - imagePresentBegin;
+    Timer t                                   = {};
+    const auto result                         = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &presentInfo);
+    Renderer::GetStats().SwapchainPresentTime = t.GetElapsedMilliseconds();
 
     if (result == VK_SUCCESS)
     {
@@ -394,19 +397,26 @@ void VulkanSwapchain::Recreate()
     if (Application::Get().GetWindow()->IsMinimized()) return;
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
-    const auto recreationBegin = Timer::Now();
+#if PFR_DEBUG
+    Timer t = {};
+#endif
+
     Invalidate();
-    const auto duration = std::chrono::duration<float>(Timer::Now() - recreationBegin);
 
 #if PFR_DEBUG
     LOG_TAG_TRACE(VULKAN, "Swapchain recreated with: (%u, %u). Took: %0.2fms", m_ImageExtent.width, m_ImageExtent.height,
-                  duration.count() * 1000.0f);
+                  t.GetElapsedMilliseconds());
 #endif
 
-    for (auto& resizeCallback : m_ResizeCallbacks)
+    if (!m_bRecreateVSync)
     {
-        resizeCallback(m_ImageExtent.width, m_ImageExtent.height);
+        for (auto& resizeCallback : m_ResizeCallbacks)
+        {
+            resizeCallback(m_ImageExtent.width, m_ImageExtent.height);
+        }
     }
+
+    m_bRecreateVSync = false;
 }
 
 void VulkanSwapchain::Destroy()
@@ -444,6 +454,7 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
 
     vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain", glm::vec3(0.9f, 0.1f, 0.1f));
 
+    // NOTE: Best practices says here's RAR barrier?? wtf
     {
         const auto srcImageBarrier =
             VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,

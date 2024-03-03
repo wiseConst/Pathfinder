@@ -56,8 +56,8 @@ struct PipelineSpecification
 
     float LineWidth = 1.0f;
 
-    FramebufferPerFrame TargetFramebuffer;
-    Shared<Pathfinder::Shader> Shader = nullptr;
+    Shared<Framebuffer> TargetFramebuffer = nullptr;
+    Shared<Pathfinder::Shader> Shader     = nullptr;
 
     bool bMeshShading           = false;
     bool bBindlessCompatible    = false;

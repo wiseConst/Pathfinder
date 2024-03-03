@@ -59,17 +59,15 @@ class Shader : private Uncopyable, private Unmovable
   public:
     virtual ~Shader() = default;
 
-
+    // NOTE: Updates all frames
+    virtual void Set(const std::string_view name, const Shared<Buffer> buffer)     = 0;
+    virtual void Set(const std::string_view name, const Shared<Texture2D> texture) = 0;
+    virtual void Set(const std::string_view name, const Shared<Image> attachment)  = 0;
 
     // NOTE: Updates all frames
-    virtual void Set(const std::string_view name, const Shared<Buffer> buffer)    = 0;
-    virtual void Set(const std::string_view name, const Shared<Texture2D> texture)    = 0;
-    virtual void Set(const std::string_view name, const Shared<Image> attachment) = 0;
-
-    // NOTE: Updates all frames
-    virtual void Set(const std::string_view name, const BufferPerFrame& buffers)    = 0;
-    virtual void Set(const std::string_view name, const ImagePerFrame& attachments) = 0;
-    virtual void Set(const std::string_view name, const std::vector<ImagePerFrame>& attachments) = 0;
+    virtual void Set(const std::string_view name, const BufferPerFrame& buffers)                 = 0;
+    virtual void Set(const std::string_view name, const ImagePerFrame& attachments)              = 0;
+    virtual void Set(const std::string_view name, const std::vector<Shared<Image>>& attachments) = 0;
 
     NODISCARD static Shared<Shader> Create(const std::string_view shaderName);
     virtual void DestroyGarbageIfNeeded() = 0;

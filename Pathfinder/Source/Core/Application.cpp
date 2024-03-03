@@ -50,9 +50,8 @@ void Application::Run()
     while (m_Window->IsRunning() && s_bIsRunning)
     {
         Timer t = {};
-        if (!m_Window->IsMinimized())
+        if (!m_Window->IsMinimized() && m_Window->BeginFrame())
         {
-            m_Window->BeginFrame();
             Renderer::Begin();
 
             m_LayerQueue->OnUpdate(m_DeltaTime);
@@ -76,6 +75,7 @@ void Application::Run()
             ss << std::string("[cpu]: ") + std::to_string(t.GetElapsedMilliseconds()) + std::string("ms ");
             ss << std::string("[gpu]: ") + std::to_string(Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime) +
                       std::string("ms ");
+            ss << std::string("[present]: ") + std::to_string(Renderer::GetStats().SwapchainPresentTime) + std::string("ms ");
             ss << std::string(" [tris]: ") << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
             ss << std::string(" [meshlets]: ") << Renderer::GetStats().MeshletCount;
             ss << std::string(" [2D batches]: ") << Renderer2D::GetStats().BatchCount;

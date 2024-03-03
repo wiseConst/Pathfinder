@@ -37,7 +37,8 @@ class VulkanSwapchain final : public Swapchain
     {
         if (m_bVSync == bVSync) return;
 
-        m_bVSync = bVSync;
+        m_bVSync         = bVSync;
+        m_bRecreateVSync = true;
         Recreate();
         LOG_DEBUG("VSync: %s.", m_bVSync ? "ON" : "OFF");
     }
@@ -82,12 +83,13 @@ class VulkanSwapchain final : public Swapchain
     EWindowMode m_WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
     bool m_bVSync            = false;
     bool m_bWasInvalidated   = false;
+    bool m_bRecreateVSync    = false;
 
     NODISCARD FORCEINLINE bool WasInvalidatedDuringCurrentFrame() const final override { return m_bWasInvalidated; }
 
     void Recreate();
     void Destroy() final override;
-    void AcquireImage() final override;
+    bool AcquireImage() final override;
     void PresentImage() final override;
 
     void CopyToSwapchain(const Shared<Image>& image) final override;

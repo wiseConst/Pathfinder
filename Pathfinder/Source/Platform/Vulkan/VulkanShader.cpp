@@ -445,7 +445,7 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
     thread_local shaderc::CompileOptions compileOptions;
     compileOptions.SetOptimizationLevel(shaderc_optimization_level_zero);
     compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
-    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_4);
+    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_3);
     compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
     compileOptions.SetWarningsAsErrors();
     compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
@@ -479,7 +479,7 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
             LOG_TAG_ERROR(SHADERC, "Failed to compile \"%s\" shader! %s", shaderName.data(), compiledShaderResult.GetErrorMessage().data());
 
         const std::string shaderErrorMessage = std::string("Shader compilation failed! ") + std::string(shaderName);
-            PFR_ASSERT(false, shaderErrorMessage.data());
+        PFR_ASSERT(false, shaderErrorMessage.data());
     }
 
     const std::vector<uint32_t> compiledShaderSrc{compiledShaderResult.cbegin(), compiledShaderResult.cend()};
@@ -692,14 +692,14 @@ void VulkanShader::Set(const std::string_view name, const ImagePerFrame& attachm
                            nullptr);
 }
 
-void VulkanShader::Set(const std::string_view name, const std::vector<ImagePerFrame>& attachments)
+void VulkanShader::Set(const std::string_view name, const std::vector<Shared<Image>>& attachments)
 {
     std::vector<VkWriteDescriptorSet> writes;
     for (size_t i{}; i < attachments.size(); ++i)
     {
         for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
         {
-            const auto vulkanImage = std::static_pointer_cast<VulkanImage>(attachments[i][frame]);
+            const auto vulkanImage = std::static_pointer_cast<VulkanImage>(attachments[i]);
             PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
 
             for (const auto& shaderDesc : m_ShaderDescriptions)

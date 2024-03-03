@@ -33,12 +33,12 @@ vec4 Gridify(vec3 fragPos3D, float scale)
 
 float ComputeDepth(vec3 fragPos3D)
 {
-    const vec4 clipSpacePos = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * vec4(fragPos3D, 1.0);
+    const vec4 clipSpacePos = u_GlobalCameraData.Projection * u_GlobalCameraData.View * vec4(fragPos3D, 1.0);
     return clipSpacePos.z / clipSpacePos.w;
 }
 
 float ComputeLinearDepth(vec3 fragPos3D) {
-    const vec4 clipSpacePos = u_GlobalCameraData.Projection * u_GlobalCameraData.InverseView * vec4(fragPos3D.xyz, 1.0);
+    const vec4 clipSpacePos = u_GlobalCameraData.Projection * u_GlobalCameraData.View * vec4(fragPos3D.xyz, 1.0);
     const float clipSpaceDepth = (clipSpacePos.z / clipSpacePos.w) * 2.0 - 1.0; // put back between -1 and 1
     const float linearDepth = (2.0 * inNearPoint.z * inFarPoint.z) / (inFarPoint.z + inNearPoint.z - clipSpaceDepth * (inFarPoint.z - inNearPoint.z)); // get linear value between 0.01 and 100
     return linearDepth / inFarPoint.z; // normalize

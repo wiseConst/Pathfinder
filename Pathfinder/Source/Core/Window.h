@@ -52,10 +52,9 @@ class Window : private Uncopyable, private Unmovable
     FORCEINLINE virtual bool IsMinimized() const = 0;
     FORCEINLINE virtual bool IsRunning() const   = 0;
 
-    virtual void BeginFrame()                                         = 0;
+    virtual bool BeginFrame()                                         = 0;
     virtual void SwapBuffers()                                        = 0;
     virtual void PollEvents()                                         = 0;
-    virtual void CopyToWindow(const Shared<Framebuffer>& framebuffer) = 0;
     virtual void CopyToWindow(const Shared<Image>& image)             = 0;
 
     virtual void AddResizeCallback(ResizeCallback&& resizeCallback) = 0;

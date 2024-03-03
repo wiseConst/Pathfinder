@@ -87,6 +87,9 @@ class CommandBuffer : private Uncopyable, private Unmovable
 
     virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const                               = 0;
     virtual void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EPipelineStage dstPipelineStage) const = 0;
+    virtual void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
+                                           const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
+                                           const EAccessFlags dstAccessFlags) const                                         = 0;
 
     virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, const PipelineStageFlags pipelineStages = 0,
                         const std::vector<void*>& semaphoresToWaitOn = {}, const uint32_t waitSemaphoreValueCount = 0,

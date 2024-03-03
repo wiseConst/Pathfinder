@@ -20,7 +20,7 @@ class Swapchain : private Uncopyable, private Unmovable
     virtual void SetVSync(bool bVSync)                                        = 0;
     virtual void SetWindowMode(const EWindowMode windowMode)                  = 0;
 
-    virtual void AcquireImage() = 0;
+    virtual bool AcquireImage() = 0;
     virtual void PresentImage() = 0;
 
     virtual void SetRenderFence(const std::array<void*, s_FRAMES_IN_FLIGHT>& renderFence)     = 0;

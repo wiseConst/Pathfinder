@@ -70,9 +70,9 @@ void Renderer2D::Init()
     quadPipelineSpec.bBindlessCompatible   = true;
     quadPipelineSpec.FrontFace             = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
     quadPipelineSpec.TargetFramebuffer     = Renderer::GetRendererData()->GBuffer;
-    //quadPipelineSpec.bDepthTest            = true;
-    //quadPipelineSpec.bDepthWrite           = true;  // Do I rly need this? since im using depth pre pass of my static meshes
-   // quadPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
+    // quadPipelineSpec.bDepthTest            = true;
+    // quadPipelineSpec.bDepthWrite           = true;  // Do I rly need this? since im using depth pre pass of my static meshes
+    // quadPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
     PipelineBuilder::Push(s_RendererData2D->QuadPipeline, quadPipelineSpec);
 
     PipelineBuilder::Build();
@@ -114,7 +114,7 @@ void Renderer2D::FlushBatch()
     auto& br = Renderer::GetBindlessRenderer();
     br->Bind(renderCommandBuffer);
 
-    rd->GBuffer[s_RendererData2D->FrameIndex]->BeginPass(renderCommandBuffer);
+    rd->GBuffer->BeginPass(renderCommandBuffer);
 
     s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]->SetData(
         s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], dataSize);
@@ -129,7 +129,7 @@ void Renderer2D::FlushBatch()
 
     renderCommandBuffer->DrawIndexed(s_Renderer2DStats.QuadCount * 6);
 
-    rd->GBuffer[s_RendererData2D->FrameIndex]->EndPass(renderCommandBuffer);
+    rd->GBuffer->EndPass(renderCommandBuffer);
 
     renderCommandBuffer->EndRecording();
     renderCommandBuffer->Submit();

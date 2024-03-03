@@ -11,6 +11,7 @@ namespace Pathfinder
 
 class Buffer;
 class Material;
+class Texture2D;
 
 class Submesh final : private Uncopyable, private Unmovable
 {
@@ -29,7 +30,7 @@ class Submesh final : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE auto& GetMaterial() const { return m_Material; }
     NODISCARD FORCEINLINE const auto& GetBoundingSphere() const { return m_BoundingSphere; }
 
-    void SetMaterial(const Shared<Material> material) { m_Material = material; }
+    void SetMaterial(const Shared<Material>& material) { m_Material = material; }
 
   private:
     Shared<Buffer> m_VertexPositionBuffer;
@@ -61,7 +62,8 @@ class Mesh final : private Uncopyable, private Unmovable
   private:
     std::vector<Shared<Submesh>> m_Submeshes;
 
-    void LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex);
+    void LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures,
+                       const fastgltf::Asset& asset, const size_t meshIndex);
     void Destroy();
 };
 

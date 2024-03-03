@@ -396,10 +396,10 @@ void VulkanPipeline::Invalidate()
             MultisampleState.alphaToOneEnable                     = VK_FALSE;
 
             std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachmentStates;
-            if (m_Specification.TargetFramebuffer[0])
+            if (m_Specification.TargetFramebuffer)
             {
-                uint32_t attachmentCount = static_cast<uint32_t>(m_Specification.TargetFramebuffer[0]->GetAttachments().size());
-                if (m_Specification.TargetFramebuffer[0]->GetDepthAttachment()) --attachmentCount;
+                uint32_t attachmentCount = static_cast<uint32_t>(m_Specification.TargetFramebuffer->GetAttachments().size());
+                if (m_Specification.TargetFramebuffer->GetDepthAttachment()) --attachmentCount;
 
                 for (uint32_t i = 0; i < attachmentCount; ++i)
                 {
@@ -434,10 +434,10 @@ void VulkanPipeline::Invalidate()
             ColorBlendState.logicOpEnable                       = VK_FALSE;
             ColorBlendState.logicOp                             = VK_LOGIC_OP_COPY;
 
-            const auto windowWidth  = m_Specification.TargetFramebuffer[0]->GetSpecification().Width;
-            const auto windowHeight = m_Specification.TargetFramebuffer[0]->GetSpecification().Height;
+            const auto windowWidth  = m_Specification.TargetFramebuffer->GetSpecification().Width;
+            const auto windowHeight = m_Specification.TargetFramebuffer->GetSpecification().Height;
 
-            // Unlike OpenGL([-1, 1]), Vulkan has depth range [0, 1], and Y points down, so to solve we flip up the viewport
+            // Unlike OpenGL, Vulkan has Y pointing down, so to solve we flip up the viewport
             const VkViewport viewport = {
                 0, static_cast<float>(windowHeight), static_cast<float>(windowWidth), -static_cast<float>(windowHeight), 0.0f, 1.0f};
 
@@ -488,7 +488,7 @@ void VulkanPipeline::Invalidate()
             VkFormat depthAttachmentFormat   = VK_FORMAT_UNDEFINED;
             VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;  // TODO: Fill stencil
 
-            for (const auto& attachment : m_Specification.TargetFramebuffer[0]->GetAttachments())
+            for (const auto& attachment : m_Specification.TargetFramebuffer->GetAttachments())
             {
                 if (ImageUtils::IsDepthFormat(attachment.Attachment->GetSpecification().Format))
                 {

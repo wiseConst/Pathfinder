@@ -56,6 +56,37 @@ enum EPipelineStage : uint64_t
 };
 typedef uint32_t PipelineStageFlags;
 
+enum class EAccessFlags : uint64_t
+{
+    ACCESS_INDIRECT_COMMAND_READ                 = BIT(0),
+    ACCESS_INDEX_READ                            = BIT(1),
+    ACCESS_VERTEX_ATTRIBUTE_READ                 = BIT(2),
+    ACCESS_UNIFORM_READ                          = BIT(3),
+    ACCESS_INPUT_ATTACHMENT_READ                 = BIT(4),
+    ACCESS_SHADER_READ                           = BIT(5),
+    ACCESS_SHADER_WRITE                          = BIT(6),
+    ACCESS_COLOR_ATTACHMENT_READ                 = BIT(7),
+    ACCESS_COLOR_ATTACHMENT_WRITE                = BIT(8),
+    ACCESS_DEPTH_STENCIL_ATTACHMENT_READ         = BIT(9),
+    ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE        = BIT(10),
+    ACCESS_TRANSFER_READ                         = BIT(11),
+    ACCESS_TRANSFER_WRITE                        = BIT(12),
+    ACCESS_HOST_READ                             = BIT(13),
+    ACCESS_HOST_WRITE                            = BIT(14),
+    ACCESS_MEMORY_READ                           = BIT(15),
+    ACCESS_MEMORY_WRITE                          = BIT(16),
+    ACCESS_NONE                                  = 0,
+    ACCESS_TRANSFORM_FEEDBACK_WRITE              = BIT(25),
+    ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ       = BIT(26),
+    ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE      = BIT(27),
+    ACCESS_CONDITIONAL_RENDERING_READ            = BIT(20),
+    ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT     = BIT(19),
+    ACCESS_ACCELERATION_STRUCTURE_READ           = BIT(21),
+    ACCESS_ACCELERATION_STRUCTURE_WRITE          = BIT(22),
+    ACCESS_FRAGMENT_DENSITY_MAP_READ             = BIT(24),
+    ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ = BIT(23),
+};
+
 enum class EQueryPipelineStatistic
 {
     QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT                    = BIT(0),

@@ -12,7 +12,7 @@ using vec4 = glm::vec4;
 
 // NOTE: Strange as fuck, but 32*32 gives way-way more perf than 16*16 on RTX 3050 TI LAPTOP
 const uint32_t LIGHT_CULLING_TILE_SIZE = 16u;
-const uint32_t INVALID_LIGHT_INDEX     = MAX_POINT_LIGHTS;
+const uint32_t INVALID_LIGHT_INDEX     = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? MAX_POINT_LIGHTS : MAX_SPOT_LIGHTS;
 
 #ifndef __cplusplus
 uint GetLinearGridIndex(vec2 pixelCoords, float framebufferWidth)
@@ -75,6 +75,5 @@ struct SpotLight
     float Radius;
     float InnerCutOff;
     float OuterCutOff;
+    bool bCastShadows;
 };
-
-// TODO: Fill SpotLight

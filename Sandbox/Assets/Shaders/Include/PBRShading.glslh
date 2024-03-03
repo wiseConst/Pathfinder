@@ -1,0 +1,117 @@
+
+#ifdef __cplusplus
+#pragma once
+#endif
+
+const float PI = 3.14159265359;
+
+// Approximates the relative surface area of microfacets exactly aligned to the H vector.
+// Defines % of microfacets reflecting light for a given dir.
+// Trowbridge-Reitz GGX
+float NDF_GGX(const vec3 N, const vec3 H, const float roughness)
+{
+	const float NdotH = max(dot(N, H), 0.f);
+	const float NdotH2 = NdotH * NdotH;
+	const float a2 = roughness * roughness;
+
+	float denom = (NdotH2 * (a2 - 1.f)) + 1;
+	denom = PI * denom * denom;
+	return a2 / denom;
+}
+
+// Approximates the relative surface area where its micro surface-details overshadow each other, causing light rays to be occluded.
+float GeometrySchlick_GGX(const float cosTheta, const float roughness)
+{
+	const float r = (roughness + 1.f);
+	const float k = (r * r) / 8;
+
+	const float denom = cosTheta * (1 - k) + k;
+	return cosTheta / denom;
+}
+
+float GeometrySmith(const float NdotL, const float NdotV, const float roughness)
+{
+	const float geometryShadowing = GeometrySchlick_GGX(NdotL, roughness);
+	const float geometryObstruction = GeometrySchlick_GGX(NdotV, roughness);
+
+	return geometryObstruction * geometryShadowing;
+}
+
+// Describes the ratio of light that gets reflected over the light that gets refracted, which varies over the angle we're looking at a surface.
+// Defines amount of reflected light for a given substrance. (approaches 1 for grazing angles)
+vec3 FresnelSchlick(const float cosTheta, const vec3 F0)
+{
+	return F0 + (1.f - F0) * pow(clamp(1.f - cosTheta, 0.f, 1.f), 5.f);
+}
+
+vec3 BRDF(const vec3 F, const vec3 albedo, const vec3 N, const vec3 V, const vec3 L, const vec3 H, const float roughness, const float metallic)
+{
+	const float D = NDF_GGX(N, H, roughness);
+	
+	const float NdotL = max(dot(N, L), 0.f);
+	const float NdotV = max(dot(N, V), 0.f);
+	float G   = GeometrySmith(NdotL, NdotV, roughness); 
+	
+	vec3 specular  = (D * G * F) / (4 * NdotV * NdotL  + .0001f);  
+
+	vec3 kD = vec3(1.f) - F;
+	kD *= 1.f - metallic;
+	
+	return (kD * albedo) / PI + specular;
+}
+
+vec3 DirectionalLightContribution(const float kShadow, const vec3 F0, const vec3 V, const vec3 normal, const DirectionalLight dl, const vec3 albedo, const float roughness, const float metallic)
+{
+    const vec3 L = normalize(-dl.Direction);
+    const vec3 H = normalize(V + L);
+    const vec3 N = normalize(normal);
+
+    const vec3 radiance = dl.Color * dl.Intensity * kShadow; 
+    
+    const float NdotL = max(dot(N, L), 0.f);
+    const float HdotV = max(dot(H, V), 0.f);
+    const vec3 F = FresnelSchlick(HdotV, F0);
+    return BRDF(F, albedo, N, V, L, H, roughness, metallic) * radiance * NdotL;
+}
+
+vec3 PointLightContribution(const vec3 worldPos,  const vec3 F0, const vec3 normal, const vec3 V, const PointLight pl, const vec3 albedo, const float roughness, const float metallic)
+{
+     const vec3 L = normalize(pl.Position - worldPos);
+     const vec3 H = normalize(V + L);
+     const vec3 N = normalize(normal);
+
+     const float lightDistance = length(pl.Position - worldPos);
+     const float att = 1.f / (lightDistance * lightDistance);
+     const vec3 radiance  = pl.Color * pl.Intensity *  att; 
+     
+     const float NdotL = max(dot(N, L), 0.f);
+     const float HdotV = max(dot(H, V), 0.f);
+     const vec3 F  = FresnelSchlick(HdotV, F0);
+     return BRDF(F, albedo, N, V, L, H, roughness, metallic) * radiance * NdotL;
+}
+
+vec3 SpotLightContribution(const vec3 worldPos, const vec3 F0, const vec3 normal, const vec3 V, const SpotLight sl, const vec3 albedo, const float roughness, const float metallic)
+{
+     const vec3 L = normalize(sl.Position - worldPos);
+     const vec3 H = normalize(V + L);
+     const vec3 N = normalize(normal);
+
+     const float NdotL = max(dot(N, L), 0.f);
+     const float HdotV = max(dot(H, V), 0.f);
+     const vec3 F  = FresnelSchlick(HdotV, F0);
+    
+    // NOTE: How it works
+    // theta: angle between spotlight direction and light dir
+    // epsilon used for spotIntensity which gives us intensity in clamped range [0, 1]: 
+    // 1) outerCutOff > innerCutOff > theta -> max light
+    // 2) outerCutOff > theta > innerCutOff -> medium
+    // 3) theta > outerCutOff > innerCutOff -> zero light
+    const float theta = dot(normalize(sl.Direction), -L);
+    const float epsilon = sl.InnerCutOff - sl.OuterCutOff;
+    const float spotIntensity = clamp((theta - sl.OuterCutOff) / epsilon, 0.0, 1.0);
+
+    const float lightDistance = length(sl.Position - worldPos);
+    const float att = 1.f / (lightDistance * lightDistance);
+    const vec3 radiance = sl.Color * sl.Intensity * att * spotIntensity; 
+    return BRDF(F, albedo, N, V, L, H, roughness, metallic) * radiance * NdotL;
+}

@@ -34,13 +34,6 @@ using mat4 = glm::mat4;
 #include "Assets/Shaders/Include/Meshlets.h"
 #include "Assets/Shaders/Include/Lights.h"
 
-float LinearizeDepth(float depth, float znear, float zfar)
-{
-    float z = (znear * zfar) / (zfar + depth * (znear - zfar));
-    z /= zfar;  // Normalizing
-    return z;
-}
-
 #endif
 
 struct MeshPositionVertex
@@ -105,7 +98,6 @@ struct Sphere
     float Radius;
 };
 
-// TODO: Implement PBR
 struct Material
 {
     vec4 BaseColor;
@@ -198,13 +190,14 @@ layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_CAMERA_BINDING, 
 #endif
 {
     mat4 Projection;
-    mat4 InverseView;
+    mat4 View;
     mat4 ViewProjection;
     mat4 InverseProjection;
     vec3 Position;
     float zNear;
     float zFar;
-    vec2 FramebufferResolution;
+    vec2 FullResolution;
+    vec2 DepthUnpackConsts;  // (depthLinearizeMul, depthLinearizeAdd)
 }
 #ifdef __cplusplus
 ;
@@ -219,21 +212,45 @@ vec4 ClipSpaceToView(const vec4 clip)
     return view / view.w;
 }
 
-vec4 ScreenSpaceToView(const vec4 screen, const ivec2 screenDimensions)
-{
-    const vec2 uv = screen.xy / screenDimensions;  // convert from range [0, width],[0, height] to [0, 1], [0, 1]
+/* RHI and their NDCs:
+    OpenGL, OpenGL ES and WebGL NDC: +Y is up. Point(-1, -1) is at the bottom left corner.
+    Framebuffer coordinate: +Y is up.Origin(0, 0) is at the bottom left corner.
+    Texture coordinate:     +Y is up.Origin(0, 0) is at the bottom left corner.
+    See OpenGL 4.6 spec, Figure 8.4.
 
-    /* If screen origin is top left like in DX: (uv.x, 1.0f - uv.y) */
-    const vec4 clip = vec4(vec2(uv.x, uv.y) * 2.f - 1.f, screen.z, screen.w);  // convert from [0, 1] to NDC([-1, 1])
+    D3D12 and Metal NDC:    +Y is up. Point(-1, -1) is at the bottom left corner
+    Framebuffer coordinate: +Y is down. Origin(0, 0) is at the top left corner
+    Texture coordinate:     +Y is down. Origin(0, 0) is at the top left corner.
+
+    Vulkan NDC: +Y is down. Point(-1, -1) is at the top left corner.
+    Framebuffer coordinate: +Y is down. Origin(0, 0) is at the top left corner.
+        See the description about “VkViewport” and “FragCoord” in Vulkan 1.1 spec.
+        But we can flip the viewport coordinate via a negative viewport height value. NOTE!!!: Works only via graphics pipelines!
+    Texture coordinate:     +Y is down. Origin(0, 0) is at the top left corner.
+*/
+vec4 ScreenSpaceToView(const vec4 screen, const vec2 screenDimensions)
+{
+    const vec2 uv = screen.xy / screenDimensions;  // convert from range [0, width]-[0, height] to [0, 1], [0, 1]
+
+    /* If screen origin is top left like in DX or Vulkan: (uv.x, 1.0f - uv.y), screen.z - depth in range [0, 1] like in DX or Vulkan*/
+    const vec4 clip = vec4(vec2(uv.x, 1.0 - uv.y) * 2.0 - 1.0, screen.z,
+                           screen.w);  // convert from [0, 1] to NDC([-1, 1]), without touching depth since it's [0, 1] as I require.
     return ClipSpaceToView(clip);
 }
+
+// NOTE: From XeGTAO.h + XeGTAO.hlsli
+float LinearizeDepth(float depth)
+{
+    // Optimised version of "(cameraClipNear * cameraClipFar) / (cameraClipFar - projDepth * (cameraClipFar - cameraClipNear))"
+    return u_GlobalCameraData.DepthUnpackConsts.x / (u_GlobalCameraData.DepthUnpackConsts.y - depth);
+}
+
 #endif
 
-// TODO: Move from uniform to ssbo
 #ifdef __cplusplus
 struct LightsData
 #else
-layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, scalar) readonly buffer LightsUB
+layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, scalar) readonly buffer LightsSB
 #endif
 {
     PointLight PointLights[MAX_POINT_LIGHTS];

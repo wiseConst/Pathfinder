@@ -73,10 +73,10 @@ GLFWWindow::GLFWWindow(const WindowSpecification& windowSpec) noexcept : m_Speci
     LOG_TAG_TRACE(GLFW, "Created window \"%s\" (%u, %u).", m_Specification.Title.data(), m_Specification.Width, m_Specification.Height);
 }
 
-void GLFWWindow::BeginFrame()
+bool GLFWWindow::BeginFrame()
 {
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    m_Swapchain->AcquireImage();
+    return m_Swapchain->AcquireImage();
 }
 
 const uint32_t GLFWWindow::GetCurrentFrameIndex() const
@@ -211,7 +211,6 @@ void GLFWWindow::SetEventCallbacks() const
                                    }
                                });
 
-    //   glfwSetCharCallback(m_Handle,[](){});
     glfwSetKeyCallback(m_Handle,
                        [](GLFWwindow* window, int key, int scancode, int action, int mods)
                        {
@@ -243,13 +242,6 @@ void GLFWWindow::SetEventCallbacks() const
                                }
                            }
                        });
-}
-
-void GLFWWindow::CopyToWindow(const Shared<Framebuffer>& framebuffer)
-{
-    PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    PFR_ASSERT(false, "CopyToWindow() Not implemented!");
-    // m_Swapchain->CopyToSwapchain(framebuffer[m_Swapchain->GetCurrentFrameIndex()]->Get);
 }
 
 void GLFWWindow::CopyToWindow(const Shared<Image>& image)

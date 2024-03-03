@@ -15,8 +15,8 @@ namespace Pathfinder
 static constexpr float s_MAX_FOV = 130.0F;
 static constexpr float s_MIN_FOV = 15.0F;
 
+static constexpr float s_MIN_ZNEAR = 10e-3f;
 static constexpr float s_MAX_ZFAR  = 10e2f;
-static constexpr float s_MIN_ZNEAR = 10e-4f;
 
 static constexpr float s_MAX_PITCH = 89.0F;
 
@@ -120,6 +120,7 @@ class PerspectiveCamera final : public Camera
         // NOTE: Using formula: R^(transpose) * T; m_Right, upVec, m_Forward - orthogonal basis
         // Inverse rotation back to canonical view direction since I assume that cam always look towards -Z(RH coordinate system)
 
+        /*
         // You'll notice that XY(-Z)=RUF => Z=-F, that's fucking why
         m_View[0][0] = m_Right.x;
         m_View[0][1] = upVec.x;
@@ -137,6 +138,9 @@ class PerspectiveCamera final : public Camera
         m_View[3][0] = -glm::dot(m_Right, m_Position);
         m_View[3][1] = -glm::dot(upVec, m_Position);
         m_View[3][2] = glm::dot(m_Forward, m_Position);  // No "-": -Pos * -F
+        */
+
+        m_View = glm::lookAt(m_Position, m_Position + m_Forward, upVec);
     }
 
     bool OnMouseMoved(const MouseMovedEvent& e) final override
@@ -210,7 +214,7 @@ class PerspectiveCamera final : public Camera
 
     void RecalculateProjectionMatrix() final override
     {
-        // NOTE: In case of reversed-z swap far and near.
+        // NOTE: reversed-z requires swapping far and near.
         m_Projection = glm::perspective(glm::radians(m_FOV), m_AR, s_MAX_ZFAR, s_MIN_ZNEAR);
     }
 

@@ -185,6 +185,24 @@ void VulkanCommandBuffer::BeginTimestampQuery(const EPipelineStage pipelineStage
     ++m_CurrentTimestampIndex;
 }
 
+void VulkanCommandBuffer::InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
+                                                    const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
+                                                    const EAccessFlags dstAccessFlags) const
+{
+    const auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
+    PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
+
+    const auto vkSrcAccessFlags = VulkanUtility::PathfinderAccessFlagsToVulkan(srcAccessFlags);
+    const auto vkDstAccessFlags = VulkanUtility::PathfinderAccessFlagsToVulkan(dstAccessFlags);
+
+    const VkBuffer rawBuffer       = (VkBuffer)vulkanBuffer->Get();
+    const auto bufferMemoryBarrier = VulkanUtility::GetBufferMemoryBarrier(rawBuffer, vulkanBuffer->GetSpecification().BufferCapacity, 0,
+                                                                           vkSrcAccessFlags, vkDstAccessFlags);
+    InsertBarrier(VulkanUtility::PathfinderPipelineStageToVulkan(srcPipelineStage),
+                  VulkanUtility::PathfinderPipelineStageToVulkan(dstPipelineStage), VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1,
+                  &bufferMemoryBarrier, 0, nullptr);
+}
+
 void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheritanceInfo)
 {
     VkCommandBufferBeginInfo commandBufferBeginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
@@ -479,21 +497,27 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
 {
     // TODO: Remove dependency on main window, in case you wanna have more viewports
     const auto& window  = Application::Get().GetWindow();
-    VkViewport viewport = {0.0f,
-                           static_cast<float>(window->GetSpecification().Height),
-                           static_cast<float>(window->GetSpecification().Width),
-                           -static_cast<float>(window->GetSpecification().Height),
-                           0.0f,
-                           1.0f};
+    VkViewport viewport = {};
+    viewport.minDepth   = 0.0f;
+    viewport.maxDepth   = 1.0f;
 
     VkRect2D scissor = {{0, 0}, {window->GetSpecification().Width, window->GetSpecification().Height}};
-    if (auto& targetFramebuffer = pipeline->GetSpecification().TargetFramebuffer[window->GetCurrentFrameIndex()])
+    if (const auto& targetFramebuffer = pipeline->GetSpecification().TargetFramebuffer)
     {
         scissor.extent = VkExtent2D{targetFramebuffer->GetSpecification().Width, targetFramebuffer->GetSpecification().Height};
 
         viewport.y      = static_cast<float>(scissor.extent.height);
         viewport.width  = static_cast<float>(scissor.extent.width);
         viewport.height = -static_cast<float>(scissor.extent.height);
+    }
+    else
+    {
+        viewport = {0.0f,
+                    static_cast<float>(window->GetSpecification().Height),
+                    static_cast<float>(window->GetSpecification().Width),
+                    -static_cast<float>(window->GetSpecification().Height),
+                    0.0f,
+                    1.0f};
     }
 
     if (pipeline->GetSpecification().bDynamicPolygonMode)

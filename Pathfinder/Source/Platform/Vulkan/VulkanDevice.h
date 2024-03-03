@@ -228,10 +228,9 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     }
 
   private:
-    // NOTE: Struct looks messy to keep structure memory aligned(thanks to updated MVS 2024)
     struct GPUInfo
     {
-        VkPhysicalDeviceProperties GPUProperties             = {};  // 824_8
+        VkPhysicalDeviceProperties GPUProperties             = {};
         VkPhysicalDeviceMemoryProperties GPUMemoryProperties = {};
         VkPhysicalDeviceFeatures GPUFeatures                 = {};
         std::vector<VkFormat> SupportedDepthStencilFormats;
@@ -241,10 +240,9 @@ class VulkanDevice final : private Uncopyable, private Unmovable
         bool bMeshShaderSupport = true;
         bool bRTXSupport        = true;
         bool bBDASupport        = true;
-        uint8_t pad0            = 0;
 
-        VkPhysicalDeviceDriverProperties GPUDriverProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};           // 536_8
-        VkPhysicalDeviceMeshShaderPropertiesEXT MSProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};  // 160_8
+        VkPhysicalDeviceDriverProperties GPUDriverProperties            = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+        VkPhysicalDeviceMeshShaderPropertiesEXT MSProperties            = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};
         VkPhysicalDeviceAccelerationStructurePropertiesKHR ASProperties = {
             VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
 
@@ -257,7 +255,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
         VkDevice LogicalDevice          = VK_NULL_HANDLE;
         VkPhysicalDevice PhysicalDevice = VK_NULL_HANDLE;
 
-        VkQueue GraphicsQueue = VK_NULL_HANDLE;
+        VkQueue GraphicsQueue = VK_NULL_HANDLE;  // GCT queue
         VkQueue PresentQueue  = VK_NULL_HANDLE;
         VkQueue TransferQueue = VK_NULL_HANDLE;
         VkQueue ComputeQueue  = VK_NULL_HANDLE;

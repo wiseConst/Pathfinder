@@ -32,9 +32,7 @@ void main()
     vec3 T = normalize(normalMatrix * inTangent);
     T = normalize(T - dot(T, N) * N); // Reorthogonalization around N via Gramm-Schmidt.
     const vec3 B = cross(N, T);
-    
-    const mat3 TBNtoWorld = mat3(T, B, N);
-    o_VertexOutput.TBNtoWorld = TBNtoWorld;
+    o_VertexOutput.TBNtoWorld = mat3(T, B, N);
     
     for(uint i = 0; i < u_PC.StorageImageIndex; ++i)
     {

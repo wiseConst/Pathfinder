@@ -249,8 +249,7 @@ void VulkanImage::Destroy()
 
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_View, nullptr);
 
-    if (m_DescriptorInfo.sampler)
-        SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
+    if (m_DescriptorInfo.sampler) SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
 
     m_DescriptorInfo = {};
 
@@ -313,10 +312,13 @@ void* VulkanSamplerStorage::CreateSamplerImpl(const SamplerSpecification& sample
     samplerCI.addressModeV            = samplerCI.addressModeU;
     samplerCI.addressModeW            = samplerCI.addressModeU;
 
-    samplerCI.magFilter = VulkanUtility::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
-    samplerCI.minFilter = VulkanUtility::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
+    samplerCI.minLod     = samplerSpec.MinLod;
+    samplerCI.maxLod     = IsNearlyEqual(samplerSpec.MaxLod, .0f) ? VK_LOD_CLAMP_NONE : samplerSpec.MaxLod;
+    samplerCI.mipLodBias = samplerSpec.MipLodBias;
 
-    samplerCI.borderColor = VK_BORDER_COLOR_INT_OPAQUE_BLACK;  // TODO: configurable??
+    samplerCI.minFilter = samplerCI.magFilter = VulkanUtility::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
+
+    samplerCI.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;  // VK_BORDER_COLOR_INT_OPAQUE_BLACK;  // TODO: configurable??
     samplerCI.mipmapMode  = samplerCI.magFilter == VK_FILTER_NEAREST ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
 
     VkSampler sampler = VK_NULL_HANDLE;

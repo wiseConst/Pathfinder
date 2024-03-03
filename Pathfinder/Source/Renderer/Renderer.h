@@ -61,7 +61,7 @@ class Renderer : private Uncopyable, private Unmovable
         Shared<Submesh> submesh = nullptr;
         glm::mat4 Transform     = glm::mat4(1.0f);
     };
-    // TODO: Realign structure
+
     struct RendererData
     {
         // MISC
@@ -69,12 +69,15 @@ class Renderer : private Uncopyable, private Unmovable
         CameraData CameraStruct;
         Frustum CullFrustum;
 
+        // NOTE: PerFramed should be objects that are used by host and device.
         BufferPerFrame LightsSSBO;
         BufferPerFrame CameraUB;
         BufferPerFrame UploadHeap;
 
         static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB
         uint32_t FrameIndex                                = 0;
+
+        Weak<Pipeline> LastBoundPipeline;
 
         // Rendering
         CommandBufferPerFrame RenderCommandBuffer;
@@ -85,21 +88,21 @@ class Renderer : private Uncopyable, private Unmovable
         Weak<CommandBuffer> CurrentComputeCommandBuffer;
         Weak<CommandBuffer> CurrentTransferCommandBuffer;
 
-        ImagePerFrame PathtracedImage;
-        Shared<Pipeline> PathtracingPipeline = nullptr;
-        FramebufferPerFrame CompositeFramebuffer;
-        Shared<Pipeline> CompositePipeline = nullptr;
+        Shared<Image> PathtracedImage            = nullptr;
+        Shared<Pipeline> PathtracingPipeline     = nullptr;
+        Shared<Framebuffer> CompositeFramebuffer = nullptr;
+        Shared<Pipeline> CompositePipeline       = nullptr;
 
         // Forward+ renderer
-        FramebufferPerFrame GBuffer;
+        Shared<Framebuffer> GBuffer          = nullptr;
         Shared<Pipeline> ForwardPlusPipeline = nullptr;
 
-        FramebufferPerFrame DepthPrePassFramebuffer;
-        Shared<Pipeline> DepthPrePassPipeline = nullptr;
+        Shared<Framebuffer> DepthPrePassFramebuffer = nullptr;
+        Shared<Pipeline> DepthPrePassPipeline       = nullptr;
 
         // TODO: CASCADED SHADOW MAPS
         // DirShadowMaps
-        std::vector<FramebufferPerFrame> DirShadowMaps;
+        std::vector<Shared<Framebuffer>> DirShadowMaps;
         Shared<Pipeline> DirShadowMapPipeline = nullptr;
 
         std::vector<RenderObject> OpaqueObjects;
@@ -108,27 +111,27 @@ class Renderer : private Uncopyable, private Unmovable
 
         Shared<Pipeline> GridPipeline = nullptr;
 
-        ImagePerFrame FrustumDebugImage;
-        ImagePerFrame LightHeatMapImage;
-        Shared<Pipeline> LightCullingPipeline = nullptr;
-        BufferPerFrame PointLightIndicesStorageBuffer;
+        Shared<Image> FrustumDebugImage               = nullptr;
+        Shared<Image> LightHeatMapImage               = nullptr;
+        Shared<Pipeline> LightCullingPipeline         = nullptr;
+        Shared<Buffer> PointLightIndicesStorageBuffer = nullptr;
         // NOTE: Instead of creating this shit manually, shader can create you this
         // in e.g. you got writeonly buffer -> shader can create it,
         // in e.g. you got readonly  buffer -> shader gonna wait for you to give it him
         // unordored_map<string,BufferPerFrame>, string maps to set and binding
-        BufferPerFrame SpotLightIndicesStorageBuffer;
+        Shared<Buffer> SpotLightIndicesStorageBuffer = nullptr;
 
         // TODO: Add HBAO, GTAO, RTAO
         // AO
         Shared<Texture2D> AONoiseTexture = nullptr;
         struct AO
         {
-            Shared<Pathfinder::Pipeline> Pipeline = nullptr;
-            FramebufferPerFrame Framebuffer;
+            Shared<Pathfinder::Pipeline> Pipeline       = nullptr;
+            Shared<Pathfinder::Framebuffer> Framebuffer = nullptr;
         };
-        AO SSAO                           = {};
-        Shared<Pipeline> SSAOBlurPipeline = nullptr;
-        FramebufferPerFrame SSAOBlurFramebuffer;
+        AO SSAO                                 = {};
+        Shared<Pipeline> SSAOBlurPipeline       = nullptr;
+        Shared<Framebuffer> SSAOBlurFramebuffer = nullptr;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
@@ -148,8 +151,11 @@ class Renderer : private Uncopyable, private Unmovable
         uint32_t DescriptorPoolCount;
         uint32_t MeshletCount;
         float GPUTime;
+        float SwapchainPresentTime;
     };
     static inline RendererStats s_RendererStats = {};
+
+    static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline>& pipeline);
 
     // TODO: GPU-side frustum culling
     static bool IsInsideFrustum(const auto& renderObject);

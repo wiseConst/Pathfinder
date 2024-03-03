@@ -80,10 +80,18 @@ void ShaderLibrary::Load(const std::string& shaderName)
 void ShaderLibrary::Load(const std::vector<std::string>& shaderNames)
 {
     // The way it should work: Submit to jobsystem and wait on futures
+    std::mutex shaderLibMutex;
     std::vector<std::function<void()>> futures;
     for (auto& shaderName : shaderNames)
     {
-        auto future = JobSystem::Submit([&] { s_Shaders[shaderName] = Shader::Create(shaderName); });
+        auto future = JobSystem::Submit(
+            [&]
+            {
+                auto shader = Shader::Create(shaderName);
+
+                std::lock_guard lock(shaderLibMutex);
+                s_Shaders[shaderName] = shader;
+            });
 
         futures.emplace_back([future] { future.get(); });
     }

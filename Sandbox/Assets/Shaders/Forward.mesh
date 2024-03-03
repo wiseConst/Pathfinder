@@ -54,9 +54,7 @@ void main()
         vec3 T = normalize(normalMatrix * s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Tangent);
         T = normalize(T - dot(T, N) * N);
         const vec3 B = cross(N, T);
-    
-        const mat3 TBNtoWorld = mat3(T, B, N);
-        o_VertexOutput[i].TBNtoWorld = TBNtoWorld;
+        o_VertexOutput[i].TBNtoWorld = mat3(T, B, N);
     }
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;

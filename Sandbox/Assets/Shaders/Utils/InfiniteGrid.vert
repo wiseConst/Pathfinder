@@ -22,7 +22,7 @@ vec3 UnprojectPoint(vec3 p, mat4 invView, mat4 projection)
 void main()
 {
     const vec3 p = gridPlanes[gl_VertexIndex].xyz;
-    outNearPoint = UnprojectPoint(vec3(p.x, p.y, 0.0), u_GlobalCameraData.InverseView, u_GlobalCameraData.Projection); // unproject on the near plane
-    outFarPoint = UnprojectPoint(vec3(p.x, p.y, 1.0), u_GlobalCameraData.InverseView, u_GlobalCameraData.Projection); // unproject on the far plane
+    outNearPoint = UnprojectPoint(vec3(p.x, p.y, 0.0), u_GlobalCameraData.View, u_GlobalCameraData.Projection); // unproject on the near plane
+    outFarPoint = UnprojectPoint(vec3(p.x, p.y, 1.0), u_GlobalCameraData.View, u_GlobalCameraData.Projection); // unproject on the far plane
     gl_Position = vec4(p, 1.0); // using directly the clipped coordinates
 }

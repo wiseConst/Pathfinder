@@ -21,8 +21,8 @@ Unique<Application> Create()
     ApplicationSpecification appSpec = {};
     appSpec.RendererAPI              = ERendererAPI::RENDERER_API_VULKAN;
     appSpec.Title                    = "RTX, mesh-shading enjoyer";
-    appSpec.Width                    = 720;
-    appSpec.Height                   = 540;
+    appSpec.Width                    = 960;
+    appSpec.Height                   = 640;
 
     return MakeUnique<SandboxApp>(appSpec);
 }

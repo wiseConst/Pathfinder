@@ -27,18 +27,18 @@ const float sampleRadius = .873f;
 const float sampleBias = .025f;
 
 vec3 GetViewPositionFromDepth(vec2 coords) {
-        const float fragmentDepth = texture(u_DepthTex, coords).r;
-      
-        // UV space -> ndc
-        // NOTE: For OpenGL should be (fragmentDepth * 2.f - .1f)
-        const vec4 ndc = vec4(coords * 2.0 - 1.0, fragmentDepth, 1.0);
-        
-        // ndc -> view space
-        vec4 posVS = u_GlobalCameraData.InverseProjection * ndc;
-      
-        // Since we used a projection transformation (even if it was in inverse)
-        // we need to convert our homogeneous coordinates using the perspective divide.
-        return posVS.xyz / posVS.w;
+    const float fragmentDepth = texture(u_DepthTex, coords).r;
+    
+    // UV space -> ndc
+    // NOTE: For OpenGL should be (fragmentDepth * 2.f - .1f)
+    const vec4 ndc = vec4(coords * 2.f - 1.f, fragmentDepth, 1.f);
+    
+    // ndc -> view space
+    vec4 posVS = u_GlobalCameraData.InverseProjection * ndc;
+    
+    // Since we used a projection transformation (even if it was in inverse)
+    // we need to convert our homogeneous coordinates using the perspective divide.
+    return posVS.xyz / posVS.w;
 }
 
 // NOTE: John Chapman, learnopengl, https://betterprogramming.pub/depth-only-ssao-for-forward-renderers-1a3dcfa1873a

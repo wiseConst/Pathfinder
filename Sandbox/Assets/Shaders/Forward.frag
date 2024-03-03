@@ -2,7 +2,17 @@
 
 #extension GL_GOOGLE_include_directive : require
 #include "Assets/Shaders/Include/Globals.h"
+
+#define PHONG 0
+#define PBR 1
+
+#if PHONG
 #include "Assets/Shaders/Include/PhongShading.glslh"
+#endif
+
+#if PBR
+#include "Assets/Shaders/Include/PBRShading.glslh"
+#endif
 
 layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) buffer readonly VisiblePointLightIndicesBuffer
 {
@@ -35,6 +45,7 @@ vec3 GetNormalFromNormalMap()
 void main()
 { 
     const vec3 N = normalize(i_VertexInput.TBNtoWorld * GetNormalFromNormalMap());
+    const vec3 V = normalize(u_GlobalCameraData.Position - i_VertexInput.WorldPos);
 
     // <0> is reserved for white texture
     const vec3 emissive = u_PC.EmissiveTextureIndex != 0 ? texture(u_GlobalTextures[nonuniformEXT(u_PC.EmissiveTextureIndex)], i_VertexInput.UV).rgb : vec3(0.f);
@@ -42,12 +53,30 @@ void main()
 
     const vec2 screenSpaceUV = gl_FragCoord.xy / textureSize(u_SSAO, 0).xy;
     const float ao = texture(u_SSAO, screenSpaceUV).r;
- 
-    vec3 lightSources = vec3(0);
-    for(uint i = 0; i < u_Lights.DirectionalLightCount; ++i)
-        lightSources += CalcDirLights(1.f - ShadowCalculation(u_DirShadowmap[i], i_VertexInput.FragPosLightSpace[i],N,normalize(-u_Lights.DirectionalLights[i].Direction)), i_VertexInput.WorldPos, N, u_GlobalCameraData.Position, u_Lights.DirectionalLights[i], albedo.xyz, ao);
 
-    const uint linearTileIndex = GetLinearGridIndex(gl_FragCoord.xy, u_GlobalCameraData.FramebufferResolution.x);
+    const vec4 metallicRoughness = texture(u_GlobalTextures[nonuniformEXT(u_PC.MetallicRoughnessTextureIndex)], i_VertexInput.UV);
+    const float metallic = metallicRoughness.b;
+    const float roughness = metallicRoughness.g;
+
+    vec3 irradiance = emissive;
+    #if PBR
+    const vec3 F0 = mix(vec3(0.04), albedo.rgb, metallic);
+    const vec3 ambient = albedo.rgb * ao * .08f;
+    irradiance += ambient;
+    #endif
+
+    for(uint i = 0; i < u_Lights.DirectionalLightCount; ++i)
+    {
+        DirectionalLight dl = u_Lights.DirectionalLights[i];
+        const float kShadow = 1.f - ShadowCalculation(u_DirShadowmap[i], i_VertexInput.FragPosLightSpace[i], N, normalize(-dl.Direction));
+        #if PHONG
+            irradiance += DirectionalLightContribution(kShadow, V, N, dl, albedo.rgb, ao);
+        #elif PBR
+            irradiance += DirectionalLightContribution(kShadow, F0, V, N, dl, albedo.rgb, roughness, metallic);
+        #endif
+    }
+
+    const uint linearTileIndex = GetLinearGridIndex(gl_FragCoord.xy, u_GlobalCameraData.FullResolution.x);
     // Point lights
     {
         const uint offset = linearTileIndex * MAX_POINT_LIGHTS;
@@ -56,7 +85,12 @@ void main()
             const uint lightIndex = s_VisiblePointLightIndicesBuffer.indices[offset + i];
 
             PointLight pl = u_Lights.PointLights[lightIndex];
-            lightSources += CalcPointLights(i_VertexInput.WorldPos, N, u_GlobalCameraData.Position, pl, albedo.xyz, ao);
+
+            #if PHONG
+                irradiance += PointLightContribution(i_VertexInput.WorldPos, N, V, pl, albedo.rgb, ao);
+            #elif PBR
+                irradiance += PointLightContribution(i_VertexInput.WorldPos,F0,  N, V, pl, albedo.rgb, roughness, metallic);
+            #endif
         }
     }
     
@@ -66,13 +100,15 @@ void main()
         for(uint i = 0; i < u_Lights.SpotLightCount && s_VisibleSpotLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i)
         {
            const uint lightIndex = s_VisibleSpotLightIndicesBuffer.indices[offset + i];
-
+           
            SpotLight spl = u_Lights.SpotLights[lightIndex];
-           lightSources += CalcSpotLights(i_VertexInput.WorldPos, N, u_GlobalCameraData.Position, spl);
+           #if PHONG
+               irradiance += SpotLightContribution(i_VertexInput.WorldPos, N, V, spl, albedo.rgb, ao);
+           #elif PBR
+               irradiance += SpotLightContribution(i_VertexInput.WorldPos, F0, N, V, spl, albedo.rgb, roughness, metallic);
+           #endif
         }
     }
-    
-    vec4 fragColor = vec4(lightSources, albedo.a) * i_VertexInput.Color;
-    fragColor.rgb += emissive;
-    outFragColor = fragColor;
+
+    outFragColor = vec4(irradiance, albedo.a) * i_VertexInput.Color;
 }

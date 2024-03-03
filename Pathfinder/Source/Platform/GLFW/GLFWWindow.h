@@ -29,14 +29,13 @@ class GLFWWindow final : public Window
 
   private:
     WindowSpecification m_Specification = {};
-    GLFWwindow* m_Handle = nullptr;
-    bool m_bIsRunning    = true;
+    GLFWwindow* m_Handle                = nullptr;
+    bool m_bIsRunning                   = true;
 
     void SetEventCallbacks() const;
-    void CopyToWindow(const Shared<Framebuffer>& framebuffer) final override;
     void CopyToWindow(const Shared<Image>& image) final override;
 
-    void BeginFrame() final override;
+    bool BeginFrame() final override;
     void SwapBuffers() final override;
     void PollEvents() final override;
     void Destroy() final override;

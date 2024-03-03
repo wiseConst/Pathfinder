@@ -258,7 +258,8 @@ void VulkanDevice::CreateLogicalDevice()
         {
             if (strcmp(s_DeviceExtensions[i], VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0 ||
                 strcmp(s_DeviceExtensions[i], VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) == 0 ||
-                strcmp(s_DeviceExtensions[i], VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0)
+                strcmp(s_DeviceExtensions[i], VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) ==
+                    strcmp(s_DeviceExtensions[i], VK_KHR_RAY_QUERY_EXTENSION_NAME) == 0)
                 bSupportedExtension = false;
         }
 
@@ -557,7 +558,8 @@ bool VulkanDevice::CheckDeviceExtensionSupport(GPUInfo& gpuInfo)
 
         if (!bIsSupported && (strcmp(requestedExt, VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME) == 0 ||
                               strcmp(requestedExt, VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME) == 0 ||
-                              strcmp(requestedExt, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0))
+                              strcmp(requestedExt, VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME) == 0 ||
+                              strcmp(requestedExt, VK_KHR_RAY_QUERY_EXTENSION_NAME) == 0))
         {
             gpuInfo.bRTXSupport = false;
             continue;

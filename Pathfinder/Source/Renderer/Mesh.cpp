@@ -48,7 +48,8 @@ static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
     return ESamplerWrap::SAMPLER_WRAP_REPEAT;
 }
 
-static Shared<Texture2D> LoadTexture(const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor, const size_t textureIndex,
+static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures, const std::string& meshDir,
+                                     const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor, const size_t textureIndex,
                                      TextureSpecification& textureSpec)
 {
     const auto& fastgltfTexture = asset.textures[textureIndex];
@@ -65,30 +66,24 @@ static Shared<Texture2D> LoadTexture(const fastgltf::Asset& asset, const fastglt
         textureSpec.Wrap = SamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
     }
 
+    const auto& imageData = asset.images[imageIndex.value()].data;
+
+    PFR_ASSERT(std::holds_alternative<fastgltf::sources::URI>(imageData), "Texture hasn't path!");
+    const auto& fastgltfURI = std::get<fastgltf::sources::URI>(imageData);
+
+    const std::string textureName = fastgltfURI.uri.fspath().stem().string();
+    PFR_ASSERT(textureName.data(), "Texture has no name!");
+
+    if (loadedTextures.contains(textureName)) return loadedTextures[textureName];
+
     Shared<Texture2D> texture = nullptr;
-    const auto& imageData     = asset.images[imageIndex.value()].data;
     std::visit(fastgltf::visitor{[](auto& arg) {},
                                  [&](const fastgltf::sources::URI& uri)
                                  {
                                      int32_t x = 1, y = 1, channels = 4;
-                                     void* data =
-                                         ImageUtils::LoadRawImage(uri.uri.path().data(), textureSpec.bFlipOnLoad, &x, &y, &channels);
-                                     textureSpec.Data     = data;
-                                     textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
-                                     textureSpec.Width    = x;
-                                     textureSpec.Height   = y;
-
-                                     texture = Texture2D::Create(textureSpec);
-                                     ImageUtils::UnloadRawImage(data);
-                                 },
-                                 [&](const fastgltf::sources::Vector& vector)
-                                 {
-                                     int32_t x = 1, y = 1, channels = 4;
-                                     void* data = ImageUtils::LoadRawImageFromMemory(vector.bytes.data(),
-                                                                                     vector.bytes.size() * sizeof(vector.bytes[0]),
-                                                                                     textureSpec.bFlipOnLoad, &x, &y, &channels);
-
-                                     textureSpec.Data     = data;
+                                     const std::string texturePath = meshDir + std::string(uri.uri.string());
+                                     void* data       = ImageUtils::LoadRawImage(texturePath, textureSpec.bFlipOnLoad, &x, &y, &channels);
+                                     textureSpec.Data = data;
                                      textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
                                      textureSpec.Width    = x;
                                      textureSpec.Height   = y;
@@ -98,6 +93,7 @@ static Shared<Texture2D> LoadTexture(const fastgltf::Asset& asset, const fastglt
                                  }},
                imageData);
 
+    loadedTextures[textureName] = texture;
     return texture;
 }
 
@@ -255,9 +251,10 @@ Mesh::Mesh(const std::string& meshPath)
     const auto gltfType = fastgltf::determineGltfFileType(&data);
     if (gltfType == fastgltf::GltfType::Invalid) PFR_ASSERT(false, "Failed to parse gltf!");
 
-    constexpr auto gltfOptions = fastgltf::Options::DontRequireValidAssetMember | /*fastgltf::Options::AllowDouble |*/
+    constexpr auto gltfOptions = fastgltf::Options::DontRequireValidAssetMember | /* fastgltf::Options::AllowDouble |
+                                                                                   */
                                  fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers |
-                                 fastgltf::Options::LoadExternalImages | fastgltf::Options::GenerateMeshIndices;
+                                 fastgltf::Options::GenerateMeshIndices;
 
     std::filesystem::path fsMeshPath(meshPath);
     fastgltf::Expected<fastgltf::Asset> asset(fastgltf::Error::None);
@@ -281,9 +278,12 @@ Mesh::Mesh(const std::string& meshPath)
     LOG_TAG_INFO(FASTGLTF, "\"%s\" has (%zu) buffers, (%zu) textures, (%zu) animations, (%zu) materials, (%zu) meshes.", meshPath.data(),
                  asset->buffers.size(), asset->animations.size(), asset->textures.size(), asset->materials.size(), asset->meshes.size());
 
+    std::string meshDir = fsMeshPath.parent_path().string() + "/";
+    std::unordered_map<std::string, Shared<Texture2D>> loadedTextures;
+    PFR_ASSERT(meshDir.length() > 1, "Mesh directory path invalid!");
     for (size_t meshIndex = 0; meshIndex < asset->meshes.size(); ++meshIndex)
     {
-        LoadSubmeshes(asset.get(), meshIndex);
+        LoadSubmeshes(meshDir, loadedTextures, asset.get(), meshIndex);
     }
 
 #if PFR_DEBUG
@@ -303,7 +303,8 @@ void Mesh::Destroy()
     m_Submeshes.clear();
 }
 
-void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
+void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures,
+                         const fastgltf::Asset& asset, const size_t meshIndex)
 {
     fastgltf::Node fastGLTFnode = {};
     for (auto& node : asset.nodes)
@@ -413,7 +414,7 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
                 TextureSpecification albedoTextureSpec = {};
 
                 const auto textureIndex = materialAccessor.pbrData.baseColorTexture->textureIndex;
-                auto albedo             = FastGLTFUtils::LoadTexture(asset, materialAccessor, textureIndex, albedoTextureSpec);
+                auto albedo = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureIndex, albedoTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(albedo);
                 material->SetAlbedo(albedo);
@@ -424,7 +425,8 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
                 TextureSpecification normalMapTextureSpec = {};
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
-                auto normalMap = FastGLTFUtils::LoadTexture(asset, materialAccessor, textureInfo.textureIndex, normalMapTextureSpec);
+                auto normalMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
+                                                            normalMapTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(normalMap);
                 material->SetNormalMap(normalMap);
@@ -435,8 +437,8 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
                 TextureSpecification metallicRoughnessTextureSpec = {};
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
-                auto metallicRoughness =
-                    FastGLTFUtils::LoadTexture(asset, materialAccessor, textureInfo.textureIndex, metallicRoughnessTextureSpec);
+                auto metallicRoughness  = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor,
+                                                                     textureInfo.textureIndex, metallicRoughnessTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(metallicRoughness);
                 material->SetMetallicRoughness(metallicRoughness);
@@ -447,7 +449,8 @@ void Mesh::LoadSubmeshes(const fastgltf::Asset& asset, const size_t meshIndex)
                 TextureSpecification emissiveTextureSpec = {};
 
                 const auto& textureInfo = materialAccessor.emissiveTexture.value();
-                auto emissiveMap = FastGLTFUtils::LoadTexture(asset, materialAccessor, textureInfo.textureIndex, emissiveTextureSpec);
+                auto emissiveMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
+                                                              emissiveTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(emissiveMap);
                 material->SetEmissiveMap(emissiveMap);

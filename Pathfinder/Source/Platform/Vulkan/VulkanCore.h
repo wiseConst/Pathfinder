@@ -39,7 +39,7 @@ static const std::vector<const char*> s_InstanceLayers = {
 };
 static const std::vector<const char*> s_InstanceExtensions = {
     VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,        // Required by full screen ext
-    VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,  // Required by full screen ext
+    VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,  // To get advanced info about device.
 };
 
 static const std::vector<const char*> s_DeviceExtensions = {
@@ -76,6 +76,12 @@ using VulkanSemaphorePerFrame      = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>
 using VulkanFencePerFrame          = std::array<VkFence, s_FRAMES_IN_FLIGHT>;
 using VulkanDescriptorPoolPerFrame = std::array<VkDescriptorPool, s_FRAMES_IN_FLIGHT>;
 using VulkanDescriptorSetPerFrame  = std::array<VkDescriptorSet, s_FRAMES_IN_FLIGHT>;
+
+struct
+{
+    VkSemaphore Handle = VK_NULL_HANDLE;
+    uint64_t Counter   = 0;
+} VkTimelineSemaphore;
 
 static std::string VK_GetResultString(const VkResult result)
 {
@@ -215,6 +221,25 @@ NODISCARD static VkImageMemoryBarrier GetImageMemoryBarrier(const VkImage& image
     return imageMemoryBarrier;
 }
 
+NODISCARD static VkBufferMemoryBarrier GetBufferMemoryBarrier(const VkBuffer& buffer, const VkDeviceSize size, const VkDeviceSize offset,
+                                                              const VkAccessFlags srcAccessMask, const VkAccessFlags dstAccessMask,
+                                                              const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                                              const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
+{
+    VkBufferMemoryBarrier bufferMemoryBarrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
+    bufferMemoryBarrier.buffer                = buffer;
+    bufferMemoryBarrier.size                  = size;
+    bufferMemoryBarrier.offset                = offset;
+
+    bufferMemoryBarrier.srcAccessMask = srcAccessMask;
+    bufferMemoryBarrier.dstAccessMask = dstAccessMask;
+
+    bufferMemoryBarrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
+    bufferMemoryBarrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
+
+    return bufferMemoryBarrier;
+}
+
 NODISCARD static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
 {
     switch (compareOp)
@@ -322,9 +347,8 @@ NODISCARD static VkDescriptorSetAllocateInfo GetDescriptorSetAllocateInfo(const 
                                                                           const uint32_t descriptorSetCount,
                                                                           const VkDescriptorSetLayout* descriptorSetLayouts)
 {
-    const VkDescriptorSetAllocateInfo descriptorSetAllocateInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, descriptorPool,
-                                                                   descriptorSetCount, descriptorSetLayouts};
-    return descriptorSetAllocateInfo;
+    return VkDescriptorSetAllocateInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, descriptorPool, descriptorSetCount,
+                                       descriptorSetLayouts};
 }
 
 NODISCARD static VkDescriptorPoolCreateInfo GetDescriptorPoolCreateInfo(const uint32_t poolSizeCount, const uint32_t maxSetCount,
@@ -332,15 +356,13 @@ NODISCARD static VkDescriptorPoolCreateInfo GetDescriptorPoolCreateInfo(const ui
                                                                         const VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0,
                                                                         const void* pNext = nullptr)
 {
-    const VkDescriptorPoolCreateInfo descriptorPoolCreateInfo = {
+    return VkDescriptorPoolCreateInfo{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, pNext, descriptorPoolCreateFlags, maxSetCount, poolSizeCount, poolSizes};
-    return descriptorPoolCreateInfo;
 }
 
 NODISCARD static VkPushConstantRange GetPushConstantRange(const VkShaderStageFlags stageFlags, const uint32_t offset, const uint32_t size)
 {
-    const VkPushConstantRange pushConstantRange = {stageFlags, offset, size};
-    return pushConstantRange;
+    return VkPushConstantRange{stageFlags, offset, size};
 }
 
 NODISCARD static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode polygonMode)
@@ -354,6 +376,45 @@ NODISCARD static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode 
 
     PFR_ASSERT(false, "Unknown polygon mode!");
     return VK_POLYGON_MODE_FILL;
+}
+
+NODISCARD static VkAccessFlags PathfinderAccessFlagsToVulkan(const EAccessFlags accessFlags)
+{
+    VkAccessFlags vkAccessFlags = VK_ACCESS_NONE;
+
+    if (accessFlags == EAccessFlags::ACCESS_INDIRECT_COMMAND_READ) vkAccessFlags |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_INDEX_READ) vkAccessFlags |= VK_ACCESS_INDEX_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_VERTEX_ATTRIBUTE_READ) vkAccessFlags |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_UNIFORM_READ) vkAccessFlags |= VK_ACCESS_UNIFORM_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_INPUT_ATTACHMENT_READ) vkAccessFlags |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_SHADER_READ) vkAccessFlags |= VK_ACCESS_SHADER_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_SHADER_WRITE) vkAccessFlags |= VK_ACCESS_SHADER_WRITE_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ) vkAccessFlags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE) vkAccessFlags |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ) vkAccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE) vkAccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_TRANSFER_READ) vkAccessFlags |= VK_ACCESS_TRANSFER_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_TRANSFER_WRITE) vkAccessFlags |= VK_ACCESS_TRANSFER_WRITE_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_HOST_READ) vkAccessFlags |= VK_ACCESS_HOST_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_HOST_WRITE) vkAccessFlags |= VK_ACCESS_HOST_WRITE_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_MEMORY_READ) vkAccessFlags |= VK_ACCESS_MEMORY_READ_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_MEMORY_WRITE) vkAccessFlags |= VK_ACCESS_MEMORY_WRITE_BIT;
+    if (accessFlags == EAccessFlags::ACCESS_NONE) vkAccessFlags |= VK_ACCESS_NONE;
+    if (accessFlags == EAccessFlags::ACCESS_TRANSFORM_FEEDBACK_WRITE) vkAccessFlags |= VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT;
+    if (accessFlags == EAccessFlags::ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ)
+        vkAccessFlags |= VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT;
+    if (accessFlags == EAccessFlags::ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE)
+        vkAccessFlags |= VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT;
+    if (accessFlags == EAccessFlags::ACCESS_CONDITIONAL_RENDERING_READ) vkAccessFlags |= VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT;
+    if (accessFlags == EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT)
+        vkAccessFlags |= VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT;
+    if (accessFlags == EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_READ) vkAccessFlags |= VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+    if (accessFlags == EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_WRITE) vkAccessFlags |= VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+    if (accessFlags == EAccessFlags::ACCESS_FRAGMENT_DENSITY_MAP_READ) vkAccessFlags |= VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT;
+    if (accessFlags == EAccessFlags::ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ)
+        vkAccessFlags |= VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR;
+
+    return vkAccessFlags;
 }
 
 NODISCARD static VkPipelineStageFlags PathfinderPipelineStageToVulkan(const PipelineStageFlags pipelineStage)

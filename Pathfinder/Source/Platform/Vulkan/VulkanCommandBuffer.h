@@ -65,6 +65,10 @@ class VulkanCommandBuffer final : public CommandBuffer
                              nullptr, 0, nullptr);
     }
 
+    void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
+                                   const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
+                                   const EAccessFlags dstAccessFlags) const final override;
+
     void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = VK_NULL_HANDLE) final override;
     FORCEINLINE void EndRecording() final override { VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer"); }
 
@@ -110,14 +114,6 @@ class VulkanCommandBuffer final : public CommandBuffer
 
     void BindVertexBuffers(const std::vector<Shared<Buffer>>& vertexBuffers, const uint32_t firstBinding = 0,
                            const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const final override;
-
-    // NOTE: Idk why would I need this for now, but let it be
-    FORCEINLINE void BindVertexBuffers(const uint32_t firstBinding = 0, const uint32_t bindingCount = 1, VkBuffer* buffers = VK_NULL_HANDLE,
-                                       VkDeviceSize* offsets = VK_NULL_HANDLE) const
-    {
-        PFR_ASSERT(buffers, "Invalid vertex buffer(s)!");
-        vkCmdBindVertexBuffers(m_Handle, firstBinding, bindingCount, buffers, offsets);
-    }
 
     void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const final override;
 
