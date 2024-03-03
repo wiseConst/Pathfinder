@@ -14,8 +14,8 @@
 * Mesh-shading!
 ![Alt text](/Resources/Images/4_1_sponza_ms.png)
 
-* Texture loading. Infinite grid(thanks to https://asliceofrendering.com/scene%20helper/2020/01/05/InfiniteGrid/).
-![Alt text](/Resources/Images/5.png)
-
 * Basic Blinn-Phong shading with normal mapping. Next PBR && multiple light sources with light culling.
 ![Alt text](/Resources/Images/6.png)
+
+* UE4 PBR shading model. Forward+ with reversed depth buffer. 1024 small point lights.
+![Alt text](/Resources/Images/7_0.png)
