@@ -22,41 +22,42 @@ layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) buffer readonly Visible
 {
     uint32_t indices[];
 } s_VisibleSpotLightIndicesBuffer;
-layout(set = LAST_BINDLESS_SET + 1, binding = 2) uniform sampler2D u_SSAO;
+layout(set = LAST_BINDLESS_SET + 1, binding = 2) uniform sampler2D u_AO;
 layout(set = LAST_BINDLESS_SET + 1, binding = 3) uniform sampler2D u_DirShadowmap[MAX_DIR_LIGHTS];
 
 layout(location = 0) out vec4 outFragColor;
 
 layout(location = 0) in VertexInput
 {
-    vec4 FragPosLightSpace[MAX_DIR_LIGHTS]; // Dir shadowmap testing
     vec4 Color;
     vec2 UV;
     vec3 WorldPos;
     mat3 TBNtoWorld;
 } i_VertexInput;
 
-vec3 GetNormalFromNormalMap()
+vec3 GetNormalFromNormalMap(const PBRData mat)
 {
-    const vec3 normal = texture(u_GlobalTextures[nonuniformEXT(u_PC.NormalTextureIndex)], i_VertexInput.UV).xyz;
+    const vec3 normal = texture(u_GlobalTextures[nonuniformEXT(mat.NormalTextureIndex)], i_VertexInput.UV).xyz;
     return normal * 2.0 - 1.0;
 }
 
 void main()
 { 
-    const vec3 N = normalize(i_VertexInput.TBNtoWorld * GetNormalFromNormalMap());
+    const PBRData mat = s_GlobalMaterialBuffers[u_PC.MaterialBufferIndex].mat;
+
+    const vec3 N = normalize(i_VertexInput.TBNtoWorld * GetNormalFromNormalMap(mat));
     const vec3 V = normalize(u_GlobalCameraData.Position - i_VertexInput.WorldPos);
 
     // <0> is reserved for white texture
-    const vec3 emissive = u_PC.EmissiveTextureIndex != 0 ? texture(u_GlobalTextures[nonuniformEXT(u_PC.EmissiveTextureIndex)], i_VertexInput.UV).rgb : vec3(0.f);
-    const vec4 albedo = texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], i_VertexInput.UV);
+    const vec3 emissive = mat.EmissiveTextureIndex != 0 ? texture(u_GlobalTextures[nonuniformEXT(mat.EmissiveTextureIndex)], i_VertexInput.UV).rgb : vec3(0.f);
+    const vec4 albedo = texture(u_GlobalTextures[nonuniformEXT(mat.AlbedoTextureIndex)], i_VertexInput.UV) * mat.BaseColor;
 
-    const vec2 screenSpaceUV = gl_FragCoord.xy / textureSize(u_SSAO, 0).xy;
-    const float ao = texture(u_SSAO, screenSpaceUV).r;
+    const vec2 screenSpaceUV = gl_FragCoord.xy / textureSize(u_AO, 0).xy;
+    const float ao = texture(u_AO, screenSpaceUV).r * texture(u_GlobalTextures[nonuniformEXT(mat.OcclusionTextureIndex)], i_VertexInput.UV).r;
 
-    const vec4 metallicRoughness = texture(u_GlobalTextures[nonuniformEXT(u_PC.MetallicRoughnessTextureIndex)], i_VertexInput.UV);
-    const float metallic = metallicRoughness.b;
-    const float roughness = metallicRoughness.g;
+    const vec4 metallicRoughness = texture(u_GlobalTextures[nonuniformEXT(mat.MetallicRoughnessTextureIndex)], i_VertexInput.UV);
+    const float metallic = metallicRoughness.b * mat.Metallic;
+    const float roughness = metallicRoughness.g * mat.Roughness;
 
     vec3 irradiance = emissive;
     #if PBR
@@ -68,7 +69,8 @@ void main()
     for(uint i = 0; i < u_Lights.DirectionalLightCount; ++i)
     {
         DirectionalLight dl = u_Lights.DirectionalLights[i];
-        const float kShadow = 1.f - ShadowCalculation(u_DirShadowmap[i], i_VertexInput.FragPosLightSpace[i], N, normalize(-dl.Direction));
+        
+        const float kShadow = 1.f - ShadowCalculation(u_DirShadowmap[i], u_Lights.DirLightViewProjMatrices[i] * vec4(i_VertexInput.WorldPos, 1), N, normalize(dl.Direction));
         #if PHONG
             irradiance += DirectionalLightContribution(kShadow, V, N, dl, albedo.rgb, ao);
         #elif PBR
@@ -110,5 +112,11 @@ void main()
         }
     }
 
-    outFragColor = vec4(irradiance, albedo.a) * i_VertexInput.Color;
+    // reinhard tone-mapping
+    vec3 finalColor = irradiance / (irradiance + vec3(1.0));
+
+    // gamma correction
+    finalColor =  pow(finalColor, vec3(1.0 / 2.2));
+    
+    outFragColor = vec4(finalColor, albedo.a) * i_VertexInput.Color;
 }

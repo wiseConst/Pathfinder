@@ -58,7 +58,7 @@ class Camera : private Uncopyable, private Unmovable
     float m_DeltaTime    = 0.0f;
 
     float m_AR                             = 1.0f;
-    static constexpr float s_MovementSpeed = 15.0f;
+    static constexpr float s_MovementSpeed = 10.0f;
 
     Camera()                                                  = default;
     virtual void RecalculateViewMatrix()                      = 0;

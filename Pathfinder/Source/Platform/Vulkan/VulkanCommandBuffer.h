@@ -21,6 +21,15 @@ class VulkanCommandBuffer final : public CommandBuffer
     NODISCARD FORCEINLINE ECommandBufferLevel GetLevel() const final override { return m_Level; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE void* GetWaitSemaphore() const final override { return m_SignalSemaphore; }
+    NODISCARD FORCEINLINE void* GetTimelineSemaphore(bool bIncrementCounter = true) final override
+    {
+        if (bIncrementCounter) ++m_TimelineSemaphore.Counter;
+
+        return m_TimelineSemaphore.Handle;
+    }
+
+    NODISCARD FORCEINLINE uint64_t GetTimelineValue() const final override { return m_TimelineSemaphore.Counter; }
+
     NODISCARD FORCEINLINE void* GetSubmitFence() const final override { return m_SubmitFence; }
 
     const std::vector<float> GetTimestampsResults() final override;
@@ -72,9 +81,10 @@ class VulkanCommandBuffer final : public CommandBuffer
     void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = VK_NULL_HANDLE) final override;
     FORCEINLINE void EndRecording() final override { VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer"); }
 
-    void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, const PipelineStageFlags pipelineStages = 0,
-                const std::vector<void*>& semaphoresToWaitOn = {}, const uint32_t waitSemaphoreValueCount = 0,
-                const uint64_t* pWaitSemaphoreValues = nullptr) final override;
+    virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, uint64_t timelineSignalValue = UINT64_MAX,
+                        const std::vector<PipelineStageFlags> pipelineStages = {}, const std::vector<void*>& waitSemaphores = {},
+                        const std::vector<uint64_t>& waitSemaphoreValues = {}, const std::vector<void*>& signalSemaphores = {},
+                        const std::vector<uint64_t>& signalSemaphoreValues = {}) final override;
     void TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
                                const VkImageAspectFlags aspectMask) const;
 
@@ -172,6 +182,11 @@ class VulkanCommandBuffer final : public CommandBuffer
     VkCommandBuffer m_Handle      = VK_NULL_HANDLE;
     VkFence m_SubmitFence         = VK_NULL_HANDLE;
     VkSemaphore m_SignalSemaphore = VK_NULL_HANDLE;
+    struct
+    {
+        VkSemaphore Handle = VK_NULL_HANDLE;
+        uint64_t Counter   = 0;
+    } m_TimelineSemaphore;
 
     VkQueryPool m_PipelineStatisticsQuery = VK_NULL_HANDLE;
 

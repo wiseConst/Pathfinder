@@ -23,17 +23,21 @@ enum class ECommandBufferLevel : uint8_t
     COMMAND_BUFFER_LEVEL_SECONDARY = 1
 };
 
+// NOTE: CommandBufferSpecification ? needs fence? needs timeline semaphore?
+
 class Pipeline;
 class CommandBuffer : private Uncopyable, private Unmovable
 {
   public:
     virtual ~CommandBuffer() = default;
 
-    NODISCARD FORCEINLINE virtual ECommandBufferType GetType() const   = 0;
-    NODISCARD FORCEINLINE virtual ECommandBufferLevel GetLevel() const = 0;
-    NODISCARD FORCEINLINE virtual void* Get() const                    = 0;
-    NODISCARD FORCEINLINE virtual void* GetWaitSemaphore() const       = 0;
-    NODISCARD FORCEINLINE virtual void* GetSubmitFence() const         = 0;
+    NODISCARD FORCEINLINE virtual ECommandBufferType GetType() const                        = 0;
+    NODISCARD FORCEINLINE virtual ECommandBufferLevel GetLevel() const                      = 0;
+    NODISCARD FORCEINLINE virtual void* Get() const                                         = 0;
+    NODISCARD FORCEINLINE virtual void* GetWaitSemaphore() const                            = 0;
+    NODISCARD FORCEINLINE virtual void* GetTimelineSemaphore(bool bIncrementCounter = true) = 0;
+    NODISCARD FORCEINLINE virtual uint64_t GetTimelineValue() const                         = 0;
+    NODISCARD FORCEINLINE virtual void* GetSubmitFence() const                              = 0;
 
     NODISCARD FORCEINLINE static const auto& GetPipelineStatisticsNames() { return s_PipelineStatisticsNames; }
     NODISCARD FORCEINLINE const auto& GetPipelineStatisticsResults() const { return m_PipelineStatisticsResults; }
@@ -91,10 +95,11 @@ class CommandBuffer : private Uncopyable, private Unmovable
                                            const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
                                            const EAccessFlags dstAccessFlags) const                                         = 0;
 
-    virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, const PipelineStageFlags pipelineStages = 0,
-                        const std::vector<void*>& semaphoresToWaitOn = {}, const uint32_t waitSemaphoreValueCount = 0,
-                        const uint64_t* pWaitSemaphoreValues = nullptr) = 0;
-    virtual void Reset()                                                = 0;
+    virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, uint64_t timelineSignalValue = UINT64_MAX,
+                        const std::vector<PipelineStageFlags> pipelineStages = {}, const std::vector<void*>& waitSemaphores = {},
+                        const std::vector<uint64_t>& waitSemaphoreValues = {}, const std::vector<void*>& signalSemaphores = {},
+                        const std::vector<uint64_t>& signalSemaphoreValues = {}) = 0;
+    virtual void Reset()                                                         = 0;
 
     static Shared<CommandBuffer> Create(ECommandBufferType type, bool bSignaledFence = false,
                                         ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);

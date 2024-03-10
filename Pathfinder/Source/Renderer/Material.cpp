@@ -2,37 +2,29 @@
 #include "Material.h"
 
 #include "Texture2D.h"
+#include "Buffer.h"
 #include "Renderer.h"
+
+#include "BindlessRenderer.h"
 
 namespace Pathfinder
 {
 
-const uint32_t Material::GetAlbedoIndex() const
+Material::Material(const PBRData& pbrData) : m_MaterialData(pbrData)
 {
-    if (m_Albedo) return m_Albedo->GetBindlessIndex();
+    BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, false};
+    mbSpec.Data                = &m_MaterialData;
+    mbSpec.DataSize            = sizeof(pbrData);
 
-    return Renderer::GetRendererData()->WhiteTexture->GetBindlessIndex();
+    m_MaterialBuffer = Buffer::Create(mbSpec);
+
+    const auto& br = Renderer::GetBindlessRenderer();
+    br->LoadMaterialBuffer(m_MaterialBuffer);
 }
 
-const uint32_t Material::GetNormalMapIndex() const
+const uint32_t Material::GetBufferIndex() const
 {
-    if (m_NormalMap) return m_NormalMap->GetBindlessIndex();
-
-    return Renderer::GetRendererData()->WhiteTexture->GetBindlessIndex();
-}
-
-const uint32_t Material::GetEmissiveMapIndex() const
-{
-    if (m_EmissiveMap) return m_EmissiveMap->GetBindlessIndex();
-
-    return Renderer::GetRendererData()->WhiteTexture->GetBindlessIndex();
-}
-
-const uint32_t Material::GetMetallicRoughnessIndex() const
-{
-    if (m_MetallicRoughness) return m_MetallicRoughness->GetBindlessIndex();
-
-    return Renderer::GetRendererData()->WhiteTexture->GetBindlessIndex();
+    return m_MaterialBuffer->GetBindlessIndex();
 }
 
 }  // namespace Pathfinder

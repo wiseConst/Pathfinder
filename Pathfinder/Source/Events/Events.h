@@ -52,7 +52,7 @@ class Event : private Uncopyable, private Unmovable
     Event(const std::string& name, const EEventType eventType) : m_Name(name), m_EventType(eventType) {}
     virtual ~Event() = default;
 
-    std::string m_Name     = "None";
+    std::string m_Name     = s_DEFAULT_STRING;
     EEventType m_EventType = EEventType::EVENT_TYPE_NONE;
     bool m_bIsHandled      = false;
 

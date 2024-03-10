@@ -9,6 +9,11 @@ using vec3 = glm::vec3;
 using vec4 = glm::vec4;
 using mat4 = glm::mat4;
 
+// TODO: Make bindless renderer somehow automated for creation from shader headers files
+static constexpr uint32_t s_MAX_TEXTURES        = BIT(16);
+static constexpr uint32_t s_MAX_IMAGES          = BIT(16);
+static constexpr uint32_t s_MAX_STORAGE_BUFFERS = BIT(16);
+
 #else
 
 // Bindless https://vincent-p.github.io/posts/vulkan_bindless_descriptors/
@@ -22,17 +27,21 @@ using mat4 = glm::mat4;
 #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-#define DEBUG_PRINTF 0
-
-#if DEBUG_PRINTF
-#extension GL_EXT_debug_printf : require
-#endif
-
 // NOTE: Mark things as Global to make sure that basic shader reflection won't catch it!
 
 // MESHLETS
 #include "Assets/Shaders/Include/Meshlets.h"
 #include "Assets/Shaders/Include/Lights.h"
+
+#endif
+
+#define SHADER_DEBUG_PRINTF 0
+
+#ifndef __cplusplus
+
+#if SHADER_DEBUG_PRINTF
+#extension GL_EXT_debug_printf : require
+#endif
 
 #endif
 
@@ -98,11 +107,17 @@ struct Sphere
     float Radius;
 };
 
-struct Material
+struct PBRData
 {
     vec4 BaseColor;
-    float Metallic;
     float Roughness;
+    float Metallic;
+    uint32_t AlbedoTextureIndex;
+    uint32_t NormalTextureIndex;
+    uint32_t MetallicRoughnessTextureIndex;
+    uint32_t EmissiveTextureIndex;
+    uint32_t OcclusionTextureIndex;
+    bool bIsOpaque;
 };
 
 // Images/Textures
@@ -119,6 +134,8 @@ const uint32_t STORAGE_BUFFER_VERTEX_ATTRIB_BINDING    = 1;
 const uint32_t STORAGE_BUFFER_MESHLET_BINDING          = 2;
 const uint32_t STORAGE_BUFFER_MESHLET_VERTEX_BINDING   = 3;
 const uint32_t STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING = 4;
+const uint32_t STORAGE_BUFFER_MESH_MATERIAL_BINDING    = 5;
+const uint32_t STORAGE_BUFFER_INDEX_BUFFER_BINDING     = 6;
 
 // Frame data set
 const uint32_t FRAME_DATA_BUFFER_SET = 2;
@@ -174,12 +191,17 @@ layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESHLET_TRIANGLE_BINDI
 }
 s_GlobalMeshletTrianglesBuffers[];
 
-/*
-layout(set = 2, binding = STORAGE_BUFFER_MESH_MATERIAL_BINDING, scalar) readonly buffer MaterialBuffer
+layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESH_MATERIAL_BINDING, scalar) readonly buffer MaterialBuffer
 {
-    Material mat;
-} s_GlobalMaterialBuffers[];
-*/
+    PBRData mat;
+}
+s_GlobalMaterialBuffers[];
+
+layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_INDEX_BUFFER_BINDING, scalar) readonly buffer MeshIndexBuffer
+{
+    uint32_t indices[];
+}
+s_GlobalIndexBuffers[];
 
 #endif
 
@@ -245,6 +267,7 @@ float LinearizeDepth(float depth)
     return u_GlobalCameraData.DepthUnpackConsts.x / (u_GlobalCameraData.DepthUnpackConsts.y - depth);
 }
 
+
 #endif
 
 #ifdef __cplusplus
@@ -267,7 +290,6 @@ layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, 
 u_Lights;
 #endif
 
-// TODO: Add material index
 #ifdef __cplusplus
 struct PushConstantBlock
 {
@@ -278,12 +300,9 @@ layout(push_constant, scalar) uniform PushConstantBlock
     mat4 Transform;
 #endif
     uint32_t StorageImageIndex;
-
     uint32_t AlbedoTextureIndex;
-    uint32_t NormalTextureIndex;
-    uint32_t MetallicRoughnessTextureIndex;
-    uint32_t EmissiveTextureIndex;
 
+    uint32_t MeshIndexBufferIndex;
     uint32_t VertexPosBufferIndex;
     uint32_t VertexAttribBufferIndex;
 
@@ -291,8 +310,10 @@ layout(push_constant, scalar) uniform PushConstantBlock
     uint32_t MeshletVerticesBufferIndex;
     uint32_t MeshletTrianglesBufferIndex;
 
+    uint32_t MaterialBufferIndex;
+
     vec4 pad0;
-    vec2 pad1;
+    vec3 pad1;
 }
 #ifdef __cplusplus
 ;

@@ -200,14 +200,27 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
     copyRegion.imageSubresource.aspectMask =
         ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
-    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
-    vulkanCommandBuffer->BeginRecording(true);
+#if TODO
+    if (auto commandBuffer = rd->CurrentTransferCommandBuffer.lock())
+    {
+        auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+        PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
 
-    vulkanCommandBuffer->CopyBufferToImage((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle,
-                                           ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), 1, &copyRegion);
+        vulkanCommandBuffer->CopyBufferToImage((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle,
+                                               ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), 1, &copyRegion);
+    }
+    else
+#endif
+    {
+        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+        vulkanCommandBuffer->BeginRecording(true);
 
-    vulkanCommandBuffer->EndRecording();
-    vulkanCommandBuffer->Submit(true, false);
+        vulkanCommandBuffer->CopyBufferToImage((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle,
+                                               ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), 1, &copyRegion);
+
+        vulkanCommandBuffer->EndRecording();
+        vulkanCommandBuffer->Submit(true, false);
+    }
 }
 
 // TODO: Add cube map support
@@ -257,6 +270,27 @@ void VulkanImage::Destroy()
     {
         Renderer::GetBindlessRenderer()->FreeImage(m_Index);
     }
+}
+
+void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const glm::vec4& color) const
+{
+    const auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+    PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
+
+    const EImageLayout prevLayout = m_Specification.Layout;
+    const auto vkOldLayout        = ImageUtils::PathfinderImageLayoutToVulkan(prevLayout);
+    const auto vkNewLayout        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+
+    const auto aspectMask = ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkOldLayout, vkNewLayout, aspectMask);
+
+    const VkClearColorValue clearColorValue = {color.x, color.y, color.z, color.w};
+    const VkImageSubresourceRange range     = {aspectMask, 0, 1, 0, 1};
+
+    const auto rawCommandBuffer = static_cast<VkCommandBuffer>(commandBuffer->Get());
+    vkCmdClearColorImage(rawCommandBuffer, m_Handle, vkNewLayout, &clearColorValue, 1, &range);
+
+    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkNewLayout, vkOldLayout, aspectMask);
 }
 
 NODISCARD static ESamplerFilter VulkanSamplerFilterToPathfinder(const VkFilter filter)

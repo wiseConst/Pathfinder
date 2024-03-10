@@ -47,7 +47,7 @@ enum class EPipelineType : uint8_t
 class Shader;
 struct PipelineSpecification
 {
-    std::string DebugName = "None";
+    std::string DebugName = s_DEFAULT_STRING;
 
     EPipelineType PipelineType           = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     ECullMode CullMode                   = ECullMode::CULL_MODE_NONE;

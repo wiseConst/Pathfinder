@@ -76,6 +76,7 @@ void Application::Run()
             ss << std::string("[gpu]: ") + std::to_string(Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime) +
                       std::string("ms ");
             ss << std::string("[present]: ") + std::to_string(Renderer::GetStats().SwapchainPresentTime) + std::string("ms ");
+            ss << std::string("[rhi]: ") + std::to_string(Renderer::GetStats().RHITime) + std::string("ms ");
             ss << std::string(" [tris]: ") << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
             ss << std::string(" [meshlets]: ") << Renderer::GetStats().MeshletCount;
             ss << std::string(" [2D batches]: ") << Renderer2D::GetStats().BatchCount;

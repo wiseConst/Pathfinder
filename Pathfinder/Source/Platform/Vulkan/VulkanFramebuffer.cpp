@@ -301,4 +301,14 @@ void VulkanFramebuffer::Destroy()
     m_AttachmentInfos.clear();
 }
 
+void VulkanFramebuffer::Clear(const Shared<CommandBuffer>& commandBuffer)
+{
+    for (const auto& attachmentInfo : m_Attachments)
+    {
+        if (!attachmentInfo.Specification.bCopyable) continue;
+        
+        attachmentInfo.Attachment->ClearColor(commandBuffer, attachmentInfo.Specification.ClearColor);
+    }
+}
+
 }  // namespace Pathfinder

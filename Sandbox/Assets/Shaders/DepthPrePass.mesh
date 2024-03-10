@@ -18,11 +18,12 @@ void main()
     if(ti == 0) SetMeshOutputsEXT(vertexCount, primitiveCount);
 
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
+    const mat4 mvp = u_GlobalCameraData.ViewProjection * u_PC.Transform;
     for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
 
-        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.ViewProjection * u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
+        gl_MeshVerticesEXT[i].gl_Position = mvp * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
     }
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;

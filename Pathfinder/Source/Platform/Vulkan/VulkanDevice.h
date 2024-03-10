@@ -221,10 +221,25 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetComputeQueue() const { return m_GPUInfo.ComputeQueue; }
     NODISCARD FORCEINLINE const auto& GetTransferQueue() const { return m_GPUInfo.TransferQueue; }
 
+    NODISCARD FORCEINLINE VkDeviceAddress GetAccelerationStructureAddress(const VkAccelerationStructureKHR& as) const
+    {
+        VkAccelerationStructureDeviceAddressInfoKHR asdaInfo = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR};
+        asdaInfo.accelerationStructure                       = as;
+        return vkGetAccelerationStructureDeviceAddressKHR(m_GPUInfo.LogicalDevice, &asdaInfo);
+    }
+
     NODISCARD FORCEINLINE VkDeviceAddress GetBufferDeviceAddress(const VkBuffer& buffer) const
     {
         const VkBufferDeviceAddressInfo bdaInfo = {VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, nullptr, buffer};
         return vkGetBufferDeviceAddress(m_GPUInfo.LogicalDevice, &bdaInfo);
+    }
+
+    NODISCARD FORCEINLINE void GetASBuildSizes(VkAccelerationStructureBuildTypeKHR buildType,
+                                               const VkAccelerationStructureBuildGeometryInfoKHR* pBuildInfo,
+                                               const uint32_t* pMaxPrimitiveCounts,
+                                               VkAccelerationStructureBuildSizesInfoKHR* pSizeInfo) const
+    {
+        vkGetAccelerationStructureBuildSizesKHR(m_GPUInfo.LogicalDevice, buildType, pBuildInfo, pMaxPrimitiveCounts, pSizeInfo);
     }
 
   private:

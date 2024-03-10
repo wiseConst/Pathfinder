@@ -28,6 +28,7 @@ class VulkanFramebuffer final : public Framebuffer
 
     void BeginPass(const Shared<CommandBuffer>& commandBuffer) final override;
     void EndPass(const Shared<CommandBuffer>& commandBuffer) final override;
+    void Clear(const Shared<CommandBuffer>& commandBuffer) final override;
 
   private:
     FramebufferSpecification m_Specification = {};

@@ -63,6 +63,7 @@ class Shader : private Uncopyable, private Unmovable
     virtual void Set(const std::string_view name, const Shared<Buffer> buffer)     = 0;
     virtual void Set(const std::string_view name, const Shared<Texture2D> texture) = 0;
     virtual void Set(const std::string_view name, const Shared<Image> attachment)  = 0;
+    virtual void Set(const std::string_view name, const AccelerationStructure& tlas)  = 0;
 
     // NOTE: Updates all frames
     virtual void Set(const std::string_view name, const BufferPerFrame& buffers)                 = 0;

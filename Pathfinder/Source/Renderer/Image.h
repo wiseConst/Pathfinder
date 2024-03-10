@@ -103,9 +103,10 @@ class Image : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE virtual void* Get() const                                  = 0;
     NODISCARD FORCEINLINE virtual uint32_t GetBindlessIndex() const                  = 0;
 
-    virtual void Resize(const uint32_t width, const uint32_t height) = 0;
-    virtual void SetLayout(const EImageLayout newLayout)             = 0;
-    virtual void SetData(const void* data, size_t dataSize)          = 0;
+    virtual void Resize(const uint32_t width, const uint32_t height)                                  = 0;
+    virtual void SetLayout(const EImageLayout newLayout)                                              = 0;
+    virtual void SetData(const void* data, size_t dataSize)                                           = 0;
+    virtual void ClearColor(const Shared<CommandBuffer>& commandBuffer, const glm::vec4& color) const = 0;
 
     static Shared<Image> Create(const ImageSpecification& imageSpec);
 

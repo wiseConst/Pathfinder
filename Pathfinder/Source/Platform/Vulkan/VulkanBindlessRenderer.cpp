@@ -16,11 +16,6 @@
 namespace Pathfinder
 {
 
-// TODO: Make bindless renderer somehow automated for creation from shader headers files
-static constexpr uint32_t s_MAX_TEXTURES        = BIT(16);
-static constexpr uint32_t s_MAX_IMAGES          = BIT(16);
-static constexpr uint32_t s_MAX_STORAGE_BUFFERS = BIT(16);
-
 // TODO: Add shader defines for each binding and set
 VulkanBindlessRenderer::VulkanBindlessRenderer()
 {
@@ -205,6 +200,16 @@ void VulkanBindlessRenderer::LoadMeshletTrianglesBuffer(const Shared<Buffer>& bu
     LoadStorageBufferInternal(buffer, STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING);
 }
 
+void VulkanBindlessRenderer::LoadIndexBuffer(const Shared<Buffer>& buffer)
+{
+    LoadStorageBufferInternal(buffer, STORAGE_BUFFER_INDEX_BUFFER_BINDING);
+}
+
+void VulkanBindlessRenderer::LoadMaterialBuffer(const Shared<Buffer>& buffer)
+{
+    LoadStorageBufferInternal(buffer, STORAGE_BUFFER_MESH_MATERIAL_BINDING);
+}
+
 void VulkanBindlessRenderer::LoadStorageBufferInternal(const Shared<Buffer>& buffer, const uint32_t binding)
 {
     auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
@@ -267,12 +272,10 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
     // TEXTURES + STORAGE IMAGES
     {
         const VkDescriptorSetLayoutBinding textureBinding = {TEXTURE_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, s_MAX_TEXTURES,
-                                                             VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
-                                                                 VK_SHADER_STAGE_VERTEX_BIT};
+                                                             VK_SHADER_STAGE_ALL};
 
         const VkDescriptorSetLayoutBinding storageImageBinding = {STORAGE_IMAGE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, s_MAX_IMAGES,
-                                                                  VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
-                                                                      VK_SHADER_STAGE_VERTEX_BIT};
+                                                                  VK_SHADER_STAGE_ALL};
 
         const std::vector<VkDescriptorSetLayoutBinding> bindings = {textureBinding, storageImageBinding};
 
@@ -291,31 +294,32 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
                         "VK_BINDLESS_TEXTURE_STORAGE_IMAGE_SET_LAYOUT");
     }
 
-    // STORAGE BUFFERS
+    // STORAGE BUFFERS + TLASes
     {
-        const VkDescriptorSetLayoutBinding vertexPosBufferBinding = {
-            STORAGE_BUFFER_VERTEX_POS_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS,
-            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_MESH_BIT_EXT};
+        const VkDescriptorSetLayoutBinding vertexPosBufferBinding = {STORAGE_BUFFER_VERTEX_POS_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                                     s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
 
         const VkDescriptorSetLayoutBinding vertexAttribBufferBinding = {
-            STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS,
-            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_MESH_BIT_EXT};
+            STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
 
-        const VkDescriptorSetLayoutBinding meshletBufferBinding = {
-            STORAGE_BUFFER_MESHLET_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS,
-            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_MESH_BIT_EXT |
-                VK_SHADER_STAGE_TASK_BIT_EXT};
+        const VkDescriptorSetLayoutBinding meshletBufferBinding = {STORAGE_BUFFER_MESHLET_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                                   s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
 
         const VkDescriptorSetLayoutBinding meshletVerticesBufferBinding = {
-            STORAGE_BUFFER_MESHLET_VERTEX_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS,
-            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_MESH_BIT_EXT};
+            STORAGE_BUFFER_MESHLET_VERTEX_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
 
         const VkDescriptorSetLayoutBinding meshletTrianglesBufferBinding = {
-            STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS,
-            VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_MESH_BIT_EXT};
+            STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
 
-        const std::vector<VkDescriptorSetLayoutBinding> bindings = {vertexPosBufferBinding, vertexAttribBufferBinding, meshletBufferBinding,
-                                                                    meshletVerticesBufferBinding, meshletTrianglesBufferBinding};
+        const VkDescriptorSetLayoutBinding materialBufferBinding = {STORAGE_BUFFER_MESH_MATERIAL_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                                    s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
+
+        const VkDescriptorSetLayoutBinding indexBufferBinding = {STORAGE_BUFFER_INDEX_BUFFER_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+                                                                 s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
+
+        const std::vector<VkDescriptorSetLayoutBinding> bindings = {
+            vertexPosBufferBinding,        vertexAttribBufferBinding, meshletBufferBinding, meshletVerticesBufferBinding,
+            meshletTrianglesBufferBinding, materialBufferBinding,     indexBufferBinding};
 
         const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), bindingFlag);
         const VkDescriptorSetLayoutBindingFlagsCreateInfo storageBufferExtendedInfo = {
@@ -335,16 +339,9 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
     // FRAME DATA BUFFER SET
     {
         VkDescriptorSetLayoutBinding cameraBinding    = {FRAME_DATA_BUFFER_CAMERA_BINDING, VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1,
-                                                         VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
-                                                             VK_SHADER_STAGE_VERTEX_BIT};
+                                                         VK_SHADER_STAGE_ALL};
         VkDescriptorSetLayoutBinding lightDataBinding = {FRAME_DATA_BUFFER_LIGHTS_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
-                                                         VK_SHADER_STAGE_FRAGMENT_BIT | VK_SHADER_STAGE_COMPUTE_BIT |
-                                                             VK_SHADER_STAGE_VERTEX_BIT};
-        if (Renderer::GetRendererSettings().bMeshShadingSupport)
-        {
-            cameraBinding.stageFlags |= VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_TASK_BIT_EXT;
-            lightDataBinding.stageFlags |= VK_SHADER_STAGE_MESH_BIT_EXT;
-        }
+                                                         VK_SHADER_STAGE_ALL};
 
         const std::vector<VkDescriptorSetLayoutBinding> bindings = {cameraBinding, lightDataBinding};
         const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), bindingFlag);
@@ -393,8 +390,8 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
 
         {
             // STORAGE BUFFERS
-            constexpr std::array<VkDescriptorPoolSize, 1> storageBufferPoolSizes = {
-                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 5 * s_MAX_STORAGE_BUFFERS}};
+            const std::vector<VkDescriptorPoolSize> storageBufferPoolSizes = {
+                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7 * s_MAX_STORAGE_BUFFERS}};
             const VkDescriptorPoolCreateInfo storageBufferPoolCI = {
                 VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,        nullptr,
                 VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,      1,
@@ -415,9 +412,9 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
 
         {
             // FRAME DATA SET
-            std::array<VkDescriptorPoolSize, 2> frameDataPoolSizes = {VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
-                                                                      VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
-            const VkDescriptorPoolCreateInfo frameDataPoolCI       = {
+            constexpr std::array<VkDescriptorPoolSize, 2> frameDataPoolSizes = {VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER, 1},
+                                                                                VkDescriptorPoolSize{VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1}};
+            const VkDescriptorPoolCreateInfo frameDataPoolCI                 = {
                 VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,    nullptr,
                 VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,  1,
                 static_cast<uint32_t>(frameDataPoolSizes.size()), frameDataPoolSizes.data()};
@@ -440,14 +437,11 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
     }
 
     m_PCBlock.offset     = 0;
-    m_PCBlock.stageFlags = VK_SHADER_STAGE_VERTEX_BIT | VK_SHADER_STAGE_COMPUTE_BIT | VK_SHADER_STAGE_FRAGMENT_BIT;
-    if (Renderer::GetRendererSettings().bMeshShadingSupport)
-        m_PCBlock.stageFlags |= VK_SHADER_STAGE_MESH_BIT_EXT | VK_SHADER_STAGE_TASK_BIT_EXT;
-    m_PCBlock.size = sizeof(PushConstantBlock);
+    m_PCBlock.stageFlags = VK_SHADER_STAGE_ALL;
+    m_PCBlock.size       = sizeof(PushConstantBlock);
     PFR_ASSERT(m_PCBlock.size <= 128, "Exceeding minimum limit of push constant block!");
 
-    const std::vector<VkDescriptorSetLayout> setLayouts = {m_TextureStorageImageSetLayout, m_StorageBufferSetLayout,
-                                                           m_FrameDataSetLayout};
+    const std::vector<VkDescriptorSetLayout> setLayouts = {m_TextureStorageImageSetLayout, m_StorageBufferSetLayout, m_FrameDataSetLayout};
     const VkPipelineLayoutCreateInfo pipelineLayoutCI   = {VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
                                                            nullptr,
                                                            0,

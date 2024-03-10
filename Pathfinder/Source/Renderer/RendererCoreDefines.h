@@ -146,12 +146,17 @@ struct QuadVertex
     glm::vec4 Color    = glm::vec4(1.0f);
 };
 
-struct PBRData
+class Submesh;
+struct RenderObject
 {
-    glm::vec4 BaseColor      = glm::vec4(1.f);
-    float Roughness          = 1.f;
-    float Metallic           = 1.f;
-    glm::vec3 EmissiveFactor = glm::vec3(1.f);
+    Shared<Submesh> submesh = nullptr;
+    glm::mat4 Transform     = glm::mat4(1.0f);
+};
+
+struct AccelerationStructure
+{
+    Shared<Pathfinder::Buffer> Buffer = nullptr;
+    void* Handle                      = nullptr;  // RHI handle
 };
 
 }  // namespace Pathfinder

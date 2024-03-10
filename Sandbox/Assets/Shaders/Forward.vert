@@ -11,7 +11,6 @@ layout(location = 4) in vec2 inUV;
 
 layout(location = 0) out VertexOutput
 {   
-    vec4 FragPosLightSpace[MAX_DIR_LIGHTS]; // Dir shadowmap testing
     vec4 Color;
     vec2 UV;
     vec3 WorldPos;
@@ -33,9 +32,4 @@ void main()
     T = normalize(T - dot(T, N) * N); // Reorthogonalization around N via Gramm-Schmidt.
     const vec3 B = cross(N, T);
     o_VertexOutput.TBNtoWorld = mat3(T, B, N);
-    
-    for(uint i = 0; i < u_PC.StorageImageIndex; ++i)
-    {
-        o_VertexOutput.FragPosLightSpace[i] = u_Lights.DirLightViewProjMatrices[i] * WorldPos;
-    }
 }

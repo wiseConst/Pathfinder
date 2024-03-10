@@ -33,6 +33,8 @@ class BindlessRenderer : private Uncopyable, private Unmovable
     virtual void LoadMeshletBuffer(const Shared<Buffer>& buffer)          = 0;
     virtual void LoadMeshletVerticesBuffer(const Shared<Buffer>& buffer)  = 0;
     virtual void LoadMeshletTrianglesBuffer(const Shared<Buffer>& buffer) = 0;
+    virtual void LoadIndexBuffer(const Shared<Buffer>& buffer) = 0;
+    virtual void LoadMaterialBuffer(const Shared<Buffer>& buffer) = 0;
 
     virtual void FreeImage(uint32_t& imageIndex)                           = 0;
     virtual void FreeBuffer(uint32_t& bufferIndex, uint32_t bufferBinding) = 0;

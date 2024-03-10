@@ -46,5 +46,6 @@ Sandbox/Assets/Meshes/sponza_dubrovnik/
 
 # Misc
 *.log
-TODO.focus
+*.focus
 Win64_Build.bat
+*.cap

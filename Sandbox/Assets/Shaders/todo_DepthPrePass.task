@@ -1,0 +1,34 @@
+#version 460
+
+#extension GL_EXT_mesh_shader : require
+
+#extension GL_GOOGLE_include_directive : require
+#include "Assets/Shaders/Include/Globals.h"
+
+layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+shared uint passedMeshletCount;
+
+void main()
+{
+    const uint mi = gl_WorkGroupID.x;
+    const uint ti = gl_LocalInvocationID.x;
+    
+    if(ti == 0)
+    {
+        passedMeshletCount=0;
+    }
+
+    barrier();
+
+    Meshlet meshlet = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi];
+    vec3 coneApex = vec3(meshlet.coneApex[0],meshlet.coneApex[1],meshlet.coneApex[2]);
+    vec3 coneAxis = vec3(meshlet.coneAxis[0],meshlet.coneAxis[1],meshlet.coneAxis[2]);
+    if (dot(normalize(coneApex - u_GlobalCameraData.Position), coneAxis) < meshlet.coneCutoff)
+    {
+        atomicAdd(passedMeshletCount, 1);
+    }
+
+    barrier();
+    EmitMeshTasksEXT(passedMeshletCount, 1, 1);
+}

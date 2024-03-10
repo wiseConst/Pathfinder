@@ -1,4 +1,4 @@
-// 2023-present FAST MULTITHREADED MODERN VULKAN RENDERER
+// 2023-present FAST MULTITHREADED MODERN VULKAN FORWARD+ RENDERER
 
 0) PoolAllocator
 
@@ -7,9 +7,8 @@ https://registry.khronos.org/vulkan/specs/1.2-extensions/html/vkspec.html#memory
 
 2) MULTI gpu support: Create DeviceManager class which stores vector of Devices called DeviceTable(as volk wants)
 
-3)
-// NOTE: Normal matrix explanation: 
+3) Normal matrix explanation: 
 // https://computergraphics.stackexchange.com/questions/5512/inverse-transpose-of-vertex-normals
 // https://computergraphics.stackexchange.com/questions/1502/why-is-the-transposed-inverse-of-the-model-view-matrix-used-to-transform-the-nor/1506#1506
 
-4) TODO: Add async-compute via list of timeline semaphores in submit.
+4) GPU-Driven rendering, culling in compute and DrawIndirects..

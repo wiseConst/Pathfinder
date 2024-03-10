@@ -5,13 +5,14 @@
 #include "Material.h"
 #include "Image.h"
 #include "Texture2D.h"
-#include "RendererCoreDefines.h"
 #include "Renderer.h"
 #include "BindlessRenderer.h"
+#include "RayTracingBuilder.h"
 
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/parser.hpp>
 #include <fastgltf/tools.hpp>
+#include <fastgltf/types.hpp>
 
 #include <meshoptimizer.h>
 
@@ -257,18 +258,7 @@ Mesh::Mesh(const std::string& meshPath)
                                  fastgltf::Options::GenerateMeshIndices;
 
     std::filesystem::path fsMeshPath(meshPath);
-    fastgltf::Expected<fastgltf::Asset> asset(fastgltf::Error::None);
-    if (gltfType == fastgltf::GltfType::glTF)
-    {
-        asset = parser.loadGltf(&data, fsMeshPath.parent_path(), gltfOptions);
-    }
-    else if (gltfType == fastgltf::GltfType::GLB)
-    {
-        asset = parser.loadGltfBinary(&data, fsMeshPath.parent_path(), gltfOptions);
-    }
-    else
-        PFR_ASSERT(false, "[FASTGLTF]: Failed to determine glTF container");
-
+    fastgltf::Expected<fastgltf::Asset> asset = parser.loadGltf(&data, fsMeshPath.parent_path(), gltfOptions);
     if (const auto error = asset.error(); error != fastgltf::Error::None)
     {
         LOG_TAG_ERROR(FASTGLTF, "Error occured while loading mesh \"%s\"! Error name: %s / Message: %s", meshPath.data(),
@@ -286,6 +276,14 @@ Mesh::Mesh(const std::string& meshPath)
         LoadSubmeshes(meshDir, loadedTextures, asset.get(), meshIndex);
     }
 
+#if TODO
+    if (Renderer::GetRendererSettings().bRTXSupport)
+    {
+        m_BLASes = RayTracingBuilder::BuildBLASes(m_Submeshes);
+        m_TLAS   = RayTracingBuilder::BuildTLAS(m_BLASes);
+    }
+#endif
+
 #if PFR_DEBUG
     PFR_ASSERT(fastgltf::validate(asset.get()) == fastgltf::Error::None, "Asset is not valid after processing?");
 #endif
@@ -300,6 +298,15 @@ Shared<Mesh> Mesh::Create(const std::string& meshPath)
 
 void Mesh::Destroy()
 {
+#if TODO
+    if (Renderer::GetRendererSettings().bRTXSupport)
+    {
+        RayTracingBuilder::DestroyAccelerationStructure(m_TLAS);
+        for (auto& blas : m_BLASes)
+            RayTracingBuilder::DestroyAccelerationStructure(blas);
+    }
+#endif
+
     m_Submeshes.clear();
 }
 
@@ -340,20 +347,27 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             PFR_ASSERT(std::holds_alternative<fastgltf::sources::Vector>(bufferData), "Only vector parsing support for now!");
         }
 
-        fastgltf::iterateAccessorWithIndex<glm::vec3>(
-            asset, positionAccessor,
-            [&](const glm::vec3& position, std::size_t idx)
-            {
-                meshoptimizeVertices[idx].Position = position;
+        glm::mat4 localTransform = glm::mat4(1.f);
+        std::visit(fastgltf::visitor{[&](const fastgltf::Node::TransformMatrix& matrix)
+                                     { memcpy(&localTransform, matrix.data(), sizeof(matrix)); },
+                                     [&](const fastgltf::Node::TRS& transform)
+                                     {
+                                         const glm::vec3 tl(transform.translation[0], transform.translation[1], transform.translation[2]);
+                                         const glm::quat rot(transform.rotation[3], transform.rotation[0], transform.rotation[1],
+                                                             transform.rotation[2]);
+                                         const glm::vec3 sc(transform.scale[0], transform.scale[1], transform.scale[2]);
 
-                if (const fastgltf::Node::TRS* pTransform = std::get_if<fastgltf::Node::TRS>(&fastGLTFnode.transform))
-                {
-                    meshoptimizeVertices[idx].Position = vec4(meshoptimizeVertices[idx].Position, 1.0) *
-                                                         glm::translate(glm::mat4(1.0f), glm::make_vec3(pTransform->translation.data())) *
-                                                         glm::toMat4(glm::make_quat(pTransform->rotation.data())) *
-                                                         glm::scale(glm::mat4(1.0f), glm::make_vec3(pTransform->scale.data()));
-                }
-            });
+                                         const glm::mat4 tm = glm::translate(glm::mat4(1.f), tl);
+                                         const glm::mat4 rm = glm::toMat4(rot);
+                                         const glm::mat4 sm = glm::scale(glm::mat4(1.f), sc);
+
+                                         localTransform = tm * rm * sm;
+                                     }},
+                   fastGLTFnode.transform);
+
+        fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, positionAccessor,
+                                                      [&](const glm::vec3& position, std::size_t idx)
+                                                      { meshoptimizeVertices[idx].Position = localTransform * vec4(position, 1.0); });
 
         // NORMAL
         const auto& normalIt = p.findAttribute("NORMAL");
@@ -397,27 +411,29 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
         {
             const auto& materialAccessor = asset.materials[p.materialIndex.value()];
 
-            submesh->SetMaterial(MakeShared<Material>());
-            auto& material = submesh->GetMaterial();
+            // Assemble gathered textures.
+            PBRData pbrData   = {};
+            pbrData.BaseColor = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data());
+            pbrData.Metallic  = materialAccessor.pbrData.metallicFactor;
+            pbrData.Roughness = materialAccessor.pbrData.roughnessFactor;
+            pbrData.bIsOpaque = materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque;
 
-            PBRData pbrData        = {};
-            pbrData.BaseColor      = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data());
-            pbrData.Metallic       = materialAccessor.pbrData.metallicFactor;
-            pbrData.Roughness      = materialAccessor.pbrData.roughnessFactor;
-            pbrData.EmissiveFactor = glm::make_vec3(materialAccessor.emissiveFactor.data());
-
-            material->SetPBRData(pbrData);
-            material->SetIsOpaque(materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque);
+            Shared<Texture2D> albedo            = nullptr;
+            Shared<Texture2D> normalMap         = nullptr;
+            Shared<Texture2D> metallicRoughness = nullptr;
+            Shared<Texture2D> emissiveMap       = nullptr;
+            Shared<Texture2D> occlusionMap      = nullptr;
 
             if (materialAccessor.pbrData.baseColorTexture.has_value())
             {
                 TextureSpecification albedoTextureSpec = {};
 
-                const auto textureIndex = materialAccessor.pbrData.baseColorTexture->textureIndex;
-                auto albedo = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureIndex, albedoTextureSpec);
+                const auto& textureInfo = materialAccessor.pbrData.baseColorTexture.value();
+                albedo = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
+                                                    albedoTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(albedo);
-                material->SetAlbedo(albedo);
+                pbrData.AlbedoTextureIndex = albedo->GetBindlessIndex();
             }
 
             if (materialAccessor.normalTexture.has_value())
@@ -425,23 +441,23 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
                 TextureSpecification normalMapTextureSpec = {};
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
-                auto normalMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
-                                                            normalMapTextureSpec);
+                normalMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
+                                                       normalMapTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(normalMap);
-                material->SetNormalMap(normalMap);
+                pbrData.NormalTextureIndex = normalMap->GetBindlessIndex();
             }
 
             if (materialAccessor.pbrData.metallicRoughnessTexture.has_value())
             {
                 TextureSpecification metallicRoughnessTextureSpec = {};
 
-                const auto& textureInfo = materialAccessor.normalTexture.value();
-                auto metallicRoughness  = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor,
-                                                                     textureInfo.textureIndex, metallicRoughnessTextureSpec);
+                const auto& textureInfo = materialAccessor.pbrData.metallicRoughnessTexture.value();
+                metallicRoughness = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
+                                                               metallicRoughnessTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(metallicRoughness);
-                material->SetMetallicRoughness(metallicRoughness);
+                pbrData.MetallicRoughnessTextureIndex = metallicRoughness->GetBindlessIndex();
             }
 
             if (materialAccessor.emissiveTexture.has_value())
@@ -449,12 +465,33 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
                 TextureSpecification emissiveTextureSpec = {};
 
                 const auto& textureInfo = materialAccessor.emissiveTexture.value();
-                auto emissiveMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
-                                                              emissiveTextureSpec);
+                emissiveMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
+                                                         emissiveTextureSpec);
 
                 Renderer::GetBindlessRenderer()->LoadTexture(emissiveMap);
-                material->SetEmissiveMap(emissiveMap);
+                pbrData.EmissiveTextureIndex = emissiveMap->GetBindlessIndex();
             }
+
+            if (materialAccessor.occlusionTexture.has_value())
+            {
+                TextureSpecification occlusionTextureSpec = {};
+
+                const auto& textureInfo = materialAccessor.occlusionTexture.value();
+                occlusionMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
+                                                          occlusionTextureSpec);
+
+                Renderer::GetBindlessRenderer()->LoadTexture(occlusionMap);
+                pbrData.OcclusionTextureIndex = occlusionMap->GetBindlessIndex();
+            }
+
+            submesh->SetMaterial(MakeShared<Material>(pbrData));
+
+            const auto& mat = submesh->GetMaterial();
+            mat->SetAlbedo(albedo);
+            mat->SetNormalMap(normalMap);
+            mat->SetEmissiveMap(emissiveMap);
+            mat->SetMetallicRoughnessMap(metallicRoughness);
+            mat->SetOcclusionMap(occlusionMap);
         }
 
         std::vector<uint32_t> finalIndices;
@@ -466,8 +503,9 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
         ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
         {
-            ibSpec.BufferUsage |=
-                EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
+            ibSpec.BufferUsage |= EBufferUsage::BUFFER_USAGE_STORAGE |
+                                  EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY |
+                                  EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         }
         submesh->m_IndexBuffer = Buffer::Create(ibSpec);
 
@@ -509,11 +547,6 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
 
         submesh->m_BoundingSphere = MeshPreprocessorUtils::GenerateBoundingSphere(vertexPositions);
 
-        if (Renderer::GetRendererSettings().bRTXSupport)
-        {
-            // TODO: AccelerationStructureBuilder
-        }
-
         if (Renderer::GetRendererSettings().bMeshShadingSupport)
         {
             std::vector<uint32_t> meshletVertices;
@@ -554,20 +587,13 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
 
             if (submesh->m_MeshletTrianglesBuffer) br->LoadMeshletTrianglesBuffer(submesh->m_MeshletTrianglesBuffer);
         }
-    }
-}
 
-void Submesh::Destroy()
-{
-    m_VertexPositionBuffer.reset();
-    m_VertexPositionBuffer.reset();
-    m_IndexBuffer.reset();
-
-    if (Renderer::GetRendererSettings().bMeshShadingSupport)
-    {
-        m_MeshletBuffer.reset();
-        m_MeshletVerticesBuffer.reset();
-        m_MeshletTrianglesBuffer.reset();
+#if TODO
+        if (Renderer::GetRendererSettings().bRTXSupport)
+        {
+            br->LoadIndexBuffer(submesh->m_IndexBuffer);
+        }
+#endif
     }
 }
 

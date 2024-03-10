@@ -2,51 +2,17 @@
 #define MESH_H
 
 #include "Core/Core.h"
+#include "Submesh.h"
+#include "RendererCoreDefines.h"
 #include "Globals.h"
 
-#include <fastgltf/types.hpp>
+namespace fastgltf
+{
+class Asset;
+}
 
 namespace Pathfinder
 {
-
-class Buffer;
-class Material;
-class Texture2D;
-
-class Submesh final : private Uncopyable, private Unmovable
-{
-  public:
-    Submesh() = default;
-    ~Submesh() override { Destroy(); }
-
-    NODISCARD FORCEINLINE const auto& GetIndexBuffer() const { return m_IndexBuffer; }
-    NODISCARD FORCEINLINE const auto& GetVertexPositionBuffer() const { return m_VertexPositionBuffer; }
-    NODISCARD FORCEINLINE const auto& GetVertexAttributeBuffer() const { return m_VertexAttributeBuffer; }
-
-    NODISCARD FORCEINLINE const auto& GetMeshletBuffer() const { return m_MeshletBuffer; }
-    NODISCARD FORCEINLINE const auto& GetMeshletVerticesBuffer() const { return m_MeshletVerticesBuffer; }
-    NODISCARD FORCEINLINE const auto& GetMeshletTrianglesBuffer() const { return m_MeshletTrianglesBuffer; }
-
-    NODISCARD FORCEINLINE auto& GetMaterial() const { return m_Material; }
-    NODISCARD FORCEINLINE const auto& GetBoundingSphere() const { return m_BoundingSphere; }
-
-    void SetMaterial(const Shared<Material>& material) { m_Material = material; }
-
-  private:
-    Shared<Buffer> m_VertexPositionBuffer;
-    Shared<Buffer> m_VertexAttributeBuffer;
-    Shared<Buffer> m_IndexBuffer;
-    Shared<Buffer> m_MeshletVerticesBuffer;
-    Shared<Buffer> m_MeshletTrianglesBuffer;
-    Shared<Buffer> m_MeshletBuffer;
-    Shared<Material> m_Material;
-
-    Sphere m_BoundingSphere = {};
-
-    friend class Mesh;
-
-    void Destroy();
-};
 
 class Mesh final : private Uncopyable, private Unmovable
 {
@@ -59,8 +25,17 @@ class Mesh final : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE const auto& GetSubmeshes() const { return m_Submeshes; }
 
+#if TODO
+    NODISCARD FORCEINLINE const auto& GetTLAS() const { return m_TLAS; }
+#endif
+
   private:
     std::vector<Shared<Submesh>> m_Submeshes;
+
+#if TODO
+    AccelerationStructure m_TLAS = {};
+    std::vector<AccelerationStructure> m_BLASes;
+#endif
 
     void LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures,
                        const fastgltf::Asset& asset, const size_t meshIndex);

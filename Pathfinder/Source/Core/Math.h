@@ -10,6 +10,7 @@
 #include <glm/gtx/quaternion.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/random.hpp>
+#include <glm/ext/quaternion_trigonometric.hpp>
 
 #include "CoreDefines.h"
 

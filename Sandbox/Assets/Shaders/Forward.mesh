@@ -35,12 +35,13 @@ void main()
     const mat3 normalMatrix = transpose(inverse(mat3(u_PC.Transform)));
  
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
+    const mat4 mvp = u_GlobalCameraData.ViewProjection * u_PC.Transform;
     for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
-        const vec4 WorldPos = u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
-        
-        gl_MeshVerticesEXT[i].gl_Position = u_GlobalCameraData.ViewProjection * WorldPos;
+        const vec4 localPos = vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
+        const vec4 WorldPos = u_PC.Transform * localPos;
+        gl_MeshVerticesEXT[i].gl_Position = mvp * localPos;
         
         o_VertexOutput[i].Color = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color;
         #if DEBUG_MESHLETS

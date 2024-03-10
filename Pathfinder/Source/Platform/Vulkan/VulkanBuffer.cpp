@@ -177,10 +177,8 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         const auto& rd = Renderer::GetRendererData();
         rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
 
-#if TODO
         if (auto commandBuffer = rd->CurrentTransferCommandBuffer.lock())
         {
-            // TODO: Use semaphore from transfer cmd buf
             auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
             PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
 
@@ -188,7 +186,6 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
             vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
         }
         else
-#endif
         {
             auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
             vulkanCommandBuffer->BeginRecording(true);

@@ -2,16 +2,15 @@
 // #extension GL_GOOGLE_include_directive : require
 // #include "Assets/Shaders/Include/Lights.h"
 
-// NOTE: LightDirection here points towards object from light pos
 vec3 DirectionalLightContribution(const float kShadow, const vec3 V, const vec3 normal, const DirectionalLight dl, const vec3 albedo, const float ao)
 {
     const vec3 L = normalize(dl.Direction);
     const vec3 N = normalize(normal);
 
-    const float kD = max(dot(N, -L), 0.0);
+    const float kD = max(dot(N, L), 0.0);
     const vec3 diffuse = kD * dl.Color * albedo;
 
-    const vec3 H = normalize(-L + V);
+    const vec3 H = normalize(L + V);
     const float spec = pow(max(dot(N, H), 0.0), 64);
     const float specular = spec * (1.f - kD);
     

@@ -46,6 +46,7 @@ class VulkanImage final : public Image
 
     void SetLayout(const EImageLayout newLayout) final override;
     void SetData(const void* data, size_t dataSize) final override;
+    void ClearColor(const Shared<CommandBuffer>& commandBuffer, const glm::vec4& color) const final override;
 
     FORCEINLINE void Resize(const uint32_t width, const uint32_t height) final override
     {

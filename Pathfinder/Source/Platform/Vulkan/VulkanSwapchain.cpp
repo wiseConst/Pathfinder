@@ -142,6 +142,7 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
     PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
 
     vulkanCommandBuffer->BeginDebugLabel("SwapchainClearColor", clearColor);
+
     {
         const auto imageBarrier =
             VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
@@ -497,7 +498,7 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
             VK_ACCESS_TRANSFER_READ_BIT, 0, 1, 0, 1, 0);
 
         const std::vector<VkImageMemoryBarrier> imageBarriers = {srcImageBarrier, dstImageBarrier};
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()),
                                            imageBarriers.data());
     }

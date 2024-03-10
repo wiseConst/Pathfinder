@@ -21,6 +21,7 @@ class VulkanShader final : public Shader
     void Set(const std::string_view name, const Shared<Buffer> buffer) final override;
     void Set(const std::string_view name, const Shared<Image> attachment) final override;
     void Set(const std::string_view name, const Shared<Texture2D> texture) final override;
+    void Set(const std::string_view name, const AccelerationStructure& tlas) final override;
 
     void Set(const std::string_view name, const BufferPerFrame& buffers) final override;
     void Set(const std::string_view name, const ImagePerFrame& attachments) final override;

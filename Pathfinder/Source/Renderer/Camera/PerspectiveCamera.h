@@ -102,7 +102,7 @@ class PerspectiveCamera final : public Camera
     float m_LastX = 0.0f;
     float m_LastY = 0.0f;
 
-    float m_Sensitivity = 0.2f;
+    float m_Sensitivity = 0.5f;
     bool m_bFirstInput  = true;
 
     // NOTE: again fucking math, but here's simple explanation(assuming column-major matrix order)
@@ -141,6 +141,17 @@ class PerspectiveCamera final : public Camera
         */
 
         m_View = glm::lookAt(m_Position, m_Position + m_Forward, upVec);
+
+        // TODO: Integrate quaternions in the future
+        /*
+        const auto GetRotationMatrix = [&]()
+        {
+            const glm::quat pitchRotation = glm::angleAxis(m_Pitch, glm::vec3{1.f, 0.f, 0.f});
+            const glm::quat yawRotation   = glm::angleAxis(m_Yaw, glm::vec3{0.f, -1.f, 0.f});
+            return glm::toMat4(yawRotation) * glm::toMat4(pitchRotation);
+        };
+
+        m_View = glm::transpose(GetRotationMatrix()) * glm::translate(glm::mat4(1.f), -m_Position); */
     }
 
     bool OnMouseMoved(const MouseMovedEvent& e) final override
@@ -220,7 +231,7 @@ class PerspectiveCamera final : public Camera
 
     void RecalculateCullFrustum()
     {
-        const float halfVSide = GetFarPlaneDepth() * tanf(m_FOV * .5f);
+        const float halfVSide = GetFarPlaneDepth() * glm::tan(/* glm::radians(*/ m_FOV /*)*/ * .5f);
         const float halfHSide = halfVSide * m_AR;
         const auto forwardFar = m_Forward * GetFarPlaneDepth();
 

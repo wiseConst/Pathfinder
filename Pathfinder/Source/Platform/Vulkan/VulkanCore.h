@@ -4,6 +4,7 @@
 #include <volk/volk.h>
 #include "Renderer/RendererCoreDefines.h"
 #include "Renderer/Shader.h"
+#include "Globals.h"
 
 namespace Pathfinder
 {
@@ -16,8 +17,8 @@ namespace Pathfinder
 #define VK_FORCE_SHADER_COMPILATION 1
 #define VK_FORCE_PIPELINE_COMPILATION 1
 
+#define VK_LOG_VMA_ALLOCATIONS 0
 #define VK_LOG_INFO 0
-#define VK_SHADER_DEBUG_PRINTF 0
 
 #define VK_PREFER_IGPU 0
 
@@ -59,12 +60,17 @@ static const std::vector<const char*> s_DeviceExtensions = {
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
 
 #if VK_RTX
-    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,    // To build acceleration structures
-    VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,      // To use vkCmdTraceRaysKHR
-    VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structures
-    VK_KHR_RAY_QUERY_EXTENSION_NAME,                 // To trace rays in every shader I want
+    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,  // To build acceleration structures
+    VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,    // To use vkCmdTraceRaysKHR
+
+    VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structure,
+    // allows the driver to run some expensive CPU-based Vulkan API calls asynchronously(such as a Vulkan API call that builds an
+    // acceleration structure on a CPU instead of a GPU) — much like launching a thread in C++ to perform a task asynchronously, then
+    // waiting for it to complete.
+
+    VK_KHR_RAY_QUERY_EXTENSION_NAME,  // To trace rays in every shader I want
 #endif
-#if VK_SHADER_DEBUG_PRINTF
+#if SHADER_DEBUG_PRINTF
     VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,  // debugPrintEXT shaders
 #endif
 };
@@ -76,12 +82,6 @@ using VulkanSemaphorePerFrame      = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>
 using VulkanFencePerFrame          = std::array<VkFence, s_FRAMES_IN_FLIGHT>;
 using VulkanDescriptorPoolPerFrame = std::array<VkDescriptorPool, s_FRAMES_IN_FLIGHT>;
 using VulkanDescriptorSetPerFrame  = std::array<VkDescriptorSet, s_FRAMES_IN_FLIGHT>;
-
-struct
-{
-    VkSemaphore Handle = VK_NULL_HANDLE;
-    uint64_t Counter   = 0;
-} VkTimelineSemaphore;
 
 static std::string VK_GetResultString(const VkResult result)
 {
@@ -169,12 +169,12 @@ static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeve
     {
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
         {
-            if constexpr (VK_LOG_INFO || VK_SHADER_DEBUG_PRINTF) LOG_INFO(pCallbackData->pMessage);
+            if constexpr (VK_LOG_INFO || SHADER_DEBUG_PRINTF) LOG_INFO(pCallbackData->pMessage);
             break;
         }
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:
         {
-            if constexpr (VK_LOG_INFO || VK_SHADER_DEBUG_PRINTF) LOG_INFO(pCallbackData->pMessage);
+            if constexpr (VK_LOG_INFO || SHADER_DEBUG_PRINTF) LOG_INFO(pCallbackData->pMessage);
             break;
         }
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT:

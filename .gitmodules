@@ -22,3 +22,6 @@
 [submodule "Pathfinder/vendor/spirv-reflect"]
 	path = Pathfinder/vendor/spirv-reflect
 	url = https://github.com/KhronosGroup/SPIRV-Reflect.git
+[submodule "Pathfinder/vendor/simdjson"]
+	path = Pathfinder/vendor/simdjson
+	url = https://github.com/simdjson/simdjson

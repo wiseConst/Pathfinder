@@ -7,7 +7,7 @@
 namespace Pathfinder
 {
 
-class Input final : private Uncopyable, private Unmovable
+class Input final
 {
   public:
     static bool IsKeyPressed(const EKey key);
@@ -21,8 +21,8 @@ class Input final : private Uncopyable, private Unmovable
     static std::pair<int32_t, int32_t> GetMousePosition();
 
   private:
-    Input()           = default;
-    ~Input() override = default;
+    Input()  = delete;
+    ~Input() = default;
 };
 
 }  // namespace Pathfinder

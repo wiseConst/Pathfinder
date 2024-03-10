@@ -22,7 +22,7 @@ class Layer : private Uncopyable, private Unmovable
     virtual void OnUIRender()                    = 0;
 
   protected:
-    std::string_view m_DebugName = "None";
+    std::string_view m_DebugName = s_DEFAULT_STRING;
 };
 
 }  // namespace Pathfinder

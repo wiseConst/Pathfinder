@@ -31,6 +31,8 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     void LoadMeshletBuffer(const Shared<Buffer>& buffer) final override;
     void LoadMeshletVerticesBuffer(const Shared<Buffer>& buffer) final override;
     void LoadMeshletTrianglesBuffer(const Shared<Buffer>& buffer) final override;
+    void LoadIndexBuffer(const Shared<Buffer>& buffer) final override;
+    void LoadMaterialBuffer(const Shared<Buffer>& buffer) final override;
 
     void FreeImage(uint32_t& imageIndex) final override;
     void FreeBuffer(uint32_t& bufferIndex, uint32_t bufferBinding) final override;

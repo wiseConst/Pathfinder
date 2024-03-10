@@ -213,6 +213,7 @@ static void PrintDescriptorSets(const std::vector<SpvReflectDescriptorSet*>& des
 #endif
 }
 
+// TODO: Move working dir out
 VulkanShader::VulkanShader(const std::string_view shaderName)
 {
     PFR_ASSERT(!std::filesystem::is_directory("/Assets/Shaders/"), "Can't find shader source directory!");
@@ -293,8 +294,17 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
                 prevBinding = dsBinding.binding;
             }
 
-            auto& setLayout                             = currentShaderDescription.SetLayouts.emplace_back();
-            const VkDescriptorSetLayoutCreateInfo dslci = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, nullptr, 0,
+            auto& setLayout = currentShaderDescription.SetLayouts.emplace_back();
+
+            // BINDLESS FLAGS
+            const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                                                                                          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
+            const VkDescriptorSetLayoutBindingFlagsCreateInfo shaderBindingsExtendedInfo = {
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, static_cast<uint32_t>(bindingFlags.size()),
+                bindingFlags.data()};
+
+            const VkDescriptorSetLayoutCreateInfo dslci = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &shaderBindingsExtendedInfo,
+                                                           VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
                                                            static_cast<uint32_t>(bindings.size()), bindings.data()};
             VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &dslci, nullptr, &setLayout),
                      "Failed to create descriptor layout for shader needs!");
@@ -445,7 +455,7 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
     thread_local shaderc::CompileOptions compileOptions;
     compileOptions.SetOptimizationLevel(shaderc_optimization_level_zero);
     compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
-    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_3);
+    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_4);
     compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
     compileOptions.SetWarningsAsErrors();
     compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
@@ -718,6 +728,46 @@ void VulkanShader::Set(const std::string_view name, const std::vector<Shared<Ima
                         wds.dstSet          = shaderDesc.Sets[iSet][frame].second;
                         wds.pImageInfo      = &vulkanImage->GetDescriptorInfo();
                     }
+                }
+            }
+        }
+    }
+
+    if (writes.empty())
+    {
+        LOG_TAG_ERROR(SHADER, "Failed to update: %s", name.data());
+        PFR_ASSERT(false, "Failed to update shader data!");
+    }
+    vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
+                           nullptr);
+}
+
+void VulkanShader::Set(const std::string_view name, const AccelerationStructure& tlas)
+{
+    // PFR_ASSERT(tlas.Handle, "TLAS is not valid!");
+
+    VkWriteDescriptorSetAccelerationStructureKHR descriptorAS = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR};
+    descriptorAS.accelerationStructureCount                   = 1;
+    descriptorAS.pAccelerationStructures                      = (VkAccelerationStructureKHR*)&tlas.Handle;
+
+    // NOTE: Vector used in case I have a variable that is used across different shader stages/sets/bindings.
+    std::vector<VkWriteDescriptorSet> writes;
+    for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
+    {
+        for (const auto& shaderDesc : m_ShaderDescriptions)
+        {
+            for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)
+            {
+                for (auto& [bindingName, descriptor] : shaderDesc.DescriptorSetBindings[iSet])
+                {
+                    if (strcmp(bindingName.data(), name.data()) != 0) continue;
+
+                    auto& wds           = writes.emplace_back(VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET);
+                    wds.dstBinding      = descriptor.binding;
+                    wds.descriptorCount = descriptor.descriptorCount;
+                    wds.descriptorType  = descriptor.descriptorType;
+                    wds.dstSet          = shaderDesc.Sets[iSet][frame].second;
+                    wds.pNext           = &descriptorAS;
                 }
             }
         }

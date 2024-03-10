@@ -4,6 +4,7 @@
 #include "Core/Core.h"
 #include "BindlessRenderer.h"
 #include "RendererCoreDefines.h"
+#include "RenderGraph/RenderGraph.h"
 
 namespace Pathfinder
 {
@@ -17,7 +18,6 @@ class Image;
 class Submesh;
 class Mesh;
 
-// TODO: Implement RT_Renderer / RayTracingModule / RayTracingBuilder
 // NOTE: It's not final cuz in future SceneRenderer may derive from this class
 
 class Renderer : private Uncopyable, private Unmovable
@@ -56,16 +56,10 @@ class Renderer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE static auto& GetStats() { return s_RendererStats; }
 
   private:
-    struct RenderObject
-    {
-        Shared<Submesh> submesh = nullptr;
-        glm::mat4 Transform     = glm::mat4(1.0f);
-    };
-
     struct RendererData
     {
         // MISC
-        LightsData LightStruct;
+        Unique<LightsData> LightStruct = nullptr;
         CameraData CameraStruct;
         Frustum CullFrustum;
 
@@ -88,8 +82,11 @@ class Renderer : private Uncopyable, private Unmovable
         Weak<CommandBuffer> CurrentComputeCommandBuffer;
         Weak<CommandBuffer> CurrentTransferCommandBuffer;
 
-        Shared<Image> PathtracedImage            = nullptr;
-        Shared<Pipeline> PathtracingPipeline     = nullptr;
+        Unique<Pathfinder::RenderGraph> RenderGraph = nullptr;
+
+        Shared<Image> PathtracedImage        = nullptr;
+        Shared<Pipeline> PathtracingPipeline = nullptr;
+
         Shared<Framebuffer> CompositeFramebuffer = nullptr;
         Shared<Pipeline> CompositePipeline       = nullptr;
 
@@ -100,6 +97,9 @@ class Renderer : private Uncopyable, private Unmovable
         Shared<Framebuffer> DepthPrePassFramebuffer = nullptr;
         Shared<Pipeline> DepthPrePassPipeline       = nullptr;
 
+        // Atmospheric Scattering
+        Shared<Pipeline> AtmospherePipeline = nullptr;
+
         // TODO: CASCADED SHADOW MAPS
         // DirShadowMaps
         std::vector<Shared<Framebuffer>> DirShadowMaps;
@@ -108,8 +108,6 @@ class Renderer : private Uncopyable, private Unmovable
         std::vector<RenderObject> OpaqueObjects;
         std::vector<RenderObject> TransparentObjects;
         Shared<Texture2D> WhiteTexture = nullptr;
-
-        Shared<Pipeline> GridPipeline = nullptr;
 
         Shared<Image> FrustumDebugImage               = nullptr;
         Shared<Image> LightHeatMapImage               = nullptr;
@@ -121,17 +119,17 @@ class Renderer : private Uncopyable, private Unmovable
         // unordored_map<string,BufferPerFrame>, string maps to set and binding
         Shared<Buffer> SpotLightIndicesStorageBuffer = nullptr;
 
-        // TODO: Add HBAO, GTAO, RTAO
         // AO
+        // TODO: Add HBAO, GTAO, RTAO
         Shared<Texture2D> AONoiseTexture = nullptr;
         struct AO
         {
             Shared<Pathfinder::Pipeline> Pipeline       = nullptr;
             Shared<Pathfinder::Framebuffer> Framebuffer = nullptr;
         };
-        AO SSAO                                 = {};
-        Shared<Pipeline> SSAOBlurPipeline       = nullptr;
-        Shared<Framebuffer> SSAOBlurFramebuffer = nullptr;
+        AO SSAO   = {};
+        AO HBAO   = {};
+        AO BlurAO = {};
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
@@ -152,6 +150,7 @@ class Renderer : private Uncopyable, private Unmovable
         uint32_t MeshletCount;
         float GPUTime;
         float SwapchainPresentTime;
+        float RHITime;
     };
     static inline RendererStats s_RendererStats = {};
 
@@ -159,16 +158,19 @@ class Renderer : private Uncopyable, private Unmovable
 
     // TODO: GPU-side frustum culling
     static bool IsInsideFrustum(const auto& renderObject);
-    static void DrawGrid();
-    static void DepthPrePass();
 
+    static void DepthPrePass();
     static void DirShadowMapPass();
 
     static void LightCullingPass();
+    static void AtmosphericScatteringPass();
+
     static void SSAOPass();
     static void HBAOPass();
+    static void BlurAOPass();
 
     static void GeometryPass();
+    static void CompositePass();
 };
 
 }  // namespace Pathfinder

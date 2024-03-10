@@ -43,6 +43,19 @@ vec3 GetViewPositionFromDepth(vec2 coords) {
 
 // NOTE: John Chapman, learnopengl, https://betterprogramming.pub/depth-only-ssao-for-forward-renderers-1a3dcfa1873a
 
+vec3 ReconstructViewNormal(const vec3 viewPos)
+{
+    // The dFdy and dFdX are glsl functions used to calculate two vectors in view space 
+    // that lie on the plane of the surface being drawn. We pass the view space position to these functions.
+    // The cross product of these two vectors give us the normal in view space.
+    vec3 viewNormal = cross(dFdy(viewPos), dFdx(viewPos));
+       
+    // The normal is initilly away from the screen based on the order in which we calculate the cross products. 
+    // Here, we need to invert it to point towards the screen by multiplying by -1.
+    viewNormal = normalize(viewNormal * -1.0);
+    return viewNormal;
+}
+
 void main()
 {
     // Rotation vector for kernel samples current fragment will be used to create TBN -> View Space
@@ -50,14 +63,7 @@ void main()
     const vec3 randomVec = normalize(texture(u_NoiseTex, inUV * noiseScale).xyz);
 
     const vec3 viewPos = GetViewPositionFromDepth(inUV);
-    // The dFdy and dFdX are glsl functions used to calculate two vectors in view space 
-    // that lie on the plane of the surface being drawn. We pass the view space position to these functions.
-    // The cross product of these two vectors give us the normal in view space.
-    vec3 viewNormal = cross(dFdy(viewPos.xyz), dFdx(viewPos.xyz));
-
-    // The normal is initilly away from the screen based on the order in which we calculate the cross products. 
-    // Here, we need to invert it to point towards the screen by multiplying by -1.
-    viewNormal = normalize(viewNormal * -1.0);
+    vec3 viewNormal = ReconstructViewNormal(viewPos);
 
     // NOTE: Construct tangent based on randomVec, Gramm-Schmidt reorthogonalization along viewNormal. It's gonna offset randomVec so it'll be orthogonal to viewNormal.
     const vec3 T = normalize(randomVec - viewNormal * dot(randomVec, viewNormal));

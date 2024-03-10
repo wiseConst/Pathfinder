@@ -62,7 +62,7 @@ vec3 BRDF(const vec3 F, const vec3 albedo, const vec3 N, const vec3 V, const vec
 
 vec3 DirectionalLightContribution(const float kShadow, const vec3 F0, const vec3 V, const vec3 normal, const DirectionalLight dl, const vec3 albedo, const float roughness, const float metallic)
 {
-    const vec3 L = normalize(-dl.Direction);
+    const vec3 L = normalize(dl.Direction);
     const vec3 H = normalize(V + L);
     const vec3 N = normalize(normal);
 

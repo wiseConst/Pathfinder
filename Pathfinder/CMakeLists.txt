@@ -120,6 +120,14 @@ target_link_libraries(${PROJECT_NAME} PRIVATE glm)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/glm)
 set_target_properties(glm PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
+# simdjson (currently unused since fastgltf includes it)
+#set(SIMDJSON_BUILD_STATIC_LIB ON)
+#add_subdirectory(${VENDOR_DIR}/simdjson)
+#target_link_libraries(${PROJECT_NAME} PRIVATE simdjson_static)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/simdjson/include)
+#set_target_properties(simdjson_static PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
+#set_target_properties(simdjson PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
+
 # stb
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/stb)
 

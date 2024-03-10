@@ -35,6 +35,8 @@
 namespace Pathfinder
 {
 
+static constexpr const char* s_DEFAULT_STRING = "NONE";
+
 static constexpr uint16_t s_WORKER_THREAD_COUNT = 16;
 
 template <typename T> using Weak = std::weak_ptr<T>;

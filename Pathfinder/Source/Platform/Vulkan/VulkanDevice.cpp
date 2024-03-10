@@ -21,7 +21,7 @@ static const char* GetVendorNameCString(const uint32_t vendorID)
     }
 
     PFR_ASSERT(false, "Unknown vendor!");
-    return "None";
+    return s_DEFAULT_STRING;
 }
 
 static const char* GetDeviceTypeCString(const VkPhysicalDeviceType deviceType)
@@ -163,7 +163,7 @@ void VulkanDevice::CreateLogicalDevice()
     void** ppNext  = &vulkan13Features.pNext;
 
     VkPhysicalDeviceVulkan12Features vulkan12Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-
+    vulkan12Features.hostQueryReset                   = VK_TRUE;
     // Async submits/waits feature
     vulkan12Features.timelineSemaphore = VK_TRUE;
 
@@ -210,7 +210,8 @@ void VulkanDevice::CreateLogicalDevice()
         *ppNext = &enabledRayTracingPipelineFeatures;
         ppNext  = &enabledRayTracingPipelineFeatures.pNext;
 
-        enabledAccelerationStructureFeatures.accelerationStructure = VK_TRUE;
+        enabledAccelerationStructureFeatures.accelerationStructure                                 = VK_TRUE;
+        enabledAccelerationStructureFeatures.descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE;
 
         *ppNext = &enabledAccelerationStructureFeatures;
         ppNext  = &enabledAccelerationStructureFeatures.pNext;
@@ -360,6 +361,27 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
     VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
     VkPhysicalDeviceFeatures2 deviceFeatures2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2, &descriptorIndexingFeatures};
+
+    void** ppDeviceFeaturesNext = &descriptorIndexingFeatures.pNext;
+
+#if VK_RTX
+    VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR};
+
+    *ppDeviceFeaturesNext = &rayQueryFeatures;
+    ppDeviceFeaturesNext  = &rayQueryFeatures.pNext;
+
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR asFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+
+    *ppDeviceFeaturesNext = &asFeatures;
+    ppDeviceFeaturesNext  = &asFeatures.pNext;
+
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeatures = {
+        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
+
+    *ppDeviceFeaturesNext = &rtPipelineFeatures;
+    ppDeviceFeaturesNext  = &rtPipelineFeatures.pNext;
+#endif
+
     vkGetPhysicalDeviceFeatures2(gpuInfo.PhysicalDevice, &deviceFeatures2);
 
     // Query GPU memory properties(heap sizes, etc..)
@@ -515,6 +537,13 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
 
     gpuInfo.QueueFamilyIndices = QueueFamilyIndices::FindQueueFamilyIndices(gpuInfo.PhysicalDevice);
     if (VK_PREFER_IGPU && gpuInfo.GPUProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) return false;
+
+#if VK_RTX
+    if (!rayQueryFeatures.rayQuery || !asFeatures.accelerationStructure || !rtPipelineFeatures.rayTracingPipeline)
+    {
+        return false;
+    }
+#endif
 
     PFR_ASSERT(gpuInfo.GPUProperties.limits.maxSamplerAnisotropy > 0, "GPU has not valid Max Sampler Anisotropy!");
     return gpuInfo.GPUFeatures.samplerAnisotropy && gpuInfo.GPUFeatures.geometryShader;
