@@ -3,6 +3,7 @@
 
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
+#include "VulkanImage.h"
 
 #include "Renderer/Renderer.h"
 #include "VulkanBindlessRenderer.h"
@@ -10,16 +11,31 @@
 namespace Pathfinder
 {
 
-VulkanTexture2D::VulkanTexture2D(const TextureSpecification& textureSpec) : m_Specification(textureSpec)
+VulkanTexture2D::VulkanTexture2D(const TextureSpecification& textureSpec) : Texture2D(textureSpec)
 {
     Invalidate();
+}
+
+NODISCARD const VkDescriptorImageInfo& VulkanTexture2D::GetDescriptorInfo()
+{
+    if (m_Image; const auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Image))
+    {
+        m_DescriptorInfo = vulkanImage->GetDescriptorInfo();
+    }
+    else
+    {
+        PFR_ASSERT(false, "VulkanTexture2D: m_Image is not valid! or failed to cast ot VulkanImage!");
+    }
+
+    m_DescriptorInfo.sampler = m_Sampler;
+    return m_DescriptorInfo;
 }
 
 void VulkanTexture2D::Destroy()
 {
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
-    if (m_Index != UINT32_MAX)
+    if (m_Index != UINT32_MAX && m_Specification.bBindlessUsage)
     {
         Renderer::GetBindlessRenderer()->FreeTexture(m_Index);
     }
@@ -30,22 +46,16 @@ void VulkanTexture2D::Destroy()
 
 void VulkanTexture2D::Invalidate()
 {
-    ImageSpecification imageSpec = {};
-    imageSpec.Height             = m_Specification.Height;
-    imageSpec.Width              = m_Specification.Width;
-    imageSpec.Format             = m_Specification.Format;
-    imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
-
-    m_Image = MakeShared<VulkanImage>(imageSpec);
-
-    m_Image->SetData(m_Specification.Data, m_Specification.DataSize);
-    m_Specification.Data     = nullptr;
-    m_Specification.DataSize = 0;
-
-    m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-
     const SamplerSpecification samplerSpec = {m_Specification.Filter, m_Specification.Wrap};
     m_Sampler                              = (VkSampler)SamplerStorage::CreateOrRetrieveCachedSampler(samplerSpec);
+
+    Texture2D::Invalidate();
+
+    if (m_Specification.bBindlessUsage)
+    {
+        const auto& vkTextureInfo = GetDescriptorInfo();
+        Renderer::GetBindlessRenderer()->LoadTexture(&vkTextureInfo, m_Index);
+    }
 }
 
 }  // namespace Pathfinder

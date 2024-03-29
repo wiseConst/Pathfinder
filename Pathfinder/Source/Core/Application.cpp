@@ -70,18 +70,18 @@ void Application::Run()
         if (accumulatedDelta >= 1.0)
         {
             std::stringstream ss;
-            ss << std::string("PATHFINDER x64 / ") + std::to_string(frameCount) + std::string(" FPS ");
-            ss << std::string("[mesh-shaders]: ") << (Renderer::GetRendererSettings().bMeshShadingSupport ? "on " : "off ");
-            ss << std::string("[cpu]: ") + std::to_string(t.GetElapsedMilliseconds()) + std::string("ms ");
-            ss << std::string("[gpu]: ") + std::to_string(Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime) +
-                      std::string("ms ");
-            ss << std::string("[present]: ") + std::to_string(Renderer::GetStats().SwapchainPresentTime) + std::string("ms ");
-            ss << std::string("[rhi]: ") + std::to_string(Renderer::GetStats().RHITime) + std::string("ms ");
-            ss << std::string(" [tris]: ") << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
-            ss << std::string(" [meshlets]: ") << Renderer::GetStats().MeshletCount;
-            ss << std::string(" [2D batches]: ") << Renderer2D::GetStats().BatchCount;
-            ss << std::string(" [descriptor pools]: ") << Renderer::GetStats().DescriptorPoolCount;
-            ss << std::string(" [descriptor sets]: ") << Renderer::GetStats().DescriptorSetCount;
+            ss << std::fixed << std::setprecision(4);  // Set the float format
+            ss << m_Window->GetSpecification().Title << " x64 / " << frameCount << " FPS ";
+            ss << "[mesh-shaders]: " << (Renderer::GetRendererSettings().bMeshShadingSupport ? "on " : "off ");
+            ss << "[cpu]: " << t.GetElapsedMilliseconds() << "ms ";
+            ss << "[gpu]: " << Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime << "ms ";
+            ss << "[present]: " << Renderer::GetStats().SwapchainPresentTime << "ms ";
+            ss << "[rhi]: " << Renderer::GetStats().RHITime << "ms ";
+            ss << " [tris]: " << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
+            ss << " [meshlets]: " << Renderer::GetStats().MeshletCount;
+            ss << " [2D batches]: " << Renderer2D::GetStats().BatchCount;
+            ss << " [descriptor pools]: " << Renderer::GetStats().DescriptorPoolCount;
+            ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
             m_Window->SetWindowTitle(ss.str().data());
 
             accumulatedDelta = 0.0;

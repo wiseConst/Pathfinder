@@ -19,8 +19,6 @@
 #include "RayTracingBuilder.h"
 #include "RenderGraph/RenderGraphBuilder.h"
 
-// TODO: Integrate fucking std::tie
-
 namespace Pathfinder
 {
 
@@ -36,15 +34,16 @@ void Renderer::Init()
     SamplerStorage::Init();
     RayTracingBuilder::Init();
 
-    s_RendererData->LightStruct = MakeUnique<LightsData>();  // 1kb heap
+    s_RendererData->LightStruct = MakeUnique<LightsData>();
 
     ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "Forward", "DepthPrePass", "LightCulling", "Composite", "AO/SSAO", "AO/HBAO",
-                                                 "AO/AO_Blur", "Shadows/DirShadowMap", "AtmosphericScattering"});
+                                                 "AO/AO_Blur", "Shadows/DirShadowMap", "Shadows/PointLightShadowMap",
+                                                 "AtmosphericScattering", "Post/GaussianBlur"});
 
     std::ranges::for_each(s_RendererData->UploadHeap,
                           [](auto& uploadHeap)
                           {
-                              BufferSpecification uploadHeapSpec = {EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE, true,
+                              BufferSpecification uploadHeapSpec = {EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE, 0, false, true,
                                                                     s_RendererData->s_MAX_UPLOAD_HEAP_CAPACITY};
 
                               uploadHeap = Buffer::Create(uploadHeapSpec);
@@ -94,31 +93,29 @@ void Renderer::Init()
     }
 
     {
-        TextureSpecification whiteTextureSpec = {1, 1};
         uint32_t whiteColor                   = 0xFFFFFFFF;
-        whiteTextureSpec.Data                 = &whiteColor;
-        whiteTextureSpec.DataSize             = sizeof(whiteColor);
+        TextureSpecification whiteTextureSpec = {1, 1, &whiteColor, sizeof(whiteColor)};
+        whiteTextureSpec.bBindlessUsage       = true;
         s_RendererData->WhiteTexture          = Texture2D::Create(whiteTextureSpec);
-
-        s_BindlessRenderer->LoadTexture(s_RendererData->WhiteTexture);
     }
 
     {
         FramebufferSpecification framebufferSpec = {"DepthPrePass"};
 
-        const FramebufferAttachmentSpecification depthAttachmentSpec = {EImageFormat::FORMAT_D32F,
-                                                                        EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                                                        ELoadOp::CLEAR,
-                                                                        EStoreOp::STORE,
-                                                                        glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
-                                                                        false};
+        FramebufferAttachmentSpecification depthAttachmentSpec = {EImageFormat::FORMAT_D32F,
+                                                                  EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                                  ELoadOp::CLEAR,
+                                                                  EStoreOp::STORE,
+                                                                  glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
+                                                                  false};
+        depthAttachmentSpec.bBindlessUsage                     = true;
 
         framebufferSpec.Attachments.emplace_back(depthAttachmentSpec);
         s_RendererData->DepthPrePassFramebuffer = Framebuffer::Create(framebufferSpec);
-    }
 
-    Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height)
-                                                      { s_RendererData->DepthPrePassFramebuffer->Resize(width, height); });
+        Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height)
+                                                          { s_RendererData->DepthPrePassFramebuffer->Resize(width, height); });
+    }
 
     // NOTE: Reversed-Z, summary:https://ajweeks.com/blog/2019/04/06/ReverseZ/
     PipelineSpecification depthPrePassPipelineSpec = {"DepthPrePass", EPipelineType::PIPELINE_TYPE_GRAPHICS};
@@ -130,50 +127,95 @@ void Renderer::Init()
     depthPrePassPipelineSpec.bDepthTest            = true;
     depthPrePassPipelineSpec.bDepthWrite           = true;
     depthPrePassPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL;
+    depthPrePassPipelineSpec.InputBufferBindings   = {{{"inPos", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3}}};
     PipelineBuilder::Push(s_RendererData->DepthPrePassPipeline, depthPrePassPipelineSpec);
 
     {
         FramebufferSpecification framebufferSpec = {"GBuffer"};
 
         // Albedo
-        FramebufferAttachmentSpecification attachmentSpec = {EImageFormat::FORMAT_RGBA32F,
-                                                             EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                                             ELoadOp::LOAD,
-                                                             EStoreOp::STORE,
-                                                             glm::vec4(0),
-                                                             true};
-        framebufferSpec.Attachments.emplace_back(attachmentSpec);
+        {
+            FramebufferAttachmentSpecification attachmentSpec = {EImageFormat::FORMAT_RGBA16F,
+                                                                 EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                                 ELoadOp::LOAD,
+                                                                 EStoreOp::STORE,
+                                                                 glm::vec4(0),
+                                                                 true,
+                                                                 ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                                                 ESamplerFilter::SAMPLER_FILTER_LINEAR};
+            framebufferSpec.Attachments.emplace_back(attachmentSpec);
+        }
+
+        // Bright color for bloom
+        {
+            FramebufferAttachmentSpecification attachmentSpec = {EImageFormat::FORMAT_RGBA16F,
+                                                                 EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                                 ELoadOp::LOAD,
+                                                                 EStoreOp::STORE,
+                                                                 glm::vec4(0),
+                                                                 true,
+                                                                 ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                                                 ESamplerFilter::SAMPLER_FILTER_LINEAR};
+            framebufferSpec.Attachments.emplace_back(attachmentSpec);
+        }
+
+#if TODO
+        // View normal map
+        {
+            FramebufferAttachmentSpecification attachmentSpec = {EImageFormat::FORMAT_RGBA16F,
+                                                                 EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                                 ELoadOp::LOAD,
+                                                                 EStoreOp::STORE,
+                                                                 glm::vec4(0),
+                                                                 true,
+                                                                 ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                                                 ESamplerFilter::SAMPLER_FILTER_LINEAR};
+            attachmentSpec.bBindlessUsage                     = true;
+            framebufferSpec.Attachments.emplace_back(attachmentSpec);
+        }
+#endif
 
         // Depth from depth pre pass
-        framebufferSpec.ExistingAttachments[1] = s_RendererData->DepthPrePassFramebuffer->GetDepthAttachment();
-        attachmentSpec                         = s_RendererData->DepthPrePassFramebuffer->GetAttachments()[0].Specification;
-        attachmentSpec.LoadOp                  = ELoadOp::LOAD;
-        attachmentSpec.StoreOp                 = EStoreOp::STORE;
-        framebufferSpec.Attachments.emplace_back(attachmentSpec);
+        {
+            framebufferSpec.ExistingAttachments[2]            = s_RendererData->DepthPrePassFramebuffer->GetDepthAttachment();
+            FramebufferAttachmentSpecification attachmentSpec = s_RendererData->DepthPrePassFramebuffer->GetAttachments()[0].Specification;
+            attachmentSpec.LoadOp                             = ELoadOp::LOAD;
+            attachmentSpec.StoreOp                            = EStoreOp::STORE;
+            framebufferSpec.Attachments.emplace_back(attachmentSpec);
+        }
 
         s_RendererData->GBuffer = Framebuffer::Create(framebufferSpec);
+
+        Application::Get().GetWindow()->AddResizeCallback([](uint32_t width, uint32_t height)
+                                                          { s_RendererData->GBuffer->Resize(width, height); });
     }
 
-    Application::Get().GetWindow()->AddResizeCallback([](uint32_t width, uint32_t height)
-                                                      { s_RendererData->GBuffer->Resize(width, height); });
-
-    PipelineSpecification forwardPipelineSpec  = {"ForwardPlus", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-    forwardPipelineSpec.Shader                 = ShaderLibrary::Get("Forward");
-    forwardPipelineSpec.bBindlessCompatible    = true;
-    forwardPipelineSpec.bSeparateVertexBuffers = true;
-    forwardPipelineSpec.CullMode               = ECullMode::CULL_MODE_BACK;
-    forwardPipelineSpec.bDepthTest             = true;
-    forwardPipelineSpec.bDepthWrite            = false;
-    forwardPipelineSpec.DepthCompareOp         = depthPrePassPipelineSpec.DepthCompareOp;
-    forwardPipelineSpec.TargetFramebuffer      = s_RendererData->GBuffer;
-    forwardPipelineSpec.bMeshShading           = s_RendererSettings.bMeshShadingSupport;
-    forwardPipelineSpec.bBlendEnable           = true;
-    forwardPipelineSpec.BlendMode              = EBlendMode::BLEND_MODE_ALPHA;
-    PipelineBuilder::Push(s_RendererData->ForwardPlusPipeline, forwardPipelineSpec);
+    {
+        PipelineSpecification forwardPipelineSpec = {"ForwardPlus", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+        forwardPipelineSpec.Shader                = ShaderLibrary::Get("Forward");
+        // Rendering view normals useless for now.
+        // forwardPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(true);
+        forwardPipelineSpec.bBindlessCompatible = true;
+        forwardPipelineSpec.CullMode            = ECullMode::CULL_MODE_BACK;
+        forwardPipelineSpec.bDepthTest          = true;
+        forwardPipelineSpec.bDepthWrite         = false;
+        forwardPipelineSpec.DepthCompareOp      = ECompareOp::COMPARE_OP_EQUAL;
+        forwardPipelineSpec.TargetFramebuffer   = s_RendererData->GBuffer;
+        forwardPipelineSpec.bMeshShading        = s_RendererSettings.bMeshShadingSupport;
+        forwardPipelineSpec.bBlendEnable        = true;
+        forwardPipelineSpec.BlendMode           = EBlendMode::BLEND_MODE_ALPHA;
+        forwardPipelineSpec.InputBufferBindings = {{{"inPos", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3}},
+                                                   {
+                                                       {"inColor", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4},
+                                                       {"inNormal", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
+                                                       {"inTangent", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
+                                                       {"inUV", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2},
+                                                   }};
+        PipelineBuilder::Push(s_RendererData->ForwardPlusPipeline, forwardPipelineSpec);
+    }
 
     {
-        FramebufferSpecification framebufferSpec = {"Composite"};
-
+        FramebufferSpecification framebufferSpec                         = {"Composite"};
         const FramebufferAttachmentSpecification compositeAttachmentSpec = {EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32,
                                                                             EImageLayout::IMAGE_LAYOUT_UNDEFINED,
                                                                             ELoadOp::CLEAR,
@@ -185,45 +227,45 @@ void Renderer::Init()
         s_RendererData->CompositeFramebuffer = Framebuffer::Create(framebufferSpec);
     }
 
-    Application::Get().GetWindow()->AddResizeCallback(
-        [&](uint32_t width, uint32_t height)
-        {
-            s_RendererData->CompositeFramebuffer->Resize(width, height);
-            s_RendererData->CompositePipeline->GetSpecification().Shader->Set("u_Albedo",
-                                                                              s_RendererData->GBuffer->GetAttachments()[0].Attachment);
-        });
+    {
+        Application::Get().GetWindow()->AddResizeCallback(
+            [&](uint32_t width, uint32_t height)
+            {
+                s_RendererData->CompositeFramebuffer->Resize(width, height);
+                s_RendererData->CompositePipeline->GetSpecification().Shader->Set("u_Albedo",
+                                                                                  s_RendererData->GBuffer->GetAttachments()[0].Attachment);
+            });
 
-    PipelineSpecification compositePipelineSpec = {"Composite", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-    compositePipelineSpec.TargetFramebuffer     = s_RendererData->CompositeFramebuffer;
-    compositePipelineSpec.Shader                = ShaderLibrary::Get("Composite");
-    compositePipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
-    compositePipelineSpec.bBindlessCompatible   = true;
-    PipelineBuilder::Push(s_RendererData->CompositePipeline, compositePipelineSpec);
+        PipelineSpecification compositePipelineSpec = {"Composite", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+        compositePipelineSpec.TargetFramebuffer     = s_RendererData->CompositeFramebuffer;
+        compositePipelineSpec.Shader                = ShaderLibrary::Get("Composite");
+        compositePipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
+        compositePipelineSpec.bBindlessCompatible   = true;
+        PipelineBuilder::Push(s_RendererData->CompositePipeline, compositePipelineSpec);
+    }
 
     Renderer2D::Init();
 
     /* vk_mini_path_tracer  */
     {
-        ImageSpecification imageSpec = {};
-        imageSpec.Format             = EImageFormat::FORMAT_RGBA8_UNORM;
-        imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_STORAGE_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
-                               EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT;
-
-        s_RendererData->PathtracedImage = Image::Create(imageSpec);
-    }
-    s_BindlessRenderer->LoadImage(s_RendererData->PathtracedImage);
-
-    Application::Get().GetWindow()->AddResizeCallback(
-        [&](uint32_t width, uint32_t height)
         {
-            s_RendererData->PathtracedImage->Resize(width, height);
-            s_BindlessRenderer->LoadImage(s_RendererData->PathtracedImage);
-        });
+            ImageSpecification imageSpec = {};
+            imageSpec.bBindlessUsage     = true;
+            imageSpec.Format             = EImageFormat::FORMAT_RGBA8_UNORM;
+            imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_STORAGE_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
+                                   EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT;
 
-    PipelineSpecification pathTracingPipelineSpec = {"Pathtracing", EPipelineType::PIPELINE_TYPE_COMPUTE};
-    pathTracingPipelineSpec.Shader                = ShaderLibrary::Get("pathtrace");
-    pathTracingPipelineSpec.bBindlessCompatible   = true;
-    PipelineBuilder::Push(s_RendererData->PathtracingPipeline, pathTracingPipelineSpec);
+            s_RendererData->PathtracedImage = Image::Create(imageSpec);
+        }
+
+        Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height)
+                                                          { s_RendererData->PathtracedImage->Resize(width, height); });
+
+        PipelineSpecification pathTracingPipelineSpec = {"Pathtracing", EPipelineType::PIPELINE_TYPE_COMPUTE};
+        pathTracingPipelineSpec.Shader                = ShaderLibrary::Get("pathtrace");
+        pathTracingPipelineSpec.bBindlessCompatible   = true;
+        PipelineBuilder::Push(s_RendererData->PathtracingPipeline, pathTracingPipelineSpec);
+    }
     /* vk_mini_path_tracer  */
 
     PipelineSpecification lightCullingPipelineSpec = {"LightCulling", EPipelineType::PIPELINE_TYPE_COMPUTE};
@@ -257,30 +299,31 @@ void Renderer::Init()
 
     {
         ImageSpecification imageSpec = {};
+        imageSpec.bBindlessUsage     = true;
         imageSpec.Format             = EImageFormat::FORMAT_RGBA8_UNORM;
         imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_STORAGE_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
         s_RendererData->FrustumDebugImage = Image::Create(imageSpec);
-        s_BindlessRenderer->LoadImage(s_RendererData->FrustumDebugImage);
+        s_RendererData->LightHeatMapImage = Image::Create(imageSpec);
     }
 
     {
         ImageSpecification imageSpec = {};
+        imageSpec.bBindlessUsage     = true;
         imageSpec.Format             = EImageFormat::FORMAT_RGBA8_UNORM;
         imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_STORAGE_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
 
-        s_RendererData->LightHeatMapImage = Image::Create(imageSpec);
-        s_BindlessRenderer->LoadImage(s_RendererData->LightHeatMapImage);
+        s_RendererData->CascadeDebugImage = Image::Create(imageSpec);
     }
 
     Application::Get().GetWindow()->AddResizeCallback(
         [](uint32_t width, uint32_t height)
         {
             s_RendererData->FrustumDebugImage->Resize(width, height);
-            s_BindlessRenderer->LoadImage(s_RendererData->FrustumDebugImage);
 
             s_RendererData->LightHeatMapImage->Resize(width, height);
-            s_BindlessRenderer->LoadImage(s_RendererData->LightHeatMapImage);
+
+            s_RendererData->CascadeDebugImage->Resize(width, height);
 
             {
                 const size_t sbSize =
@@ -326,20 +369,16 @@ void Renderer::Init()
         framebufferSpec.Attachments.emplace_back(aoAttachmentSpec);
         s_RendererData->SSAO.Framebuffer = Framebuffer::Create(framebufferSpec);
 
-        Application::Get().GetWindow()->AddResizeCallback(
-            [](uint32_t width, uint32_t height)
-            {
-                s_RendererData->SSAO.Framebuffer->Resize(width, height);
-
-                s_RendererData->SSAO.Pipeline->GetSpecification().Shader->Set(
-                    "u_DepthTex", s_RendererData->DepthPrePassFramebuffer->GetDepthAttachment());
-            });
+        Application::Get().GetWindow()->AddResizeCallback([](uint32_t width, uint32_t height)
+                                                          { s_RendererData->SSAO.Framebuffer->Resize(width, height); });
 
         PipelineSpecification ssaoPipelineSpec = {"SSAO", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-        ssaoPipelineSpec.TargetFramebuffer     = s_RendererData->SSAO.Framebuffer;
         ssaoPipelineSpec.Shader                = ShaderLibrary::Get("AO/SSAO");
-        ssaoPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
-        ssaoPipelineSpec.bBindlessCompatible   = true;
+        // Gbuffer goes as last, so there's no way for SSAO to get it.
+        // ssaoPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(true);
+        ssaoPipelineSpec.TargetFramebuffer   = s_RendererData->SSAO.Framebuffer;
+        ssaoPipelineSpec.CullMode            = ECullMode::CULL_MODE_BACK;
+        ssaoPipelineSpec.bBindlessCompatible = true;
         PipelineBuilder::Push(s_RendererData->SSAO.Pipeline, ssaoPipelineSpec);
     }
 
@@ -352,9 +391,8 @@ void Renderer::Init()
         {
             ssaoNoise.emplace_back(randomFloats(rndEngine) * 2.0 - 1.0, randomFloats(rndEngine) * 2.0 - 1.0, 0.0f);
         }
-        TextureSpecification aoNoiseTextureSpec = {4, 4};
-        aoNoiseTextureSpec.Data                 = ssaoNoise.data();
-        aoNoiseTextureSpec.DataSize             = ssaoNoise.size() * sizeof(ssaoNoise[0]);
+        TextureSpecification aoNoiseTextureSpec = {4, 4, ssaoNoise.data(), ssaoNoise.size() * sizeof(ssaoNoise[0])};
+        aoNoiseTextureSpec.bBindlessUsage       = true;
         aoNoiseTextureSpec.Filter               = ESamplerFilter::SAMPLER_FILTER_LINEAR;
         aoNoiseTextureSpec.Wrap                 = ESamplerWrap::SAMPLER_WRAP_REPEAT;
         aoNoiseTextureSpec.Format               = EImageFormat::FORMAT_RGBA32F;
@@ -394,27 +432,22 @@ void Renderer::Init()
     }
 
     {
-        FramebufferSpecification framebufferSpec                      = {"AO_Blur"};
-        const FramebufferAttachmentSpecification aoBlurAttachmentSpec = {EImageFormat::FORMAT_R8_UNORM,
-                                                                         EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                                                         ELoadOp::CLEAR,
-                                                                         EStoreOp::STORE,
-                                                                         glm::vec4(1.0f, glm::vec3(0.0f)),
-                                                                         false,
-                                                                         ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                                                         ESamplerFilter::SAMPLER_FILTER_LINEAR};
+        FramebufferSpecification framebufferSpec                = {"AO_Blur"};
+        FramebufferAttachmentSpecification aoBlurAttachmentSpec = {EImageFormat::FORMAT_R8_UNORM,
+                                                                   EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+                                                                   ELoadOp::CLEAR,
+                                                                   EStoreOp::STORE,
+                                                                   glm::vec4(1.0f, glm::vec3(0.0f)),
+                                                                   false,
+                                                                   ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                                                   ESamplerFilter::SAMPLER_FILTER_LINEAR};
 
+        aoBlurAttachmentSpec.bBindlessUsage = true;
         framebufferSpec.Attachments.emplace_back(aoBlurAttachmentSpec);
         s_RendererData->BlurAO.Framebuffer = Framebuffer::Create(framebufferSpec);
 
-        Application::Get().GetWindow()->AddResizeCallback(
-            [](uint32_t width, uint32_t height)
-            {
-                s_RendererData->BlurAO.Framebuffer->Resize(width, height);
-
-                s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set(
-                    "u_AO", s_RendererData->BlurAO.Framebuffer->GetAttachments()[0].Attachment);
-            });
+        Application::Get().GetWindow()->AddResizeCallback([](uint32_t width, uint32_t height)
+                                                          { s_RendererData->BlurAO.Framebuffer->Resize(width, height); });
 
         PipelineSpecification aoBlurPipelineSpec = {"AO_Blur", EPipelineType::PIPELINE_TYPE_GRAPHICS};
         aoBlurPipelineSpec.TargetFramebuffer     = s_RendererData->BlurAO.Framebuffer;
@@ -425,7 +458,7 @@ void Renderer::Init()
     }
 
     {
-        // Directional Shadow Mapping
+        // Directional Cascaded Shadow Mapping
         s_RendererData->DirShadowMaps.resize(MAX_DIR_LIGHTS);
         for (uint32_t i{}; i < s_RendererData->DirShadowMaps.size(); ++i)
         {
@@ -434,24 +467,18 @@ void Renderer::Init()
 
             dirShadowMapFramebufferSpec.Attachments.emplace_back(
                 EImageFormat::FORMAT_D32F, EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ELoadOp::CLEAR, EStoreOp::STORE,
-                glm::vec4(1.0f), false, ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_BORDER);
+                glm::vec4(1.0f), false, ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_BORDER, ESamplerFilter::SAMPLER_FILTER_NEAREST, false,
+                MAX_SHADOW_CASCADES - 1);
 
+            dirShadowMapFramebufferSpec.Width = dirShadowMapFramebufferSpec.Height =
+                s_ShadowsSettings.at(s_RendererData->CurrentShadowSetting);
             s_RendererData->DirShadowMaps[i] = Framebuffer::Create(dirShadowMapFramebufferSpec);
         }
 
         Application::Get().GetWindow()->AddResizeCallback(
             [](uint32_t width, uint32_t height)
             {
-                for (const auto& dirShadowMap : s_RendererData->DirShadowMaps)
-                    dirShadowMap->Resize(width, height);
-
-                std::vector<Shared<Image>> attachments(MAX_DIR_LIGHTS);
-                for (size_t i{}; i < attachments.size(); ++i)
-                    attachments[i] = s_RendererData->DirShadowMaps[i]->GetDepthAttachment();
-
-                s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set("u_DirShadowmap", attachments);
-
-                // To recalculate dir shadow maps view projection matrices
+                // To recalculate shadow maps view projection matrices
                 s_RendererData->LightStruct = MakeUnique<LightsData>();
             });
 
@@ -465,7 +492,33 @@ void Renderer::Init()
         dirShadowMapPipelineSpec.bDepthTest            = true;
         dirShadowMapPipelineSpec.bDepthWrite           = true;
         dirShadowMapPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
+        dirShadowMapPipelineSpec.InputBufferBindings   = {{{"inPos", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3}}};
         PipelineBuilder::Push(s_RendererData->DirShadowMapPipeline, dirShadowMapPipelineSpec);
+    }
+
+    {
+        s_RendererData->PointLightShadowMapInfos.resize(MAX_POINT_LIGHTS);
+
+        {
+            FramebufferSpecification framebufferSpec = {"PointLightShadowMap"};
+            auto& pointLightDepthAttachmentSpec      = framebufferSpec.Attachments.emplace_back(
+                EImageFormat::FORMAT_D32F, EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ELoadOp::CLEAR, EStoreOp::STORE,
+                glm::vec4(1.0f), false, ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE, ESamplerFilter::SAMPLER_FILTER_NEAREST, false, 6);
+            framebufferSpec.Width = framebufferSpec.Height                  = s_ShadowsSettings.at(s_RendererData->CurrentShadowSetting);
+            s_RendererData->PointLightShadowMapInfos[0].PointLightShadowMap = Framebuffer::Create(framebufferSpec);
+        }
+
+        PipelineSpecification pointLightShadowMapPipelineSpec = {"PointShadowMap", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+        pointLightShadowMapPipelineSpec.Shader                = ShaderLibrary::Get("Shadows/PointLightShadowMap");
+        pointLightShadowMapPipelineSpec.TargetFramebuffer     = s_RendererData->PointLightShadowMapInfos[0].PointLightShadowMap;
+        pointLightShadowMapPipelineSpec.bBindlessCompatible   = true;
+        pointLightShadowMapPipelineSpec.bMeshShading          = s_RendererSettings.bMeshShadingSupport;
+        pointLightShadowMapPipelineSpec.CullMode              = ECullMode::CULL_MODE_FRONT;
+        pointLightShadowMapPipelineSpec.bDepthTest            = true;
+        pointLightShadowMapPipelineSpec.bDepthWrite           = true;
+        pointLightShadowMapPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
+        pointLightShadowMapPipelineSpec.InputBufferBindings   = {{{"inPos", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3}}};
+        PipelineBuilder::Push(s_RendererData->PointLightShadowMapPipeline, pointLightShadowMapPipelineSpec);
     }
 
     {
@@ -475,6 +528,47 @@ void Renderer::Init()
         asPipelineSpec.bBindlessCompatible   = true;
         asPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
         PipelineBuilder::Push(s_RendererData->AtmospherePipeline, asPipelineSpec);
+    }
+
+    {
+        // Ping-pong framebuffers
+        for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+        {
+            const std::string blurTypeStr            = (i == 0) ? "Horiz" : "Vert";
+            FramebufferSpecification framebufferSpec = {"BloomFramebuffer" + blurTypeStr};
+            auto& bloomAttachmentSpec                = framebufferSpec.Attachments.emplace_back(
+                EImageFormat::FORMAT_RGBA16F, EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ELoadOp::CLEAR, EStoreOp::STORE,
+                glm::vec4(0.0f), false, ESamplerWrap::SAMPLER_WRAP_REPEAT, ESamplerFilter::SAMPLER_FILTER_LINEAR);
+            s_RendererData->BloomFramebuffer[i] = Framebuffer::Create(framebufferSpec);
+
+            PipelineSpecification bloomPipelineSpec = {"Bloom" + blurTypeStr, EPipelineType::PIPELINE_TYPE_GRAPHICS};
+            bloomPipelineSpec.Shader                = ShaderLibrary::Get("Post/GaussianBlur");
+            bloomPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(i);
+            bloomPipelineSpec.TargetFramebuffer   = s_RendererData->BloomFramebuffer[i];
+            bloomPipelineSpec.bBindlessCompatible = true;
+            bloomPipelineSpec.CullMode            = ECullMode::CULL_MODE_BACK;
+            PipelineBuilder::Push(s_RendererData->BloomPipeline[i], bloomPipelineSpec);
+        }
+
+        Application::Get().GetWindow()->AddResizeCallback(
+            [](uint32_t width, uint32_t height)
+            {
+                std::vector<Shared<Image>> attachments;
+                for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+                {
+                    s_RendererData->BloomFramebuffer[i]->Resize(width, height);
+
+                    attachments.emplace_back(i == 0 ? s_RendererData->GBuffer->GetAttachments()[1].Attachment
+                                                    : s_RendererData->BloomFramebuffer[i - 1]->GetAttachments()[0].Attachment);
+                }
+
+                // These 2 reference the same shader, but use 1 descriptor set.. duhh.
+                for (auto& bloomPipeline : s_RendererData->BloomPipeline)
+                    bloomPipeline->GetSpecification().Shader->Set("u_Image", attachments);
+
+                s_RendererData->CompositePipeline->GetSpecification().Shader->Set(
+                    "u_BloomBlur", s_RendererData->BloomFramebuffer[1]->GetAttachments()[0].Attachment);
+            });
     }
 
     /* CREATE STAGE */
@@ -497,17 +591,12 @@ void Renderer::Init()
     s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("u_DepthTex", s_RendererData->GBuffer->GetDepthAttachment());
 
     s_RendererData->CompositePipeline->GetSpecification().Shader->Set("u_Albedo", s_RendererData->GBuffer->GetAttachments()[0].Attachment);
-
-    s_RendererData->SSAO.Pipeline->GetSpecification().Shader->Set("u_DepthTex",
-                                                                  s_RendererData->DepthPrePassFramebuffer->GetDepthAttachment());
-    s_RendererData->SSAO.Pipeline->GetSpecification().Shader->Set("u_NoiseTex", s_RendererData->AONoiseTexture);
+    s_RendererData->CompositePipeline->GetSpecification().Shader->Set("u_BloomBlur",
+                                                                      s_RendererData->BloomFramebuffer[1]->GetAttachments()[0].Attachment);
 
     s_RendererData->HBAO.Pipeline->GetSpecification().Shader->Set("u_DepthTex",
                                                                   s_RendererData->DepthPrePassFramebuffer->GetDepthAttachment());
     s_RendererData->HBAO.Pipeline->GetSpecification().Shader->Set("u_NoiseTex", s_RendererData->AONoiseTexture);
-
-    s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set("u_AO",
-                                                                        s_RendererData->BlurAO.Framebuffer->GetAttachments()[0].Attachment);
 
     {
         std::vector<Shared<Image>> attachments(s_RendererData->DirShadowMaps.size());
@@ -515,6 +604,19 @@ void Renderer::Init()
             attachments[i] = s_RendererData->DirShadowMaps[i]->GetDepthAttachment();
 
         s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set("u_DirShadowmap", attachments);
+    }
+
+    {
+        std::vector<Shared<Image>> attachments;
+        for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+        {
+            attachments.emplace_back(i == 0 ? s_RendererData->GBuffer->GetAttachments()[1].Attachment
+                                            : s_RendererData->BloomFramebuffer[i - 1]->GetAttachments()[0].Attachment);
+        }
+
+        // These 2 reference the same shader, but use 1 descriptor set.. duhh.
+        for (auto& bloomPipeline : s_RendererData->BloomPipeline)
+            bloomPipeline->GetSpecification().Shader->Set("u_Image", attachments);
     }
 
     s_RendererData->RenderGraph = RenderGraphBuilder::Create("Assets/RenderGraphDescription.pfr");
@@ -669,6 +771,7 @@ void Renderer::Flush()
 
     DepthPrePass();
     DirShadowMapPass();
+    PointLightShadowMapPass();
 
     AtmosphericScatteringPass();
 
@@ -686,6 +789,8 @@ void Renderer::Flush()
     GeometryPass();
 
     Renderer2D::Flush();
+
+    BloomPass();
     CompositePass();
 
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndPipelineStatisticsQuery();
@@ -732,21 +837,16 @@ void Renderer::BeginScene(const Camera& camera)
                                     camera.GetPosition(),
                                     camera.GetNearPlaneDepth(),
                                     camera.GetFarPlaneDepth(),
+                                    camera.GetZoom(),
                                     glm::vec2(s_RendererData->CompositeFramebuffer->GetSpecification().Width,
                                               s_RendererData->CompositeFramebuffer->GetSpecification().Height)};
-    // NOTE: Constants used for depth linearization from ndc depth
-    {
-        const float znear             = camera.GetNearPlaneDepth() + s_PFR_SMALL_NUMBER;
-        const float zfar              = camera.GetFarPlaneDepth();
-        const float depthLinearizeMul = zfar * znear / (zfar - znear);
-        float depthLinearizeAdd       = zfar / (zfar - znear);
-
-        // correct the handedness issue. need to make sure this below is correct, but I think it is.
-        if (depthLinearizeMul * depthLinearizeAdd < 0) depthLinearizeAdd = -depthLinearizeAdd;
-        s_RendererData->CameraStruct.DepthUnpackConsts = glm::vec2(depthLinearizeMul, depthLinearizeAdd);
-    }
 
     s_RendererData->CullFrustum = camera.GetFrustum();
+
+    s_RendererData->LightStruct->CascadePlaneDistances[0] = camera.GetFarPlaneDepth() / 400.0f;
+    s_RendererData->LightStruct->CascadePlaneDistances[1] = camera.GetFarPlaneDepth() / 200.0f;
+    s_RendererData->LightStruct->CascadePlaneDistances[2] = camera.GetFarPlaneDepth() / 80.0f;
+    s_RendererData->LightStruct->CascadePlaneDistances[3] = camera.GetFarPlaneDepth() / 15.0f;
 
     s_RendererData->CameraUB[s_RendererData->FrameIndex]->SetData(&s_RendererData->CameraStruct, sizeof(s_RendererData->CameraStruct));
     s_BindlessRenderer->UpdateCameraData(s_RendererData->CameraUB[s_RendererData->FrameIndex]);
@@ -808,7 +908,7 @@ bool Renderer::IsInsideFrustum(const auto& renderObject)
 
 void Renderer::DepthPrePass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
     s_RendererData->DepthPrePassFramebuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -873,12 +973,22 @@ void Renderer::DepthPrePass()
 
 void Renderer::SSAOPass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
     s_RendererData->SSAO.Framebuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
+    PushConstantBlock pc  = {};
+    pc.StorageImageIndex  = s_RendererData->AONoiseTexture->GetBindlessIndex();
+    pc.AlbedoTextureIndex = s_RendererData->DepthPrePassFramebuffer->GetAttachments()[0].m_Index;
+
+#if TODO
+    pc.MeshIndexBufferIndex = s_RendererData->GBuffer->GetAttachments()[2].m_Index;
+#endif
+
     BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->SSAO.Pipeline);
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->SSAO.Pipeline, 0, 0, sizeof(pc),
+                                                                                       &pc);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
 
     s_RendererData->SSAO.Framebuffer->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -887,7 +997,7 @@ void Renderer::SSAOPass()
 
 void Renderer::HBAOPass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
     s_RendererData->HBAO.Framebuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -902,7 +1012,7 @@ void Renderer::HBAOPass()
 
 void Renderer::BlurAOPass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
     s_RendererData->BlurAO.Framebuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -916,7 +1026,7 @@ void Renderer::BlurAOPass()
 
 void Renderer::LightCullingPass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("LightCullingPass", glm::vec3(0.9f, 0.9f, 0.2f));
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
@@ -951,7 +1061,7 @@ void Renderer::LightCullingPass()
 
 void Renderer::AtmosphericScatteringPass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty() || s_RendererData->LightStruct->DirectionalLightCount == 0) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
     s_RendererData->GBuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -965,7 +1075,7 @@ void Renderer::AtmosphericScatteringPass()
 
 void Renderer::GeometryPass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
     s_RendererData->GBuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -977,7 +1087,9 @@ void Renderer::GeometryPass()
         pc.VertexPosBufferIndex    = renderObject.submesh->GetVertexPositionBuffer()->GetBindlessIndex();
         pc.VertexAttribBufferIndex = renderObject.submesh->GetVertexAttributeBuffer()->GetBindlessIndex();
         pc.MaterialBufferIndex     = renderObject.submesh->GetMaterial()->GetBufferIndex();
-        pc.StorageImageIndex       = s_RendererData->LightStruct->DirectionalLightCount;  // LightSpace frag pos count
+        pc.pad0.x                  = 25.0f;
+        pc.AlbedoTextureIndex      = s_RendererData->CascadeDebugImage->GetBindlessIndex();
+        pc.StorageImageIndex       = s_RendererData->BlurAO.Framebuffer->GetAttachments()[0].m_Index;
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ForwardPlusPipeline, 0, 0,
                                                                                            sizeof(pc), &pc);
@@ -1028,10 +1140,9 @@ void Renderer::GeometryPass()
 
 void Renderer::DirShadowMapPass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty() || s_RendererData->LightStruct->DirectionalLightCount == 0) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
-    BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->DirShadowMapPipeline);
 
     auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t directionalLightIndex)
     {
@@ -1069,6 +1180,7 @@ void Renderer::DirShadowMapPass()
     {
         if (!s_RendererData->LightStruct->DirectionalLights[dirLightIndex].bCastShadows) continue;
 
+        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->DirShadowMapPipeline);
         s_RendererData->DirShadowMaps[dirLightIndex]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
@@ -1091,9 +1203,93 @@ void Renderer::DirShadowMapPass()
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
 }
 
+void Renderer::PointLightShadowMapPass()
+{
+    if (IsWorldEmpty() || s_RendererData->LightStruct->PointLightCount == 0) return;
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
+
+    auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t pointLightIndex)
+    {
+        PushConstantBlock pc = {renderObject.Transform};
+        pc.StorageImageIndex = pointLightIndex;  // Index into matrices projection array
+        pc.pad0.x            = 25.0f;
+
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->PointLightShadowMapPipeline, 0,
+                                                                                           0, sizeof(pc), &pc);
+
+        if (s_RendererSettings.bMeshShadingSupport)
+        {
+            pc.MeshletBufferIndex          = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
+            pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
+            pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
+
+            const uint32_t meshletCount = renderObject.submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(meshletCount, 1, 1);
+
+            s_RendererStats.MeshletCount += meshletCount;
+        }
+        else
+        {
+            const uint64_t offset = 0;
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindVertexBuffers(
+                std::vector<Shared<Buffer>>{renderObject.submesh->GetVertexPositionBuffer()}, 0, 1, &offset);
+
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindIndexBuffer(renderObject.submesh->GetIndexBuffer());
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawIndexed(
+                renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t));
+        }
+        s_RendererStats.TriangleCount += renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
+    };
+
+    for (const auto& pointLightShadowMapInfo : s_RendererData->PointLightShadowMapInfos)
+    {
+        if (pointLightShadowMapInfo.LightAndMatrixIndex == INVALID_LIGHT_INDEX) continue;
+
+        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->PointLightShadowMapPipeline);
+        pointLightShadowMapInfo.PointLightShadowMap->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
+        for (const auto& opaque : s_RendererData->OpaqueObjects)
+        {
+            renderMeshFunc(opaque, pointLightShadowMapInfo.LightAndMatrixIndex);
+        }
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
+        for (const auto& transparent : s_RendererData->TransparentObjects)
+        {
+            renderMeshFunc(transparent, pointLightShadowMapInfo.LightAndMatrixIndex);
+        }
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+
+        pointLightShadowMapInfo.PointLightShadowMap->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+    }
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
+}
+
+void Renderer::BloomPass()
+{
+    if (IsWorldEmpty()) return;
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
+
+    for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+    {
+        s_RendererData->BloomFramebuffer[i]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BloomPipeline[i]);
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
+
+        s_RendererData->BloomFramebuffer[i]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+    }
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
+}
+
 void Renderer::CompositePass()
 {
-    if (s_RendererData->OpaqueObjects.empty() && s_RendererData->TransparentObjects.empty()) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
 
@@ -1108,16 +1304,6 @@ void Renderer::CompositePass()
 
 void Renderer::SubmitMesh(const Shared<Mesh>& mesh, const glm::mat4& transform)
 {
-    /*
-    // TESTING
-    static bool bupdated = false;
-    if (!bupdated)
-    {
-        s_RendererData->PathtracingPipeline->GetSpecification().Shader->Set("u_TLAS", mesh->GetTLAS());
-        bupdated = true;
-    }
-    */
-
     for (auto& submesh : mesh->GetSubmeshes())
     {
         if (submesh->GetMaterial()->IsOpaque())
@@ -1146,21 +1332,97 @@ void Renderer::AddDirectionalLight(const DirectionalLight& dl)
         }
     }
 
+    // TODO: Maybe remove if and calculate every frame? CHECK IT
     s_RendererData->LightStruct->DirectionalLights[s_RendererData->LightStruct->DirectionalLightCount] = dl;
-
     if (dl.bCastShadows && bNeedsMatrixRecalculation)
     {
-        const glm::mat4 lightView = glm::lookAt(dl.Direction, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
+        const auto GetFrustumCornersInWorldSpace = [](const glm::mat4& proj, const glm::mat4& view) -> std::vector<glm::vec4>
+        {
+            const glm::mat4 invProj = glm::inverse(proj * view);
+            std::vector<glm::vec4> frustumCorners;
+            for (int32_t x = -1; x < 1; ++x)
+            {
+                for (int32_t y = -1; y < 1; ++y)
+                {
+                    for (int32_t z = 0; z < 1; ++z)  // NDC for Z in vulkan is [0, 1]
+                    {
+                        const glm::vec4 pt = invProj * glm::vec4(x, y, z, 1);
+                        frustumCorners.emplace_back(pt / pt.w);
+                    }
+                }
+            }
+
+            return frustumCorners;
+        };
 
         const float ar = static_cast<float>(Application::Get().GetWindow()->GetSpecification().Width) /
                          static_cast<float>(Application::Get().GetWindow()->GetSpecification().Height);
+        for (uint32_t cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES; ++cascadeIndex)
+        {
+            float zNear = 0.0f, zFar = 0.0f;
+            if (cascadeIndex == 0)
+            {
+                zNear = s_RendererData->CameraStruct.zNear;
+                zFar  = s_RendererData->LightStruct->CascadePlaneDistances[cascadeIndex];
+            }
+            else if (cascadeIndex < MAX_SHADOW_CASCADES)
+            {
+                zNear = s_RendererData->LightStruct->CascadePlaneDistances[cascadeIndex - 1];
+                zFar  = s_RendererData->LightStruct->CascadePlaneDistances[cascadeIndex];
+            }
+            else
+            {
+                zNear = s_RendererData->LightStruct->CascadePlaneDistances[cascadeIndex];
+                zFar  = s_RendererData->CameraStruct.zFar;
+            }
 
-        constexpr float cameraWidth = 256.f;
-        constexpr float zNear       = 0.00001f;
-        constexpr float zFar        = 1024.0f;
-        const glm::mat4 lightProj   = glm::ortho(-cameraWidth * ar, ar * cameraWidth, -cameraWidth, cameraWidth, -cameraWidth, cameraWidth);
+            const glm::mat4 proj = glm::perspective(glm::radians(s_RendererData->CameraStruct.FOV), ar, zNear, zFar);
 
-        s_RendererData->LightStruct->DirLightViewProjMatrices[s_RendererData->LightStruct->DirectionalLightCount] = lightProj * lightView;
+            const auto corners = GetFrustumCornersInWorldSpace(proj, s_RendererData->CameraStruct.View);
+            glm::vec3 center(0.f);
+            for (const auto& v : corners)
+            {
+                center += glm::vec3(v);
+            }
+            center /= corners.size();
+
+            const auto lightView = glm::lookAt(center + dl.Direction, center, glm::vec3(0.0f, 1.0f, 0.0f));
+
+            float minX = std::numeric_limits<float>::max();
+            float maxX = std::numeric_limits<float>::lowest();
+            float minY = std::numeric_limits<float>::max();
+            float maxY = std::numeric_limits<float>::lowest();
+            float minZ = std::numeric_limits<float>::max();
+            float maxZ = std::numeric_limits<float>::lowest();
+            for (const auto& v : corners)
+            {
+                const auto trf = lightView * v;
+                minX           = std::min(minX, trf.x);
+                maxX           = std::max(maxX, trf.x);
+                minY           = std::min(minY, trf.y);
+                maxY           = std::max(maxY, trf.y);
+                minZ           = std::min(minZ, trf.z);
+                maxZ           = std::max(maxZ, trf.z);
+            }
+
+            // Tune this parameter according to the scene
+            constexpr float zMult = 10.0f;
+            if (minZ < 0)
+                minZ *= zMult;
+            else
+                minZ /= zMult;
+
+            if (maxZ < 0)
+                maxZ /= zMult;
+            else
+                maxZ *= zMult;
+
+            const glm::mat4 lightProj = glm::ortho(minX, maxX, minY, maxY, minZ, maxZ);
+
+            s_RendererData->LightStruct
+                ->DirLightViewProjMatrices[s_RendererData->LightStruct->DirectionalLightCount * MAX_SHADOW_CASCADES + cascadeIndex] =
+                lightProj * lightView;
+        }
     }
 
     ++s_RendererData->LightStruct->DirectionalLightCount;
@@ -1174,7 +1436,54 @@ void Renderer::AddPointLight(const PointLight& pl)
         return;
     }
 
-    s_RendererData->LightStruct->PointLights[s_RendererData->LightStruct->PointLightCount++] = pl;
+    const auto& prevPl             = s_RendererData->LightStruct->PointLights[s_RendererData->LightStruct->PointLightCount];
+    bool bNeedsMatrixRecalculation = false;
+    for (uint32_t i{}; i < 3; ++i)
+    {
+        if (!IsNearlyEqual(pl.Position[i], prevPl.Position[i]))
+        {
+            bNeedsMatrixRecalculation = true;
+            break;
+        }
+    }
+
+    s_RendererData->LightStruct->PointLights[s_RendererData->LightStruct->PointLightCount] = pl;
+    if (pl.bCastShadows && bNeedsMatrixRecalculation)
+    {
+        auto& currentPointLightShadowMapInfo = s_RendererData->PointLightShadowMapInfos[s_RendererData->LightStruct->PointLightCount];
+        if (!currentPointLightShadowMapInfo.PointLightShadowMap)
+        {
+            FramebufferSpecification framebufferSpec = {"PointLightShadowMap"};
+            auto& pointLightDepthAttachmentSpec      = framebufferSpec.Attachments.emplace_back(
+                EImageFormat::FORMAT_D32F, EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ELoadOp::CLEAR, EStoreOp::STORE,
+                glm::vec4(1.0f), false, ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE, ESamplerFilter::SAMPLER_FILTER_NEAREST, 6);
+
+            framebufferSpec.Width = framebufferSpec.Height     = s_ShadowsSettings.at(s_RendererData->CurrentShadowSetting);
+            currentPointLightShadowMapInfo.PointLightShadowMap = Framebuffer::Create(framebufferSpec);
+        }
+        currentPointLightShadowMapInfo.LightAndMatrixIndex = s_RendererData->LightStruct->PointLightCount;
+
+        const float ar = static_cast<float>(Application::Get().GetWindow()->GetSpecification().Width) /
+                         static_cast<float>(Application::Get().GetWindow()->GetSpecification().Height);
+        const glm::mat4 proj = glm::perspective(glm::radians(90.0f), ar, 1.0f, 25.0f);
+
+        std::vector<glm::mat4> shadowTransforms;  // right, left, top, bottom, near, far
+        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, -1.0, 0.0)));
+        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0, -1.0, 0.0)));
+        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)));
+        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(0.0, -1.0, 0.0), glm::vec3(0.0, 0.0, -1.0)));
+        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(0.0, 0.0, 1.0), glm::vec3(0.0, -1.0, 0.0)));
+        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(0.0, 0.0, -1.0), glm::vec3(0.0, -1.0, 0.0)));
+
+        for (uint32_t i = 0; i < 6; ++i)
+            s_RendererData->LightStruct->PointLightViewProjMatrices[currentPointLightShadowMapInfo.LightAndMatrixIndex * 6 + i] =
+                shadowTransforms[i];
+
+        s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set(
+            "u_PointShadowmap", std::vector<Shared<Image>>{currentPointLightShadowMapInfo.PointLightShadowMap->GetDepthAttachment()});
+    }
+
+    ++s_RendererData->LightStruct->PointLightCount;
 }
 
 void Renderer::AddSpotLight(const SpotLight& sl)
@@ -1186,6 +1495,13 @@ void Renderer::AddSpotLight(const SpotLight& sl)
     }
 
     s_RendererData->LightStruct->SpotLights[s_RendererData->LightStruct->SpotLightCount++] = sl;
+}
+
+Shared<Image> Renderer::GetFinalPassImage()
+{
+    PFR_ASSERT(s_RendererData->CompositeFramebuffer && s_RendererData->CompositeFramebuffer->GetAttachments()[0].Attachment,
+               "Invalid composite framebuffer or its attachment!");
+    return s_RendererData->CompositeFramebuffer->GetAttachments()[0].Attachment;
 }
 
 }  // namespace Pathfinder

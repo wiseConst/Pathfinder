@@ -36,12 +36,12 @@ float ComputeAO(const vec3 N, const vec2 direction, const vec2 screenSize, const
 {
     // 1. Calculate tangent vector based on (earlier it was normal, but viewVector gives better results) and XY-plane: "left-direction" cuz direction we passed has no Z.
     // idk wtf is here, the way I understand should be:
-    // const vec3 leftDirection = normalize(cross(N, vec3(direction, 0)));
-    // const vec3 T = cross(leftDirection, N);
+    //const vec3 leftDirection = normalize(cross(N, vec3(direction, 0)));
+    //const vec3 T = cross(leftDirection, N);
     const vec3 viewVector = normalize(viewPos);
 	const vec3 leftDirection = normalize(cross(viewVector, vec3(direction, 0)));
 	vec3 projectedNormal = N - dot(leftDirection, N) * leftDirection;
-	float projectedLen = length(projectedNormal);
+    float projectedLen = length(projectedNormal);
 	projectedNormal /= projectedLen;
 	const vec3 T = cross(projectedNormal, leftDirection);
 
@@ -74,7 +74,7 @@ float ComputeAO(const vec3 N, const vec2 direction, const vec2 screenSize, const
     const float norm = length(lastDiff) / Radius;
     const float attenuation = 1 - norm * norm;
 
-    return attenuation * saturate(sin(Hangle) - sin(Tangle)) / projectedLen;
+    return attenuation *  saturate(sin(Hangle) - sin(Tangle)) / projectedLen;
 }
 
 void main()
@@ -92,5 +92,5 @@ void main()
 	result += ComputeAO(N, vec2(randomVec.y, -randomVec.x), u_GlobalCameraData.FullResolution, viewPos);
 
     const float ao = 1.f - result / 4;
-	outFragColor = ao;
+	outFragColor = pow(ao, 4);
 }

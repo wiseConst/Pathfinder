@@ -3,6 +3,7 @@
 
 #include <volk/volk.h>
 #include "Renderer/RendererCoreDefines.h"
+#include "Renderer/Buffer.h"
 #include "Renderer/Shader.h"
 #include "Globals.h"
 
@@ -258,6 +259,43 @@ NODISCARD static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compar
     return VK_COMPARE_OP_NEVER;
 }
 
+NODISCARD static VkFormat PathfinderShaderElementFormatToVulkan(const EShaderBufferElementType type)
+{
+    switch (type)
+    {
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_INT: return VK_FORMAT_R32_SINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UINT: return VK_FORMAT_R32_UINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_FLOAT: return VK_FORMAT_R32_SFLOAT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DOUBLE: return VK_FORMAT_R64_SFLOAT;
+
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC2: return VK_FORMAT_R32G32_SINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC2: return VK_FORMAT_R32G32_UINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2: return VK_FORMAT_R32G32_SFLOAT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC2: return VK_FORMAT_R64G64_SFLOAT;
+
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC3: return VK_FORMAT_R32G32B32_SINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC3: return VK_FORMAT_R32G32B32_UINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3: return VK_FORMAT_R32G32B32_SFLOAT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC3: return VK_FORMAT_R64G64B64_SFLOAT;
+
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC4: return VK_FORMAT_R32G32B32A32_SINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC4: return VK_FORMAT_R32G32B32A32_UINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4: return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC4: return VK_FORMAT_R64G64B64A64_SFLOAT;
+
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_MAT2:
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_MAT3:
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_MAT4:
+        {
+            PFR_ASSERT(false, "Unknown shader input element format!");
+            return VK_FORMAT_UNDEFINED;
+        }
+    }
+
+    PFR_ASSERT(false, "Unknown shader input element format!");
+    return VK_FORMAT_UNDEFINED;
+}
+
 NODISCARD static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
 {
     switch (shaderStage)
@@ -282,65 +320,6 @@ NODISCARD static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShad
 
     PFR_ASSERT(false, "Unknown shader stage!");
     return VK_SHADER_STAGE_VERTEX_BIT;
-}
-
-NODISCARD static uint32_t GetTypeSizeFromVulkanFormat(const VkFormat format)
-{
-    switch (format)
-    {
-        case VK_FORMAT_UNDEFINED: return 0;
-
-        case VK_FORMAT_R16_UINT:
-        case VK_FORMAT_R16_SINT:
-        case VK_FORMAT_R16_SFLOAT: return sizeof(int16_t);
-
-        case VK_FORMAT_R32_UINT:
-        case VK_FORMAT_R32_SINT:
-        case VK_FORMAT_R32_SFLOAT: return sizeof(int32_t);
-
-        case VK_FORMAT_R64_UINT:
-        case VK_FORMAT_R64_SINT:
-        case VK_FORMAT_R64_SFLOAT: return sizeof(int64_t);
-
-        case VK_FORMAT_R16G16_UINT:
-        case VK_FORMAT_R16G16_SINT:
-        case VK_FORMAT_R16G16_SFLOAT: return 2 * sizeof(int16_t);
-
-        case VK_FORMAT_R32G32_UINT:
-        case VK_FORMAT_R32G32_SINT:
-        case VK_FORMAT_R32G32_SFLOAT: return 2 * sizeof(int32_t);
-
-        case VK_FORMAT_R64G64_UINT:
-        case VK_FORMAT_R64G64_SINT:
-        case VK_FORMAT_R64G64_SFLOAT: return 2 * sizeof(int64_t);
-
-        case VK_FORMAT_R16G16B16_UINT:
-        case VK_FORMAT_R16G16B16_SINT:
-        case VK_FORMAT_R16G16B16_SFLOAT: return 3 * sizeof(int16_t);
-
-        case VK_FORMAT_R32G32B32_SFLOAT:
-        case VK_FORMAT_R32G32B32_UINT:
-        case VK_FORMAT_R32G32B32_SINT: return 3 * sizeof(int32_t);
-
-        case VK_FORMAT_R64G64B64_UINT:
-        case VK_FORMAT_R64G64B64_SINT:
-        case VK_FORMAT_R64G64B64_SFLOAT: return 3 * sizeof(int64_t);
-
-        case VK_FORMAT_R16G16B16A16_UINT:
-        case VK_FORMAT_R16G16B16A16_SINT:
-        case VK_FORMAT_R16G16B16A16_SFLOAT: return 4 * sizeof(int16_t);
-
-        case VK_FORMAT_R32G32B32A32_UINT:
-        case VK_FORMAT_R32G32B32A32_SINT:
-        case VK_FORMAT_R32G32B32A32_SFLOAT: return 4 * sizeof(int32_t);
-
-        case VK_FORMAT_R64G64B64A64_UINT:
-        case VK_FORMAT_R64G64B64A64_SINT:
-        case VK_FORMAT_R64G64B64A64_SFLOAT: return 4 * sizeof(int64_t);
-    }
-
-    PFR_ASSERT(false, "Unknown type format!");
-    return 0;
 }
 
 NODISCARD static VkDescriptorSetAllocateInfo GetDescriptorSetAllocateInfo(const VkDescriptorPool& descriptorPool,

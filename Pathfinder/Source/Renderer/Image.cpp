@@ -1,6 +1,8 @@
 #include "PathfinderPCH.h"
 #include "Image.h"
 
+#include "Renderer/Renderer.h"
+
 #include "RendererAPI.h"
 #include "Platform/Vulkan/VulkanImage.h"
 

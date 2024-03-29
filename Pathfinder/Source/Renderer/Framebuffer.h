@@ -27,9 +27,11 @@ struct FramebufferAttachmentSpecification
     ELoadOp LoadOp        = ELoadOp::CLEAR;
     EStoreOp StoreOp      = EStoreOp::STORE;
     glm::vec4 ClearColor  = glm::vec4(1.0f);
-    bool bCopyable        = false;
+    bool bCopyable        = false;  // Also means can be clear-colored.
     ESamplerWrap Wrap     = ESamplerWrap::SAMPLER_WRAP_REPEAT;
     ESamplerFilter Filter = ESamplerFilter::SAMPLER_FILTER_NEAREST;
+    bool bBindlessUsage   = false;
+    uint32_t LayerCount   = 1;
 };
 
 class Image;
@@ -37,6 +39,7 @@ struct FramebufferAttachment
 {
     FramebufferAttachmentSpecification Specification;
     Shared<Image> Attachment = nullptr;
+    uint32_t m_Index         = UINT32_MAX;  // bindless array purposes
 };
 
 // NOTE: USAGE GUIDE FOR ME
@@ -58,7 +61,7 @@ class Framebuffer : private Uncopyable, private Unmovable
   public:
     virtual ~Framebuffer() = default;
 
-    NODISCARD FORCEINLINE virtual const FramebufferSpecification& GetSpecification() const         = 0;
+    NODISCARD FORCEINLINE const FramebufferSpecification& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual const std::vector<FramebufferAttachment>& GetAttachments() const = 0;
     virtual Shared<Image> GetDepthAttachment() const                                               = 0;
 
@@ -70,6 +73,9 @@ class Framebuffer : private Uncopyable, private Unmovable
     NODISCARD static Shared<Framebuffer> Create(const FramebufferSpecification& framebufferSpec);
 
   protected:
+    FramebufferSpecification m_Specification = {};
+
+    Framebuffer(const FramebufferSpecification& framebufferSpec) : m_Specification(framebufferSpec) {}
     Framebuffer() = default;
 
     virtual void Invalidate() = 0;

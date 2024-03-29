@@ -40,6 +40,8 @@ class Renderer : private Uncopyable, private Unmovable
     static void AddPointLight(const PointLight& pl);
     static void AddSpotLight(const SpotLight& sl);
 
+    static Shared<Image> GetFinalPassImage();
+
     NODISCARD FORCEINLINE static const auto& GetRendererData()
     {
         PFR_ASSERT(s_RendererData, "RendererData is not valid!");
@@ -100,10 +102,29 @@ class Renderer : private Uncopyable, private Unmovable
         // Atmospheric Scattering
         Shared<Pipeline> AtmospherePipeline = nullptr;
 
-        // TODO: CASCADED SHADOW MAPS
+        // BLOOM Ping-pong
+        std::array<Shared<Pipeline>, 2> BloomPipeline;
+        std::array<Shared<Framebuffer>, 2> BloomFramebuffer;
+
+        /*              SHADOWS                */
+        EShadowSetting CurrentShadowSetting = EShadowSetting::SHADOW_SETTING_MEDIUM;
+
+        Shared<Image> CascadeDebugImage = nullptr;
+
         // DirShadowMaps
         std::vector<Shared<Framebuffer>> DirShadowMaps;
         Shared<Pipeline> DirShadowMapPipeline = nullptr;
+
+        // TODO: How do I handle them properly?
+        // PointLightShadowMaps
+        struct PointLightShadowMapInfo
+        {
+            Shared<Framebuffer> PointLightShadowMap = nullptr;
+            uint32_t LightAndMatrixIndex            = INVALID_LIGHT_INDEX;  // PointLight array index, index into viewproj
+        };
+        std::vector<PointLightShadowMapInfo> PointLightShadowMapInfos;
+        Shared<Pipeline> PointLightShadowMapPipeline = nullptr;
+        /*              SHADOWS                */
 
         std::vector<RenderObject> OpaqueObjects;
         std::vector<RenderObject> TransparentObjects;
@@ -154,6 +175,10 @@ class Renderer : private Uncopyable, private Unmovable
     };
     static inline RendererStats s_RendererStats = {};
 
+    static bool IsWorldEmpty()
+    {
+        return s_RendererData && s_RendererData->TransparentObjects.empty() && s_RendererData->OpaqueObjects.empty();
+    }
     static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline>& pipeline);
 
     // TODO: GPU-side frustum culling
@@ -161,6 +186,7 @@ class Renderer : private Uncopyable, private Unmovable
 
     static void DepthPrePass();
     static void DirShadowMapPass();
+    static void PointLightShadowMapPass();
 
     static void LightCullingPass();
     static void AtmosphericScatteringPass();
@@ -170,6 +196,8 @@ class Renderer : private Uncopyable, private Unmovable
     static void BlurAOPass();
 
     static void GeometryPass();
+    static void BloomPass();
+
     static void CompositePass();
 };
 

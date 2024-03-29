@@ -74,7 +74,7 @@ vec3 DirectionalLightContribution(const float kShadow, const vec3 F0, const vec3
     return BRDF(F, albedo, N, V, L, H, roughness, metallic) * radiance * NdotL;
 }
 
-vec3 PointLightContribution(const vec3 worldPos,  const vec3 F0, const vec3 normal, const vec3 V, const PointLight pl, const vec3 albedo, const float roughness, const float metallic)
+vec3 PointLightContribution(const float kShadow, const vec3 worldPos,  const vec3 F0, const vec3 normal, const vec3 V, const PointLight pl, const vec3 albedo, const float roughness, const float metallic)
 {
      const vec3 L = normalize(pl.Position - worldPos);
      const vec3 H = normalize(V + L);
@@ -82,7 +82,7 @@ vec3 PointLightContribution(const vec3 worldPos,  const vec3 F0, const vec3 norm
 
      const float lightDistance = length(pl.Position - worldPos);
      const float att = 1.f / (lightDistance * lightDistance);
-     const vec3 radiance  = pl.Color * pl.Intensity *  att; 
+     const vec3 radiance  = pl.Color * pl.Intensity * att * kShadow; 
      
      const float NdotL = max(dot(N, L), 0.f);
      const float HdotV = max(dot(H, V), 0.f);

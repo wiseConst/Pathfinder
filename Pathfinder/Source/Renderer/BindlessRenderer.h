@@ -24,21 +24,14 @@ class BindlessRenderer : private Uncopyable, private Unmovable
                       const EPipelineStage overrideBindPoint = EPipelineStage::PIPELINE_STAGE_NONE) = 0;
     virtual void UpdateDataIfNeeded()                                                               = 0;
 
-    virtual void LoadImage(const ImagePerFrame& images)        = 0;
-    virtual void LoadImage(const Shared<Image>& image)         = 0;
-    virtual void LoadTexture(const Shared<Texture2D>& texture) = 0;
+    virtual void LoadImage(const void* pImageInfo, uint32_t& outIndex)     = 0;
+    virtual void LoadTexture(const void* pTextureInfo, uint32_t& outIndex) = 0;
 
-    virtual void LoadVertexPosBuffer(const Shared<Buffer>& buffer)        = 0;
-    virtual void LoadVertexAttribBuffer(const Shared<Buffer>& buffer)     = 0;
-    virtual void LoadMeshletBuffer(const Shared<Buffer>& buffer)          = 0;
-    virtual void LoadMeshletVerticesBuffer(const Shared<Buffer>& buffer)  = 0;
-    virtual void LoadMeshletTrianglesBuffer(const Shared<Buffer>& buffer) = 0;
-    virtual void LoadIndexBuffer(const Shared<Buffer>& buffer) = 0;
-    virtual void LoadMaterialBuffer(const Shared<Buffer>& buffer) = 0;
+    virtual void LoadStorageBuffer(const void* pBufferInfo, const uint32_t binding, uint32_t& outIndex) = 0;
 
-    virtual void FreeImage(uint32_t& imageIndex)                           = 0;
-    virtual void FreeBuffer(uint32_t& bufferIndex, uint32_t bufferBinding) = 0;
-    virtual void FreeTexture(uint32_t& textureIndex)                       = 0;
+    virtual void FreeImage(uint32_t& imageIndex)                                 = 0;
+    virtual void FreeBuffer(uint32_t& bufferIndex, const uint32_t bufferBinding) = 0;
+    virtual void FreeTexture(uint32_t& textureIndex)                             = 0;
 
     virtual void UpdateCameraData(const Shared<Buffer>& cameraUniformBuffer)   = 0;
     virtual void UpdateLightData(const Shared<Buffer>& lightDataUniformBuffer) = 0;

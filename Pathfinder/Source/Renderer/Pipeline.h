@@ -3,6 +3,7 @@
 
 #include "Core/Core.h"
 #include "RendererCoreDefines.h"
+#include "Buffer.h"
 
 namespace Pathfinder
 {
@@ -57,11 +58,15 @@ struct PipelineSpecification
     float LineWidth = 1.0f;
 
     Shared<Framebuffer> TargetFramebuffer = nullptr;
-    Shared<Pathfinder::Shader> Shader     = nullptr;
 
-    bool bMeshShading           = false;
-    bool bBindlessCompatible    = false;
-    bool bSeparateVertexBuffers = false;
+    Shared<Pathfinder::Shader> Shader = nullptr;
+    using ShaderConstantType          = std::variant<bool, int32_t, uint32_t, float>;  // NOTE: New types will grow with use.
+    std::unordered_map<EShaderStage, std::vector<ShaderConstantType>> ShaderConstantsMap;
+
+    std::vector<BufferLayout> InputBufferBindings = {};
+
+    bool bMeshShading        = false;
+    bool bBindlessCompatible = false;
 
     bool bBlendEnable    = false;
     EBlendMode BlendMode = EBlendMode::BLEND_MODE_ADDITIVE;
@@ -69,7 +74,6 @@ struct PipelineSpecification
     bool bDynamicPolygonMode = false;  // Allows to set pipeline states like PolygonMode
     EPolygonMode PolygonMode = EPolygonMode::POLYGON_MODE_FILL;
 
-    // NOTE: To perform any depth-testing, bDepthTest should be true!
     bool bDepthTest           = false;  // If we should do any z-culling at all
     bool bDepthWrite          = false;  // Allows the depth to be written.
     ECompareOp DepthCompareOp = ECompareOp::COMPARE_OP_NEVER;

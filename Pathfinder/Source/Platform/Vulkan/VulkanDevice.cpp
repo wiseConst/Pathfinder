@@ -238,6 +238,7 @@ void VulkanDevice::CreateLogicalDevice()
     physicalDeviceFeatures.samplerAnisotropy        = VK_TRUE;
     physicalDeviceFeatures.fillModeNonSolid         = VK_TRUE;
     physicalDeviceFeatures.pipelineStatisticsQuery  = VK_TRUE;
+    physicalDeviceFeatures.geometryShader           = VK_TRUE;
     PFR_ASSERT(m_GPUInfo.GPUFeatures.pipelineStatisticsQuery && m_GPUInfo.GPUFeatures.fillModeNonSolid &&
                    m_GPUInfo.GPUFeatures.textureCompressionBC,
                "Required gpu features aren't supported!");
@@ -283,6 +284,9 @@ void VulkanDevice::CreateLogicalDevice()
     vkGetDeviceQueue(m_GPUInfo.LogicalDevice, m_GPUInfo.QueueFamilyIndices.PresentFamily, 0, &m_GPUInfo.PresentQueue);
     vkGetDeviceQueue(m_GPUInfo.LogicalDevice, m_GPUInfo.QueueFamilyIndices.TransferFamily, 0, &m_GPUInfo.TransferQueue);
     vkGetDeviceQueue(m_GPUInfo.LogicalDevice, m_GPUInfo.QueueFamilyIndices.ComputeFamily, 0, &m_GPUInfo.ComputeQueue);
+
+    PFR_ASSERT(m_GPUInfo.GraphicsQueue != m_GPUInfo.TransferQueue && m_GPUInfo.TransferQueue != m_GPUInfo.ComputeQueue,
+               "Not dedicated queues aren't handled for now!");
 
     VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.GraphicsQueue, VK_OBJECT_TYPE_QUEUE, "VK_QUEUE_GRAPHICS");
     VK_SetDebugName(m_GPUInfo.LogicalDevice, m_GPUInfo.PresentQueue, VK_OBJECT_TYPE_QUEUE,

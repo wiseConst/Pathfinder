@@ -100,7 +100,7 @@ void ShaderLibrary::Load(const std::vector<std::string>& shaderNames)
     for (auto& future : futures)
         future();
 
-    LOG_TAG_INFO(SHADER_LIBRARY, "Time took to create (%zu) shaders: %0.2fms", shaderNames.size(), t.GetElapsedSeconds() * 1000);
+    LOG_TAG_INFO(SHADER_LIBRARY, "Time took to create (%zu) shaders: %0.2fms", shaderNames.size(), t.GetElapsedMilliseconds());
 }
 
 const Shared<Shader>& ShaderLibrary::Get(const std::string& shaderName)

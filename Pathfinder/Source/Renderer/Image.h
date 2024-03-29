@@ -91,17 +91,18 @@ struct ImageSpecification
     ESamplerFilter Filter      = ESamplerFilter::SAMPLER_FILTER_NEAREST;
     ImageUsageFlags UsageFlags = 0;
     uint32_t Mips              = 1;
+    uint32_t Layers            = 1;
+    bool bBindlessUsage        = false;
 };
 
-// TODO: Big refactor, add support for cube map images
 class Image : private Uncopyable, private Unmovable
 {
   public:
     virtual ~Image() = default;
 
-    NODISCARD FORCEINLINE virtual const ImageSpecification& GetSpecification() const = 0;
-    NODISCARD FORCEINLINE virtual void* Get() const                                  = 0;
-    NODISCARD FORCEINLINE virtual uint32_t GetBindlessIndex() const                  = 0;
+    NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
+    NODISCARD FORCEINLINE virtual void* Get() const = 0;
+    NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const { return m_Index; }
 
     virtual void Resize(const uint32_t width, const uint32_t height)                                  = 0;
     virtual void SetLayout(const EImageLayout newLayout)                                              = 0;
@@ -111,6 +112,10 @@ class Image : private Uncopyable, private Unmovable
     static Shared<Image> Create(const ImageSpecification& imageSpec);
 
   protected:
+    ImageSpecification m_Specification = {};
+    uint32_t m_Index                   = UINT32_MAX;  // bindless array purposes
+
+    Image(const ImageSpecification& imageSpec) : m_Specification(imageSpec) {}
     Image() = default;
 
     virtual void Invalidate() = 0;

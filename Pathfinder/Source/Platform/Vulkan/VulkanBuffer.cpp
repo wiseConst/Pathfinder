@@ -116,7 +116,7 @@ void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation)
 
 }  // namespace BufferUtils
 
-VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec) : m_Specification(bufferSpec)
+VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec) : Buffer(bufferSpec)
 {
     if (m_Specification.BufferCapacity > 0)
     {
@@ -131,6 +131,12 @@ VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec) : m_Specificat
         SetData(m_Specification.Data, m_Specification.DataSize);
         m_Specification.Data     = nullptr;
         m_Specification.DataSize = 0;
+    }
+
+    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
+    {
+        const auto bufferInfo = GetDescriptorInfo();
+        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&bufferInfo, m_Specification.BufferBinding, m_Index);
     }
 }
 
@@ -197,6 +203,11 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
             vulkanCommandBuffer->Submit(true, false);
         }
     }
+
+    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
+    {
+        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&GetDescriptorInfo(), m_Specification.BufferBinding, m_Index);
+    }
 }
 
 void VulkanBuffer::Resize(const size_t newBufferCapacity)
@@ -210,6 +221,12 @@ void VulkanBuffer::Resize(const size_t newBufferCapacity)
                               BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
 
     m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
+
+    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
+    {
+        const auto bufferInfo = GetDescriptorInfo();
+        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&bufferInfo, m_Specification.BufferBinding, m_Index);
+    }
 }
 
 void VulkanBuffer::Destroy()
@@ -227,9 +244,9 @@ void VulkanBuffer::Destroy()
 
     m_DescriptorInfo = {};
 
-    if (m_Index != UINT32_MAX && m_BufferBinding != UINT32_MAX)
+    if (m_Index != UINT32_MAX && m_Specification.bBindlessUsage)
     {
-        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index, m_BufferBinding);
+        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index, m_Specification.BufferBinding);
     }
 }
 

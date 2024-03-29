@@ -3,6 +3,7 @@
 
 #include "Core/Math.h"
 #include <array>
+#include <map>
 
 #include "Globals.h"
 
@@ -24,6 +25,28 @@ using BufferPerFrame = std::array<Shared<Buffer>, s_FRAMES_IN_FLIGHT>;
 
 class Image;
 using ImagePerFrame = std::array<Shared<Image>, s_FRAMES_IN_FLIGHT>;
+
+// Shader defines.
+enum EShaderStage : uint32_t
+{
+    SHADER_STAGE_VERTEX                  = BIT(0),
+    SHADER_STAGE_TESSELLATION_CONTROL    = BIT(1),
+    SHADER_STAGE_TESSELLATION_EVALUATION = BIT(2),
+    SHADER_STAGE_GEOMETRY                = BIT(3),
+    SHADER_STAGE_FRAGMENT                = BIT(4),
+    SHADER_STAGE_COMPUTE                 = BIT(5),
+    SHADER_STAGE_ALL_GRAPHICS            = BIT(6),
+    SHADER_STAGE_ALL                     = BIT(7),
+    SHADER_STAGE_RAYGEN                  = BIT(8),
+    SHADER_STAGE_ANY_HIT                 = BIT(9),
+    SHADER_STAGE_CLOSEST_HIT             = BIT(10),
+    SHADER_STAGE_MISS                    = BIT(11),
+    SHADER_STAGE_INTERSECTION            = BIT(12),
+    SHADER_STAGE_CALLABLE                = BIT(13),
+    SHADER_STAGE_TASK                    = BIT(14),
+    SHADER_STAGE_MESH                    = BIT(15),
+};
+typedef uint32_t ShaderStageFlags;
 
 // Mostly stolen from vulkan_core.h
 enum EPipelineStage : uint64_t
@@ -157,6 +180,19 @@ struct AccelerationStructure
 {
     Shared<Pathfinder::Buffer> Buffer = nullptr;
     void* Handle                      = nullptr;  // RHI handle
+};
+
+enum class EShadowSetting : uint8_t
+{
+    SHADOW_SETTING_LOW = 0,
+    SHADOW_SETTING_MEDIUM,
+    SHADOW_SETTING_HIGH,
+};
+
+const static std::map<EShadowSetting, uint16_t> s_ShadowsSettings = {
+    {EShadowSetting::SHADOW_SETTING_LOW, 1024},     //
+    {EShadowSetting::SHADOW_SETTING_MEDIUM, 2048},  //
+    {EShadowSetting::SHADOW_SETTING_HIGH, 4096}     //
 };
 
 }  // namespace Pathfinder

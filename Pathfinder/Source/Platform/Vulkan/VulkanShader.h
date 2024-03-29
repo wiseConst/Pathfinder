@@ -28,7 +28,7 @@ class VulkanShader final : public Shader
     void Set(const std::string_view name, const std::vector<Shared<Image>>& attachments) final override;
 
     NODISCARD FORCEINLINE const auto& GetDescriptions() const { return m_ShaderDescriptions; }
-    NODISCARD FORCEINLINE const std::vector<VkVertexInputAttributeDescription>& GetInputVars() const { return m_InputVars; }
+    NODISCARD FORCEINLINE const auto& GetInputVars() const { return m_InputVars; }
 
     // NOTE: Returns vector of descriptor sets for current frame
     const std::vector<VkDescriptorSet> GetDescriptorSetByShaderStage(const EShaderStage shaderStage);
@@ -79,7 +79,12 @@ class VulkanShader final : public Shader
     };
 
     std::vector<ShaderDescription> m_ShaderDescriptions;
-    std::vector<VkVertexInputAttributeDescription> m_InputVars;
+    struct ShaderInputVar
+    {
+        std::string Name = s_DEFAULT_STRING;
+        VkVertexInputAttributeDescription Description;
+    };
+    std::vector<ShaderInputVar> m_InputVars;
 
     // TODO: In case I'd like to add DX12, I'll have to make this function virtual in shader base class
     std::vector<uint32_t> CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,

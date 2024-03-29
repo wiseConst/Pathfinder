@@ -7,7 +7,7 @@
 namespace Pathfinder
 {
 
- Shared<Buffer> Buffer::Create(const BufferSpecification& bufferSpec)
+Shared<Buffer> Buffer::Create(const BufferSpecification& bufferSpec)
 {
     switch (RendererAPI::Get())
     {

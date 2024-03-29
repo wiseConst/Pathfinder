@@ -124,6 +124,7 @@ void main()
 {
     // Normalized pixel coordinates (from -1 to 1)
     vec2 uv = (gl_FragCoord.xy/u_GlobalCameraData.FullResolution);// * 2. - 1.;
+    uv.y = 1 - uv.y;
     
     // Fix aspect
     uv.x *= u_GlobalCameraData.FullResolution.x / u_GlobalCameraData.FullResolution.y;

@@ -70,6 +70,12 @@ void Renderer2D::Init()
     quadPipelineSpec.bBindlessCompatible   = true;
     quadPipelineSpec.FrontFace             = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
     quadPipelineSpec.TargetFramebuffer     = Renderer::GetRendererData()->GBuffer;
+    quadPipelineSpec.InputBufferBindings   = {{
+        {"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
+        {"inNormal", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
+        {"inUV", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2},
+        {"inColor", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4},
+    }};
     // quadPipelineSpec.bDepthTest            = true;
     // quadPipelineSpec.bDepthWrite           = true;  // Do I rly need this? since im using depth pre pass of my static meshes
     // quadPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;

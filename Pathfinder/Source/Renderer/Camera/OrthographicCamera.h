@@ -32,6 +32,7 @@ class OrthographicCamera final : public Camera
 
     NODISCARD FORCEINLINE const float GetNearPlaneDepth() const final override { return -m_ZoomLevel; }
     NODISCARD FORCEINLINE const float GetFarPlaneDepth() const final override { return m_ZoomLevel; }
+    NODISCARD FORCEINLINE const float GetZoom() const final override { return m_ZoomLevel; }
 
     void OnUpdate(const float deltaTime) final override
     {

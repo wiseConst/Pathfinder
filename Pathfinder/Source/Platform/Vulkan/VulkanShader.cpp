@@ -420,11 +420,12 @@ void VulkanShader::Reflect(SpvReflectShaderModule& reflectModule, ShaderDescript
         {
             if (reflectedInputVar->built_in >= 0) continue;  // Default vars like gl_VertexIndex marked as ints > 0.
 
-            auto& inputVar    = m_InputVars.emplace_back();
-            inputVar.location = reflectedInputVar->location;
-            inputVar.format   = SpvReflectFormatToVulkan(reflectedInputVar->format);
-            inputVar.binding  = 0;  // NOTE: Correct binding will be chosen at the pipeline creation stage
-            inputVar.offset   = 0;  // NOTE: Same thing for this, at the pipeline creation stage
+            auto& inputVar                = m_InputVars.emplace_back();
+            inputVar.Name                 = reflectedInputVar->name;
+            inputVar.Description.location = reflectedInputVar->location;
+            inputVar.Description.format   = SpvReflectFormatToVulkan(reflectedInputVar->format);
+            inputVar.Description.binding  = 0;  // NOTE: Correct binding will be chosen at the pipeline creation stage
+            inputVar.Description.offset   = 0;  // NOTE: Same thing for this, at the pipeline creation stage
         }
     }
 
@@ -707,11 +708,11 @@ void VulkanShader::Set(const std::string_view name, const std::vector<Shared<Ima
     std::vector<VkWriteDescriptorSet> writes;
     for (size_t i{}; i < attachments.size(); ++i)
     {
+        const auto vulkanImage = std::static_pointer_cast<VulkanImage>(attachments[i]);
+        PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+
         for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
         {
-            const auto vulkanImage = std::static_pointer_cast<VulkanImage>(attachments[i]);
-            PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
-
             for (const auto& shaderDesc : m_ShaderDescriptions)
             {
                 for (size_t iSet = 0; iSet < shaderDesc.DescriptorSetBindings.size(); ++iSet)

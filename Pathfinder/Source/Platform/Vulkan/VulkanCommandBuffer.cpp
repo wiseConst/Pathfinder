@@ -218,7 +218,6 @@ void VulkanCommandBuffer::InsertBufferMemoryBarrier(const Shared<Buffer> buffer,
 
 void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheritanceInfo)
 {
-    // if (m_TimelineSemaphore.Counter != 0)
     {
         VkSemaphoreWaitInfo swi = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO};
         swi.pSemaphores         = &m_TimelineSemaphore.Handle;
@@ -322,16 +321,16 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit, bool bSignalWaitSemaphor
     }
 }
 
-// NOTE: Mip mapping and layer count harcoded for now
 void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
-                                                const VkImageAspectFlags aspectMask) const
+                                                const VkImageAspectFlags aspectMask, const uint32_t layerCount,
+                                                const uint32_t mipLevels) const
 {
     if (oldLayout == newLayout) return;
 
-    VkAccessFlags srcAccessMask = 0;
-    VkAccessFlags dstAccessMask = 0;
-    VkImageMemoryBarrier imageMemoryBarrier =
-        VulkanUtility::GetImageMemoryBarrier(image, aspectMask, oldLayout, newLayout, srcAccessMask, dstAccessMask, 1, 0, 1, 0);
+    VkAccessFlags srcAccessMask             = 0;
+    VkAccessFlags dstAccessMask             = 0;
+    VkImageMemoryBarrier imageMemoryBarrier = VulkanUtility::GetImageMemoryBarrier(image, aspectMask, oldLayout, newLayout, srcAccessMask,
+                                                                                   dstAccessMask, layerCount, 0, mipLevels, 0);
 
     VkPipelineStageFlags srcStageMask = 0;
     VkPipelineStageFlags dstStageMask = 0;
@@ -607,6 +606,7 @@ void VulkanCommandBuffer::CopyImageToImage(const Shared<Image> srcImage, Shared<
     const VkImage vkSrcImage = (VkImage)srcImage->Get();
     const VkImage vkDstImage = (VkImage)dstImage->Get();
 
+    // Preserve previous layout.
     const VkImageLayout vkSrcLayout = ImageUtils::PathfinderImageLayoutToVulkan(srcImage->GetSpecification().Layout);
     const VkImageLayout vkDstLayout = ImageUtils::PathfinderImageLayoutToVulkan(dstImage->GetSpecification().Layout);
 
@@ -615,27 +615,32 @@ void VulkanCommandBuffer::CopyImageToImage(const Shared<Image> srcImage, Shared<
     const VkImageAspectFlags dstAspectMask =
         ImageUtils::IsDepthFormat(dstImage->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
 
-    TransitionImageLayout(vkSrcImage, vkSrcLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, srcAspectMask);
-    TransitionImageLayout(vkDstImage, vkDstLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dstAspectMask);
+    TransitionImageLayout(vkSrcImage, vkSrcLayout, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, srcAspectMask, srcImage->GetSpecification().Layers,
+                          srcImage->GetSpecification().Mips);
+    TransitionImageLayout(vkDstImage, vkDstLayout, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, dstAspectMask, dstImage->GetSpecification().Layers,
+                          dstImage->GetSpecification().Mips);
 
     VkImageCopy copyRegion = {};
     copyRegion.extent      = {dstImage->GetSpecification().Width, dstImage->GetSpecification().Height, 1};
 
     copyRegion.srcSubresource.baseArrayLayer = 0;
     copyRegion.srcSubresource.mipLevel       = 0;
-    copyRegion.srcSubresource.layerCount     = 1;
+    copyRegion.srcSubresource.layerCount     = srcImage->GetSpecification().Layers;
     copyRegion.srcSubresource.aspectMask     = srcAspectMask;
 
     copyRegion.dstSubresource.baseArrayLayer = 0;
     copyRegion.dstSubresource.mipLevel       = 0;
-    copyRegion.dstSubresource.layerCount     = 1;
+    copyRegion.dstSubresource.layerCount     = dstImage->GetSpecification().Layers;
     copyRegion.dstSubresource.aspectMask     = dstAspectMask;
 
     vkCmdCopyImage(m_Handle, vkSrcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vkDstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1,
                    &copyRegion);
 
-    TransitionImageLayout(vkSrcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vkSrcLayout, srcAspectMask);
-    TransitionImageLayout(vkDstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, vkDstLayout, dstAspectMask);
+    // Transition from transfer optimal to previous layout.
+    TransitionImageLayout(vkSrcImage, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, vkSrcLayout, srcAspectMask, srcImage->GetSpecification().Layers,
+                          srcImage->GetSpecification().Mips);
+    TransitionImageLayout(vkDstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, vkDstLayout, dstAspectMask, dstImage->GetSpecification().Layers,
+                          dstImage->GetSpecification().Mips);
 }
 
 }  // namespace Pathfinder

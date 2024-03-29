@@ -22,20 +22,13 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     void UpdateCameraData(const Shared<Buffer>& cameraUniformBuffer) final override;
     void UpdateLightData(const Shared<Buffer>& lightDataUniformBuffer) final override;
 
-    void LoadImage(const ImagePerFrame& images) final override;
-    void LoadImage(const Shared<Image>& image) final override;
-    void LoadTexture(const Shared<Texture2D>& texture) final override;
+    void LoadImage(const void* pImageInfo, uint32_t& outIndex) final override;
+    void LoadTexture(const void* pTextureInfo, uint32_t& outIndex) final override;
 
-    void LoadVertexPosBuffer(const Shared<Buffer>& buffer) final override;
-    void LoadVertexAttribBuffer(const Shared<Buffer>& buffer) final override;
-    void LoadMeshletBuffer(const Shared<Buffer>& buffer) final override;
-    void LoadMeshletVerticesBuffer(const Shared<Buffer>& buffer) final override;
-    void LoadMeshletTrianglesBuffer(const Shared<Buffer>& buffer) final override;
-    void LoadIndexBuffer(const Shared<Buffer>& buffer) final override;
-    void LoadMaterialBuffer(const Shared<Buffer>& buffer) final override;
+    void LoadStorageBuffer(const void* pBufferInfo, const uint32_t binding, uint32_t& outIndex) final override;
 
     void FreeImage(uint32_t& imageIndex) final override;
-    void FreeBuffer(uint32_t& bufferIndex, uint32_t bufferBinding) final override;
+    void FreeBuffer(uint32_t& bufferIndex, const uint32_t bufferBinding) final override;
     void FreeTexture(uint32_t& textureIndex) final override;
 
     NODISCARD FORCEINLINE const auto& GetTextureStorageImageSetLayout() const { return m_TextureStorageImageSetLayout; }
@@ -77,7 +70,6 @@ class VulkanBindlessRenderer final : public BindlessRenderer
 
     VkPipelineLayout m_Layout = VK_NULL_HANDLE;
 
-    void LoadStorageBufferInternal(const Shared<Buffer>& buffer, const uint32_t binding);
     void CreateDescriptorPools();
     void Destroy() final override;
 };

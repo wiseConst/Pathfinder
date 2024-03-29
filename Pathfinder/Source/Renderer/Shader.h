@@ -15,27 +15,6 @@ static constexpr uint16_t s_SHADER_EXTENSIONS_SIZE                              
 static constexpr std::array<const std::string_view, s_SHADER_EXTENSIONS_SIZE> s_SHADER_EXTENSIONS = {
     ".vert", ".tesc", ".tese", ".geom", ".frag", ".mesh", ".task", ".comp", ".rmiss", ".rgen", ".rchit", ".rahit", ".rcall"};
 
-enum EShaderStage : uint32_t
-{
-    SHADER_STAGE_VERTEX                  = BIT(0),
-    SHADER_STAGE_TESSELLATION_CONTROL    = BIT(1),
-    SHADER_STAGE_TESSELLATION_EVALUATION = BIT(2),
-    SHADER_STAGE_GEOMETRY                = BIT(3),
-    SHADER_STAGE_FRAGMENT                = BIT(4),
-    SHADER_STAGE_COMPUTE                 = BIT(5),
-    SHADER_STAGE_ALL_GRAPHICS            = BIT(6),
-    SHADER_STAGE_ALL                     = BIT(7),
-    SHADER_STAGE_RAYGEN                  = BIT(8),
-    SHADER_STAGE_ANY_HIT                 = BIT(9),
-    SHADER_STAGE_CLOSEST_HIT             = BIT(10),
-    SHADER_STAGE_MISS                    = BIT(11),
-    SHADER_STAGE_INTERSECTION            = BIT(12),
-    SHADER_STAGE_CALLABLE                = BIT(13),
-    SHADER_STAGE_TASK                    = BIT(14),
-    SHADER_STAGE_MESH                    = BIT(15),
-};
-typedef uint32_t ShaderStageFlags;
-
 class GLSLShaderIncluder final : public shaderc::CompileOptions::IncluderInterface
 {
   public:
@@ -60,10 +39,10 @@ class Shader : private Uncopyable, private Unmovable
     virtual ~Shader() = default;
 
     // NOTE: Updates all frames
-    virtual void Set(const std::string_view name, const Shared<Buffer> buffer)     = 0;
-    virtual void Set(const std::string_view name, const Shared<Texture2D> texture) = 0;
-    virtual void Set(const std::string_view name, const Shared<Image> attachment)  = 0;
-    virtual void Set(const std::string_view name, const AccelerationStructure& tlas)  = 0;
+    virtual void Set(const std::string_view name, const Shared<Buffer> buffer)       = 0;
+    virtual void Set(const std::string_view name, const Shared<Texture2D> texture)   = 0;
+    virtual void Set(const std::string_view name, const Shared<Image> attachment)    = 0;
+    virtual void Set(const std::string_view name, const AccelerationStructure& tlas) = 0;
 
     // NOTE: Updates all frames
     virtual void Set(const std::string_view name, const BufferPerFrame& buffers)                 = 0;

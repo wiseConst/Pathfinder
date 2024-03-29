@@ -9,6 +9,9 @@
 #include "Core/Application.h"
 #include "Core/Window.h"
 
+#include "Renderer/Renderer.h"
+#include "Renderer/BindlessRenderer.h"
+
 namespace Pathfinder
 {
 
@@ -37,7 +40,7 @@ static VkAttachmentStoreOp PathfinderStoreOpToVulkan(EStoreOp storeOp)
     return VK_ATTACHMENT_STORE_OP_DONT_CARE;
 }
 
-VulkanFramebuffer::VulkanFramebuffer(const FramebufferSpecification& framebufferSpec) : m_Specification(framebufferSpec)
+VulkanFramebuffer::VulkanFramebuffer(const FramebufferSpecification& framebufferSpec) : Framebuffer(framebufferSpec)
 {
     if (m_Specification.Width == 0 || m_Specification.Height == 0)
     {
@@ -82,7 +85,7 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
         imageBarrier.subresourceRange.baseMipLevel   = 0;
 
         imageBarrier.subresourceRange.levelCount = vulkanImage->GetSpecification().Mips;
-        imageBarrier.subresourceRange.layerCount = 1;  // vulkanImage->GetSpecification().Layers;
+        imageBarrier.subresourceRange.layerCount = vulkanImage->GetSpecification().Layers;
         layerCount                               = std::max(layerCount, imageBarrier.subresourceRange.layerCount);
 
         imageBarrier.oldLayout     = ImageUtils::PathfinderImageLayoutToVulkan(vulkanImage->GetSpecification().Layout);
@@ -172,7 +175,7 @@ void VulkanFramebuffer::EndPass(const Shared<CommandBuffer>& commandBuffer)
         imageBarrier.subresourceRange.baseArrayLayer = 0;
         imageBarrier.subresourceRange.baseMipLevel   = 0;
         imageBarrier.subresourceRange.levelCount     = vulkanImage->GetSpecification().Mips;
-        imageBarrier.subresourceRange.layerCount     = 1;  // vulkanImage->GetSpecification().Layers;
+        imageBarrier.subresourceRange.layerCount     = vulkanImage->GetSpecification().Layers;
         imageBarrier.dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
         if (ImageUtils::IsDepthFormat(vulkanImage->GetSpecification().Format))
         {
@@ -219,6 +222,14 @@ void VulkanFramebuffer::Invalidate()
         if (fbAttachment.Attachment->GetSpecification().Width != m_Specification.Width ||
             fbAttachment.Attachment->GetSpecification().Height != m_Specification.Height)
             fbAttachment.Attachment->Resize(m_Specification.Width, m_Specification.Height);
+
+        if (fbAttachment.Specification.bBindlessUsage && fbAttachment.m_Index != UINT32_MAX)
+        {
+            const auto vulkanImage = std::static_pointer_cast<VulkanImage>(fbAttachment.Attachment);
+            PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+
+            Renderer::GetBindlessRenderer()->LoadTexture(&vulkanImage->GetDescriptorInfo(), fbAttachment.m_Index);
+        }
     }
 
     // NOTE: On first Invalidate()-call we create attachments
@@ -247,6 +258,7 @@ void VulkanFramebuffer::Invalidate()
                 imageSpec.Layout             = fbAttachmentSpec.Layout;
                 imageSpec.Wrap               = fbAttachmentSpec.Wrap;
                 imageSpec.Filter             = fbAttachmentSpec.Filter;
+                imageSpec.Layers             = fbAttachmentSpec.LayerCount;
 
                 const auto imageUsage = ImageUtils::IsDepthFormat(imageSpec.Format) ? EImageUsage::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT
                                                                                     : EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
@@ -255,6 +267,14 @@ void VulkanFramebuffer::Invalidate()
                     imageSpec.UsageFlags |= EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
 
                 m_Attachments[attachmentIndex].Attachment = Image::Create(imageSpec);
+
+                if (fbAttachmentSpec.bBindlessUsage && m_Attachments[attachmentIndex].m_Index == UINT32_MAX)
+                {
+                    const auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Attachments[attachmentIndex].Attachment);
+                    PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+
+                    Renderer::GetBindlessRenderer()->LoadTexture(&vulkanImage->GetDescriptorInfo(), m_Attachments[attachmentIndex].m_Index);
+                }
             }
         }
     }
@@ -297,6 +317,17 @@ void VulkanFramebuffer::Destroy()
 {
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
+    for (auto& fbAttachment : m_Attachments)
+    {
+        if (fbAttachment.Specification.bBindlessUsage && fbAttachment.m_Index != UINT32_MAX)
+        {
+            const auto vulkanImage = std::static_pointer_cast<VulkanImage>(fbAttachment.Attachment);
+            PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+
+            Renderer::GetBindlessRenderer()->LoadTexture(&vulkanImage->GetDescriptorInfo(), fbAttachment.m_Index);
+        }
+    }
+
     m_Attachments.clear();
     m_AttachmentInfos.clear();
 }
@@ -306,7 +337,7 @@ void VulkanFramebuffer::Clear(const Shared<CommandBuffer>& commandBuffer)
     for (const auto& attachmentInfo : m_Attachments)
     {
         if (!attachmentInfo.Specification.bCopyable) continue;
-        
+
         attachmentInfo.Attachment->ClearColor(commandBuffer, attachmentInfo.Specification.ClearColor);
     }
 }

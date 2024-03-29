@@ -38,6 +38,8 @@ class PerspectiveCamera final : public Camera
     NODISCARD FORCEINLINE const float GetNearPlaneDepth() const final override { return s_MIN_ZNEAR; }
     NODISCARD FORCEINLINE const float GetFarPlaneDepth() const final override { return s_MAX_ZFAR; }
 
+    NODISCARD FORCEINLINE const float GetZoom() const final override { return m_FOV; }
+
     void OnUpdate(const float deltaTime) final override
     {
         m_DeltaTime = deltaTime;
@@ -231,7 +233,7 @@ class PerspectiveCamera final : public Camera
 
     void RecalculateCullFrustum()
     {
-        const float halfVSide = GetFarPlaneDepth() * glm::tan(/* glm::radians(*/ m_FOV /*)*/ * .5f);
+        const float halfVSide = GetFarPlaneDepth() * glm::tan(glm::radians(m_FOV) * .5f);
         const float halfHSide = halfVSide * m_AR;
         const auto forwardFar = m_Forward * GetFarPlaneDepth();
 

@@ -57,6 +57,44 @@ static VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode)
     return VK_CULL_MODE_NONE;
 }
 
+static void PopulateShaderConstantsSpecializationInfo(const auto& shaderConstantsMap, auto& shaderConstantsInfo)
+{
+    size_t constantsDataSize = 0;  // Used as offset for constants and final size of all constants.
+    for (uint32_t constant_id = 0; constant_id < shaderConstantsMap.size(); ++constant_id)
+    {
+        const auto& constantEntry = shaderConstantsMap[constant_id];
+        auto& vkConstantEntry     = shaderConstantsInfo.ConstantEntries.emplace_back(constant_id, constantsDataSize);
+
+        if (std::holds_alternative<bool>(constantEntry))
+        {
+            vkConstantEntry.size = sizeof(VkBool32);
+        }
+        else if (std::holds_alternative<int32_t>(constantEntry))
+        {
+            vkConstantEntry.size = sizeof(int32_t);
+        }
+        else if (std::holds_alternative<uint32_t>(constantEntry))
+        {
+            vkConstantEntry.size = sizeof(uint32_t);
+        }
+        else if (std::holds_alternative<float>(constantEntry))
+        {
+            vkConstantEntry.size = sizeof(float);
+        }
+        else
+        {
+            PFR_ASSERT(false, "Unknown std::variant shader constant type!");
+        }
+
+        constantsDataSize += vkConstantEntry.size;
+    }
+
+    shaderConstantsInfo.SpecializationInfo.mapEntryCount = static_cast<uint32_t>(shaderConstantsInfo.ConstantEntries.size());
+    shaderConstantsInfo.SpecializationInfo.pMapEntries   = shaderConstantsInfo.ConstantEntries.data();
+    shaderConstantsInfo.SpecializationInfo.dataSize      = constantsDataSize;
+    shaderConstantsInfo.SpecializationInfo.pData         = shaderConstantsMap.data();
+}
+
 VulkanPipeline::VulkanPipeline(const PipelineSpecification& pipelineSpec) : m_Specification(pipelineSpec)
 {
     Invalidate();
@@ -224,7 +262,8 @@ void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& o
 
 void VulkanPipeline::Invalidate()
 {
-    if (m_Handle) Destroy();
+    if (m_Handle)
+        Destroy();  // NOTE: I can't recreate pipelines, since I destroy shader modules as a garbage at the end of Renderer::Create.
 
     PFR_ASSERT(m_Specification.Shader, "Not valid shader passed!");
     CreateLayout();
@@ -234,6 +273,14 @@ void VulkanPipeline::Invalidate()
 
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(m_Specification.Shader);
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
+
+    // Gather shader compile constants.
+    struct ShaderConstantInfo
+    {
+        VkSpecializationInfo SpecializationInfo               = {};
+        std::vector<VkSpecializationMapEntry> ConstantEntries = {};
+    };
+    std::map<EShaderStage, ShaderConstantInfo> shaderConstantsInfo = {};
 
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
     const auto& shaderDescriptions = vulkanShader->GetDescriptions();
@@ -270,6 +317,15 @@ void VulkanPipeline::Invalidate()
                     shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
                     shaderStage.module = shaderDescriptions[i].Module;
                     shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+
+                    if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
+                    {
+                        auto& currentShaderConstantInfo = shaderConstantsInfo[shaderDescriptions[i].Stage];
+                        PopulateShaderConstantsSpecializationInfo(m_Specification.ShaderConstantsMap[shaderDescriptions[i].Stage],
+                                                                  currentShaderConstantInfo);
+
+                        shaderStage.pSpecializationInfo = &currentShaderConstantInfo.SpecializationInfo;
+                    }
                 }
                 break;
             }
@@ -283,6 +339,15 @@ void VulkanPipeline::Invalidate()
                     shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
                     shaderStage.module = shaderDescriptions[i].Module;
                     shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+
+                    if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
+                    {
+                        auto& currentShaderConstantInfo = shaderConstantsInfo[shaderDescriptions[i].Stage];
+                        PopulateShaderConstantsSpecializationInfo(m_Specification.ShaderConstantsMap[shaderDescriptions[i].Stage],
+                                                                  currentShaderConstantInfo);
+
+                        shaderStage.pSpecializationInfo = &currentShaderConstantInfo.SpecializationInfo;
+                    }
                 }
                 break;
             }
@@ -301,6 +366,15 @@ void VulkanPipeline::Invalidate()
                     shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
                     shaderStage.module = shaderDescriptions[i].Module;
                     shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+
+                    if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
+                    {
+                        auto& currentShaderConstantInfo = shaderConstantsInfo[shaderDescriptions[i].Stage];
+                        PopulateShaderConstantsSpecializationInfo(m_Specification.ShaderConstantsMap[shaderDescriptions[i].Stage],
+                                                                  currentShaderConstantInfo);
+
+                        shaderStage.pSpecializationInfo = &currentShaderConstantInfo.SpecializationInfo;
+                    }
                 }
                 break;
             }
@@ -322,42 +396,39 @@ void VulkanPipeline::Invalidate()
 
             VkPipelineVertexInputStateCreateInfo vertexInputState = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
 
-            const auto& inputVars = vulkanShader->GetInputVars();
-            if (m_Specification.bSeparateVertexBuffers)
-                PFR_ASSERT(inputVars.size() >= 2, "Nothing to separate! Shader input attributes size less than 2!");
-
+            const auto& inputVars = vulkanShader->GetInputVars();  // Input vars of all buffer bindings.
             std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
-            std::vector<VkVertexInputBindingDescription> inputBindings(m_Specification.bSeparateVertexBuffers ? 2 : 1);
-
+            std::vector<VkVertexInputBindingDescription> inputBindings(m_Specification.InputBufferBindings.size());
             if (!m_Specification.bMeshShading)
             {
-                // In shader I do sort by locations(guarantee that position is first) so, it's OK to separate like that.
-                bool bSeparatedVertexBuffers = false;
-                for (auto& inputVar : inputVars)
+                uint32_t inputVarOffset = 0;
+                for (uint32_t inputBindingIndex = 0; inputBindingIndex < inputBindings.size(); ++inputBindingIndex)
                 {
-                    if (m_Specification.bSeparateVertexBuffers && !bSeparatedVertexBuffers)
+                    inputBindings[inputBindingIndex].binding   = inputBindingIndex;
+                    inputBindings[inputBindingIndex].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+
+                    const auto& currentInputBufferBinding = m_Specification.InputBufferBindings[inputBindingIndex];
+                    for (uint32_t inputVarIndex = 0; inputVarIndex < currentInputBufferBinding.GetElements().size(); ++inputVarIndex)
                     {
-                        inputBindings[0].binding   = 0;
-                        inputBindings[0].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-                        inputBindings[0].stride    = VulkanUtility::GetTypeSizeFromVulkanFormat(inputVar.format);
+                        PFR_ASSERT(currentInputBufferBinding.GetElements()[inputVarIndex].Name ==
+                                       inputVars[inputVarOffset + inputVarIndex].Name,
+                                   "Shader input buffer binding, different names!");
 
-                        vertexAttributeDescriptions.emplace_back(0, 0, inputVar.format, 0);
+                        PFR_ASSERT(inputVarOffset + inputVarIndex < inputVars.size(), "Incorrect input var index!");
+                        PFR_ASSERT(inputVars[inputVarOffset + inputVarIndex].Description.format ==
+                                       VulkanUtility::PathfinderShaderElementFormatToVulkan(
+                                           currentInputBufferBinding.GetElements()[inputVarIndex].Type),
+                                   "Shader and renderer code input buffer element mismatch!");
 
-                        bSeparatedVertexBuffers = true;
-                        continue;
+                        auto& vertexAttribute    = vertexAttributeDescriptions.emplace_back();
+                        vertexAttribute.binding  = inputBindings[inputBindingIndex].binding;
+                        vertexAttribute.format   = inputVars.at(inputVarOffset + inputVarIndex).Description.format;
+                        vertexAttribute.location = vertexAttributeDescriptions.size() - 1;
+                        vertexAttribute.offset   = currentInputBufferBinding.GetElements()[inputVarIndex].Offset;
                     }
+                    inputVarOffset += currentInputBufferBinding.GetElements().size();
 
-                    const uint32_t nextBindingIndex           = m_Specification.bSeparateVertexBuffers ? 1 : 0;
-                    inputBindings[nextBindingIndex].binding   = nextBindingIndex;
-                    inputBindings[nextBindingIndex].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-
-                    auto& vertexAttribute    = vertexAttributeDescriptions.emplace_back();
-                    vertexAttribute.binding  = nextBindingIndex;
-                    vertexAttribute.format   = inputVar.format;
-                    vertexAttribute.location = vertexAttributeDescriptions.size() - 1;
-                    vertexAttribute.offset   = inputBindings[nextBindingIndex].stride;
-
-                    inputBindings[nextBindingIndex].stride += VulkanUtility::GetTypeSizeFromVulkanFormat(inputVar.format);
+                    inputBindings[inputBindingIndex].stride = m_Specification.InputBufferBindings[inputBindingIndex].GetStride();
                 }
 
                 vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributeDescriptions.size());
@@ -543,6 +614,10 @@ void VulkanPipeline::Invalidate()
 
     VK_SetDebugName(logicalDevice, m_Handle, VK_OBJECT_TYPE_PIPELINE, m_Specification.DebugName.data());
     SavePipelineCache(pipelineCache, m_Specification.DebugName);
+
+    // NOTE: In future, with pipeline recreation lines below will be removed.
+    m_Specification.ShaderConstantsMap.clear();
+    m_Specification.InputBufferBindings.clear();
 }
 
 void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string& pipelineName) const

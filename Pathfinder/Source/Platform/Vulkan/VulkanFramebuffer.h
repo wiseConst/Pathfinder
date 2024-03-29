@@ -14,7 +14,6 @@ class VulkanFramebuffer final : public Framebuffer
     VulkanFramebuffer() = delete;
     ~VulkanFramebuffer() override { Destroy(); }
 
-    NODISCARD FORCEINLINE const FramebufferSpecification& GetSpecification() const final override { return m_Specification; }
     NODISCARD FORCEINLINE const std::vector<FramebufferAttachment>& GetAttachments() const final override { return m_Attachments; }
     Shared<Image> GetDepthAttachment() const final override;
 
@@ -31,7 +30,6 @@ class VulkanFramebuffer final : public Framebuffer
     void Clear(const Shared<CommandBuffer>& commandBuffer) final override;
 
   private:
-    FramebufferSpecification m_Specification = {};
     std::vector<VkRenderingAttachmentInfo> m_AttachmentInfos;
     std::vector<FramebufferAttachment> m_Attachments;
 

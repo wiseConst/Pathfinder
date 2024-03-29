@@ -86,7 +86,7 @@ class VulkanCommandBuffer final : public CommandBuffer
                         const std::vector<uint64_t>& waitSemaphoreValues = {}, const std::vector<void*>& signalSemaphores = {},
                         const std::vector<uint64_t>& signalSemaphoreValues = {}) final override;
     void TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
-                               const VkImageAspectFlags aspectMask) const;
+                               const VkImageAspectFlags aspectMask, const uint32_t layerCount, const uint32_t mipLevels) const;
 
     FORCEINLINE void BeginRendering(const VkRenderingInfo* renderingInfo) const { vkCmdBeginRendering(m_Handle, renderingInfo); }
     FORCEINLINE void EndRendering() const { vkCmdEndRendering(m_Handle); }

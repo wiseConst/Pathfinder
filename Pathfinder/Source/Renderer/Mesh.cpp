@@ -418,69 +418,63 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             pbrData.Roughness = materialAccessor.pbrData.roughnessFactor;
             pbrData.bIsOpaque = materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque;
 
-            Shared<Texture2D> albedo            = nullptr;
-            Shared<Texture2D> normalMap         = nullptr;
-            Shared<Texture2D> metallicRoughness = nullptr;
-            Shared<Texture2D> emissiveMap       = nullptr;
-            Shared<Texture2D> occlusionMap      = nullptr;
-
+            Shared<Texture2D> albedo = nullptr;
             if (materialAccessor.pbrData.baseColorTexture.has_value())
             {
                 TextureSpecification albedoTextureSpec = {};
+                albedoTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.pbrData.baseColorTexture.value();
                 albedo = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
                                                     albedoTextureSpec);
-
-                Renderer::GetBindlessRenderer()->LoadTexture(albedo);
                 pbrData.AlbedoTextureIndex = albedo->GetBindlessIndex();
             }
 
+            Shared<Texture2D> normalMap = nullptr;
             if (materialAccessor.normalTexture.has_value())
             {
                 TextureSpecification normalMapTextureSpec = {};
+                normalMapTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
                 normalMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
                                                        normalMapTextureSpec);
-
-                Renderer::GetBindlessRenderer()->LoadTexture(normalMap);
                 pbrData.NormalTextureIndex = normalMap->GetBindlessIndex();
             }
 
+            Shared<Texture2D> metallicRoughness = nullptr;
             if (materialAccessor.pbrData.metallicRoughnessTexture.has_value())
             {
                 TextureSpecification metallicRoughnessTextureSpec = {};
+                metallicRoughnessTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.pbrData.metallicRoughnessTexture.value();
                 metallicRoughness = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
                                                                metallicRoughnessTextureSpec);
-
-                Renderer::GetBindlessRenderer()->LoadTexture(metallicRoughness);
                 pbrData.MetallicRoughnessTextureIndex = metallicRoughness->GetBindlessIndex();
             }
 
+            Shared<Texture2D> emissiveMap = nullptr;
             if (materialAccessor.emissiveTexture.has_value())
             {
                 TextureSpecification emissiveTextureSpec = {};
+                emissiveTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.emissiveTexture.value();
                 emissiveMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
                                                          emissiveTextureSpec);
-
-                Renderer::GetBindlessRenderer()->LoadTexture(emissiveMap);
                 pbrData.EmissiveTextureIndex = emissiveMap->GetBindlessIndex();
             }
 
+            Shared<Texture2D> occlusionMap = nullptr;
             if (materialAccessor.occlusionTexture.has_value())
             {
                 TextureSpecification occlusionTextureSpec = {};
+                occlusionTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.occlusionTexture.value();
                 occlusionMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
                                                           occlusionTextureSpec);
-
-                Renderer::GetBindlessRenderer()->LoadTexture(occlusionMap);
                 pbrData.OcclusionTextureIndex = occlusionMap->GetBindlessIndex();
             }
 
@@ -503,6 +497,8 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
         ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
         {
+            ibSpec.BufferBinding  = STORAGE_BUFFER_INDEX_BUFFER_BINDING;
+            ibSpec.bBindlessUsage = true;
             ibSpec.BufferUsage |= EBufferUsage::BUFFER_USAGE_STORAGE |
                                   EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY |
                                   EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
@@ -525,7 +521,8 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
         indices.clear();
         meshoptimizeVertices.clear();
 
-        BufferSpecification vbPosSpec = {EBufferUsage::BUFFER_USAGE_VERTEX | EBufferUsage::BUFFER_USAGE_STORAGE};
+        BufferSpecification vbPosSpec = {EBufferUsage::BUFFER_USAGE_VERTEX | EBufferUsage::BUFFER_USAGE_STORAGE,
+                                         STORAGE_BUFFER_VERTEX_POS_BINDING, true};
         vbPosSpec.Data                = vertexPositions.data();
         vbPosSpec.DataSize            = vertexPositions.size() * sizeof(vertexPositions[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
@@ -535,7 +532,8 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
         }
         submesh->m_VertexPositionBuffer = Buffer::Create(vbPosSpec);
 
-        BufferSpecification vbAttribSpec = {EBufferUsage::BUFFER_USAGE_VERTEX | EBufferUsage::BUFFER_USAGE_STORAGE};
+        BufferSpecification vbAttribSpec = {EBufferUsage::BUFFER_USAGE_VERTEX | EBufferUsage::BUFFER_USAGE_STORAGE,
+                                            STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, true};
         vbAttribSpec.Data                = vertexAttributes.data();
         vbAttribSpec.DataSize            = vertexAttributes.size() * sizeof(vertexAttributes[0]);
         if (Renderer::GetRendererSettings().bRTXSupport)
@@ -554,46 +552,21 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             std::vector<Meshlet> meshlets;
             MeshPreprocessorUtils::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
 
-            BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE};
+            BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_BINDING, true};
             mbSpec.Data                = meshlets.data();
             mbSpec.DataSize            = meshlets.size() * sizeof(meshlets[0]);
             submesh->m_MeshletBuffer   = Buffer::Create(mbSpec);
 
-            BufferSpecification mbVertSpec   = {EBufferUsage::BUFFER_USAGE_STORAGE};
+            BufferSpecification mbVertSpec   = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_VERTEX_BINDING, true};
             mbVertSpec.Data                  = meshletVertices.data();
             mbVertSpec.DataSize              = meshletVertices.size() * sizeof(meshletVertices[0]);
             submesh->m_MeshletVerticesBuffer = Buffer::Create(mbVertSpec);
 
-            BufferSpecification mbTriSpec     = {EBufferUsage::BUFFER_USAGE_STORAGE};
+            BufferSpecification mbTriSpec     = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, true};
             mbTriSpec.Data                    = meshletTriangles.data();
             mbTriSpec.DataSize                = meshletTriangles.size() * sizeof(meshletTriangles[0]);
             submesh->m_MeshletTrianglesBuffer = Buffer::Create(mbTriSpec);
         }
-    }
-
-    // Load buffers into bindless system
-    const auto& br = Renderer::GetBindlessRenderer();
-    for (auto& submesh : m_Submeshes)
-    {
-        if (submesh->m_VertexPositionBuffer) br->LoadVertexPosBuffer(submesh->m_VertexPositionBuffer);
-
-        if (submesh->m_VertexAttributeBuffer) br->LoadVertexAttribBuffer(submesh->m_VertexAttributeBuffer);
-
-        if (Renderer::GetRendererSettings().bMeshShadingSupport)
-        {
-            if (submesh->m_MeshletBuffer) br->LoadMeshletBuffer(submesh->m_MeshletBuffer);
-
-            if (submesh->m_MeshletVerticesBuffer) br->LoadMeshletVerticesBuffer(submesh->m_MeshletVerticesBuffer);
-
-            if (submesh->m_MeshletTrianglesBuffer) br->LoadMeshletTrianglesBuffer(submesh->m_MeshletTrianglesBuffer);
-        }
-
-#if TODO
-        if (Renderer::GetRendererSettings().bRTXSupport)
-        {
-            br->LoadIndexBuffer(submesh->m_IndexBuffer);
-        }
-#endif
     }
 }
 

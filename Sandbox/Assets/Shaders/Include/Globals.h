@@ -218,8 +218,8 @@ layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_CAMERA_BINDING, 
     vec3 Position;
     float zNear;
     float zFar;
+    float FOV;
     vec2 FullResolution;
-    vec2 DepthUnpackConsts;  // (depthLinearizeMul, depthLinearizeAdd)
 }
 #ifdef __cplusplus
 ;
@@ -260,15 +260,9 @@ vec4 ScreenSpaceToView(const vec4 screen, const vec2 screenDimensions)
     return ClipSpaceToView(clip);
 }
 
-// NOTE: From XeGTAO.h + XeGTAO.hlsli
-float LinearizeDepth(float depth)
-{
-    // Optimised version of "(cameraClipNear * cameraClipFar) / (cameraClipFar - projDepth * (cameraClipFar - cameraClipNear))"
-    return u_GlobalCameraData.DepthUnpackConsts.x / (u_GlobalCameraData.DepthUnpackConsts.y - depth);
-}
-
-
 #endif
+
+const uint32_t MAX_SHADOW_CASCADES = 5;
 
 #ifdef __cplusplus
 struct LightsData
@@ -277,9 +271,11 @@ layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, 
 #endif
 {
     PointLight PointLights[MAX_POINT_LIGHTS];
+    mat4 PointLightViewProjMatrices[MAX_POINT_LIGHTS * 6];
     SpotLight SpotLights[MAX_SPOT_LIGHTS];
     DirectionalLight DirectionalLights[MAX_DIR_LIGHTS];
-    mat4 DirLightViewProjMatrices[MAX_DIR_LIGHTS];
+    mat4 DirLightViewProjMatrices[MAX_DIR_LIGHTS * MAX_SHADOW_CASCADES];
+    float CascadePlaneDistances[MAX_SHADOW_CASCADES - 1];
     uint32_t PointLightCount;
     uint32_t SpotLightCount;
     uint32_t DirectionalLightCount;
@@ -293,12 +289,11 @@ u_Lights;
 #ifdef __cplusplus
 struct PushConstantBlock
 {
-    glm::mat4 Transform = glm::mat4(1.0f);  // TODO: Remove with glm define GLM_FORCE_CTOR_INIT ??
 #else
 layout(push_constant, scalar) uniform PushConstantBlock
 {
-    mat4 Transform;
 #endif
+    mat4 Transform;
     uint32_t StorageImageIndex;
     uint32_t AlbedoTextureIndex;
 

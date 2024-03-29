@@ -37,6 +37,9 @@ class Camera : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE virtual const float GetNearPlaneDepth() const = 0;
     NODISCARD FORCEINLINE virtual const float GetFarPlaneDepth() const  = 0;
 
+    NODISCARD FORCEINLINE virtual const float GetZoom() const = 0;
+    NODISCARD FORCEINLINE const float GetAR() const { return m_AR; }
+
     NODISCARD static Shared<Camera> Create(const ECameraType cameraType);
 
     virtual void OnEvent(Event& e)               = 0;
@@ -62,7 +65,7 @@ class Camera : private Uncopyable, private Unmovable
 
     Camera()                                                  = default;
     virtual void RecalculateViewMatrix()                      = 0;
-    virtual void RecalculateProjectionMatrix()                      = 0;
+    virtual void RecalculateProjectionMatrix()                = 0;
     virtual bool OnMouseMoved(const MouseMovedEvent& e)       = 0;
     virtual bool OnMouseScrolled(const MouseScrolledEvent& e) = 0;
     virtual bool OnWindowResized(const WindowResizeEvent& e)  = 0;

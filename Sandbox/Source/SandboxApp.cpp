@@ -20,7 +20,7 @@ Unique<Application> Create()
 {
     ApplicationSpecification appSpec = {};
     appSpec.RendererAPI              = ERendererAPI::RENDERER_API_VULKAN;
-    appSpec.Title                    = "RTX, mesh-shading enjoyer";
+    appSpec.Title                    = "PATHFINDER";
     appSpec.Width                    = 960;
     appSpec.Height                   = 640;
 

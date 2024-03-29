@@ -12,10 +12,11 @@ namespace ImageUtils
 {
 
 void CreateImage(VkImage& image, VmaAllocation& allocation, const VkFormat format, const VkImageUsageFlags imageUsage,
-                 const VkExtent3D extent, const uint32_t mipLevels = 1);
+                 const VkExtent3D extent, const uint32_t mipLevels = 1, const uint32_t layerCount = 1);
 
 void CreateImageView(const VkImage& image, VkImageView& imageView, VkFormat format, const VkImageAspectFlags aspectFlags,
-                     const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D, const uint32_t mipLevels = 1);
+                     const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D, const uint32_t mipLevels = 1,
+                     const uint32_t layerCount = 1);
 
 void DestroyImage(VkImage& image, VmaAllocation& allocation);
 
@@ -34,10 +35,8 @@ class VulkanImage final : public Image
     VulkanImage() = delete;
     ~VulkanImage() override { Destroy(); }
 
-    NODISCARD FORCEINLINE const ImageSpecification& GetSpecification() const final override { return m_Specification; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE const auto& GetView() const { return m_View; }
-    NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const final override { return m_Index; }
     NODISCARD FORCEINLINE const auto& GetDescriptorInfo()
     {
         m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
@@ -63,11 +62,9 @@ class VulkanImage final : public Image
     VmaAllocation m_Allocation             = VK_NULL_HANDLE;
     VkImageView m_View                     = VK_NULL_HANDLE;
     VkDescriptorImageInfo m_DescriptorInfo = {};
-    ImageSpecification m_Specification     = {};
 
     friend class VulkanFramebuffer;
     friend class VulkanBindlessRenderer;
-    uint32_t m_Index = UINT32_MAX;  // bindless array purposes
 
     void Invalidate() final override;
     void Destroy() final override;

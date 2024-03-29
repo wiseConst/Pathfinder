@@ -27,6 +27,8 @@ class SandboxLayer final : public Layer
     Shared<Mesh> m_Helmet = nullptr;
     Shared<Mesh> m_Gun    = nullptr;
     std::array<PointLight, MAX_POINT_LIGHTS> m_PointLights;
+
+    PointLight m_PointShadowCaster;
 };
 
 }  // namespace Pathfinder
