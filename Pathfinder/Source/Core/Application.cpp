@@ -36,6 +36,8 @@ Application::Application(const ApplicationSpecification& appSpec) noexcept : m_S
     m_Window = Window::Create({PFR_BIND_FN(Application::OnEvent), m_Specification.Title, m_Specification.Width, m_Specification.Height});
 
     Renderer::Init();
+
+    m_UILayer = UILayer::Create();
 }
 
 void Application::Run()
@@ -53,12 +55,15 @@ void Application::Run()
         if (!m_Window->IsMinimized() && m_Window->BeginFrame())
         {
             Renderer::Begin();
+            m_Window->SetClearColor(glm::vec3(0.15f));
 
             m_LayerQueue->OnUpdate(m_DeltaTime);
 
-            m_Window->SetClearColor(glm::vec3(0.15f));
+            m_UILayer->BeginRender();
 
-            Renderer::Flush();
+            m_LayerQueue->OnUIRender();
+
+            Renderer::Flush(m_UILayer);
             m_Window->SwapBuffers();
         }
 
@@ -92,8 +97,7 @@ void Application::Run()
 
 void Application::OnEvent(Event& e)
 {
-    // LOG_TRACE("%s", e.Format().data());
-
+    m_UILayer->OnEvent(e);
     m_LayerQueue->OnEvent(e);
 
     EventDispatcher dispatcher(e);
@@ -148,6 +152,7 @@ void Application::OnEvent(Event& e)
 Application::~Application()
 {
     m_LayerQueue.reset();
+    m_UILayer.reset();
 
     Renderer::Shutdown();
     m_Window.reset();

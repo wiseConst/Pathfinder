@@ -705,7 +705,7 @@ void Renderer::Begin()
     s_RendererStats.RHITime += t.GetElapsedMilliseconds();
 }
 
-void Renderer::Flush()
+void Renderer::Flush(const Unique<UILayer>& uiLayer)
 {
     Timer t = {};
     s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->SetData(s_RendererData->LightStruct.get(), sizeof(LightsData));
@@ -792,6 +792,8 @@ void Renderer::Flush()
 
     BloomPass();
     CompositePass();
+
+    if (uiLayer) uiLayer->EndRender();
 
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndPipelineStatisticsQuery();
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndRecording();

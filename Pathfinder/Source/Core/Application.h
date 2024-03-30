@@ -4,6 +4,7 @@
 #include "Core.h"
 #include "Renderer/RendererAPI.h"
 #include "Layers/LayerQueue.h"
+#include "Layers/UILayer.h"
 
 namespace Pathfinder
 {
@@ -60,6 +61,7 @@ class Application : private Unmovable, private Uncopyable
     Unique<Window> m_Window;
     Unique<GraphicsContext> m_GraphicsContext;
     Unique<LayerQueue> m_LayerQueue;
+    Unique<UILayer> m_UILayer;
 
     float m_DeltaTime               = 0.0f;
     static inline bool s_bIsRunning = false;

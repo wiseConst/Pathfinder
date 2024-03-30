@@ -25,3 +25,7 @@
 [submodule "Pathfinder/vendor/simdjson"]
 	path = Pathfinder/vendor/simdjson
 	url = https://github.com/simdjson/simdjson
+[submodule "Pathfinder/vendor/imgui"]
+	path = Pathfinder/vendor/imgui
+	url = https://github.com/ocornut/imgui.git
+	branch = docking

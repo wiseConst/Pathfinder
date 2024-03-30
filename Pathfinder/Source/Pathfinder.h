@@ -29,4 +29,7 @@
 #include "Renderer/Camera/OrthographicCamera.h"
 #include "Renderer/Mesh.h"
 
+// IMGUI
+#include <imgui.h>
+
 #include "PathfinderPCH.h"

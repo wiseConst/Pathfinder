@@ -15,7 +15,8 @@ class VulkanSwapchain final : public Swapchain
     VulkanSwapchain(void* windowHandle) noexcept;
     virtual ~VulkanSwapchain() override { Destroy(); }
 
-    NODISCARD FORCEINLINE const uint32_t GetCurrentFrameIndex() const { return m_FrameIndex; }
+    NODISCARD FORCEINLINE const uint32_t GetImageCount() const final override { return m_ImageCount; }
+    NODISCARD FORCEINLINE const uint32_t GetCurrentFrameIndex() const final override { return m_FrameIndex; }
     NODISCARD FORCEINLINE void* GetImageAvailableSemaphore() const final override { return m_ImageAcquiredSemaphores[m_FrameIndex]; }
 
     void SetWaitSemaphore(const std::array<void*, s_FRAMES_IN_FLIGHT>& waitSemaphore)

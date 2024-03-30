@@ -111,6 +111,10 @@ void SandboxLayer::OnUpdate(const float deltaTime)
     }
 }
 
-void SandboxLayer::OnUIRender() {}
+void SandboxLayer::OnUIRender()
+{
+    static bool bShowDemoWindow = true;
+    if (bShowDemoWindow) ImGui::ShowDemoWindow(&bShowDemoWindow);
+}
 
 }  // namespace Pathfinder

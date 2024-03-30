@@ -17,6 +17,7 @@ class Framebuffer;
 class Image;
 class Submesh;
 class Mesh;
+class UILayer;
 
 // NOTE: It's not final cuz in future SceneRenderer may derive from this class
 
@@ -30,7 +31,7 @@ class Renderer : private Uncopyable, private Unmovable
     static void Shutdown();
 
     static void Begin();
-    static void Flush();
+    static void Flush(const Unique<UILayer>& uiLayer = nullptr);
 
     static void BeginScene(const Camera& camera);
     static void EndScene();

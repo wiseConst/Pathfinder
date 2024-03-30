@@ -21,7 +21,7 @@ source_group("Source/Platform/Vulkan" FILES ${PLATFORM_VULKAN_SOURCES})
 file(GLOB_RECURSE RENDERER_SOURCES ${CORE_DIR}/Renderer/*.h ${CORE_DIR}/Renderer/*.cpp)
 source_group("Source/Renderer" FILES ${RENDERER_SOURCES})
 
-file(GLOB_RECURSE LAYERS_SOURCES ${CORE_DIR}/Layers/*.h ${CORE_DIR}/Layer/*.cpp)
+file(GLOB_RECURSE LAYERS_SOURCES ${CORE_DIR}/Layers/*.h ${CORE_DIR}/Layers/*.cpp)
 source_group("Source/Layers" FILES ${LAYERS_SOURCES})
 
 #TODO: Add memory includes
@@ -137,6 +137,30 @@ target_link_libraries(${PROJECT_NAME} PRIVATE fastgltf)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include)
 set_target_properties(fastgltf PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
+
+# imgui
+add_library(imgui STATIC)
+target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
+set_target_properties(imgui PROPERTIES RUNTIME_OUTPUT_DIRECTORY PROJECT_OUTPUT_DIRECTORY)
+
+target_sources(imgui PRIVATE 
+  ${VENDOR_DIR}/imgui/imgui.h
+  ${VENDOR_DIR}/imgui/imgui.cpp
+
+  ${VENDOR_DIR}/imgui/imgui_demo.cpp
+  ${VENDOR_DIR}/imgui/imgui_draw.cpp
+  ${VENDOR_DIR}/imgui/imgui_widgets.cpp
+  ${VENDOR_DIR}/imgui/imgui_tables.cpp
+  ${VENDOR_DIR}/imgui/backends/imgui_impl_vulkan.cpp
+  ${VENDOR_DIR}/imgui/backends/imgui_impl_glfw.cpp
+  )
+target_include_directories(imgui PUBLIC ${VENDOR_DIR}/imgui ${VENDOR_DIR}/GLFW/include ${VULKAN_SDK_DIR}/include)
+target_link_libraries(imgui PRIVATE glfw)
+set_target_properties(imgui PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
+
+target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/imgui)
+
 
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
 add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
