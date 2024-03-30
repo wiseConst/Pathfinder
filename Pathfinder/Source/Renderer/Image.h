@@ -79,6 +79,24 @@ enum class EImageFormat : uint8_t
     FORMAT_S8_UINT,
     FORMAT_D16_UNORM_S8_UINT,
     FORMAT_D24_UNORM_S8_UINT,
+
+    // BCn
+    FORMAT_BC1_RGB_UNORM,
+    FORMAT_BC1_RGB_SRGB,
+    FORMAT_BC1_RGBA_UNORM,
+    FORMAT_BC1_RGBA_SRGB,
+    FORMAT_BC2_UNORM,
+    FORMAT_BC2_SRGB,
+    FORMAT_BC3_UNORM,
+    FORMAT_BC3_SRGB,
+    FORMAT_BC4_UNORM,
+    FORMAT_BC4_SNORM,
+    FORMAT_BC5_UNORM,
+    FORMAT_BC5_SNORM,
+    FORMAT_BC6H_UFLOAT,
+    FORMAT_BC6H_SFLOAT,
+    FORMAT_BC7_UNORM,
+    FORMAT_BC7_SRGB,
 };
 
 struct ImageSpecification
@@ -250,7 +268,7 @@ static bool IsDepthFormat(const EImageFormat imageFormat)
     return false;
 }
 
-void* LoadRawImage(std::string_view path, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels);
+void* LoadRawImage(const std::filesystem::path& imagePath, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels);
 
 void* LoadRawImageFromMemory(const uint8_t* data, size_t dataSize, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels);
 

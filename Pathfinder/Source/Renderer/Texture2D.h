@@ -45,6 +45,27 @@ class Texture2D : private Uncopyable, private Unmovable
     virtual void Invalidate();
 };
 
+class TextureCompressor final : private Uncopyable, private Unmovable
+{
+  public:
+    ~TextureCompressor() override = default;
+
+    // NOTE:
+    // Firstly textureSpec should contatin raw image data.
+    // Compresses data from srcImageFormat into textureSpec.Format
+    // Stores data into textureSpec.Data && DataSize, so you have to manually free it after Texture2D::Create().
+    static void Compress(TextureSpecification& textureSpec, const EImageFormat srcImageFormat);
+
+    static void SaveCompressed(const TextureSpecification& textureSpec, const std::filesystem::path& savePath);
+
+    // NOTE:
+    // Loads textureSpec.Data with its DataSize, so you'll have to manually free() it after Texture2D::Create().
+    static void LoadCompressed(TextureSpecification& textureSpec, const std::filesystem::path& loadPath);
+
+  private:
+    TextureCompressor() = default;
+};
+
 }  // namespace Pathfinder
 
 #endif

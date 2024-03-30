@@ -14,9 +14,9 @@ namespace Pathfinder
 namespace ImageUtils
 {
 
-void* LoadRawImage(std::string_view path, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels)
+void* LoadRawImage(const std::filesystem::path& imagePath, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels)
 {
-    PFR_ASSERT(path.data() && x && y && nChannels, "Invalid data passed into LoadRawImage()!");
+    PFR_ASSERT(!imagePath.empty() && x && y && nChannels, "Invalid data passed into LoadRawImage()!");
 
     const int32_t prevFlipOnLoad = stbi__vertically_flip_on_load_global;
     stbi_set_flip_vertically_on_load(bFlipOnLoad);
@@ -24,12 +24,10 @@ void* LoadRawImage(std::string_view path, bool bFlipOnLoad, int32_t* x, int32_t*
     int32_t desiredChannels = 4;
     if (RendererAPI::Get() == ERendererAPI::RENDERER_API_VULKAN) desiredChannels = 4;
 
-    void* imageData = stbi_load(path.data(), x, y, nChannels, desiredChannels);
+    void* imageData = stbi_load(imagePath.string().data(), x, y, nChannels, desiredChannels);
     PFR_ASSERT(imageData, "Failed to load image data!");
 
     stbi_set_flip_vertically_on_load(prevFlipOnLoad);
-
-    if (RendererAPI::Get() == ERendererAPI::RENDERER_API_VULKAN && *nChannels != 4) *nChannels = desiredChannels;
     return imageData;
 }
 

@@ -49,7 +49,7 @@ static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
     return ESamplerWrap::SAMPLER_WRAP_REPEAT;
 }
 
-static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures, const std::string& meshDir,
+static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures, const std::string& meshAssetsDir,
                                      const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor, const size_t textureIndex,
                                      TextureSpecification& textureSpec)
 {
@@ -77,20 +77,59 @@ static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Text
 
     if (loadedTextures.contains(textureName)) return loadedTextures[textureName];
 
+    // TODO: Properly handle cached texture directory && working dir. via Application::GetSpec().WorkingDir
+    const auto ind = meshAssetsDir.find("Meshes/");
+    PFR_ASSERT(ind != std::string::npos, "Failed to find meshes substr index!");
+    const std::string meshDir                              = meshAssetsDir.substr(ind);
+    const std::string assetsDir                            = meshAssetsDir.substr(0, meshAssetsDir.size() - meshDir.size());
+    const std::filesystem::path currentMeshTextureCacheDir = assetsDir + "Cached/" + meshDir + "textures/";
+    if (!std::filesystem::exists(currentMeshTextureCacheDir))
+    {
+        std::filesystem::create_directories(currentMeshTextureCacheDir);
+    }
+
     Shared<Texture2D> texture = nullptr;
     std::visit(fastgltf::visitor{[](auto& arg) {},
                                  [&](const fastgltf::sources::URI& uri)
                                  {
-                                     int32_t x = 1, y = 1, channels = 4;
-                                     const std::string texturePath = meshDir + std::string(uri.uri.string());
-                                     void* data       = ImageUtils::LoadRawImage(texturePath, textureSpec.bFlipOnLoad, &x, &y, &channels);
-                                     textureSpec.Data = data;
-                                     textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
-                                     textureSpec.Width    = x;
-                                     textureSpec.Height   = y;
+                                     std::filesystem::path textureURIPath = uri.uri.string();
+                                     if (const auto lastSlashIndex = uri.uri.string().find_last_of("/");
+                                         lastSlashIndex != std::string::npos)
+                                     {
+                                         // Strip extra info, all we want is texture name(everything after last slash).
+                                         textureURIPath = uri.uri.string().substr(lastSlashIndex + 1);
+                                     }
 
-                                     texture = Texture2D::Create(textureSpec);
-                                     ImageUtils::UnloadRawImage(data);
+                                     std::filesystem::path textureCacheFilePath = currentMeshTextureCacheDir / textureURIPath;
+                                     textureCacheFilePath.replace_extension(".bc");
+
+                                     // Firstly try to load compressed, otherwise compress and save.
+                                     if (std::filesystem::exists(textureCacheFilePath))
+                                     {
+                                         TextureCompressor::LoadCompressed(textureSpec, textureCacheFilePath);
+                                         texture = Texture2D::Create(textureSpec);
+
+                                         free(textureSpec.Data);
+                                     }
+                                     else
+                                     {
+                                         int32_t x = 1, y = 1, channels = 4;
+                                         const std::string texturePath = meshAssetsDir + std::string(uri.uri.string());
+                                         void* uncompressedData =
+                                             ImageUtils::LoadRawImage(texturePath, textureSpec.bFlipOnLoad, &x, &y, &channels);
+                                         textureSpec.Data     = uncompressedData;
+                                         textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
+                                         textureSpec.Width    = x;
+                                         textureSpec.Height   = y;
+
+                                         TextureCompressor::Compress(textureSpec, EImageFormat::FORMAT_RGBA8_UNORM);
+                                         texture = Texture2D::Create(textureSpec);
+
+                                         TextureCompressor::SaveCompressed(textureSpec, textureCacheFilePath);
+
+                                         free(textureSpec.Data);
+                                         ImageUtils::UnloadRawImage(uncompressedData);
+                                     }
                                  }},
                imageData);
 
@@ -422,6 +461,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.pbrData.baseColorTexture.has_value())
             {
                 TextureSpecification albedoTextureSpec = {};
+                albedoTextureSpec.Format               = EImageFormat::FORMAT_BC7_UNORM;
                 albedoTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.pbrData.baseColorTexture.value();
@@ -434,6 +474,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.normalTexture.has_value())
             {
                 TextureSpecification normalMapTextureSpec = {};
+                normalMapTextureSpec.Format               = EImageFormat::FORMAT_BC5_UNORM;
                 normalMapTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
@@ -446,6 +487,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.pbrData.metallicRoughnessTexture.has_value())
             {
                 TextureSpecification metallicRoughnessTextureSpec = {};
+                metallicRoughnessTextureSpec.Format               = EImageFormat::FORMAT_BC5_UNORM;
                 metallicRoughnessTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.pbrData.metallicRoughnessTexture.value();
@@ -458,6 +500,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.emissiveTexture.has_value())
             {
                 TextureSpecification emissiveTextureSpec = {};
+                emissiveTextureSpec.Format               = EImageFormat::FORMAT_BC7_UNORM;
                 emissiveTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.emissiveTexture.value();
@@ -470,6 +513,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.occlusionTexture.has_value())
             {
                 TextureSpecification occlusionTextureSpec = {};
+                occlusionTextureSpec.Format               = EImageFormat::FORMAT_BC4_UNORM;
                 occlusionTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.occlusionTexture.value();

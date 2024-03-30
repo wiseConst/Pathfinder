@@ -79,6 +79,9 @@ class CommandBuffer : private Uncopyable, private Unmovable
     FORCEINLINE virtual void DrawIndexed(const uint32_t indexCount, const uint32_t instanceCount = 1, const uint32_t firstIndex = 0,
                                          const int32_t vertexOffset = 0, const uint32_t firstInstance = 0) const = 0;
 
+    FORCEINLINE virtual void DrawIndexedIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
+                                                 const uint32_t stride) const = 0;
+
     FORCEINLINE virtual void Draw(const uint32_t vertexCount, const uint32_t instanceCount = 1, const uint32_t firstVertex = 0,
                                   const uint32_t firstInstance = 0) const = 0;
 
