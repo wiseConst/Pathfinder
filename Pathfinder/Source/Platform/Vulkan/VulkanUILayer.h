@@ -9,8 +9,6 @@
 namespace Pathfinder
 {
 
-class Framebuffer;
-
 class VulkanUILayer final : public UILayer
 {
   public:
@@ -31,8 +29,6 @@ class VulkanUILayer final : public UILayer
 
   private:
     VkDescriptorPool m_ImGuiPool = VK_NULL_HANDLE;
-
-    Shared<Framebuffer> m_UIFramebuffer = nullptr;
 };
 
 }  // namespace Pathfinder

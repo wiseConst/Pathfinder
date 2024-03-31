@@ -108,6 +108,40 @@ struct SwapchainSupportDetails final
     std::vector<VkSurfaceFormatKHR> ImageFormats;
 };
 
+static EImageFormat VulkanImageFormatToPathfinder(const VkFormat imageFormat)
+{
+    switch (imageFormat)
+    {
+        case VK_FORMAT_UNDEFINED: return EImageFormat::FORMAT_UNDEFINED;
+        case VK_FORMAT_R8G8B8_UNORM: return EImageFormat::FORMAT_RGB8_UNORM;
+        case VK_FORMAT_R8G8B8A8_UNORM: return EImageFormat::FORMAT_RGBA8_UNORM;
+        case VK_FORMAT_B8G8R8A8_UNORM: return EImageFormat::FORMAT_BGRA8_UNORM;
+        case VK_FORMAT_A2R10G10B10_UNORM_PACK32: return EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32;
+        case VK_FORMAT_R8_UNORM: return EImageFormat::FORMAT_R8_UNORM;
+        case VK_FORMAT_R16_UNORM: return EImageFormat::FORMAT_R16_UNORM;
+        case VK_FORMAT_R16_SFLOAT: return EImageFormat::FORMAT_R16F;
+        case VK_FORMAT_R32_SFLOAT: return EImageFormat::FORMAT_R32F;
+        case VK_FORMAT_R64_SFLOAT: return EImageFormat::FORMAT_R64F;
+        case VK_FORMAT_R16G16B16_UNORM: return EImageFormat::FORMAT_RGB16_UNORM;
+        case VK_FORMAT_R16G16B16_SFLOAT: return EImageFormat::FORMAT_RGB16F;
+        case VK_FORMAT_R16G16B16A16_UNORM: return EImageFormat::FORMAT_RGBA16_UNORM;
+        case VK_FORMAT_R16G16B16A16_SFLOAT: return EImageFormat::FORMAT_RGBA16F;
+        case VK_FORMAT_R32G32B32_SFLOAT: return EImageFormat::FORMAT_RGB32F;
+        case VK_FORMAT_R32G32B32A32_SFLOAT: return EImageFormat::FORMAT_RGBA32F;
+        case VK_FORMAT_R64G64B64_SFLOAT: return EImageFormat::FORMAT_RGB64F;
+        case VK_FORMAT_R64G64B64A64_SFLOAT: return EImageFormat::FORMAT_RGBA64F;
+
+        case VK_FORMAT_D16_UNORM: return EImageFormat::FORMAT_D16_UNORM;
+        case VK_FORMAT_D32_SFLOAT: return EImageFormat::FORMAT_D32F;
+        case VK_FORMAT_S8_UINT: return EImageFormat::FORMAT_S8_UINT;
+        case VK_FORMAT_D16_UNORM_S8_UINT: return EImageFormat::FORMAT_D16_UNORM_S8_UINT;
+        case VK_FORMAT_D24_UNORM_S8_UINT: return EImageFormat::FORMAT_D24_UNORM_S8_UINT;
+    }
+
+    PFR_ASSERT(false, "Unknown image format!");
+    return EImageFormat::FORMAT_UNDEFINED;
+}
+
 VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(windowHandle)
 {
     VK_CHECK(glfwCreateWindowSurface(VulkanContext::Get().GetInstance(), static_cast<GLFWwindow*>(m_WindowHandle), nullptr, &m_Surface),
@@ -129,6 +163,11 @@ VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(w
     m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT;
     m_SurfaceFullScreenExclusiveInfo.pNext               = &m_SurfaceFullScreenExclusiveWin32Info;
 #endif
+}
+
+NODISCARD const EImageFormat VulkanSwapchain::GetImageFormat() const
+{
+    return VulkanImageFormatToPathfinder(m_ImageFormat.format);
 }
 
 void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
@@ -222,14 +261,13 @@ void VulkanSwapchain::Invalidate()
         std::ranges::for_each(m_ImageAcquiredSemaphores, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
     }
 
-    std::ranges::for_each(
-        m_ImageAcquiredSemaphores,
-        [&](auto& semaphore)
-        {
-            constexpr VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-            VK_CHECK(vkCreateSemaphore(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &semaphoreCreateInfo, nullptr, &semaphore),
-                     "Failed to create semaphore!");
-        });
+    std::ranges::for_each(m_ImageAcquiredSemaphores,
+                          [&](auto& semaphore)
+                          {
+                              constexpr VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+                              VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore),
+                                       "Failed to create semaphore!");
+                          });
 
     m_ImageIndex = 0;
     m_FrameIndex = 0;
@@ -252,9 +290,9 @@ void VulkanSwapchain::Invalidate()
     swapchainCreateInfo.presentMode = m_CurrentPresentMode;
 
     PFR_ASSERT(Details.SurfaceCapabilities.maxImageCount > 0, "Swapchain max image count less than zero!");
-    m_ImageCount                      = std::clamp(Details.SurfaceCapabilities.minImageCount + 1, Details.SurfaceCapabilities.minImageCount,
+    uint32_t imageCount               = std::clamp(Details.SurfaceCapabilities.minImageCount + 1, Details.SurfaceCapabilities.minImageCount,
                                                    Details.SurfaceCapabilities.maxImageCount);
-    swapchainCreateInfo.minImageCount = m_ImageCount;
+    swapchainCreateInfo.minImageCount = imageCount;
 
 #if VK_EXCLUSIVE_FULL_SCREEN_TEST
     if (m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
@@ -290,11 +328,11 @@ void VulkanSwapchain::Invalidate()
     VK_CHECK(vkCreateSwapchainKHR(logicalDevice, &swapchainCreateInfo, nullptr, &m_Handle), "Failed to create vulkan swapchain!");
     if (oldSwapchain) vkDestroySwapchainKHR(logicalDevice, oldSwapchain, nullptr);
 
-    VK_CHECK(vkGetSwapchainImagesKHR(logicalDevice, m_Handle, &m_ImageCount, nullptr), "Failed to retrieve swapchain images !");
-    PFR_ASSERT(m_ImageCount > 0, "Swapchain image can't be less than zero!");
+    VK_CHECK(vkGetSwapchainImagesKHR(logicalDevice, m_Handle, &imageCount, nullptr), "Failed to retrieve swapchain images !");
+    PFR_ASSERT(imageCount > 0, "Swapchain image can't be less than zero!");
 
-    m_Images.resize(m_ImageCount);
-    VK_CHECK(vkGetSwapchainImagesKHR(logicalDevice, m_Handle, &m_ImageCount, m_Images.data()), "Failed to acquire swapchain images!");
+    m_Images.resize(imageCount);
+    VK_CHECK(vkGetSwapchainImagesKHR(logicalDevice, m_Handle, &imageCount, m_Images.data()), "Failed to acquire swapchain images!");
 
     m_ImageViews.resize(m_Images.size());
     for (uint32_t i = 0; i < m_ImageViews.size(); ++i)
@@ -391,6 +429,56 @@ void VulkanSwapchain::PresentImage()
     }
 
     Recreate();
+}
+
+void VulkanSwapchain::BeginPass(const Shared<CommandBuffer>& commandBuffer, const bool bPreserveContents)
+{
+    const auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+    PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
+
+    {
+        const auto imageBarrier =
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
+                                                 VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL, 0, 0, 1, 0, 1, 0);
+
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+    }
+
+    m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
+    VkRenderingAttachmentInfo attachmentInfo = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
+    attachmentInfo.imageView                 = m_ImageViews[m_ImageIndex];
+    attachmentInfo.loadOp                    = bPreserveContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
+    attachmentInfo.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
+    attachmentInfo.imageLayout               = m_ImageLayouts[m_ImageIndex];
+
+    VkRenderingInfo renderingInfo      = {VK_STRUCTURE_TYPE_RENDERING_INFO};
+    renderingInfo.colorAttachmentCount = 1;
+    renderingInfo.layerCount           = 1;
+    renderingInfo.pColorAttachments    = &attachmentInfo;
+    renderingInfo.renderArea           = {{0, 0}, {m_ImageExtent}};
+
+    vulkanCommandBuffer->BeginRendering(&renderingInfo);
+}
+
+void VulkanSwapchain::EndPass(const Shared<CommandBuffer>& commandBuffer)
+{
+    const auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+    PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
+
+    vulkanCommandBuffer->EndRendering();
+
+    {
+        const auto imageBarrier =
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
+                                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, 0, 1, 0, 1, 0);
+
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
+    }
+
+    m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 }
 
 void VulkanSwapchain::Recreate()

@@ -14,6 +14,7 @@ class Swapchain : private Uncopyable, private Unmovable
   public:
     virtual ~Swapchain() = default;
 
+    NODISCARD virtual const EImageFormat GetImageFormat() const                 = 0;
     NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const   = 0;
     NODISCARD FORCEINLINE virtual const uint32_t GetImageCount() const          = 0;
     NODISCARD FORCEINLINE virtual bool WasInvalidatedDuringCurrentFrame() const = 0;
@@ -21,6 +22,9 @@ class Swapchain : private Uncopyable, private Unmovable
     virtual void SetClearColor(const glm::vec3& clearColor = glm::vec3(1.0f)) = 0;
     virtual void SetVSync(bool bVSync)                                        = 0;
     virtual void SetWindowMode(const EWindowMode windowMode)                  = 0;
+
+    virtual void BeginPass(const Shared<CommandBuffer>& commandBuffer, const bool bPreserveContents = true) = 0;
+    virtual void EndPass(const Shared<CommandBuffer>& commandBuffer)                                        = 0;
 
     virtual bool AcquireImage() = 0;
     virtual void PresentImage() = 0;

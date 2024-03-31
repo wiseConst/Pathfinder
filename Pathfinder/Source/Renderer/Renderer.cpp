@@ -793,8 +793,6 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     BloomPass();
     CompositePass();
 
-    if (uiLayer) uiLayer->EndRender();
-
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndPipelineStatisticsQuery();
     s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
 
@@ -810,6 +808,8 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
         false, false, ctsVal, {EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT}, {tts}, {ttsVal});
 
     Application::Get().GetWindow()->CopyToWindow(s_RendererData->CompositeFramebuffer->GetAttachments()[0].Attachment);
+
+    if (uiLayer) uiLayer->EndRender();
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndPipelineStatisticsQuery();
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndRecording();

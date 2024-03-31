@@ -51,6 +51,7 @@ enum class EImageFormat : uint8_t
 
     FORMAT_RGB8_UNORM,
     FORMAT_RGBA8_UNORM,
+    FORMAT_BGRA8_UNORM,  // Swapchain
     FORMAT_A2R10G10B10_UNORM_PACK32,
 
     FORMAT_R8_UNORM,

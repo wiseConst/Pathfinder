@@ -38,20 +38,6 @@ void VulkanUILayer::Init()
     const auto& context = VulkanContext::Get();
     const auto& device  = context.GetDevice();
 
-    {
-        FramebufferSpecification framebufferSpec = {"UIFramebuffer"};
-        const auto& compositeFramebuffer         = Renderer::GetRendererData()->CompositeFramebuffer;
-        framebufferSpec.ExistingAttachments[0]   = compositeFramebuffer->GetAttachments()[0].Attachment;
-
-        FramebufferAttachmentSpecification attachmentSpec = compositeFramebuffer->GetAttachments()[0].Specification;
-        attachmentSpec.LoadOp                             = ELoadOp::LOAD;
-        attachmentSpec.StoreOp                            = EStoreOp::STORE;
-        framebufferSpec.Attachments.emplace_back(attachmentSpec);
-
-        m_UIFramebuffer = Framebuffer::Create(framebufferSpec);
-        Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height) { m_UIFramebuffer->Resize(width, height); });
-    }
-
     // 1: create descriptor pool for IMGUI
     //  the size of the pool is very oversize, but it's copied from imgui demo
     //  itself.
@@ -72,7 +58,6 @@ void VulkanUILayer::Init()
     poolInfo.maxSets                    = 1000;
     poolInfo.poolSizeCount              = (uint32_t)std::size(poolSizes);
     poolInfo.pPoolSizes                 = poolSizes;
-
     VK_CHECK(vkCreateDescriptorPool(device->GetLogicalDevice(), &poolInfo, nullptr, &m_ImGuiPool), "Failed to create ImGui Pool!");
 
     // 2: initialize imgui library
@@ -110,7 +95,7 @@ void VulkanUILayer::Init()
     initInfo.PipelineRenderingCreateInfo                      = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
     initInfo.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
 
-    const auto vkImageFormat = ImageUtils::PathfinderImageFormatToVulkan(Renderer::GetFinalPassImage()->GetSpecification().Format);
+    const auto vkImageFormat                                     = ImageUtils::PathfinderImageFormatToVulkan(swapchain->GetImageFormat());
     initInfo.PipelineRenderingCreateInfo.pColorAttachmentFormats = &vkImageFormat;
 
     ImGui_ImplVulkan_Init(&initInfo);
@@ -153,7 +138,8 @@ void VulkanUILayer::EndRender()
 {
     static const auto& rd = Renderer::GetRendererData();
 
-    m_UIFramebuffer->BeginPass(rd->RenderCommandBuffer[rd->FrameIndex]);
+    const auto& swapchain = Application::Get().GetWindow()->GetSwapchain();
+    swapchain->BeginPass(rd->RenderCommandBuffer[rd->FrameIndex]);
 
     // Rendering
     ImGui::Render();
@@ -166,7 +152,7 @@ void VulkanUILayer::EndRender()
         ImGui::RenderPlatformWindowsDefault();
     }
 
-    m_UIFramebuffer->EndPass(rd->RenderCommandBuffer[rd->FrameIndex]);
+    swapchain->EndPass(rd->RenderCommandBuffer[rd->FrameIndex]);
 }
 
 }  // namespace Pathfinder

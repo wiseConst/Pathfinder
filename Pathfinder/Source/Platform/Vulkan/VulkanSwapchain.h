@@ -15,10 +15,12 @@ class VulkanSwapchain final : public Swapchain
     VulkanSwapchain(void* windowHandle) noexcept;
     virtual ~VulkanSwapchain() override { Destroy(); }
 
-    NODISCARD FORCEINLINE const uint32_t GetImageCount() const final override { return m_ImageCount; }
+    NODISCARD const EImageFormat GetImageFormat() const final override;
+    NODISCARD FORCEINLINE const uint32_t GetImageCount() const final override { return m_Images.size(); }
     NODISCARD FORCEINLINE const uint32_t GetCurrentFrameIndex() const final override { return m_FrameIndex; }
     NODISCARD FORCEINLINE void* GetImageAvailableSemaphore() const final override { return m_ImageAcquiredSemaphores[m_FrameIndex]; }
 
+    // TODO: refactor, make as variables
     void SetWaitSemaphore(const std::array<void*, s_FRAMES_IN_FLIGHT>& waitSemaphore)
     {
         for (uint32_t i{}; i < s_FRAMES_IN_FLIGHT; ++i)
@@ -33,6 +35,7 @@ class VulkanSwapchain final : public Swapchain
             m_RenderFenceRef[i] = (VkFence)renderFence[i];
         }
     }
+
     void SetClearColor(const glm::vec3& clearColor) final override;
     void SetVSync(bool bVSync) final override
     {
@@ -74,7 +77,6 @@ class VulkanSwapchain final : public Swapchain
     VkSurfaceKHR m_Surface           = VK_NULL_HANDLE;
     VkSurfaceFormatKHR m_ImageFormat = {VK_FORMAT_UNDEFINED, VK_COLORSPACE_SRGB_NONLINEAR_KHR};
 
-    uint32_t m_ImageCount                 = 0;
     VkPresentModeKHR m_CurrentPresentMode = VK_PRESENT_MODE_FIFO_KHR;
     VkExtent2D m_ImageExtent              = {1280, 720};
 
@@ -92,6 +94,9 @@ class VulkanSwapchain final : public Swapchain
     void Destroy() final override;
     bool AcquireImage() final override;
     void PresentImage() final override;
+
+    void BeginPass(const Shared<CommandBuffer>& commandBuffer, const bool bPreserveContents) final override;
+    void EndPass(const Shared<CommandBuffer>& commandBuffer) final override;
 
     void CopyToSwapchain(const Shared<Image>& image) final override;
 };

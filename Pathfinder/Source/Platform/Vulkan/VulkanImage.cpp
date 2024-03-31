@@ -43,6 +43,7 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
         case EImageFormat::FORMAT_UNDEFINED: return VK_FORMAT_UNDEFINED;
         case EImageFormat::FORMAT_RGB8_UNORM: return VK_FORMAT_R8G8B8_UNORM;
         case EImageFormat::FORMAT_RGBA8_UNORM: return VK_FORMAT_R8G8B8A8_UNORM;
+        case EImageFormat::FORMAT_BGRA8_UNORM: return VK_FORMAT_B8G8R8A8_UNORM;
         case EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32: return VK_FORMAT_A2R10G10B10_UNORM_PACK32;
         case EImageFormat::FORMAT_R8_UNORM: return VK_FORMAT_R8_UNORM;
         case EImageFormat::FORMAT_R16_UNORM: return VK_FORMAT_R16_UNORM;
