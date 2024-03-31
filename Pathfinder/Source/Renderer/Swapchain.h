@@ -9,6 +9,8 @@
 namespace Pathfinder
 {
 
+class CommandBuffer;
+
 class Swapchain : private Uncopyable, private Unmovable
 {
   public:
@@ -29,10 +31,9 @@ class Swapchain : private Uncopyable, private Unmovable
     virtual bool AcquireImage() = 0;
     virtual void PresentImage() = 0;
 
-    virtual void SetRenderFence(const std::array<void*, s_FRAMES_IN_FLIGHT>& renderFence)     = 0;
-    virtual void SetWaitSemaphore(const std::array<void*, s_FRAMES_IN_FLIGHT>& waitSemaphore) = 0;
-
     NODISCARD FORCEINLINE virtual void* GetImageAvailableSemaphore() const = 0;
+    NODISCARD FORCEINLINE virtual void* GetRenderFence() const             = 0;
+    NODISCARD FORCEINLINE virtual void* GetRenderSemaphore() const         = 0;
 
     virtual void Invalidate()                                       = 0;
     virtual void CopyToSwapchain(const Shared<Image>& image)        = 0;

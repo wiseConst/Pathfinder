@@ -18,23 +18,9 @@ class VulkanSwapchain final : public Swapchain
     NODISCARD const EImageFormat GetImageFormat() const final override;
     NODISCARD FORCEINLINE const uint32_t GetImageCount() const final override { return m_Images.size(); }
     NODISCARD FORCEINLINE const uint32_t GetCurrentFrameIndex() const final override { return m_FrameIndex; }
-    NODISCARD FORCEINLINE void* GetImageAvailableSemaphore() const final override { return m_ImageAcquiredSemaphores[m_FrameIndex]; }
-
-    // TODO: refactor, make as variables
-    void SetWaitSemaphore(const std::array<void*, s_FRAMES_IN_FLIGHT>& waitSemaphore)
-    {
-        for (uint32_t i{}; i < s_FRAMES_IN_FLIGHT; ++i)
-        {
-            m_RenderSemaphoreRef[i] = (VkSemaphore)waitSemaphore[i];
-        }
-    }
-    void SetRenderFence(const std::array<void*, s_FRAMES_IN_FLIGHT>& renderFence) final override
-    {
-        for (uint32_t i{}; i < s_FRAMES_IN_FLIGHT; ++i)
-        {
-            m_RenderFenceRef[i] = (VkFence)renderFence[i];
-        }
-    }
+    NODISCARD FORCEINLINE void* GetImageAvailableSemaphore() const final override { return m_ImageAcquiredSemaphore[m_FrameIndex]; }
+    NODISCARD FORCEINLINE void* GetRenderFence() const final override { return m_RenderFence[m_FrameIndex]; }
+    NODISCARD FORCEINLINE void* GetRenderSemaphore() const final override { return m_RenderSemaphore[m_FrameIndex]; }
 
     void SetClearColor(const glm::vec3& clearColor) final override;
     void SetVSync(bool bVSync) final override
@@ -59,9 +45,9 @@ class VulkanSwapchain final : public Swapchain
     VkSwapchainKHR m_Handle = VK_NULL_HANDLE;
     void* m_WindowHandle    = nullptr;
 
-    VulkanSemaphorePerFrame m_RenderSemaphoreRef;
-    VulkanFencePerFrame m_RenderFenceRef;
-    VulkanSemaphorePerFrame m_ImageAcquiredSemaphores;
+    VulkanSemaphorePerFrame m_RenderSemaphore;
+    VulkanFencePerFrame m_RenderFence;
+    VulkanSemaphorePerFrame m_ImageAcquiredSemaphore;
     std::vector<ResizeCallback> m_ResizeCallbacks;
 
     std::vector<VkImageLayout> m_ImageLayouts;

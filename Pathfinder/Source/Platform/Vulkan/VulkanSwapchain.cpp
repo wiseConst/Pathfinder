@@ -149,12 +149,6 @@ VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(w
 
     Invalidate();
 
-    for (auto& fence : m_RenderFenceRef)
-        fence = VK_NULL_HANDLE;
-
-    for (auto& semaphore : m_RenderSemaphoreRef)
-        semaphore = VK_NULL_HANDLE;
-
 #if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     m_SurfaceFullScreenExclusiveWin32Info.pNext = nullptr;
     m_SurfaceFullScreenExclusiveWin32Info.hmonitor =
@@ -258,16 +252,34 @@ void VulkanSwapchain::Invalidate()
     if (oldSwapchain)
     {
         std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
-        std::ranges::for_each(m_ImageAcquiredSemaphores, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
+        std::ranges::for_each(m_ImageAcquiredSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
+        std::ranges::for_each(m_RenderSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
+        std::ranges::for_each(m_RenderFence, [&](auto& fence) { vkDestroyFence(logicalDevice, fence, nullptr); });
     }
 
-    std::ranges::for_each(m_ImageAcquiredSemaphores,
+    std::ranges::for_each(m_ImageAcquiredSemaphore,
                           [&](auto& semaphore)
                           {
                               constexpr VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
                               VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore),
                                        "Failed to create semaphore!");
                           });
+
+    std::ranges::for_each(m_RenderSemaphore,
+                          [&](auto& semaphore)
+                          {
+                              constexpr VkSemaphoreCreateInfo semaphoreCreateInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
+                              VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore),
+                                       "Failed to create semaphore!");
+                          });
+
+    std::ranges::for_each(
+        m_RenderFence,
+        [&](auto& fence)
+        {
+            constexpr VkFenceCreateInfo fenceCreateInfo = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VK_FENCE_CREATE_SIGNALED_BIT};
+            VK_CHECK(vkCreateFence(logicalDevice, &fenceCreateInfo, nullptr, &fence), "Failed to create fence!");
+        });
 
     m_ImageIndex = 0;
     m_FrameIndex = 0;
@@ -356,22 +368,22 @@ bool VulkanSwapchain::AcquireImage()
     m_bWasInvalidated         = false;
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
 
-    if (m_RenderFenceRef[m_FrameIndex] != VK_NULL_HANDLE)
+    if (m_RenderFence[m_FrameIndex] != VK_NULL_HANDLE)
     {
-        VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_RenderFenceRef[m_FrameIndex], VK_TRUE, UINT64_MAX),
+        VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_RenderFence[m_FrameIndex], VK_TRUE, UINT64_MAX),
                  "Failed to wait on swapchain-render submit fence!");
     }
 
     const auto result =
-        vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphores[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
+        vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphore[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
 
     m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_UNDEFINED;
 
     if (result == VK_SUCCESS)
     {
-        if (m_RenderFenceRef[m_FrameIndex] != VK_NULL_HANDLE)
+        if (m_RenderFence[m_FrameIndex] != VK_NULL_HANDLE)
         {
-            VK_CHECK(vkResetFences(logicalDevice, 1, &m_RenderFenceRef[m_FrameIndex]), "Failed to reset swapchain-render submit fence!");
+            VK_CHECK(vkResetFences(logicalDevice, 1, &m_RenderFence[m_FrameIndex]), "Failed to reset swapchain-render submit fence!");
         }
         return true;
     }
@@ -390,6 +402,7 @@ void VulkanSwapchain::PresentImage()
 {
     m_bWasInvalidated = false;
 
+    bool bWasEverUsed = true;  // In case Renderer didn't use it, we should set waitSemaphore to imageAvaliable, otherwise renderSemaphore.
     if (m_ImageLayouts[m_ImageIndex] != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
     {
         auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
@@ -404,6 +417,8 @@ void VulkanSwapchain::PresentImage()
 
         vulkanCommandBuffer->EndRecording();
         vulkanCommandBuffer->Submit();
+
+        bWasEverUsed = false;
     }
 
     VkPresentInfoKHR presentInfo = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
@@ -411,12 +426,8 @@ void VulkanSwapchain::PresentImage()
     presentInfo.swapchainCount   = 1;
     presentInfo.pSwapchains      = &m_Handle;
 
-    // Here I assume that waiting on image acquiring done outside swapchain(Renderer::Flush main graphics submit)
-    VkSemaphore waitSemaphore =
-        m_RenderSemaphoreRef[m_FrameIndex] ? m_RenderSemaphoreRef[m_FrameIndex] : m_ImageAcquiredSemaphores[m_FrameIndex];
-
     presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores    = &waitSemaphore;
+    presentInfo.pWaitSemaphores    = bWasEverUsed ? &m_RenderSemaphore[m_FrameIndex] : &m_ImageAcquiredSemaphore[m_FrameIndex];
 
     Timer t                                   = {};
     const auto result                         = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &presentInfo);
@@ -517,9 +528,10 @@ void VulkanSwapchain::Destroy()
     vkDestroySwapchainKHR(logicalDevice, m_Handle, nullptr);
     vkDestroySurfaceKHR(context.GetInstance(), m_Surface, nullptr);
 
-    std::ranges::for_each(m_ImageViews,
-                          [&](auto& imageView) { vkDestroyImageView(context.GetDevice()->GetLogicalDevice(), imageView, nullptr); });
-    std::ranges::for_each(m_ImageAcquiredSemaphores, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
+    std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
+    std::ranges::for_each(m_ImageAcquiredSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
+    std::ranges::for_each(m_RenderSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
+    std::ranges::for_each(m_RenderFence, [&](auto& fence) { vkDestroyFence(logicalDevice, fence, nullptr); });
 }
 
 void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)

@@ -54,8 +54,7 @@ static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const ShaderStageFl
     return vkShaderStageFlags;
 }
 
-VulkanCommandBuffer::VulkanCommandBuffer(ECommandBufferType type, bool bSignaledFence, ECommandBufferLevel level)
-    : m_Type(type), m_Level(level)
+VulkanCommandBuffer::VulkanCommandBuffer(ECommandBufferType type, ECommandBufferLevel level) : m_Type(type), m_Level(level)
 {
     const auto& context = VulkanContext::Get();
     context.GetDevice()->AllocateCommandBuffer(m_Handle, type, PathfinderCommandBufferLevelToVulkan(m_Level));
@@ -90,8 +89,7 @@ VulkanCommandBuffer::VulkanCommandBuffer(ECommandBufferType type, bool bSignaled
     }
 
     {
-        const VkFenceCreateInfo fenceCI = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr,
-                                           bSignaledFence ? VK_FENCE_CREATE_SIGNALED_BIT : VkFenceCreateFlags{}};
+        const VkFenceCreateInfo fenceCI = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VkFenceCreateFlags{}};
         VK_CHECK(vkCreateFence(context.GetDevice()->GetLogicalDevice(), &fenceCI, VK_NULL_HANDLE, &m_SubmitFence),
                  "Failed to create fence!");
 
@@ -249,7 +247,7 @@ void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheri
 void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit, bool bSignalWaitSemaphore, uint64_t timelineSignalValue,
                                  const std::vector<PipelineStageFlags> pipelineStages, const std::vector<void*>& waitSemaphores,
                                  const std::vector<uint64_t>& waitSemaphoreValues, const std::vector<void*>& signalSemaphores,
-                                 const std::vector<uint64_t>& signalSemaphoreValues)
+                                 const std::vector<uint64_t>& signalSemaphoreValues, const void* submitFence)
 {
     VkSubmitInfo submitInfo       = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
     submitInfo.commandBufferCount = 1;
@@ -310,7 +308,11 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit, bool bSignalWaitSemaphor
         }
     }
 
-    VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo, timelineSignalValue == UINT64_MAX ? m_SubmitFence : VK_NULL_HANDLE),
+    const auto vkSubmitFence = (VkFence)submitFence;
+    VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo,
+                           vkSubmitFence                       ? vkSubmitFence
+                           : timelineSignalValue == UINT64_MAX ? m_SubmitFence
+                                                               : VK_NULL_HANDLE),
              "Failed to submit command buffer!");
     if (bWaitAfterSubmit)
     {

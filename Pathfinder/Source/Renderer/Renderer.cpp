@@ -72,25 +72,11 @@ void Renderer::Init()
                           });
 
     std::ranges::for_each(s_RendererData->RenderCommandBuffer, [](auto& commandBuffer)
-                          { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS, true); });
+                          { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS); });
     std::ranges::for_each(s_RendererData->ComputeCommandBuffer, [](auto& commandBuffer)
                           { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE); });
     std::ranges::for_each(s_RendererData->TransferCommandBuffer, [](auto& commandBuffer)
                           { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER); });
-
-    // Submit render fences to make use of frames in flight(needs better handling in future)
-    {
-        std::array<void*, s_FRAMES_IN_FLIGHT> fences;
-        std::array<void*, s_FRAMES_IN_FLIGHT> semaphores;
-        for (uint32_t i{}; i < s_FRAMES_IN_FLIGHT; ++i)
-        {
-            fences[i]     = s_RendererData->RenderCommandBuffer[i]->GetSubmitFence();
-            semaphores[i] = s_RendererData->RenderCommandBuffer[i]->GetWaitSemaphore();
-        }
-
-        Application::Get().GetWindow()->GetSwapchain()->SetRenderFence(fences);
-        Application::Get().GetWindow()->GetSwapchain()->SetWaitSemaphore(semaphores);
-    }
 
     {
         uint32_t whiteColor                   = 0xFFFFFFFF;
@@ -814,11 +800,13 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndPipelineStatisticsQuery();
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
 
+    const auto& swapchain = Application::Get().GetWindow()->GetSwapchain();
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Submit(
-        false, true, UINT64_MAX,
+        false, false, UINT64_MAX,
         {EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
          EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT},
-        {Application::Get().GetWindow()->GetSwapchain()->GetImageAvailableSemaphore(), cts, tts}, {1, ctsVal, ttsVal});
+        {swapchain->GetImageAvailableSemaphore(), cts, tts}, {1, ctsVal, ttsVal}, {swapchain->GetRenderSemaphore()}, {},
+        swapchain->GetRenderFence());
 
     s_RendererData->CurrentRenderCommandBuffer.reset();
     s_RendererData->CurrentComputeCommandBuffer.reset();

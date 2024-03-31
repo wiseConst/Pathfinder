@@ -12,8 +12,7 @@ class Pipeline;
 class VulkanCommandBuffer final : public CommandBuffer
 {
   public:
-    explicit VulkanCommandBuffer(ECommandBufferType type, bool bSignaledFence = false,
-                                 ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
+    explicit VulkanCommandBuffer(ECommandBufferType type, ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
     VulkanCommandBuffer() = delete;
     ~VulkanCommandBuffer() override { Destroy(); }
 
@@ -84,7 +83,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, uint64_t timelineSignalValue = UINT64_MAX,
                         const std::vector<PipelineStageFlags> pipelineStages = {}, const std::vector<void*>& waitSemaphores = {},
                         const std::vector<uint64_t>& waitSemaphoreValues = {}, const std::vector<void*>& signalSemaphores = {},
-                        const std::vector<uint64_t>& signalSemaphoreValues = {}) final override;
+                        const std::vector<uint64_t>& signalSemaphoreValues = {}, const void* submitFence = nullptr) final override;
     void TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
                                const VkImageAspectFlags aspectMask, const uint32_t layerCount, const uint32_t mipLevels) const;
 

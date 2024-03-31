@@ -98,10 +98,10 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, uint64_t timelineSignalValue = UINT64_MAX,
                         const std::vector<PipelineStageFlags> pipelineStages = {}, const std::vector<void*>& waitSemaphores = {},
                         const std::vector<uint64_t>& waitSemaphoreValues = {}, const std::vector<void*>& signalSemaphores = {},
-                        const std::vector<uint64_t>& signalSemaphoreValues = {}) = 0;
-    virtual void Reset()                                                         = 0;
+                        const std::vector<uint64_t>& signalSemaphoreValues = {}, const void* submitFence = nullptr) = 0;
+    virtual void Reset()                                                                                            = 0;
 
-    static Shared<CommandBuffer> Create(ECommandBufferType type, bool bSignaledFence = false,
+    static Shared<CommandBuffer> Create(ECommandBufferType type,
                                         ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
 
   protected:
