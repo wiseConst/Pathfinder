@@ -21,14 +21,14 @@ class VulkanSwapchain final : public Swapchain
     NODISCARD FORCEINLINE void* GetImageAvailableSemaphore() const final override { return m_ImageAcquiredSemaphore[m_FrameIndex]; }
     NODISCARD FORCEINLINE void* GetRenderFence() const final override { return m_RenderFence[m_FrameIndex]; }
     NODISCARD FORCEINLINE void* GetRenderSemaphore() const final override { return m_RenderSemaphore[m_FrameIndex]; }
+    NODISCARD FORCEINLINE bool IsVSync() const final override { return m_bVSync; }
 
     void SetClearColor(const glm::vec3& clearColor) final override;
     void SetVSync(bool bVSync) final override
     {
         if (m_bVSync == bVSync) return;
 
-        m_bVSync         = bVSync;
-        m_bRecreateVSync = true;
+        m_bVSync = bVSync;
         Recreate();
         LOG_DEBUG("VSync: %s.", m_bVSync ? "ON" : "OFF");
     }
@@ -48,7 +48,6 @@ class VulkanSwapchain final : public Swapchain
     VulkanSemaphorePerFrame m_RenderSemaphore;
     VulkanFencePerFrame m_RenderFence;
     VulkanSemaphorePerFrame m_ImageAcquiredSemaphore;
-    std::vector<ResizeCallback> m_ResizeCallbacks;
 
     std::vector<VkImageLayout> m_ImageLayouts;
     std::vector<VkImage> m_Images;
@@ -70,9 +69,7 @@ class VulkanSwapchain final : public Swapchain
     uint32_t m_FrameIndex{0};
 
     EWindowMode m_WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
-    bool m_bVSync            = false;
     bool m_bWasInvalidated   = false;
-    bool m_bRecreateVSync    = false;
 
     NODISCARD FORCEINLINE bool WasInvalidatedDuringCurrentFrame() const final override { return m_bWasInvalidated; }
 

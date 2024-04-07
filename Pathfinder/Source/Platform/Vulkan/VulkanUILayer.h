@@ -19,7 +19,7 @@ class VulkanUILayer final : public UILayer
     void Destroy() final override;
 
     void OnEvent(Event& e) final override;
-    
+
     // Unused, lack of good layer class implementation.
     void OnUpdate(const float deltaTime) final override {}
     void OnUIRender() final override {}
@@ -29,6 +29,8 @@ class VulkanUILayer final : public UILayer
 
   private:
     VkDescriptorPool m_ImGuiPool = VK_NULL_HANDLE;
+
+    void UpdateTextureIDs() final override;
 };
 
 }  // namespace Pathfinder

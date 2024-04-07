@@ -8,11 +8,12 @@ namespace Pathfinder
 
 static bool s_bIsLoggerInitialized = false;
 
-void Logger::Init()
+void Logger::Init(const std::string_view& logFileName)
 {
     if (!s_bIsLoggerInitialized)
     {
-        s_LogFile.open("Pathfinder.log", std::ios::out | std::ios::trunc);
+        PFR_ASSERT(!logFileName.empty(), "Log file name is empty!");
+        s_LogFile.open(logFileName.data(), std::ios::out | std::ios::trunc);
         PFR_ASSERT(s_LogFile.is_open(), "Failed to open log file!");
 
         s_bIsLoggerInitialized = true;

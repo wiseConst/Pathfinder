@@ -10,6 +10,7 @@
 namespace Pathfinder
 {
 
+#define SHADER_DEBUG_PRINTF 0
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
 #define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
@@ -170,7 +171,7 @@ static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeve
     {
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT:
         {
-            if constexpr (VK_LOG_INFO || SHADER_DEBUG_PRINTF) LOG_INFO(pCallbackData->pMessage);
+            if constexpr (VK_LOG_INFO) LOG_INFO(pCallbackData->pMessage);
             break;
         }
         case VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT:

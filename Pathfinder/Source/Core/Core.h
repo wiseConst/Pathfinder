@@ -4,6 +4,7 @@
 #include "PlatformDetection.h"
 #include "Inheritance.h"
 #include "CoreDefines.h"
+#include "UUID.h"
 
 #include "Memory/Memory.h"
 #include "Log.h"
@@ -37,7 +38,7 @@ namespace Pathfinder
 
 static constexpr const char* s_DEFAULT_STRING = "NONE";
 
-static constexpr uint16_t s_WORKER_THREAD_COUNT = 16;
+static constexpr uint16_t s_WORKER_THREAD_COUNT = 10;
 
 template <typename T> using Weak = std::weak_ptr<T>;
 

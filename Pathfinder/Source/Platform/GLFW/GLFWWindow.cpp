@@ -26,11 +26,24 @@ static void InitGLFW()
     }
 }
 
+Window::Window(const WindowSpecification& windowSpec) noexcept : m_Specification(windowSpec) {}
+
 Window::~Window() = default;
 
 Unique<Window> Window::Create(const WindowSpecification& windowSpec)
 {
     return MakeUnique<GLFWWindow>(windowSpec);
+}
+
+void Window::SetVSync(const bool bVSync)
+{
+    if (m_Specification.bVSync == bVSync) return;
+
+    PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
+    m_Specification.bVSync = bVSync;
+
+    // Update VSync state.
+    m_Swapchain->SetVSync(m_Specification.bVSync);
 }
 
 std::vector<const char*> Window::GetWSIExtensions()
@@ -48,7 +61,7 @@ std::vector<const char*> Window::GetWSIExtensions()
     return wsiExtensions;
 }
 
-GLFWWindow::GLFWWindow(const WindowSpecification& windowSpec) noexcept : m_Specification(windowSpec)
+GLFWWindow::GLFWWindow(const WindowSpecification& windowSpec) noexcept : Window(windowSpec)
 {
     InitGLFW();
 
@@ -91,19 +104,12 @@ void GLFWWindow::SetClearColor(const glm::vec3& clearColor)
     m_Swapchain->SetClearColor(clearColor);
 }
 
-void GLFWWindow::SetVSync(bool bVSync)
-{
-    PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    m_Swapchain->SetVSync(bVSync);
-}
-
 void GLFWWindow::SetWindowMode(const EWindowMode windowMode)
 {
     if (m_Specification.WindowMode == windowMode) return;
 
     m_Specification.WindowMode = windowMode;
     m_Swapchain->SetWindowMode(windowMode);
-    m_Swapchain->Invalidate();
 }
 
 void GLFWWindow::SetWindowTitle(const char* title)

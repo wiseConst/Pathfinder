@@ -76,7 +76,7 @@ void main()
     vec3 irradiance = emissive;
     #if PBR
     const vec3 F0 = mix(vec3(0.04), albedo.rgb, metallic);
-    const vec3 ambient = albedo.rgb * ao * .08f;
+    const vec3 ambient = albedo.rgb * ao * .04f;
     irradiance += (u_Lights.DirectionalLightCount + u_Lights.PointLightCount + u_Lights.SpotLightCount) > 0 ? ambient : vec3(0);
     #endif
     
@@ -102,6 +102,7 @@ void main()
             bool bLayerNeedsFix = layer == -1;
             if(layer == -1) layer = int(MAX_SHADOW_CASCADES - 1);
 
+         #if 0
             vec3 cascadeColor=vec3(0);
             if(layer == 0) cascadeColor.r = 1;
             else if(layer==1) cascadeColor.g = 1;
@@ -109,6 +110,7 @@ void main()
             else if(layer==3) cascadeColor=vec3(1,1,0);
             
             imageStore(u_GlobalImages_RGBA8[u_PC.AlbedoTextureIndex], ivec2(gl_FragCoord.xy), vec4(cascadeColor,1));
+         #endif
 
             float biasMultiplier = 1.f;
             if (layer == MAX_SHADOW_CASCADES - 1)

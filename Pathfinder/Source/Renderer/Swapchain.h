@@ -19,6 +19,7 @@ class Swapchain : private Uncopyable, private Unmovable
     NODISCARD virtual const EImageFormat GetImageFormat() const                 = 0;
     NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const   = 0;
     NODISCARD FORCEINLINE virtual const uint32_t GetImageCount() const          = 0;
+    NODISCARD FORCEINLINE virtual bool IsVSync() const                          = 0;
     NODISCARD FORCEINLINE virtual bool WasInvalidatedDuringCurrentFrame() const = 0;
 
     virtual void SetClearColor(const glm::vec3& clearColor = glm::vec3(1.0f)) = 0;
@@ -42,6 +43,10 @@ class Swapchain : private Uncopyable, private Unmovable
     static Unique<Swapchain> Create(void* windowHandle);
 
   protected:
+    bool m_bVSync = false;
+
+    std::vector<ResizeCallback> m_ResizeCallbacks;
+
     Swapchain() noexcept   = default;
     virtual void Destroy() = 0;
 };

@@ -112,9 +112,12 @@ class Image : private Uncopyable, private Unmovable
 
     static Shared<Image> Create(const ImageSpecification& imageSpec);
 
+    const auto& GetUUID() const { return m_UUID; }
+
   protected:
     ImageSpecification m_Specification = {};
     uint32_t m_Index                   = UINT32_MAX;  // bindless array purposes
+    UUID m_UUID                        = {};
 
     Image(const ImageSpecification& imageSpec) : m_Specification(imageSpec) {}
     Image() = default;

@@ -199,8 +199,8 @@ void VulkanFramebuffer::EndPass(const Shared<CommandBuffer>& commandBuffer)
     if (depthImageBarrier.image)
     {
         vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1,
-                                           &depthImageBarrier);
+                                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &depthImageBarrier);
     }
 
     if (!colorImageBarriers.empty())

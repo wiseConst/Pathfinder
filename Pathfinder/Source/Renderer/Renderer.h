@@ -41,6 +41,17 @@ class Renderer : private Uncopyable, private Unmovable
     static void AddPointLight(const PointLight& pl);
     static void AddSpotLight(const SpotLight& sl);
 
+    static const std::map<std::string, Shared<Image>> GetRenderTargetList();
+    static const std::map<std::string, float>& GetPassStatistics()
+    {
+        PFR_ASSERT(s_RendererData, "RendererData is not valid!");
+        return s_RendererData->PassStats;
+    }
+    static const std::map<std::string, uint64_t>& GetPipelineStatistics()
+    {
+        PFR_ASSERT(s_RendererData, "RendererData is not valid!");
+        return s_RendererData->PipelineStats;
+    }
     static Shared<Image> GetFinalPassImage();
 
     NODISCARD FORCEINLINE static const auto& GetRendererData()
@@ -65,6 +76,8 @@ class Renderer : private Uncopyable, private Unmovable
         Unique<LightsData> LightStruct = nullptr;
         CameraData CameraStruct;
         Frustum CullFrustum;
+        std::map<std::string, float> PassStats;
+        std::map<std::string, uint64_t> PipelineStats;
 
         // NOTE: PerFramed should be objects that are used by host and device.
         BufferPerFrame LightsSSBO;
@@ -94,13 +107,14 @@ class Renderer : private Uncopyable, private Unmovable
         Shared<Pipeline> CompositePipeline       = nullptr;
 
         // Forward+ renderer
-        Shared<Framebuffer> GBuffer          = nullptr;
-        Shared<Pipeline> ForwardPlusPipeline = nullptr;
+        Shared<Framebuffer> GBuffer                     = nullptr;
+        Shared<Pipeline> ForwardPlusOpaquePipeline      = nullptr;
+        Shared<Pipeline> ForwardPlusTransparentPipeline = nullptr;
 
         Shared<Framebuffer> DepthPrePassFramebuffer = nullptr;
         Shared<Pipeline> DepthPrePassPipeline       = nullptr;
 
-        // Atmospheric Scattering
+        // Atmospheric Scattering // TODO: Optimize via depth rejection.
         Shared<Pipeline> AtmospherePipeline = nullptr;
 
         // BLOOM Ping-pong
@@ -131,6 +145,10 @@ class Renderer : private Uncopyable, private Unmovable
         std::vector<RenderObject> TransparentObjects;
         Shared<Texture2D> WhiteTexture = nullptr;
 
+        // Light-Culling
+        bool bNeedsFrustumsRecomputing                = true;
+        Shared<Pipeline> ComputeFrustumsPipeline      = nullptr;
+        Shared<Buffer> FrustumsSSBO                   = nullptr;
         Shared<Image> FrustumDebugImage               = nullptr;
         Shared<Image> LightHeatMapImage               = nullptr;
         Shared<Pipeline> LightCullingPipeline         = nullptr;
@@ -149,15 +167,18 @@ class Renderer : private Uncopyable, private Unmovable
             Shared<Pathfinder::Pipeline> Pipeline       = nullptr;
             Shared<Pathfinder::Framebuffer> Framebuffer = nullptr;
         };
-        AO SSAO   = {};
-        AO HBAO   = {};
-        AO BlurAO = {};
+        AO SSAO = {};
+        AO HBAO = {};
+        std::array<Shared<Pipeline>, 2> BlurAOPipeline;
+        std::array<Shared<Framebuffer>, 2> BlurAOFramebuffer;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
 
     struct RendererSettings
     {
+        bool bVSync;
+
         bool bMeshShadingSupport;
         bool bRTXSupport;
         bool bBDASupport;
@@ -189,6 +210,7 @@ class Renderer : private Uncopyable, private Unmovable
     static void DirShadowMapPass();
     static void PointLightShadowMapPass();
 
+    static void ComputeFrustumsPass();
     static void LightCullingPass();
     static void AtmosphericScatteringPass();
 

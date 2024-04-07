@@ -5,6 +5,7 @@
 
 #include "Window.h"
 #include "Renderer/GraphicsContext.h"
+#include "Renderer/Texture2D.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/Renderer2D.h"
 
@@ -23,7 +24,7 @@ Application::Application(const ApplicationSpecification& appSpec) noexcept : m_S
     s_Instance   = this;
     s_bIsRunning = true;
 
-    Logger::Init();
+    Logger::Init(std::string(m_Specification.Title) + ".log");
     PFR_ASSERT(s_FRAMES_IN_FLIGHT != 0, "Frames in flight should be greater than zero!");
     PFR_ASSERT(s_WORKER_THREAD_COUNT > 0 && JobSystem::GetNumThreads() > 0, "No worker threads found!");
 
@@ -87,6 +88,7 @@ void Application::Run()
             ss << " [2D batches]: " << Renderer2D::GetStats().BatchCount;
             ss << " [descriptor pools]: " << Renderer::GetStats().DescriptorPoolCount;
             ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
+            ss << " [samplers]: " << SamplerStorage::GetSamplerCount();
             m_Window->SetWindowTitle(ss.str().data());
 
             accumulatedDelta = 0.0;
@@ -130,20 +132,6 @@ void Application::OnEvent(Event& e)
 
                   return true;
               }*/
-
-            if (key == EKey::KEY_F4)
-            {
-                m_Window->SetVSync(true);
-
-                return true;
-            }
-
-            if (key == EKey::KEY_F5)
-            {
-                m_Window->SetVSync(false);
-
-                return true;
-            }
 
             return false;
         });

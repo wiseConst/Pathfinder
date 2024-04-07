@@ -65,13 +65,8 @@ class VulkanCommandBuffer final : public CommandBuffer
 
     FORCEINLINE void Reset() final override { VK_CHECK(vkResetCommandBuffer(m_Handle, 0), "Failed to reset command buffer!"); }
 
-    FORCEINLINE void InsertExecutionBarrier(const EPipelineStage srcPipelineStage,
-                                            const EPipelineStage dstPipelineStage) const final override
-    {
-        vkCmdPipelineBarrier(m_Handle, VulkanUtility::PathfinderPipelineStageToVulkan(srcPipelineStage),
-                             VulkanUtility::PathfinderPipelineStageToVulkan(dstPipelineStage), VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0,
-                             nullptr, 0, nullptr);
-    }
+    FORCEINLINE void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EAccessFlags srcAccessFlags,
+                                            const EPipelineStage dstPipelineStage, const EAccessFlags dstAccessFlags) const final override;
 
     void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
                                    const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,

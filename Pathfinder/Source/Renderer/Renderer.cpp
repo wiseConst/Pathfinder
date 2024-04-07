@@ -34,10 +34,11 @@ void Renderer::Init()
     SamplerStorage::Init();
     RayTracingBuilder::Init();
 
+    s_RendererSettings.bVSync   = Application::Get().GetWindow()->IsVSync();
     s_RendererData->LightStruct = MakeUnique<LightsData>();
 
-    ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "Forward", "DepthPrePass", "LightCulling", "Composite", "AO/SSAO", "AO/HBAO",
-                                                 "AO/AO_Blur", "Shadows/DirShadowMap", "Shadows/PointLightShadowMap",
+    ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "ForwardPlus", "DepthPrePass", "LightCulling", "ComputeFrustums", "Composite",
+                                                 "AO/SSAO", "AO/HBAO", "Shadows/DirShadowMap", "Shadows/PointLightShadowMap",
                                                  "AtmosphericScattering", "Post/GaussianBlur"});
 
     std::ranges::for_each(s_RendererData->UploadHeap,
@@ -93,7 +94,9 @@ void Renderer::Init()
                                                                   ELoadOp::CLEAR,
                                                                   EStoreOp::STORE,
                                                                   glm::vec4(0.0f, 0.0f, 0.0f, 1.0f),
-                                                                  false};
+                                                                  false,
+                                                                  ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                                                  ESamplerFilter::SAMPLER_FILTER_NEAREST};
         depthAttachmentSpec.bBindlessUsage                     = true;
 
         framebufferSpec.Attachments.emplace_back(depthAttachmentSpec);
@@ -141,7 +144,8 @@ void Renderer::Init()
                                                                  glm::vec4(0),
                                                                  true,
                                                                  ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                                                 ESamplerFilter::SAMPLER_FILTER_LINEAR};
+                                                                 ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                                                 true};
             framebufferSpec.Attachments.emplace_back(attachmentSpec);
         }
 
@@ -177,8 +181,8 @@ void Renderer::Init()
     }
 
     {
-        PipelineSpecification forwardPipelineSpec = {"ForwardPlus", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-        forwardPipelineSpec.Shader                = ShaderLibrary::Get("Forward");
+        PipelineSpecification forwardPipelineSpec = {"ForwardPlusOpaque", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+        forwardPipelineSpec.Shader                = ShaderLibrary::Get("ForwardPlus");
         // Rendering view normals useless for now.
         // forwardPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(true);
         forwardPipelineSpec.bBindlessCompatible = true;
@@ -197,7 +201,10 @@ void Renderer::Init()
                                                        {"inTangent", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
                                                        {"inUV", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2},
                                                    }};
-        PipelineBuilder::Push(s_RendererData->ForwardPlusPipeline, forwardPipelineSpec);
+        PipelineBuilder::Push(s_RendererData->ForwardPlusOpaquePipeline, forwardPipelineSpec);
+        forwardPipelineSpec.DebugName      = "ForwardPlusTransparent";
+        forwardPipelineSpec.DepthCompareOp = depthPrePassPipelineSpec.DepthCompareOp;
+        PipelineBuilder::Push(s_RendererData->ForwardPlusTransparentPipeline, forwardPipelineSpec);
     }
 
     {
@@ -254,18 +261,27 @@ void Renderer::Init()
     }
     /* vk_mini_path_tracer  */
 
-    PipelineSpecification lightCullingPipelineSpec = {"LightCulling", EPipelineType::PIPELINE_TYPE_COMPUTE};
-    lightCullingPipelineSpec.Shader                = ShaderLibrary::Get("LightCulling");
-    lightCullingPipelineSpec.bBindlessCompatible   = true;
-    PipelineBuilder::Push(s_RendererData->LightCullingPipeline, lightCullingPipelineSpec);
+    // Light-Culling
+    {
+        PipelineSpecification lightCullingPipelineSpec = {"LightCulling", EPipelineType::PIPELINE_TYPE_COMPUTE};
+        lightCullingPipelineSpec.Shader                = ShaderLibrary::Get("LightCulling");
+        lightCullingPipelineSpec.bBindlessCompatible   = true;
+        PipelineBuilder::Push(s_RendererData->LightCullingPipeline, lightCullingPipelineSpec);
+
+        PipelineSpecification computeFrustumsPipelineSpec = {"ComputeFrustums", EPipelineType::PIPELINE_TYPE_COMPUTE};
+        computeFrustumsPipelineSpec.Shader                = ShaderLibrary::Get("ComputeFrustums");
+        computeFrustumsPipelineSpec.bBindlessCompatible   = true;
+        PipelineBuilder::Push(s_RendererData->ComputeFrustumsPipeline, computeFrustumsPipelineSpec);
+    }
 
     {
         BufferSpecification sbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE};
 
-        const uint32_t screenWidth  = s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width;
-        const uint32_t screenHeight = s_RendererData->DepthPrePassFramebuffer->GetSpecification().Height;
-        const size_t sbSize =
-            MAX_POINT_LIGHTS * sizeof(uint32_t) * screenWidth * screenHeight / LIGHT_CULLING_TILE_SIZE / LIGHT_CULLING_TILE_SIZE;
+        const uint32_t width =
+            (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+        const uint32_t height =
+            (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Height + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+        const size_t sbSize   = MAX_POINT_LIGHTS * sizeof(uint32_t) * width * height;
         sbSpec.BufferCapacity = sbSize;
 
         s_RendererData->PointLightIndicesStorageBuffer = Buffer::Create(sbSpec);
@@ -274,13 +290,27 @@ void Renderer::Init()
     {
         BufferSpecification sbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE};
 
-        const uint32_t screenWidth  = s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width;
-        const uint32_t screenHeight = s_RendererData->DepthPrePassFramebuffer->GetSpecification().Height;
-        const size_t sbSize =
-            MAX_SPOT_LIGHTS * sizeof(uint32_t) * screenWidth * screenHeight / LIGHT_CULLING_TILE_SIZE / LIGHT_CULLING_TILE_SIZE;
+        const uint32_t width =
+            (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+        const uint32_t height =
+            (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Height + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+        const size_t sbSize   = MAX_SPOT_LIGHTS * sizeof(uint32_t) * width * height;
         sbSpec.BufferCapacity = sbSize;
 
         s_RendererData->SpotLightIndicesStorageBuffer = Buffer::Create(sbSpec);
+    }
+
+    {
+        BufferSpecification frustumsSBSpec = {EBufferUsage::BUFFER_USAGE_STORAGE};
+
+        const uint32_t width =
+            (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+        const uint32_t height =
+            (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Height + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+        const size_t sbSize           = sizeof(Frustum) * width * height;
+        frustumsSBSpec.BufferCapacity = sbSize;
+
+        s_RendererData->FrustumsSSBO = Buffer::Create(frustumsSBSpec);
     }
 
     {
@@ -305,37 +335,55 @@ void Renderer::Init()
     Application::Get().GetWindow()->AddResizeCallback(
         [](uint32_t width, uint32_t height)
         {
+            s_RendererData->bNeedsFrustumsRecomputing = true;
             s_RendererData->FrustumDebugImage->Resize(width, height);
 
             s_RendererData->LightHeatMapImage->Resize(width, height);
 
             s_RendererData->CascadeDebugImage->Resize(width, height);
 
+            const uint32_t adjustedTiledWidth =
+                (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+            const uint32_t adjustedTiledHeight =
+                (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Height + LIGHT_CULLING_TILE_SIZE - 1) /
+                LIGHT_CULLING_TILE_SIZE;
+
             {
-                const size_t sbSize =
-                    MAX_POINT_LIGHTS * sizeof(uint32_t) * width * height / LIGHT_CULLING_TILE_SIZE / LIGHT_CULLING_TILE_SIZE;
+                const size_t sbSize = MAX_POINT_LIGHTS * sizeof(uint32_t) * adjustedTiledWidth * adjustedTiledHeight;
 
                 s_RendererData->PointLightIndicesStorageBuffer->Resize(sbSize);
             }
 
             {
-                const size_t sbSize =
-                    MAX_SPOT_LIGHTS * sizeof(uint32_t) * width * height / LIGHT_CULLING_TILE_SIZE / LIGHT_CULLING_TILE_SIZE;
+                const size_t sbSize = MAX_SPOT_LIGHTS * sizeof(uint32_t) * adjustedTiledWidth * adjustedTiledHeight;
 
                 s_RendererData->SpotLightIndicesStorageBuffer->Resize(sbSize);
             }
 
+            {
+                const size_t sbSize = sizeof(Frustum) * adjustedTiledWidth * adjustedTiledHeight;
+
+                s_RendererData->FrustumsSSBO->Resize(sbSize);
+            }
+
+            s_RendererData->ComputeFrustumsPipeline->GetSpecification().Shader->Set("s_GridFrustumsBuffer", s_RendererData->FrustumsSSBO);
+            s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_GridFrustumsBuffer", s_RendererData->FrustumsSSBO);
+
             s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
                                                                                  s_RendererData->PointLightIndicesStorageBuffer);
 
-            s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
-                                                                                s_RendererData->PointLightIndicesStorageBuffer);
+            s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
+                                                                                      s_RendererData->PointLightIndicesStorageBuffer);
+            s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
+                                                                                           s_RendererData->PointLightIndicesStorageBuffer);
 
             s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
                                                                                  s_RendererData->SpotLightIndicesStorageBuffer);
 
-            s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
-                                                                                s_RendererData->SpotLightIndicesStorageBuffer);
+            s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
+                                                                                      s_RendererData->SpotLightIndicesStorageBuffer);
+            s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
+                                                                                           s_RendererData->SpotLightIndicesStorageBuffer);
 
             s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("u_DepthTex",
                                                                                  s_RendererData->GBuffer->GetDepthAttachment());
@@ -350,7 +398,8 @@ void Renderer::Init()
                                                                      glm::vec4(1.0f, glm::vec3(0.0f)),
                                                                      false,
                                                                      ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                                                     ESamplerFilter::SAMPLER_FILTER_LINEAR};
+                                                                     ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                                                     true};
 
         framebufferSpec.Attachments.emplace_back(aoAttachmentSpec);
         s_RendererData->SSAO.Framebuffer = Framebuffer::Create(framebufferSpec);
@@ -418,29 +467,30 @@ void Renderer::Init()
     }
 
     {
-        FramebufferSpecification framebufferSpec                = {"AO_Blur"};
-        FramebufferAttachmentSpecification aoBlurAttachmentSpec = {EImageFormat::FORMAT_R8_UNORM,
-                                                                   EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-                                                                   ELoadOp::CLEAR,
-                                                                   EStoreOp::STORE,
-                                                                   glm::vec4(1.0f, glm::vec3(0.0f)),
-                                                                   false,
-                                                                   ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                                                   ESamplerFilter::SAMPLER_FILTER_LINEAR};
+        // Ping-pong framebuffers
+        for (uint32_t i{}; i < s_RendererData->BlurAOFramebuffer.size(); ++i)
+        {
+            const std::string blurTypeStr            = (i == 0) ? "Horiz" : "Vert";
+            FramebufferSpecification framebufferSpec = {"BlurAOFramebuffer" + blurTypeStr};
+            auto& bloomAttachmentSpec                = framebufferSpec.Attachments.emplace_back(
+                EImageFormat::FORMAT_R8_UNORM, EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ELoadOp::CLEAR, EStoreOp::STORE,
+                glm::vec4(1.0f, glm::vec3(0.0f)), false, ESamplerWrap::SAMPLER_WRAP_REPEAT, ESamplerFilter::SAMPLER_FILTER_LINEAR, true);
+            s_RendererData->BlurAOFramebuffer[i] = Framebuffer::Create(framebufferSpec);
 
-        aoBlurAttachmentSpec.bBindlessUsage = true;
-        framebufferSpec.Attachments.emplace_back(aoBlurAttachmentSpec);
-        s_RendererData->BlurAO.Framebuffer = Framebuffer::Create(framebufferSpec);
+            PipelineSpecification blurAOPipelineSpec = {"BlurAO" + blurTypeStr, EPipelineType::PIPELINE_TYPE_GRAPHICS};
+            blurAOPipelineSpec.Shader                = ShaderLibrary::Get("Post/GaussianBlur");
+            blurAOPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(i);
+            blurAOPipelineSpec.TargetFramebuffer   = s_RendererData->BlurAOFramebuffer[i];
+            blurAOPipelineSpec.bBindlessCompatible = true;
+            blurAOPipelineSpec.CullMode            = ECullMode::CULL_MODE_BACK;
+            PipelineBuilder::Push(s_RendererData->BlurAOPipeline[i], blurAOPipelineSpec);
+        }
 
-        Application::Get().GetWindow()->AddResizeCallback([](uint32_t width, uint32_t height)
-                                                          { s_RendererData->BlurAO.Framebuffer->Resize(width, height); });
-
-        PipelineSpecification aoBlurPipelineSpec = {"AO_Blur", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-        aoBlurPipelineSpec.TargetFramebuffer     = s_RendererData->BlurAO.Framebuffer;
-        aoBlurPipelineSpec.Shader                = ShaderLibrary::Get("AO/AO_Blur");
-        aoBlurPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
-        aoBlurPipelineSpec.bBindlessCompatible   = true;
-        PipelineBuilder::Push(s_RendererData->BlurAO.Pipeline, aoBlurPipelineSpec);
+        Application::Get().GetWindow()->AddResizeCallback(
+            [](uint32_t width, uint32_t height) {
+                std::ranges::for_each(s_RendererData->BlurAOFramebuffer,
+                                      [&](const auto& framebuffer) { framebuffer->Resize(width, height); });
+            });
     }
 
     {
@@ -524,7 +574,7 @@ void Renderer::Init()
             FramebufferSpecification framebufferSpec = {"BloomFramebuffer" + blurTypeStr};
             auto& bloomAttachmentSpec                = framebufferSpec.Attachments.emplace_back(
                 EImageFormat::FORMAT_RGBA16F, EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ELoadOp::CLEAR, EStoreOp::STORE,
-                glm::vec4(0.0f), false, ESamplerWrap::SAMPLER_WRAP_REPEAT, ESamplerFilter::SAMPLER_FILTER_LINEAR);
+                glm::vec4(0.0f), false, ESamplerWrap::SAMPLER_WRAP_REPEAT, ESamplerFilter::SAMPLER_FILTER_LINEAR, true);
             s_RendererData->BloomFramebuffer[i] = Framebuffer::Create(framebufferSpec);
 
             PipelineSpecification bloomPipelineSpec = {"Bloom" + blurTypeStr, EPipelineType::PIPELINE_TYPE_GRAPHICS};
@@ -539,19 +589,8 @@ void Renderer::Init()
         Application::Get().GetWindow()->AddResizeCallback(
             [](uint32_t width, uint32_t height)
             {
-                std::vector<Shared<Image>> attachments;
-                for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
-                {
-                    s_RendererData->BloomFramebuffer[i]->Resize(width, height);
-
-                    attachments.emplace_back(i == 0 ? s_RendererData->GBuffer->GetAttachments()[1].Attachment
-                                                    : s_RendererData->BloomFramebuffer[i - 1]->GetAttachments()[0].Attachment);
-                }
-
-                // These 2 reference the same shader, but use 1 descriptor set.. duhh.
-                for (auto& bloomPipeline : s_RendererData->BloomPipeline)
-                    bloomPipeline->GetSpecification().Shader->Set("u_Image", attachments);
-
+                std::ranges::for_each(s_RendererData->BloomFramebuffer,
+                                      [&](const auto& framebuffer) { framebuffer->Resize(width, height); });
                 s_RendererData->CompositePipeline->GetSpecification().Shader->Set(
                     "u_BloomBlur", s_RendererData->BloomFramebuffer[1]->GetAttachments()[0].Attachment);
             });
@@ -562,17 +601,24 @@ void Renderer::Init()
     ShaderLibrary::DestroyGarbageIfNeeded();
     /* SHADER UPDATE STAGE */
 
+    s_RendererData->ComputeFrustumsPipeline->GetSpecification().Shader->Set("s_GridFrustumsBuffer", s_RendererData->FrustumsSSBO);
+    s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_GridFrustumsBuffer", s_RendererData->FrustumsSSBO);
+
     s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
                                                                          s_RendererData->PointLightIndicesStorageBuffer);
 
-    s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
-                                                                        s_RendererData->PointLightIndicesStorageBuffer);
+    s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
+                                                                              s_RendererData->PointLightIndicesStorageBuffer);
+    s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
+                                                                                   s_RendererData->PointLightIndicesStorageBuffer);
 
     s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
                                                                          s_RendererData->SpotLightIndicesStorageBuffer);
 
-    s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
-                                                                        s_RendererData->SpotLightIndicesStorageBuffer);
+    s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
+                                                                              s_RendererData->SpotLightIndicesStorageBuffer);
+    s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
+                                                                                   s_RendererData->SpotLightIndicesStorageBuffer);
 
     s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("u_DepthTex", s_RendererData->GBuffer->GetDepthAttachment());
 
@@ -589,20 +635,10 @@ void Renderer::Init()
         for (size_t i{}; i < attachments.size(); ++i)
             attachments[i] = s_RendererData->DirShadowMaps[i]->GetDepthAttachment();
 
-        s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set("u_DirShadowmap", attachments);
-    }
-
-    {
-        std::vector<Shared<Image>> attachments;
-        for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
-        {
-            attachments.emplace_back(i == 0 ? s_RendererData->GBuffer->GetAttachments()[1].Attachment
-                                            : s_RendererData->BloomFramebuffer[i - 1]->GetAttachments()[0].Attachment);
-        }
-
-        // These 2 reference the same shader, but use 1 descriptor set.. duhh.
-        for (auto& bloomPipeline : s_RendererData->BloomPipeline)
-            bloomPipeline->GetSpecification().Shader->Set("u_Image", attachments);
+        // TODO: Remove duplicate Shader->Sets() since opaque and transparent pipelines tied to only one shader.(but shouldn't, each
+        // pipeline should have its own shader)
+        s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("u_DirShadowmap", attachments);
+        s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("u_DirShadowmap", attachments);
     }
 
     s_RendererData->RenderGraph = RenderGraphBuilder::Create("Assets/RenderGraphDescription.pfr");
@@ -626,10 +662,14 @@ void Renderer::Shutdown()
 
 void Renderer::Begin()
 {
+    auto& window = Application::Get().GetWindow();
+
     Timer t = {};
     s_RendererData->LastBoundPipeline.reset();
+    s_RendererData->PassStats.clear();
+    s_RendererData->PipelineStats.clear();
 
-    s_RendererData->FrameIndex                   = Application::Get().GetWindow()->GetCurrentFrameIndex();
+    s_RendererData->FrameIndex                   = window->GetCurrentFrameIndex();
     s_RendererData->CurrentRenderCommandBuffer   = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex];
     s_RendererData->CurrentComputeCommandBuffer  = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex];
     s_RendererData->CurrentTransferCommandBuffer = s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex];
@@ -643,7 +683,6 @@ void Renderer::Begin()
     s_RendererStats.DescriptorPoolCount = prevPoolCount;
     s_RendererStats.DescriptorSetCount  = prevDescriptorSetCount;
 
-    s_RendererData->CameraStruct                       = {};
     s_RendererData->LightStruct->DirectionalLightCount = 0;
     s_RendererData->LightStruct->SpotLightCount        = 0;
     s_RendererData->LightStruct->PointLightCount       = 0;
@@ -652,26 +691,29 @@ void Renderer::Begin()
         const auto& renderTimestamps = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->GetTimestampsResults();
         s_RendererStats.GPUTime      = std::accumulate(renderTimestamps.begin(), renderTimestamps.end(), s_RendererStats.GPUTime);
 
-#define LOG_RENDERER 0
-
-#if LOG_RENDERER
         const auto& renderPipelineStats  = s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->GetPipelineStatisticsResults();
         const auto& computePipelineStats = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->GetPipelineStatisticsResults();
 
-        LOG_TAG_INFO(RENDERER, "RENDERER STATISTICS: ");
-        LOG_TAG_INFO(SAMPLER_STORAGE, "Sampler count: %u", SamplerStorage::GetSamplerCount());
-        LOG_TAG_INFO(RENDERER, "DepthPre-Pass: %0.4f (ms)", renderTimestamps[0]);
-        LOG_TAG_INFO(RENDERER, "DirShadowMap-Pass: %0.4f (ms)", renderTimestamps[1]);
-        LOG_TAG_INFO(RENDERER, "SSAO-Pass: %0.4f (ms)", renderTimestamps[2]);
-        LOG_TAG_INFO(RENDERER, "SSAOBlur-Pass: %0.4f (ms)", renderTimestamps[3]);
-        LOG_TAG_INFO(RENDERER, "LightCulling-Pass: %0.4f (ms)", renderTimestamps[4]);
-        LOG_TAG_INFO(RENDERER, "Geometry-Pass: %0.4f (ms)", renderTimestamps[5]);
-        for (const auto& renderPipelineStat : renderPipelineStats)
-        {
-            LOG_TAG_INFO(RENDERER, "%s %llu", CommandBuffer::ConvertQueryPipelineStatisticToCString(renderPipelineStat.first),
-                         renderPipelineStat.second);
-        }
-#endif
+        s_RendererData->PassStats["DepthPrePass"]              = renderTimestamps[0];
+        s_RendererData->PassStats["DirShadowMapPass"]          = renderTimestamps[1];
+        s_RendererData->PassStats["PointLightShadowMapPass"]   = renderTimestamps[2];
+        s_RendererData->PassStats["AtmosphericScatteringPass"] = renderTimestamps[3];
+        s_RendererData->PassStats["SSAOPass"]                  = renderTimestamps[4];
+        s_RendererData->PassStats["HBAOPass"]                  = renderTimestamps[5];
+        s_RendererData->PassStats["BlurAOPass"]                = renderTimestamps[6];
+        s_RendererData->PassStats["ComputeFrustumsPass"]       = renderTimestamps[7];
+        s_RendererData->PassStats["LightCullingPass"]          = renderTimestamps[8];
+        s_RendererData->PassStats["GeometryPass"]              = renderTimestamps[9];
+        s_RendererData->PassStats["BloomPass"]                 = renderTimestamps[10];
+        s_RendererData->PassStats["CompositePass"]             = renderTimestamps[11];
+
+        std::ranges::for_each(renderPipelineStats,
+                              [](const auto& pipelineStat)
+                              {
+                                  const auto pipelineStatStr =
+                                      std::string(CommandBuffer::ConvertQueryPipelineStatisticToCString(pipelineStat.first));
+                                  s_RendererData->PipelineStats[pipelineStatStr] = pipelineStat.second;
+                              });
     }
 
     s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->BeginRecording(true);
@@ -754,21 +796,26 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
               });
 
     s_RendererData->GBuffer->Clear(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-
     DepthPrePass();
     DirShadowMapPass();
     PointLightShadowMapPass();
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
+        EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+        EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ);
 
     AtmosphericScatteringPass();
 
     SSAOPass();
     HBAOPass();
-    s_RendererData->BlurAO.Pipeline->GetSpecification().Shader->Set("u_AO",
-                                                                    s_RendererData->SSAO.Framebuffer->GetAttachments()[0].Attachment);
     BlurAOPass();
 
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
+        EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ);
     s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex],
                              EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT);
+    ComputeFrustumsPass();
     LightCullingPass();
 
     s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -816,10 +863,16 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     s_RendererData->TransparentObjects.clear();
 
     s_RendererStats.RHITime += t.GetElapsedMilliseconds();
+
+    // Update VSync state.
+
+    auto& window = Application::Get().GetWindow();
+    window->SetVSync(s_RendererSettings.bVSync);
 }
 
 void Renderer::BeginScene(const Camera& camera)
 {
+    if (s_RendererData->CameraStruct.FOV != camera.GetZoom()) s_RendererData->bNeedsFrustumsRecomputing = true;
     s_RendererData->CameraStruct = {camera.GetProjection(),
                                     camera.GetView(),
                                     camera.GetViewProjection(),
@@ -830,8 +883,7 @@ void Renderer::BeginScene(const Camera& camera)
                                     camera.GetZoom(),
                                     glm::vec2(s_RendererData->CompositeFramebuffer->GetSpecification().Width,
                                               s_RendererData->CompositeFramebuffer->GetSpecification().Height)};
-
-    s_RendererData->CullFrustum = camera.GetFrustum();
+    s_RendererData->CullFrustum  = camera.GetFrustum();
 
     s_RendererData->LightStruct->CascadePlaneDistances[0] = camera.GetFarPlaneDepth() / 400.0f;
     s_RendererData->LightStruct->CascadePlaneDistances[1] = camera.GetFarPlaneDepth() / 200.0f;
@@ -947,16 +999,6 @@ void Renderer::DepthPrePass()
     }
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
 
-    /*
-    // TODO: Should I depth pre pass transparent?? (it breaks alpha-blending)
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
-    for (const auto& transparent : s_RendererData->TransparentObjects)
-    {
-        renderMeshFunc(transparent);
-    }
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
-    */
-
     s_RendererData->DepthPrePassFramebuffer->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
 }
@@ -1005,13 +1047,55 @@ void Renderer::BlurAOPass()
     if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
-    s_RendererData->BlurAO.Framebuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+    for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+    {
+        s_RendererData->BlurAOFramebuffer[i]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
-    BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BlurAO.Pipeline);
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
+        PushConstantBlock pc  = {};
+        pc.AlbedoTextureIndex = (i == 0 ? s_RendererData->SSAO.Framebuffer->GetAttachments()[0].m_Index
+                                        : s_RendererData->BlurAOFramebuffer[i - 1]->GetAttachments()[0].m_Index);
 
-    s_RendererData->BlurAO.Framebuffer->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BlurAOPipeline[i]);
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->BlurAOPipeline[i], 0, 0,
+                                                                                           sizeof(pc), &pc);
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
+
+        s_RendererData->BlurAOFramebuffer[i]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+    }
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
+}
+
+void Renderer::ComputeFrustumsPass()
+{
+    if (IsWorldEmpty()) return;
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("ComputeFrustumsPass", glm::vec3(0.4f, 0.4f, 0.1f));
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
+
+    if (s_RendererData->bNeedsFrustumsRecomputing)
+    {
+        PushConstantBlock pc = {};
+        pc.StorageImageIndex = s_RendererData->FrustumsSSBO->GetBindlessIndex();
+
+        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->ComputeFrustumsPipeline);
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ComputeFrustumsPipeline, 0, 0,
+                                                                                           sizeof(pc), &pc);
+
+        const auto& framebufferSpec = s_RendererData->DepthPrePassFramebuffer->GetSpecification();
+        const uint32_t gX           = (framebufferSpec.Width + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+        const uint32_t gY           = (framebufferSpec.Height + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Dispatch(gX, gY);
+
+        // Insert buffer memory barrier to prevent light culling pass reading until frustum computing is done.
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+            s_RendererData->LightsSSBO[s_RendererData->FrameIndex], EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE, EAccessFlags::ACCESS_SHADER_READ);
+
+        s_RendererData->bNeedsFrustumsRecomputing = false;
+    }
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
 }
 
 void Renderer::LightCullingPass()
@@ -1020,9 +1104,6 @@ void Renderer::LightCullingPass()
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("LightCullingPass", glm::vec3(0.9f, 0.9f, 0.2f));
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
-
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-        EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT);
 
     PushConstantBlock pc  = {};
     pc.AlbedoTextureIndex = s_RendererData->FrustumDebugImage->GetBindlessIndex();
@@ -1038,9 +1119,6 @@ void Renderer::LightCullingPass()
         (framebufferSpec.Width + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE,
         (framebufferSpec.Height + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE);
 
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT);
-
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
         s_RendererData->LightsSSBO[s_RendererData->FrameIndex], EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE, EAccessFlags::ACCESS_SHADER_READ);
@@ -1051,15 +1129,18 @@ void Renderer::LightCullingPass()
 
 void Renderer::AtmosphericScatteringPass()
 {
-    if (IsWorldEmpty() || s_RendererData->LightStruct->DirectionalLightCount == 0) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
-    s_RendererData->GBuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+    if (s_RendererData->LightStruct->DirectionalLightCount != 0)
+    {
+        s_RendererData->GBuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
-    BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->AtmospherePipeline);
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
+        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->AtmospherePipeline);
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
 
-    s_RendererData->GBuffer->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+        s_RendererData->GBuffer->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+    }
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
 }
 
@@ -1070,8 +1151,7 @@ void Renderer::GeometryPass()
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
     s_RendererData->GBuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
-    BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->ForwardPlusPipeline);
-    auto renderMeshFunc = [](const RenderObject& renderObject)
+    auto renderMeshFunc = [](const RenderObject& renderObject, Shared<Pipeline>& pipeline)
     {
         PushConstantBlock pc       = {renderObject.Transform};
         pc.VertexPosBufferIndex    = renderObject.submesh->GetVertexPositionBuffer()->GetBindlessIndex();
@@ -1079,10 +1159,9 @@ void Renderer::GeometryPass()
         pc.MaterialBufferIndex     = renderObject.submesh->GetMaterial()->GetBufferIndex();
         pc.pad0.x                  = 25.0f;
         pc.AlbedoTextureIndex      = s_RendererData->CascadeDebugImage->GetBindlessIndex();
-        pc.StorageImageIndex       = s_RendererData->BlurAO.Framebuffer->GetAttachments()[0].m_Index;
+        pc.StorageImageIndex       = s_RendererData->BlurAOFramebuffer[1]->GetAttachments()[0].m_Index;
 
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ForwardPlusPipeline, 0, 0,
-                                                                                           sizeof(pc), &pc);
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(pipeline, 0, 0, sizeof(pc), &pc);
 
         if (s_RendererSettings.bMeshShadingSupport)
         {
@@ -1111,16 +1190,18 @@ void Renderer::GeometryPass()
     };
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
+    BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->ForwardPlusOpaquePipeline);
     for (const auto& opaque : s_RendererData->OpaqueObjects)
     {
-        if (IsInsideFrustum(opaque)) renderMeshFunc(opaque);
+        if (IsInsideFrustum(opaque)) renderMeshFunc(opaque, s_RendererData->ForwardPlusOpaquePipeline);
     }
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
+    BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->ForwardPlusTransparentPipeline);
     for (const auto& transparent : s_RendererData->TransparentObjects)
     {
-        if (IsInsideFrustum(transparent)) renderMeshFunc(transparent);
+        if (IsInsideFrustum(transparent)) renderMeshFunc(transparent, s_RendererData->ForwardPlusTransparentPipeline);
     }
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
 
@@ -1130,64 +1211,68 @@ void Renderer::GeometryPass()
 
 void Renderer::DirShadowMapPass()
 {
-    if (IsWorldEmpty() || s_RendererData->LightStruct->DirectionalLightCount == 0) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
 
-    auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t directionalLightIndex)
+    if (s_RendererData->LightStruct->DirectionalLightCount != 0)
     {
-        PushConstantBlock pc = {renderObject.Transform};
-        pc.StorageImageIndex = directionalLightIndex;  // Index into matrices projection array
-
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->DirShadowMapPipeline, 0, 0,
-                                                                                           sizeof(pc), &pc);
-
-        if (s_RendererSettings.bMeshShadingSupport)
+        auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t directionalLightIndex)
         {
-            pc.MeshletBufferIndex          = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
-            pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
-            pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
+            PushConstantBlock pc = {renderObject.Transform};
+            pc.StorageImageIndex = directionalLightIndex;  // Index into matrices projection array
 
-            const uint32_t meshletCount = renderObject.submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(meshletCount, 1, 1);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->DirShadowMapPipeline, 0, 0,
+                                                                                               sizeof(pc), &pc);
 
-            s_RendererStats.MeshletCount += meshletCount;
-        }
-        else
+            if (s_RendererSettings.bMeshShadingSupport)
+            {
+                pc.MeshletBufferIndex          = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
+                pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
+                pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
+
+                const uint32_t meshletCount = renderObject.submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(meshletCount, 1, 1);
+
+                s_RendererStats.MeshletCount += meshletCount;
+            }
+            else
+            {
+                const uint64_t offset = 0;
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindVertexBuffers(
+                    std::vector<Shared<Buffer>>{renderObject.submesh->GetVertexPositionBuffer()}, 0, 1, &offset);
+
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindIndexBuffer(renderObject.submesh->GetIndexBuffer());
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawIndexed(
+                    renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t));
+            }
+            s_RendererStats.TriangleCount +=
+                renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
+        };
+
+        for (uint32_t dirLightIndex{}; dirLightIndex < s_RendererData->LightStruct->DirectionalLightCount; ++dirLightIndex)
         {
-            const uint64_t offset = 0;
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindVertexBuffers(
-                std::vector<Shared<Buffer>>{renderObject.submesh->GetVertexPositionBuffer()}, 0, 1, &offset);
+            if (!s_RendererData->LightStruct->DirectionalLights[dirLightIndex].bCastShadows) continue;
 
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindIndexBuffer(renderObject.submesh->GetIndexBuffer());
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawIndexed(
-                renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t));
+            BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->DirShadowMapPipeline);
+            s_RendererData->DirShadowMaps[dirLightIndex]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
+            for (const auto& opaque : s_RendererData->OpaqueObjects)
+            {
+                renderMeshFunc(opaque, dirLightIndex);
+            }
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
+            for (const auto& transparent : s_RendererData->TransparentObjects)
+            {
+                renderMeshFunc(transparent, dirLightIndex);
+            }
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+
+            s_RendererData->DirShadowMaps[dirLightIndex]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
         }
-        s_RendererStats.TriangleCount += renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
-    };
-
-    for (uint32_t dirLightIndex{}; dirLightIndex < s_RendererData->LightStruct->DirectionalLightCount; ++dirLightIndex)
-    {
-        if (!s_RendererData->LightStruct->DirectionalLights[dirLightIndex].bCastShadows) continue;
-
-        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->DirShadowMapPipeline);
-        s_RendererData->DirShadowMaps[dirLightIndex]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
-        for (const auto& opaque : s_RendererData->OpaqueObjects)
-        {
-            renderMeshFunc(opaque, dirLightIndex);
-        }
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
-
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
-        for (const auto& transparent : s_RendererData->TransparentObjects)
-        {
-            renderMeshFunc(transparent, dirLightIndex);
-        }
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
-
-        s_RendererData->DirShadowMaps[dirLightIndex]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     }
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
@@ -1195,65 +1280,69 @@ void Renderer::DirShadowMapPass()
 
 void Renderer::PointLightShadowMapPass()
 {
-    if (IsWorldEmpty() || s_RendererData->LightStruct->PointLightCount == 0) return;
+    if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
 
-    auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t pointLightIndex)
+    if (s_RendererData->LightStruct->PointLightCount != 0)
     {
-        PushConstantBlock pc = {renderObject.Transform};
-        pc.StorageImageIndex = pointLightIndex;  // Index into matrices projection array
-        pc.pad0.x            = 25.0f;
-
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->PointLightShadowMapPipeline, 0,
-                                                                                           0, sizeof(pc), &pc);
-
-        if (s_RendererSettings.bMeshShadingSupport)
+        auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t pointLightIndex)
         {
-            pc.MeshletBufferIndex          = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
-            pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
-            pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
+            PushConstantBlock pc = {renderObject.Transform};
+            pc.StorageImageIndex = pointLightIndex;  // Index into matrices projection array
+            pc.pad0.x            = 25.0f;
 
-            const uint32_t meshletCount = renderObject.submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(meshletCount, 1, 1);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->PointLightShadowMapPipeline,
+                                                                                               0, 0, sizeof(pc), &pc);
 
-            s_RendererStats.MeshletCount += meshletCount;
-        }
-        else
+            if (s_RendererSettings.bMeshShadingSupport)
+            {
+                pc.MeshletBufferIndex          = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
+                pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
+                pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
+
+                const uint32_t meshletCount = renderObject.submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(meshletCount, 1, 1);
+
+                s_RendererStats.MeshletCount += meshletCount;
+            }
+            else
+            {
+                const uint64_t offset = 0;
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindVertexBuffers(
+                    std::vector<Shared<Buffer>>{renderObject.submesh->GetVertexPositionBuffer()}, 0, 1, &offset);
+
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindIndexBuffer(renderObject.submesh->GetIndexBuffer());
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawIndexed(
+                    renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t));
+            }
+            s_RendererStats.TriangleCount +=
+                renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
+        };
+
+        for (const auto& pointLightShadowMapInfo : s_RendererData->PointLightShadowMapInfos)
         {
-            const uint64_t offset = 0;
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindVertexBuffers(
-                std::vector<Shared<Buffer>>{renderObject.submesh->GetVertexPositionBuffer()}, 0, 1, &offset);
+            if (pointLightShadowMapInfo.LightAndMatrixIndex == INVALID_LIGHT_INDEX) continue;
 
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindIndexBuffer(renderObject.submesh->GetIndexBuffer());
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawIndexed(
-                renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t));
+            BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->PointLightShadowMapPipeline);
+            pointLightShadowMapInfo.PointLightShadowMap->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
+            for (const auto& opaque : s_RendererData->OpaqueObjects)
+            {
+                renderMeshFunc(opaque, pointLightShadowMapInfo.LightAndMatrixIndex);
+            }
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
+            for (const auto& transparent : s_RendererData->TransparentObjects)
+            {
+                renderMeshFunc(transparent, pointLightShadowMapInfo.LightAndMatrixIndex);
+            }
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
+
+            pointLightShadowMapInfo.PointLightShadowMap->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
         }
-        s_RendererStats.TriangleCount += renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
-    };
-
-    for (const auto& pointLightShadowMapInfo : s_RendererData->PointLightShadowMapInfos)
-    {
-        if (pointLightShadowMapInfo.LightAndMatrixIndex == INVALID_LIGHT_INDEX) continue;
-
-        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->PointLightShadowMapPipeline);
-        pointLightShadowMapInfo.PointLightShadowMap->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
-        for (const auto& opaque : s_RendererData->OpaqueObjects)
-        {
-            renderMeshFunc(opaque, pointLightShadowMapInfo.LightAndMatrixIndex);
-        }
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
-
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
-        for (const auto& transparent : s_RendererData->TransparentObjects)
-        {
-            renderMeshFunc(transparent, pointLightShadowMapInfo.LightAndMatrixIndex);
-        }
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
-
-        pointLightShadowMapInfo.PointLightShadowMap->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     }
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
@@ -1268,7 +1357,13 @@ void Renderer::BloomPass()
     {
         s_RendererData->BloomFramebuffer[i]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
+        PushConstantBlock pc  = {};
+        pc.AlbedoTextureIndex = (i == 0 ? s_RendererData->GBuffer->GetAttachments()[1].m_Index
+                                        : s_RendererData->BloomFramebuffer[i - 1]->GetAttachments()[0].m_Index);
+
         BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BloomPipeline[i]);
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->BloomPipeline[i], 0, 0,
+                                                                                           sizeof(pc), &pc);
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
 
         s_RendererData->BloomFramebuffer[i]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -1469,7 +1564,12 @@ void Renderer::AddPointLight(const PointLight& pl)
             s_RendererData->LightStruct->PointLightViewProjMatrices[currentPointLightShadowMapInfo.LightAndMatrixIndex * 6 + i] =
                 shadowTransforms[i];
 
-        s_RendererData->ForwardPlusPipeline->GetSpecification().Shader->Set(
+        // TODO: Remove duplicate Shader->Sets() since opaque and transparent pipelines tied to only one shader.(but shouldn't, each
+        // pipeline should have its own shader)
+        s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set(
+            "u_PointShadowmap", std::vector<Shared<Image>>{currentPointLightShadowMapInfo.PointLightShadowMap->GetDepthAttachment()});
+
+        s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set(
             "u_PointShadowmap", std::vector<Shared<Image>>{currentPointLightShadowMapInfo.PointLightShadowMap->GetDepthAttachment()});
     }
 
@@ -1489,9 +1589,23 @@ void Renderer::AddSpotLight(const SpotLight& sl)
 
 Shared<Image> Renderer::GetFinalPassImage()
 {
+    PFR_ASSERT(s_RendererData, "RendererData is not valid!");
     PFR_ASSERT(s_RendererData->CompositeFramebuffer && s_RendererData->CompositeFramebuffer->GetAttachments()[0].Attachment,
                "Invalid composite framebuffer or its attachment!");
     return s_RendererData->CompositeFramebuffer->GetAttachments()[0].Attachment;
+}
+
+const std::map<std::string, Shared<Image>> Renderer::GetRenderTargetList()
+{
+    PFR_ASSERT(s_RendererData, "RendererData is not valid!");
+    std::map<std::string, Shared<Image>> renderTargetList;
+
+    renderTargetList["GBuffer"] = s_RendererData->GBuffer->GetAttachments()[0].Attachment;
+    renderTargetList["SSAO"]    = s_RendererData->SSAO.Framebuffer->GetAttachments()[0].Attachment;
+    renderTargetList["HBAO"]    = s_RendererData->HBAO.Framebuffer->GetAttachments()[0].Attachment;
+    renderTargetList["BlurAO"]  = s_RendererData->BlurAOFramebuffer[1]->GetAttachments()[0].Attachment;
+
+    return renderTargetList;
 }
 
 }  // namespace Pathfinder

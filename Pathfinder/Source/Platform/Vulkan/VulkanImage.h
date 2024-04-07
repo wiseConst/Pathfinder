@@ -42,6 +42,11 @@ class VulkanImage final : public Image
         m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
         return m_DescriptorInfo;
     }
+    NODISCARD FORCEINLINE const auto& GetSampler() const
+    {
+        if (!m_DescriptorInfo.sampler) LOG_WARN("Returning null image sampler! (This shouldn't happen.)");
+        return m_DescriptorInfo.sampler;
+    }
 
     void SetLayout(const EImageLayout newLayout) final override;
     void SetData(const void* data, size_t dataSize) final override;

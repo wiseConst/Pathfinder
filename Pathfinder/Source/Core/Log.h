@@ -50,7 +50,7 @@ static const char* LogLevelToASCIIColor(const ELogLevel level)
 class Logger final : private Uncopyable, private Unmovable
 {
   public:
-    static void Init();
+    static void Init(const std::string_view& logFileName);
     static void Shutdown();
 
     template <typename... Args> static void Log(const ELogLevel level, const char* tag, const char* message, Args&&... args)

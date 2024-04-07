@@ -5,6 +5,7 @@
 #include "Core/Log.h"
 #include "Core/Application.h"
 #include "Layers/Layer.h"
+#include "Layers/UILayer.h"
 #include "Core/Window.h"
 #include "Core/Threading.h"
 

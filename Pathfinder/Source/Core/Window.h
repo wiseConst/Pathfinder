@@ -3,8 +3,9 @@
 
 #include "Core.h"
 #include "Math.h"
-#include <functional>
 #include "Keys.h"
+
+#include <functional>
 
 namespace Pathfinder
 {
@@ -27,6 +28,7 @@ struct WindowSpecification final
     uint32_t Width         = 1280;
     uint32_t Height        = 720;
     EWindowMode WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
+    bool bVSync            = false;
 };
 
 using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
@@ -40,22 +42,24 @@ class Window : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE virtual void* Get() const = 0;
     NODISCARD FORCEINLINE const auto& GetSwapchain() const { return m_Swapchain; }
-    NODISCARD FORCEINLINE virtual const WindowSpecification& GetSpecification() const = 0;
-    NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const         = 0;
+    NODISCARD FORCEINLINE const WindowSpecification& GetSpecification() const { return m_Specification; }
+    NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const = 0;
+
+    NODISCARD FORCEINLINE bool IsVSync() const { return m_Specification.bVSync; }
+    NODISCARD FORCEINLINE bool IsRunning() const { return m_bIsRunning; }
+    NODISCARD FORCEINLINE bool IsMinimized() const { return m_Specification.Height == 0 || m_Specification.Width == 0; }
 
     virtual void SetClearColor(const glm::vec3& clearColor = glm::vec3(1.0f)) = 0;
-    virtual void SetVSync(bool bVSync)                                        = 0;
-    virtual void SetWindowMode(const EWindowMode windowMode)                  = 0;
-    virtual void SetWindowTitle(const char* title)                            = 0;
+    void SetVSync(const bool bVSync);
+    virtual void SetWindowMode(const EWindowMode windowMode) = 0;
+    virtual void SetWindowTitle(const char* title)           = 0;
 
-    static std::vector<const char*> GetWSIExtensions();  // implemented in derived
-    FORCEINLINE virtual bool IsMinimized() const = 0;
-    FORCEINLINE virtual bool IsRunning() const   = 0;
+    static std::vector<const char*> GetWSIExtensions();  // implemented in derived classes only
 
-    virtual bool BeginFrame()                                         = 0;
-    virtual void SwapBuffers()                                        = 0;
-    virtual void PollEvents()                                         = 0;
-    virtual void CopyToWindow(const Shared<Image>& image)             = 0;
+    virtual bool BeginFrame()                             = 0;
+    virtual void SwapBuffers()                            = 0;
+    virtual void PollEvents()                             = 0;
+    virtual void CopyToWindow(const Shared<Image>& image) = 0;
 
     virtual void AddResizeCallback(ResizeCallback&& resizeCallback) = 0;
 
@@ -63,9 +67,11 @@ class Window : private Uncopyable, private Unmovable
 
   protected:
     Unique<Swapchain> m_Swapchain;
+    WindowSpecification m_Specification;
+    bool m_bIsRunning = true;
 
-    explicit Window() noexcept = default;
-    virtual void Destroy()     = 0;
+    explicit Window(const WindowSpecification& windowSpec) noexcept; 
+    virtual void Destroy() = 0;
 };
 
 }  // namespace Pathfinder

@@ -196,6 +196,19 @@ void VulkanCommandBuffer::BeginTimestampQuery(const EPipelineStage pipelineStage
     ++m_CurrentTimestampIndex;
 }
 
+void VulkanCommandBuffer::InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EAccessFlags srcAccessFlags,
+                                                 const EPipelineStage dstPipelineStage, const EAccessFlags dstAccessFlags) const
+{
+
+    const auto vkSrcAccessFlags = VulkanUtility::PathfinderAccessFlagsToVulkan(srcAccessFlags);
+    const auto vkDstAccessFlags = VulkanUtility::PathfinderAccessFlagsToVulkan(dstAccessFlags);
+
+    const VkMemoryBarrier memoryBarrier = {VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, vkSrcAccessFlags, vkDstAccessFlags};
+    vkCmdPipelineBarrier(m_Handle, VulkanUtility::PathfinderPipelineStageToVulkan(srcPipelineStage),
+                         VulkanUtility::PathfinderPipelineStageToVulkan(dstPipelineStage), VK_DEPENDENCY_BY_REGION_BIT, 1, &memoryBarrier,
+                         0, nullptr, 0, nullptr);
+}
+
 void VulkanCommandBuffer::InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
                                                     const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
                                                     const EAccessFlags dstAccessFlags) const

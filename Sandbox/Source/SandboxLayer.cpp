@@ -3,6 +3,9 @@
 namespace Pathfinder
 {
 
+#define POINT_LIGHT_TEST 1
+#define SPOT_LIGHT_TEST 0
+
 const glm::vec3 minLightPos{-15, -5, -5};
 const glm::vec3 maxLightPos{15, 20, 5};
 
@@ -15,6 +18,7 @@ void SandboxLayer::Init()
     m_Helmet = Mesh::Create("Assets/Meshes/damaged_helmet/DamagedHelmet.gltf");
     m_Gun    = Mesh::Create("Assets/Meshes/cerberus/scene.gltf");
 
+#if POINT_LIGHT_TEST
     const float radius = 2.5f;
     for (uint32_t i = 0; i < MAX_POINT_LIGHTS; ++i)
     {
@@ -30,6 +34,27 @@ void SandboxLayer::Init()
         } while (color.length() < 0.8f);
         m_PointLights[i].Color = color;
     }
+#endif
+
+#if SPOT_LIGHT_TEST
+    const float radius = 50.f;
+    for (uint32_t i = 0; i < MAX_SPOT_LIGHTS; ++i)
+    {
+        m_SpotLights[i].Height    = glm::linearRand(0.0f, 10.0f);
+        m_SpotLights[i].Direction = glm::linearRand(glm::vec3(-1.f), glm::vec3(1.f));
+
+        m_SpotLights[i].Position    = glm::linearRand(minLightPos, maxLightPos);
+        m_SpotLights[i].Intensity   = 2.9f;
+        m_SpotLights[i].InnerCutOff = glm::cos(glm::radians(radius));
+        m_SpotLights[i].OuterCutOff = glm::cos(glm::radians(radius * 0.5));
+        glm::vec3 color             = glm::vec3(0.f);
+        do
+        {
+            color = {glm::linearRand(glm::vec3(0, 0, 0), glm::vec3(1, 1, 1))};
+        } while (color.length() < 0.8f);
+        m_SpotLights[i].Color = color;
+    }
+#endif
 
     m_PointShadowCaster              = {};
     m_PointShadowCaster.bCastShadows = true;
@@ -84,7 +109,20 @@ void SandboxLayer::OnUpdate(const float deltaTime)
     Renderer::AddPointLight(m_PointShadowCaster);
 #endif
 
-#if 1
+#if SPOT_LIGHT_TEST
+    for (auto& spl : m_SpotLights)
+    {
+        spl.Position += glm::vec3(0, 3.0f, 0) * deltaTime;
+        if (spl.Position.y > maxLightPos.y)
+        {
+            spl.Position.y -= (maxLightPos.y - minLightPos.y);
+        }
+
+        Renderer::AddSpotLight(spl);
+    }
+#endif
+
+#if POINT_LIGHT_TEST
     for (auto& pl : m_PointLights)
     {
         pl.Position += glm::vec3(0, 3.0f, 0) * deltaTime;
@@ -115,6 +153,48 @@ void SandboxLayer::OnUIRender()
 {
     static bool bShowDemoWindow = true;
     if (bShowDemoWindow) ImGui::ShowDemoWindow(&bShowDemoWindow);
+
+    static bool bShowRendererSettings = true;
+    if (bShowRendererSettings)
+    {
+        ImGui::Begin("Renderer Settings", &bShowRendererSettings);
+
+        ImGui::Checkbox("VSync", &Renderer::GetRendererSettings().bVSync);
+        ImGui::Text("IsWindowHovered: %d", ImGui::IsWindowHovered());
+
+        ImGui::End();
+    }
+
+    static bool bShowRenderTargetList = true;
+    if (bShowRenderTargetList)
+    {
+        ImGui::Begin("Renderer Target List", &bShowRenderTargetList);
+
+        for (const auto [name, image] : Renderer::GetRenderTargetList())
+        {
+            ImGui::Text("%s", name.data());
+            UILayer::DrawImage(image, {image->GetSpecification().Width, image->GetSpecification().Height}, {0, 0}, {1, 1});
+            ImGui::Separator();
+        }
+
+        ImGui::End();
+    }
+
+    static bool bShowRendererStats = true;
+    if (bShowRendererStats)
+    {
+        ImGui::Begin("Renderer Statistics", &bShowRendererStats);
+
+        ImGui::SeparatorText("Pass Statistics");
+        for (const auto& [pass, passTime] : Renderer::GetPassStatistics())
+            ImGui::Text("%s: %0.4f(ms)", pass.data(), passTime);
+
+        ImGui::SeparatorText("Pipeline Statistics");
+        for (const auto& [pipelineStat, stat] : Renderer::GetPipelineStatistics())
+            ImGui::Text("%s: %llu", pipelineStat.data(), stat);
+
+        ImGui::End();
+    }
 }
 
 }  // namespace Pathfinder

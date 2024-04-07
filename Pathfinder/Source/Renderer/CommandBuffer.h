@@ -43,6 +43,10 @@ class CommandBuffer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetPipelineStatisticsResults() const { return m_PipelineStatisticsResults; }
     NODISCARD FORCEINLINE static const char* ConvertQueryPipelineStatisticToCString(const EQueryPipelineStatistic queryPipelineStatistic)
     {
+        if (queryPipelineStatistic < EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT ||
+            queryPipelineStatistic > EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT)
+            return "";
+
         return s_PipelineStatisticsNames[queryPipelineStatistic].data();
     }
 
@@ -89,11 +93,13 @@ class CommandBuffer : private Uncopyable, private Unmovable
                                    const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const                   = 0;
     virtual void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const = 0;
 
-    virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const                               = 0;
-    virtual void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EPipelineStage dstPipelineStage) const = 0;
+    virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const = 0;
+
+    virtual void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EAccessFlags srcAccessFlags,
+                                        const EPipelineStage dstPipelineStage, const EAccessFlags dstAccessFlags) const = 0;
     virtual void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
                                            const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
-                                           const EAccessFlags dstAccessFlags) const                                         = 0;
+                                           const EAccessFlags dstAccessFlags) const                                     = 0;
 
     virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, uint64_t timelineSignalValue = UINT64_MAX,
                         const std::vector<PipelineStageFlags> pipelineStages = {}, const std::vector<void*>& waitSemaphores = {},

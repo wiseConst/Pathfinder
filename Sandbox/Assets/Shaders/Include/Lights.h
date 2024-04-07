@@ -10,17 +10,16 @@ using vec4 = glm::vec4;
 #define MAX_SPOT_LIGHTS 1024
 #define MAX_DIR_LIGHTS 4
 
-// NOTE: Strange as fuck, but 32*32 gives way-way more perf than 16*16 on RTX 3050 TI LAPTOP
+#define LIGHT_CULLING_TILE_SIZE 16
+#define LIGHT_CULLING_GRANULARITY 2
 
 #ifdef __cplusplus
 
-static const uint32_t LIGHT_CULLING_TILE_SIZE = 16u;
-static const uint32_t INVALID_LIGHT_INDEX     = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? MAX_POINT_LIGHTS : MAX_SPOT_LIGHTS;
+static const uint32_t INVALID_LIGHT_INDEX              = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? MAX_POINT_LIGHTS : MAX_SPOT_LIGHTS;
 
 #else
 
-const uint32_t LIGHT_CULLING_TILE_SIZE = 16u;
-const uint32_t INVALID_LIGHT_INDEX     = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? MAX_POINT_LIGHTS : MAX_SPOT_LIGHTS;
+const uint32_t INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? MAX_POINT_LIGHTS : MAX_SPOT_LIGHTS;
 
 #endif
 
@@ -63,7 +62,8 @@ uint GetLinearGridIndex(vec2 pixelCoords, float framebufferWidth)
 
 #define PCF 1
 
-float DirShadowCalculation(sampler2DArray dirShadowMap, const float biasMultiplier, const int cascadeIndex,const vec4 lightSpacePos, const vec3 N, const vec3 L)
+float DirShadowCalculation(sampler2DArray dirShadowMap, const float biasMultiplier, const int cascadeIndex, const vec4 lightSpacePos,
+                           const vec3 N, const vec3 L)
 {
     // Perspective divison: [-w, w] -> [-1 ,1], then transform to UV space.
     const vec3 projCoords = (lightSpacePos.xyz / lightSpacePos.w) * .5f + .5f;
@@ -71,7 +71,7 @@ float DirShadowCalculation(sampler2DArray dirShadowMap, const float biasMultipli
 
     const float bias =
         max(.05f * (1.f - dot(N, L)), .005f) * biasMultiplier;  // shadow bias based on light angle && depth map resolution && slope
-    float shadow     = 0.f;
+    float shadow = 0.f;
 
 #if PCF
     const int halfkernelWidth = 2;

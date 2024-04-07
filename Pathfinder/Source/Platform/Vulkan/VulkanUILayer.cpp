@@ -102,11 +102,28 @@ void VulkanUILayer::Init()
 
     // execute a gpu command to upload imgui font textures
     ImGui_ImplVulkan_CreateFontsTexture();
+
+    window->AddResizeCallback(
+        [](uint32_t width, uint32_t height)
+        {
+            for (auto& [uuid, textureID] : s_TextureIDMap)
+            {
+                ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
+            }
+            s_LastActiveTextures.clear();
+            s_TextureIDMap.clear();
+        });
 }
 
 void VulkanUILayer::Destroy()
 {
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
+
+    for (auto& [image, textureID] : s_TextureIDMap)
+    {
+        ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
+    }
+    s_TextureIDMap.clear();
 
     ImGui_ImplVulkan_Shutdown();
     ImGui_ImplGlfw_Shutdown();
@@ -117,17 +134,18 @@ void VulkanUILayer::Destroy()
 
 void VulkanUILayer::OnEvent(Event& e)
 {
-#if 0
+    if (!m_bBlockEvents) return;
     EventDispatcher dispatcher(e);
     dispatcher.Dispatch<MouseMovedEvent>([](const MouseMovedEvent& e) -> bool { return ImGui::IsAnyItemHovered(); });
     dispatcher.Dispatch<MouseScrolledEvent>([](const MouseScrolledEvent& e) -> bool { return ImGui::IsAnyItemHovered(); });
     dispatcher.Dispatch<MouseButtonPressedEvent>([](const MouseButtonPressedEvent& e) -> bool { return ImGui::IsAnyItemHovered(); });
     dispatcher.Dispatch<MouseButtonReleasedEvent>([](const MouseButtonReleasedEvent& e) -> bool { return ImGui::IsAnyItemHovered(); });
-#endif
 }
 
 void VulkanUILayer::BeginRender()
 {
+    UpdateTextureIDs();
+
     // Start the Dear ImGui frame
     ImGui_ImplVulkan_NewFrame();
     ImGui_ImplGlfw_NewFrame();
@@ -153,6 +171,53 @@ void VulkanUILayer::EndRender()
     }
 
     swapchain->EndPass(rd->RenderCommandBuffer[rd->FrameIndex]);
+}
+
+void VulkanUILayer::UpdateTextureIDs()
+{
+    for (auto& [uuid, bIsActive] : s_LastActiveTextures)
+    {
+        if (bIsActive)
+        {
+            bIsActive = false;
+            continue;
+        }
+
+        const auto& textureID = s_TextureIDMap[uuid];
+        ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
+        bIsActive = false;
+        s_TextureIDMap.erase(uuid);
+    }
+}
+
+void UILayer::DrawImage(Shared<Image> image, const glm::vec2& imageSize, const glm::vec2& uv0, const glm::vec2& uv1,
+                        const glm::vec4& tintCol, const glm::vec4& borderCol)
+{
+    PFR_ASSERT(image, "UILayer::DrawImage() - Image is null!");
+    const auto vulkanImage = std::static_pointer_cast<VulkanImage>(image);
+    PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+
+    image->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
+    const auto& uuid = image->GetUUID();
+    if (!s_TextureIDMap.contains(uuid))
+    {
+        s_TextureIDMap.emplace(image->GetUUID(), nullptr);
+        auto& textureID = s_TextureIDMap[uuid];
+
+        textureID = ImGui_ImplVulkan_AddTexture(vulkanImage->GetSampler(), vulkanImage->GetView(),
+                                                ImageUtils::PathfinderImageLayoutToVulkan(vulkanImage->GetSpecification().Layout));
+        PFR_ASSERT(textureID, "Failed to receieve textureID from imgui!");
+
+        ImGui::Image(textureID, (ImVec2&)imageSize, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
+        s_LastActiveTextures[uuid] = true;
+    }
+    else
+    {
+        const auto& textureID = s_TextureIDMap[uuid];
+        ImGui::Image(textureID, (ImVec2&)imageSize, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
+
+        s_LastActiveTextures[uuid] = true;
+    }
 }
 
 }  // namespace Pathfinder
