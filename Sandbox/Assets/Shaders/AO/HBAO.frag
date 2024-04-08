@@ -6,12 +6,17 @@
 layout(location = 0) out float outFragColor;
 layout(location = 0) in vec2 inUV;
 
+/* NOTE: 
+    From PushConstantBlock:
+      uint32_t StorageImageIndex    - u_NoiseTex
+      uint32_t AlbedoTextureIndex   - u_DepthTex
+      uint32_t MeshIndexBufferIndex - u_ViewNormalMap
+*/
+
 layout(constant_id = 0) const float Radius = 0.5f;
 layout(constant_id = 1) const float AngleBias = 30.0f;
 layout(constant_id = 2) const float DegToRad = 0.01745328f;
 layout(constant_id = 3) const uint SampleCount = 6;
-layout(set = LAST_BINDLESS_SET + 1, binding = 0) uniform sampler2D u_NoiseTex;
-layout(set = LAST_BINDLESS_SET + 1, binding = 1) uniform sampler2D u_DepthTex;
 
 vec3 ReconstructViewNormal(const vec3 viewPos)
 {
@@ -32,7 +37,7 @@ float saturate(float a)
 }
 
 const float INFINITY = 1.f / 0.f;
-float ComputeAO(const vec3 N, const vec2 direction, const vec2 screenSize, const vec3 viewPos)
+float ComputeAO(const vec3 N, const vec2 direction, const vec2 screenSize, const vec3 viewPos, const vec2 invRes)
 {
     // 1. Calculate tangent vector based on (earlier it was normal, but viewVector gives better results) and XY-plane: "left-direction" cuz direction we passed has no Z.
     // idk wtf is here, the way I understand should be:
@@ -51,13 +56,13 @@ float ComputeAO(const vec3 N, const vec2 direction, const vec2 screenSize, const
 
     // 3. Find max horizon vector.
     vec3 maxHorizonPos = vec3(0, 0, -INFINITY);
-    const vec2 texelSize = 1.f / textureSize(u_DepthTex, 0);
+    const vec2 texelSize = 1.f / textureSize(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], 0);
     vec3 lastDiff = vec3(0);
     for(uint i = 1; i < SampleCount + 1; ++i)
     {
         const vec2 offsetUV = inUV + i * direction * texelSize;
 
-        const vec3 sampledViewPos = ScreenSpaceToView(vec4(offsetUV, texture(u_DepthTex, offsetUV).r, 1), u_GlobalCameraData.FullResolution).xyz;
+        const vec3 sampledViewPos = ScreenSpaceToView(vec4(offsetUV, texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], offsetUV).r, 1), invRes).xyz;
 
         const vec3 diff = sampledViewPos - viewPos;
         if(sampledViewPos.z > maxHorizonPos.z && length(diff) < Radius)
@@ -79,17 +84,18 @@ float ComputeAO(const vec3 N, const vec2 direction, const vec2 screenSize, const
 
 void main()
 {
-    const uvec2 noiseScale = uvec2(u_GlobalCameraData.FullResolution / textureSize(u_NoiseTex, 0));
-    const vec3 randomVec = normalize(texture(u_NoiseTex, inUV * noiseScale).xyz);
+    const uvec2 noiseScale = uvec2(u_GlobalCameraData.FullResolution / textureSize(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], 0));
+    const vec3 randomVec = normalize(texture(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], inUV * noiseScale).xyz);
+    const vec2 invRes = 1.0f / u_GlobalCameraData.FullResolution;
 
-    const vec3 viewPos = ScreenSpaceToView(vec4(inUV, texture(u_DepthTex, inUV).r, 1), u_GlobalCameraData.FullResolution).xyz;
+    const vec3 viewPos = ScreenSpaceToView(vec4(inUV, texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], inUV).r, 1), invRes).xyz;
     const vec3 N = ReconstructViewNormal(viewPos);
 
 	float result = 0.f;
-	result += ComputeAO(N, vec2(randomVec), u_GlobalCameraData.FullResolution, viewPos);
-	result += ComputeAO(N, -vec2(randomVec), u_GlobalCameraData.FullResolution, viewPos);
-	result += ComputeAO(N, vec2(-randomVec.y, randomVec.x), u_GlobalCameraData.FullResolution, viewPos);
-	result += ComputeAO(N, vec2(randomVec.y, -randomVec.x), u_GlobalCameraData.FullResolution, viewPos);
+	result += ComputeAO(N, vec2(randomVec), u_GlobalCameraData.FullResolution, viewPos, invRes);
+	result += ComputeAO(N, -vec2(randomVec), u_GlobalCameraData.FullResolution, viewPos, invRes);
+	result += ComputeAO(N, vec2(-randomVec.y, randomVec.x), u_GlobalCameraData.FullResolution, viewPos, invRes);
+	result += ComputeAO(N, vec2(randomVec.y, -randomVec.x), u_GlobalCameraData.FullResolution, viewPos, invRes);
 
     const float ao = 1.f - result / 4;
 	outFragColor = pow(ao, 4);

@@ -173,7 +173,7 @@ void SandboxLayer::OnUIRender()
         for (const auto [name, image] : Renderer::GetRenderTargetList())
         {
             ImGui::Text("%s", name.data());
-            UILayer::DrawImage(image, {image->GetSpecification().Width, image->GetSpecification().Height}, {0, 0}, {1, 1});
+            UILayer::DrawImage(image, {image->GetSpecification().Width / 2, image->GetSpecification().Height / 2}, {0, 0}, {1, 1});
             ImGui::Separator();
         }
 

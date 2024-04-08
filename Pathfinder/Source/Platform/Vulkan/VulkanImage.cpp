@@ -64,6 +64,7 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
         case EImageFormat::FORMAT_S8_UINT: return VK_FORMAT_S8_UINT;
         case EImageFormat::FORMAT_D16_UNORM_S8_UINT: return VK_FORMAT_D16_UNORM_S8_UINT;
         case EImageFormat::FORMAT_D24_UNORM_S8_UINT: return VK_FORMAT_D24_UNORM_S8_UINT;
+        case EImageFormat::FORMAT_D32_SFLOAT_S8_UINT: return VK_FORMAT_D32_SFLOAT_S8_UINT;
     }
 
     PFR_ASSERT(false, "Unknown image format!");
@@ -173,10 +174,16 @@ void VulkanImage::SetLayout(const EImageLayout newLayout)
     auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
     vulkanCommandBuffer->BeginRecording(true);
 
-    vulkanCommandBuffer->TransitionImageLayout(
-        m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), ImageUtils::PathfinderImageLayoutToVulkan(newLayout),
-        ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT, m_Specification.Layers,
-        m_Specification.Mips);
+    VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
+    if (ImageUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    if (ImageUtils::IsDepthFormat(m_Specification.Format))
+        imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+    else
+        imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+
+    vulkanCommandBuffer->TransitionImageLayout(m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout),
+                                               ImageUtils::PathfinderImageLayoutToVulkan(newLayout), imageAspectMask,
+                                               m_Specification.Layers, m_Specification.Mips);
 
     vulkanCommandBuffer->EndRecording();
     vulkanCommandBuffer->Submit(true);
@@ -197,8 +204,14 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
     copyRegion.imageSubresource.mipLevel       = 0;  // which mip we do fill
     copyRegion.imageSubresource.baseArrayLayer = 0;  // which layer we do fill
     copyRegion.imageSubresource.layerCount     = m_Specification.Layers;
-    copyRegion.imageSubresource.aspectMask =
-        ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+
+    VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
+    if (ImageUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    if (ImageUtils::IsDepthFormat(m_Specification.Format))
+        imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+    else
+        imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+    copyRegion.imageSubresource.aspectMask = imageAspectMask;
 
 #if TODO
     if (auto commandBuffer = rd->CurrentTransferCommandBuffer.lock())
@@ -235,9 +248,16 @@ void VulkanImage::Invalidate()
     const VkImageViewType imageViewType = m_Specification.Layers == 1
                                               ? VK_IMAGE_VIEW_TYPE_2D
                                               : (m_Specification.Layers == 6 ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D_ARRAY);
-    ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat,
-                                ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
-                                imageViewType, m_Specification.Mips, m_Specification.Layers);
+
+    VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
+    if (ImageUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    if (ImageUtils::IsDepthFormat(m_Specification.Format))
+        imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+    else
+        imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+
+    ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat, imageAspectMask, imageViewType, m_Specification.Mips,
+                                m_Specification.Layers);
 
     // NOTE: Small crutch since SetLayout() doesn't assume using inside Invalidate() but I find it convenient.
     // On image creation it has undefined layout. Store newLayout and set it to specification after transition.
@@ -291,17 +311,23 @@ void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const g
     const auto vkOldLayout        = ImageUtils::PathfinderImageLayoutToVulkan(prevLayout);
     const auto vkNewLayout        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
-    const auto aspectMask = ImageUtils::IsDepthFormat(m_Specification.Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkOldLayout, vkNewLayout, aspectMask, m_Specification.Layers,
+    VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
+    if (ImageUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    if (ImageUtils::IsDepthFormat(m_Specification.Format))
+        imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+    else
+        imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+
+    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkOldLayout, vkNewLayout, imageAspectMask, m_Specification.Layers,
                                                m_Specification.Mips);
 
     const VkClearColorValue clearColorValue = {color.x, color.y, color.z, color.w};
-    const VkImageSubresourceRange range     = {aspectMask, 0, m_Specification.Mips, 0, m_Specification.Layers};
+    const VkImageSubresourceRange range     = {imageAspectMask, 0, m_Specification.Mips, 0, m_Specification.Layers};
 
     const auto rawCommandBuffer = static_cast<VkCommandBuffer>(commandBuffer->Get());
     vkCmdClearColorImage(rawCommandBuffer, m_Handle, vkNewLayout, &clearColorValue, 1, &range);
 
-    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkNewLayout, vkOldLayout, aspectMask, m_Specification.Layers,
+    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkNewLayout, vkOldLayout, imageAspectMask, m_Specification.Layers,
                                                m_Specification.Mips);
 }
 

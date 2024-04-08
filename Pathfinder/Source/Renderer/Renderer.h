@@ -182,6 +182,7 @@ class Renderer : private Uncopyable, private Unmovable
         bool bMeshShadingSupport;
         bool bRTXSupport;
         bool bBDASupport;
+        bool bMultiDrawIndirectSupport;
     };
     static inline RendererSettings s_RendererSettings = {};
 

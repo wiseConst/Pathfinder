@@ -80,6 +80,7 @@ enum class EImageFormat : uint8_t
     FORMAT_S8_UINT,
     FORMAT_D16_UNORM_S8_UINT,
     FORMAT_D24_UNORM_S8_UINT,
+    FORMAT_D32_SFLOAT_S8_UINT,
 };
 
 struct ImageSpecification
@@ -242,11 +243,27 @@ static bool IsDepthFormat(const EImageFormat imageFormat)
 {
     switch (imageFormat)
     {
-        case EImageFormat::FORMAT_D16_UNORM: return true;
-        case EImageFormat::FORMAT_D32F: return true;
-        case EImageFormat::FORMAT_S8_UINT: return true;
-        case EImageFormat::FORMAT_D24_UNORM_S8_UINT: return true;
-        case EImageFormat::FORMAT_D16_UNORM_S8_UINT: return true;
+        case EImageFormat::FORMAT_D16_UNORM:
+        case EImageFormat::FORMAT_D32F:
+        case EImageFormat::FORMAT_S8_UINT:
+        case EImageFormat::FORMAT_D24_UNORM_S8_UINT:
+        case EImageFormat::FORMAT_D16_UNORM_S8_UINT:
+        case EImageFormat::FORMAT_D32_SFLOAT_S8_UINT: return true;
+        default: return false;
+    }
+
+    PFR_ASSERT(false, "Unknown image format!");
+    return false;
+}
+
+static bool IsStencilFormat(const EImageFormat imageFormat)
+{
+    switch (imageFormat)
+    {
+        case EImageFormat::FORMAT_S8_UINT:
+        case EImageFormat::FORMAT_D24_UNORM_S8_UINT:
+        case EImageFormat::FORMAT_D16_UNORM_S8_UINT:
+        case EImageFormat::FORMAT_D32_SFLOAT_S8_UINT: return true;
         default: return false;
     }
 

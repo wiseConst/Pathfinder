@@ -197,7 +197,6 @@ void UILayer::DrawImage(Shared<Image> image, const glm::vec2& imageSize, const g
     const auto vulkanImage = std::static_pointer_cast<VulkanImage>(image);
     PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
 
-    image->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
     const auto& uuid = image->GetUUID();
     if (!s_TextureIDMap.contains(uuid))
     {

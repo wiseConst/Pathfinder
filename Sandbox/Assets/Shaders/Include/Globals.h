@@ -3,6 +3,7 @@
 
 #include "Meshlets.h"
 #include "Lights.h"
+#include "Primitives.h"
 
 using vec2 = glm::vec2;
 using vec3 = glm::vec3;
@@ -32,6 +33,7 @@ static constexpr uint32_t s_MAX_STORAGE_BUFFERS = BIT(16);
 // MESHLETS
 #include "Assets/Shaders/Include/Meshlets.h"
 #include "Assets/Shaders/Include/Lights.h"
+#include "Assets/Shaders/Include/Primitives.h"
 
 #endif
 
@@ -61,13 +63,6 @@ struct MeshAttributeVertex
     vec2 UV;
 };
 
-struct Plane
-{
-    vec3 Normal;  // Should be normalized.
-    // LearnOpenGL:  distance from origin to the nearest point in the plane(PERPENDICULAR VECTOR FROM THE ORIGIN IN OTHER WORDS)
-    float Distance;  // Signed distance from the plane to the origin of the world(or whatever coordinate space you're working in).
-};
-
 #ifdef __cplusplus
 static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
 {
@@ -79,35 +74,6 @@ static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
 }
 #endif
 
-#ifndef __cplusplus
-Plane ComputePlane(const vec3 p0, const vec3 p1, const vec3 p2)
-{
-    Plane plane;
-
-    plane.Normal   = normalize(cross(p1 - p0, p2 - p0));
-    plane.Distance = dot(plane.Normal, p0);  // signed distance to the origin using p0
-
-    return plane;
-}
-#endif
-
-struct AABB
-{
-    vec3 Center;
-    vec3 Extents;
-};
-
-// Left, Right, Top, Bottom, Near, Far
-struct Frustum
-{
-    Plane Planes[6];
-};
-
-struct Sphere
-{
-    vec3 Center;
-    float Radius;
-};
 
 struct PBRData
 {
@@ -252,9 +218,9 @@ vec4 ClipSpaceToView(const vec4 clip)
         But we can flip the viewport coordinate via a negative viewport height value. NOTE!!!: Works only via graphics pipelines!
     Texture coordinate:     +Y is down. Origin(0, 0) is at the top left corner.
 */
-vec4 ScreenSpaceToView(const vec4 screen, const vec2 screenDimensions)
+vec4 ScreenSpaceToView(const vec4 screen, const vec2 inverseScreenDimensions)
 {
-    const vec2 uv = screen.xy / screenDimensions;  // convert from range [0, width]-[0, height] to [0, 1], [0, 1]
+    const vec2 uv = screen.xy * inverseScreenDimensions;  // convert from range [0, width]-[0, height] to [0, 1], [0, 1]
 
     /* If screen origin is top left like in DX or Vulkan: (uv.x, 1.0f - uv.y), screen.z - depth in range [0, 1] like in DX or Vulkan*/
     const vec4 clip = vec4(vec2(uv.x, 1.0 - uv.y) * 2.0 - 1.0, screen.z, // doesn't affect vulkan

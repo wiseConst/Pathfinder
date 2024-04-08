@@ -138,6 +138,7 @@ void main()
         for(uint i = 0; i < u_Lights.PointLightCount && s_VisiblePointLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i) 
         {
             const uint lightIndex = s_VisiblePointLightIndicesBuffer.indices[offset + i];
+            if (lightIndex >= u_Lights.PointLightCount) continue;
 
             PointLight pl = u_Lights.PointLights[lightIndex];
             float kShadow = 1.0f;
@@ -157,7 +158,8 @@ void main()
         for(uint i = 0; i < u_Lights.SpotLightCount && s_VisibleSpotLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i)
         {
            const uint lightIndex = s_VisibleSpotLightIndicesBuffer.indices[offset + i];
-           
+           if (lightIndex >= u_Lights.SpotLightCount) continue;
+
            SpotLight spl = u_Lights.SpotLights[lightIndex];
            #if PHONG
                irradiance += SpotLightContribution(i_VertexInput.WorldPos, N, V, spl, albedo.rgb, ao);

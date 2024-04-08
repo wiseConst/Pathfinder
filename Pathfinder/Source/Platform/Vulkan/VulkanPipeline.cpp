@@ -557,7 +557,7 @@ void VulkanPipeline::Invalidate()
             VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
             std::vector<VkFormat> colorAttachmentFormats;
             VkFormat depthAttachmentFormat   = VK_FORMAT_UNDEFINED;
-            VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;  // TODO: Fill stencil
+            VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
             for (const auto& attachment : m_Specification.TargetFramebuffer->GetAttachments())
             {
@@ -572,6 +572,14 @@ void VulkanPipeline::Invalidate()
                 {
                     colorAttachmentFormats.emplace_back(
                         ImageUtils::PathfinderImageFormatToVulkan(attachment.Attachment->GetSpecification().Format));
+                }
+
+                if (ImageUtils::IsStencilFormat(attachment.Attachment->GetSpecification().Format))
+                {
+                    stencilAttachmentFormat =
+                        stencilAttachmentFormat == VK_FORMAT_UNDEFINED
+                            ? ImageUtils::PathfinderImageFormatToVulkan(attachment.Attachment->GetSpecification().Format)
+                            : stencilAttachmentFormat;
                 }
             }
 

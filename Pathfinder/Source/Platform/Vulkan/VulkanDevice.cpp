@@ -298,9 +298,10 @@ void VulkanDevice::CreateLogicalDevice()
     PFR_ASSERT(m_GPUInfo.GraphicsQueue && m_GPUInfo.PresentQueue && m_GPUInfo.TransferQueue && m_GPUInfo.ComputeQueue,
                "Failed to retrieve queue handles!");
 
-    Renderer::GetRendererSettings().bMeshShadingSupport = VK_MESH_SHADING && m_GPUInfo.bMeshShaderSupport;
-    Renderer::GetRendererSettings().bRTXSupport         = VK_RTX && m_GPUInfo.bRTXSupport;
-    Renderer::GetRendererSettings().bBDASupport         = m_GPUInfo.bBDASupport;
+    Renderer::GetRendererSettings().bMeshShadingSupport       = VK_MESH_SHADING && m_GPUInfo.bMeshShaderSupport;
+    Renderer::GetRendererSettings().bRTXSupport               = VK_RTX && m_GPUInfo.bRTXSupport;
+    Renderer::GetRendererSettings().bBDASupport               = m_GPUInfo.bBDASupport;
+    Renderer::GetRendererSettings().bMultiDrawIndirectSupport = m_GPUInfo.GPUFeatures.multiDrawIndirect;
     if (Renderer::GetRendererSettings().bRTXSupport) PFR_ASSERT(Renderer::GetRendererSettings().bBDASupport, "RTX requires BDA!");
 
 #if PFR_DEBUG

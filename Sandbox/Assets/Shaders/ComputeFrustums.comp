@@ -1,13 +1,14 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h" // needed for camera matrices
+#include "Assets/Shaders/Include/Globals.h"
+#include "Assets/Shaders/Include/Culling.h"
 
 layout(local_size_x = LIGHT_CULLING_TILE_SIZE, local_size_y = LIGHT_CULLING_TILE_SIZE, local_size_z = 1) in;
 
 layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) writeonly buffer LightCullingFrustum
 {
-    Frustum frustums[];
+    TileFrustum frustums[];
 } s_GridFrustumsBuffer;
 
 void main()
@@ -16,7 +17,8 @@ void main()
     if(any(greaterThan(pixelCoords, u_GlobalCameraData.FullResolution))) return;
     const uvec3 wgid = gl_WorkGroupID;
     const uint lti = gl_LocalInvocationIndex;
-    
+    const vec2 invRes = 1.0f / u_GlobalCameraData.FullResolution;
+
     // -Z = -1
     vec4 screenSpace[4];
     // Top left point
@@ -30,7 +32,7 @@ void main()
     
     vec3 viewSpace[4];
     for(uint i = 0; i < 4; ++i)
-        viewSpace[i] = ScreenSpaceToView(screenSpace[i], u_GlobalCameraData.FullResolution).xyz;
+        viewSpace[i] = ScreenSpaceToView(screenSpace[i], invRes).xyz;
 
     // View space eye position is always at the origin.
     const vec3 eyePos = vec3(0);
