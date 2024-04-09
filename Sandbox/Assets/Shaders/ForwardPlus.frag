@@ -28,11 +28,11 @@ layout(constant_id = 0) const bool bRenderViewNormalMap = false;
 
 layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) buffer readonly VisiblePointLightIndicesBuffer
 {
-    uint32_t indices[];
+    LIGHT_INDEX_TYPE indices[];
 } s_VisiblePointLightIndicesBuffer;
 layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) buffer readonly VisibleSpotLightIndicesBuffer
 {
-    uint32_t indices[];
+    LIGHT_INDEX_TYPE indices[];
 } s_VisibleSpotLightIndicesBuffer;
 layout(set = LAST_BINDLESS_SET + 1, binding = 2) uniform sampler2DArray u_DirShadowmap[MAX_DIR_LIGHTS];
 layout(set = LAST_BINDLESS_SET + 1, binding = 3) uniform samplerCube u_PointShadowmap[MAX_POINT_LIGHTS];

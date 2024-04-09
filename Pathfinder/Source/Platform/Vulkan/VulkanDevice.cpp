@@ -171,6 +171,7 @@ void VulkanDevice::CreateLogicalDevice()
     vulkan12Features.shaderStorageImageArrayNonUniformIndexing  = VK_TRUE;
     vulkan12Features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
     vulkan12Features.storageBuffer8BitAccess                    = VK_TRUE;
+    vulkan12Features.shaderFloat16                              = VK_TRUE;
 
     // Bindless
     vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
@@ -233,14 +234,21 @@ void VulkanDevice::CreateLogicalDevice()
         ppNext  = &meshShaderFeaturesEXT.pNext;
     }
 
+    VkPhysicalDeviceVulkan11Features vulkan11Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
+    vulkan11Features.storageBuffer16BitAccess         = VK_TRUE;
+
+    *ppNext = &vulkan11Features;
+    ppNext  = &vulkan11Features.pNext;
+
     // Required gpu features
     VkPhysicalDeviceFeatures physicalDeviceFeatures = {};
     physicalDeviceFeatures.samplerAnisotropy        = VK_TRUE;
     physicalDeviceFeatures.fillModeNonSolid         = VK_TRUE;
     physicalDeviceFeatures.pipelineStatisticsQuery  = VK_TRUE;
     physicalDeviceFeatures.geometryShader           = VK_TRUE;
+    physicalDeviceFeatures.shaderInt16              = VK_TRUE;
     PFR_ASSERT(m_GPUInfo.GPUFeatures.pipelineStatisticsQuery && m_GPUInfo.GPUFeatures.fillModeNonSolid &&
-                   m_GPUInfo.GPUFeatures.textureCompressionBC,
+                   m_GPUInfo.GPUFeatures.textureCompressionBC && m_GPUInfo.GPUFeatures.shaderInt16,
                "Required gpu features aren't supported!");
 
     deviceCI.pEnabledFeatures = &physicalDeviceFeatures;

@@ -6,6 +6,7 @@ using vec4 = glm::vec4;
 
 #endif
 
+#define LIGHT_INDEX_TYPE uint16_t
 #define MAX_POINT_LIGHTS 1024
 #define MAX_SPOT_LIGHTS 512
 #define MAX_DIR_LIGHTS 4
@@ -14,11 +15,13 @@ using vec4 = glm::vec4;
 
 #ifdef __cplusplus
 
-static const uint32_t INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? MAX_POINT_LIGHTS : MAX_SPOT_LIGHTS;
+static const LIGHT_INDEX_TYPE INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? LIGHT_INDEX_TYPE(MAX_POINT_LIGHTS)
+                                                                               : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
 
 #else
 
-const uint32_t INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? MAX_POINT_LIGHTS : MAX_SPOT_LIGHTS;
+const LIGHT_INDEX_TYPE INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? LIGHT_INDEX_TYPE(MAX_POINT_LIGHTS)
+                                                                        : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
 
 
 #endif

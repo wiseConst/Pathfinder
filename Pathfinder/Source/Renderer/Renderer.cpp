@@ -281,7 +281,7 @@ void Renderer::Init()
             (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
         const uint32_t height =
             (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Height + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
-        const size_t sbSize   = MAX_POINT_LIGHTS * sizeof(uint32_t) * width * height;
+        const size_t sbSize   = MAX_POINT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * width * height;
         sbSpec.BufferCapacity = sbSize;
 
         s_RendererData->PointLightIndicesStorageBuffer = Buffer::Create(sbSpec);
@@ -294,7 +294,7 @@ void Renderer::Init()
             (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
         const uint32_t height =
             (s_RendererData->DepthPrePassFramebuffer->GetSpecification().Height + LIGHT_CULLING_TILE_SIZE - 1) / LIGHT_CULLING_TILE_SIZE;
-        const size_t sbSize   = MAX_SPOT_LIGHTS * sizeof(uint32_t) * width * height;
+        const size_t sbSize   = MAX_SPOT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * width * height;
         sbSpec.BufferCapacity = sbSize;
 
         s_RendererData->SpotLightIndicesStorageBuffer = Buffer::Create(sbSpec);
@@ -350,13 +350,13 @@ void Renderer::Init()
                 LIGHT_CULLING_TILE_SIZE;
 
             {
-                const size_t sbSize = MAX_POINT_LIGHTS * sizeof(uint32_t) * adjustedTiledWidth * adjustedTiledHeight;
+                const size_t sbSize = MAX_POINT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * adjustedTiledWidth * adjustedTiledHeight;
 
                 s_RendererData->PointLightIndicesStorageBuffer->Resize(sbSize);
             }
 
             {
-                const size_t sbSize = MAX_SPOT_LIGHTS * sizeof(uint32_t) * adjustedTiledWidth * adjustedTiledHeight;
+                const size_t sbSize = MAX_SPOT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * adjustedTiledWidth * adjustedTiledHeight;
 
                 s_RendererData->SpotLightIndicesStorageBuffer->Resize(sbSize);
             }
@@ -419,16 +419,18 @@ void Renderer::Init()
     {
         std::uniform_real_distribution<float> randomFloats(0.0, 1.0);
         std::mt19937_64 rndEngine;
-        std::vector<glm::vec4> ssaoNoise;
-        for (uint32_t i{}; i < 16; ++i)
+#define SSAO_NOISE_DIM 4
+        std::vector<glm::vec4> ssaoNoise(SSAO_NOISE_DIM * SSAO_NOISE_DIM);
+        for (uint32_t i{}; i < SSAO_NOISE_DIM * SSAO_NOISE_DIM; ++i)
         {
-            ssaoNoise.emplace_back(randomFloats(rndEngine) * 2.0 - 1.0, randomFloats(rndEngine) * 2.0 - 1.0, 0.0, 1.0f);
+            ssaoNoise[i] = glm::vec4(randomFloats(rndEngine) * 2.0f - 1.0f, randomFloats(rndEngine) * 2.0f - 1.0f, 0.0f, 0.0f);
         }
-        TextureSpecification aoNoiseTextureSpec = {4, 4, ssaoNoise.data(), ssaoNoise.size() * sizeof(ssaoNoise[0])};
+        TextureSpecification aoNoiseTextureSpec = {SSAO_NOISE_DIM, SSAO_NOISE_DIM, ssaoNoise.data(),
+                                                   ssaoNoise.size() * sizeof(ssaoNoise[0])};
         aoNoiseTextureSpec.bBindlessUsage       = true;
-        aoNoiseTextureSpec.Filter               = ESamplerFilter::SAMPLER_FILTER_LINEAR;
+        aoNoiseTextureSpec.Filter               = ESamplerFilter::SAMPLER_FILTER_NEAREST;
         aoNoiseTextureSpec.Wrap                 = ESamplerWrap::SAMPLER_WRAP_REPEAT;
-        aoNoiseTextureSpec.Format               = EImageFormat::FORMAT_RGBA16F;
+        aoNoiseTextureSpec.Format               = EImageFormat::FORMAT_RGBA32F;
         s_RendererData->AONoiseTexture          = Texture2D::Create(aoNoiseTextureSpec);
     }
 

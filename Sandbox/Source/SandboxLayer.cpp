@@ -123,8 +123,13 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 #endif
 
 #if POINT_LIGHT_TEST
+    static float accumTime = 0.0;
+    accumTime += deltaTime;
     for (auto& pl : m_PointLights)
     {
+        pl.Position.x += pl.Radius * glm::cos(accumTime) * deltaTime;
+        pl.Position.z += pl.Radius * glm::sin(accumTime) * deltaTime;
+
         pl.Position += glm::vec3(0, 3.0f, 0) * deltaTime;
         if (pl.Position.y > maxLightPos.y)
         {

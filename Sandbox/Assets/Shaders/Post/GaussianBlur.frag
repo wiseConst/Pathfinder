@@ -10,8 +10,8 @@ layout(location = 0) in vec2 inUV;
 layout(constant_id = 0) const uint32_t BlurDirection = 0;
   
 const float weight[5] = float[] (0.227027, 0.1945946, 0.1216216, 0.054054, 0.016216);
-const float blurScale = 1.25f;
-const float blurStrength = 1.25f;
+const float blurScale = 1.05f;
+const float blurStrength = 1.05f;
 
 void main()
 {

@@ -26,11 +26,11 @@ layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) readonly buffer LightCu
 } s_GridFrustumsBuffer;
 layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) writeonly buffer VisiblePointLightIndicesBuffer
 {
-    uint32_t indices[];
+    LIGHT_INDEX_TYPE indices[];
 } s_VisiblePointLightIndicesBuffer;
 layout(set = LAST_BINDLESS_SET + 1, binding = 2, scalar) writeonly buffer VisibleSpotLightIndicesBuffer
 {
-    uint32_t indices[];
+    LIGHT_INDEX_TYPE indices[];
 } s_VisibleSpotLightIndicesBuffer;
 
 /* NOTE: 
@@ -44,9 +44,9 @@ shared uint tileDepthMask;
 shared TileFrustum groupFrustum;
 shared uint uMinDepth;
 shared uint uMaxDepth;
-shared uint visiblePointLightIndices[MAX_POINT_LIGHTS];
+shared LIGHT_INDEX_TYPE visiblePointLightIndices[MAX_POINT_LIGHTS];
 shared uint visiblePointLightCount;
-shared uint visibleSpotLightIndices[MAX_SPOT_LIGHTS];
+shared LIGHT_INDEX_TYPE visibleSpotLightIndices[MAX_SPOT_LIGHTS];
 shared uint visibleSpotLightCount;
 
 #define FRUSTUM_IMAGE_DEBUG 1
@@ -241,7 +241,7 @@ void main()
         
         const uint offset = atomicAdd(visiblePointLightCount, 1);
         if(offset < u_Lights.PointLightCount)
-           visiblePointLightIndices[offset] = i;
+           visiblePointLightIndices[offset] = LIGHT_INDEX_TYPE(i);
       }
     }
 
@@ -259,7 +259,7 @@ void main()
             
             const uint offset = atomicAdd(visibleSpotLightCount, 1);
             if(offset < u_Lights.SpotLightCount)
-               visibleSpotLightIndices[offset] = i;
+               visibleSpotLightIndices[offset] = LIGHT_INDEX_TYPE(i);
         }
     }
     
