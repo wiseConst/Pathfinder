@@ -11,6 +11,7 @@ layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) writeonly buffer LightC
     TileFrustum frustums[];
 } s_GridFrustumsBuffer;
 
+// TODO: Cone frustums https://www.youtube.com/watch?v=E-KBGNpXnrw&list=PLU2nPsAdxKWQYxkmQ3TdbLsyc1l2j25XM&index=126&ab_channel=GameEngineSeries
 void main()
 {
     const vec2 pixelCoords = vec2(gl_GlobalInvocationID.xy);

@@ -74,7 +74,6 @@ static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
 }
 #endif
 
-
 struct PBRData
 {
     vec4 BaseColor;
@@ -223,9 +222,17 @@ vec4 ScreenSpaceToView(const vec4 screen, const vec2 inverseScreenDimensions)
     const vec2 uv = screen.xy * inverseScreenDimensions;  // convert from range [0, width]-[0, height] to [0, 1], [0, 1]
 
     /* If screen origin is top left like in DX or Vulkan: (uv.x, 1.0f - uv.y), screen.z - depth in range [0, 1] like in DX or Vulkan*/
-    const vec4 clip = vec4(vec2(uv.x, 1.0 - uv.y) * 2.0 - 1.0, screen.z, // doesn't affect vulkan
+    const vec4 clip = vec4(vec2(uv.x, 1.0 - uv.y) * 2.0 - 1.0, screen.z,  // doesn't affect vulkan
                            screen.w);  // convert from [0, 1] to NDC([-1, 1]), without touching depth since it's [0, 1] as I require.
     return ClipSpaceToView(clip);
+}
+
+// NOTE: A bit faster than inverse matrix mul.
+// XeGTAO uses same thing, also better explanation is right there:
+// https://www.youtube.com/watch?v=z1KG2Cwi1pk&list=PLU2nPsAdxKWQYxkmQ3TdbLsyc1l2j25XM&index=125&ab_channel=GameEngineSeries
+float ScreenSpaceDepthToView(const float fScreenDepth)
+{
+    return -u_GlobalCameraData.Projection[3][2] / (fScreenDepth + u_GlobalCameraData.Projection[2][2]);
 }
 
 #endif

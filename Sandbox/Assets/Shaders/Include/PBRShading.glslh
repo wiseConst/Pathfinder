@@ -81,7 +81,7 @@ vec3 PointLightContribution(const float kShadow, const vec3 worldPos,  const vec
      const vec3 N = normalize(normal);
 
      const float lightDistance = length(pl.Position - worldPos);
-     const float att = 1.f / (lightDistance * lightDistance);
+     const float att = clamp(1.0 - (lightDistance * lightDistance) / (pl.Radius * pl.Radius), 0.0, 1.0);
      const vec3 radiance  = pl.Color * pl.Intensity * att * kShadow; 
      
      const float NdotL = max(dot(N, L), 0.f);
@@ -98,7 +98,7 @@ vec3 SpotLightContribution(const vec3 worldPos, const vec3 F0, const vec3 normal
 
      const float NdotL = max(dot(N, L), 0.f);
      const float HdotV = max(dot(H, V), 0.f);
-     const vec3 F  = FresnelSchlick(HdotV, F0);
+     const vec3 F = FresnelSchlick(HdotV, F0);
     
     // NOTE: How it works
     // theta: angle between spotlight direction and light dir

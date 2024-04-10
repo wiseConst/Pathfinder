@@ -6,8 +6,8 @@ namespace Pathfinder
 #define POINT_LIGHT_TEST 1
 #define SPOT_LIGHT_TEST 0
 
-const glm::vec3 minLightPos{-15, -5, -5};
-const glm::vec3 maxLightPos{15, 20, 5};
+constexpr glm::vec3 minLightPos{-15, -5, -5};
+constexpr glm::vec3 maxLightPos{15, 20, 5};
 
 void SandboxLayer::Init()
 {
@@ -24,9 +24,9 @@ void SandboxLayer::Init()
     {
         m_PointLights[i].bCastShadows = false;
         m_PointLights[i].Position     = glm::linearRand(minLightPos, maxLightPos);
-        m_PointLights[i].Intensity    = 2.9f;
+        m_PointLights[i].Intensity    = glm::linearRand(1.0f, 3.0f);
         m_PointLights[i].Radius       = radius;
-        m_PointLights[i].MinRadius    = radius * 0.25f;
+        m_PointLights[i].MinRadius    = radius * glm::linearRand(0.15f, 0.80f);
         glm::vec3 color               = glm::vec3(0.f);
         do
         {
@@ -37,10 +37,10 @@ void SandboxLayer::Init()
 #endif
 
 #if SPOT_LIGHT_TEST
-    const float radius = 50.f;
+    const float radius = 5.f;
     for (uint32_t i = 0; i < MAX_SPOT_LIGHTS; ++i)
     {
-        m_SpotLights[i].Height    = glm::linearRand(0.0f, 10.0f);
+        m_SpotLights[i].Height    = glm::linearRand(1.0f, 10.0f);
         m_SpotLights[i].Direction = glm::linearRand(glm::vec3(-1.f), glm::vec3(1.f));
 
         m_SpotLights[i].Position    = glm::linearRand(minLightPos, maxLightPos);
@@ -123,13 +123,8 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 #endif
 
 #if POINT_LIGHT_TEST
-    static float accumTime = 0.0;
-    accumTime += deltaTime;
     for (auto& pl : m_PointLights)
     {
-        pl.Position.x += pl.Radius * glm::cos(accumTime) * deltaTime;
-        pl.Position.z += pl.Radius * glm::sin(accumTime) * deltaTime;
-
         pl.Position += glm::vec3(0, 3.0f, 0) * deltaTime;
         if (pl.Position.y > maxLightPos.y)
         {
@@ -140,7 +135,7 @@ void SandboxLayer::OnUpdate(const float deltaTime)
     }
 #endif
 
-#if 0
+#if fonarik
     const SpotLight sl = {m_Camera->GetPosition(),     m_Camera->GetForwardVector(), glm::vec3(.4f, .4f, .2f), 2.5f, 100.0f, 5.5f,
                           glm::cos(glm::radians(7.f)), glm::cos(glm::radians(20.f))};
     Renderer::AddSpotLight(sl);

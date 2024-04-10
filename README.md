@@ -17,5 +17,5 @@
 * Basic Blinn-Phong shading with normal mapping. Next PBR && multiple light sources with light culling.
 ![Alt text](/Resources/Images/6.png)
 
-* UE4 PBR shading model. Forward+ with reversed depth buffer. 1024 small point lights.
-![Alt text](/Resources/Images/7_0.png)
+* UE4 PBR shading model. Forward+ with Reversed Depth32F Buffer. Tone-Mapping + Gamma-Correction + SSAO + Bloom + HDR(RGBA16F).
+![Alt text](/Resources/Images/7_1.png)
