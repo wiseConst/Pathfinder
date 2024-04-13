@@ -49,10 +49,25 @@ layout(location = 0) in VertexInput
     mat3 TBNtoWorld;
 } i_VertexInput;
 
+// https://developer.download.nvidia.com/cg/saturate.html
+float saturate(float x)
+{
+  return clamp(x, 0.0, 1.0);
+}
+
+// https://forums.unrealengine.com/t/the-math-behind-combining-bc5-normals/365189
 vec3 GetNormalFromNormalMap(const PBRData mat)
 {
-    const vec3 normal = texture(u_GlobalTextures[nonuniformEXT(mat.NormalTextureIndex)], i_VertexInput.UV).xyz;
-    return normal * 2.0 - 1.0;
+    vec2 NormalXY = texture(u_GlobalTextures[nonuniformEXT(mat.NormalTextureIndex)], i_VertexInput.UV).xy;
+	
+	NormalXY = NormalXY * vec2(2.0f,2.0f) - vec2(1.0f,1.0f);
+	float NormalZ = sqrt( saturate( 1.0f - dot( NormalXY, NormalXY ) ) );
+	return vec3( NormalXY.xy, NormalZ);
+}
+
+vec2 GetMetallicRoughnessMap(const PBRData mat)
+{
+    return texture(u_GlobalTextures[nonuniformEXT(mat.MetallicRoughnessTextureIndex)], i_VertexInput.UV).xy;
 }
 
 void main()
@@ -69,9 +84,9 @@ void main()
     const vec2 screenSpaceUV = gl_FragCoord.xy / textureSize(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], 0).xy;
     const float ao = texture(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], screenSpaceUV).r * texture(u_GlobalTextures[nonuniformEXT(mat.OcclusionTextureIndex)], i_VertexInput.UV).r;
 
-    const vec4 metallicRoughness = texture(u_GlobalTextures[nonuniformEXT(mat.MetallicRoughnessTextureIndex)], i_VertexInput.UV);
-    const float metallic = metallicRoughness.b * mat.Metallic;
-    const float roughness = metallicRoughness.g * mat.Roughness;
+    const vec2 metallicRoughness = GetMetallicRoughnessMap(mat);
+    const float metallic = metallicRoughness.g * mat.Metallic;
+    const float roughness = metallicRoughness.r * mat.Roughness;
 
     vec3 irradiance = emissive;
     #if PBR

@@ -110,6 +110,11 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
     dstTexture.dwDataSize = CMP_CalculateBufferSize(&dstTexture);
     dstTexture.pData      = (CMP_BYTE*)malloc(dstTexture.dwDataSize);
 
+#if LOG_TEXTURE_COMPRESSION_INFO
+    LOG_TAG_INFO(AMD_COMPRESSONATOR, "Succeed to move from: %llu bytes, to %llu bytes, compression ratio: %f %.", rawImageSize,
+                 dstTexture.dwDataSize, rawImageSize / (float)dstTexture.dwDataSize);
+#endif
+
     const auto CMP_PrintInfoStr         = [](const char* InfoStr) { LOG_TAG_INFO(AMD_Compressonator, "%s", InfoStr); };
     CMP_CompressOptions compressOptions = {0};
     compressOptions.dwSize              = sizeof(compressOptions);
@@ -119,11 +124,25 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
     compressOptions.bUseCGCompress      = true;
     compressOptions.nEncodeWith         = CMP_GPU_VLK;
 
-    const auto compressionStatus = CMP_ConvertTexture(&srcTexture, &dstTexture, &compressOptions, nullptr);
+#if LOG_TEXTURE_COMPRESSION_INFO
+    const CMP_Feedback_Proc compressionCallback = [](CMP_FLOAT fProgress, CMP_DWORD_PTR pUser1, CMP_DWORD_PTR pUser2) -> bool
+    {
+        LOG_TAG_TRACE(AMD_COMPRESSONATOR, "Conversion texture progress: %3.0f%", fProgress);
+        return 0;
+    };
+#endif
+
+    const auto compressionStatus = CMP_ConvertTexture(&srcTexture, &dstTexture, &compressOptions,
+#if LOG_TEXTURE_COMPRESSION_INFO
+                                                      compressionCallback
+#else
+                                                      nullptr
+#endif
+    );
     PFR_ASSERT(compressionStatus == CMP_OK, "Failed to convert texture using AMD Compressonator!");
 
     *outImageData = dstTexture.pData;
-    outImageSize = dstTexture.dwDataSize;
+    outImageSize  = dstTexture.dwDataSize;
 }
 
 void TextureCompressor::SaveCompressed(const std::filesystem::path& savePath, const TextureSpecification& textureSpec,

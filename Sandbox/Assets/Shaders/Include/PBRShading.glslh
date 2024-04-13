@@ -81,7 +81,8 @@ vec3 PointLightContribution(const float kShadow, const vec3 worldPos,  const vec
      const vec3 N = normalize(normal);
 
      const float lightDistance = length(pl.Position - worldPos);
-     const float att = clamp(1.0 - (lightDistance * lightDistance) / (pl.Radius * pl.Radius), 0.0, 1.0);
+     // Attenuation based on: https://github.com/KhronosGroup/glTF/tree/main/extensions/2.0/Khronos/KHR_lights_punctual#range-property
+     const float att = max( min( 1.0 - pow(lightDistance / pl.Radius, 4), 1 ), 0 ) / pow(lightDistance, 2);
      const vec3 radiance  = pl.Color * pl.Intensity * att * kShadow; 
      
      const float NdotL = max(dot(N, L), 0.f);

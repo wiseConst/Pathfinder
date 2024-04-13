@@ -100,7 +100,7 @@ void CreateImage(VkImage& image, VmaAllocation& allocation, const VkFormat forma
     imageCI.usage             = imageUsage;
     imageCI.mipLevels         = mipLevels;
 
-    // NOTE: No sharing between queues
+    // NOTE: No sharing between queues at least for now.
     imageCI.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
     imageCI.queueFamilyIndexCount = 0;
     imageCI.pQueueFamilyIndices   = nullptr;
