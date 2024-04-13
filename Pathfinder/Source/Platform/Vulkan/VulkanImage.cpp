@@ -65,9 +65,7 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
         case EImageFormat::FORMAT_S8_UINT: return VK_FORMAT_S8_UINT;
         case EImageFormat::FORMAT_D16_UNORM_S8_UINT: return VK_FORMAT_D16_UNORM_S8_UINT;
         case EImageFormat::FORMAT_D24_UNORM_S8_UINT: return VK_FORMAT_D24_UNORM_S8_UINT;
-<<<<<<< HEAD
         case EImageFormat::FORMAT_D32_SFLOAT_S8_UINT: return VK_FORMAT_D32_SFLOAT_S8_UINT;
-=======
 
         case EImageFormat::FORMAT_BC1_RGB_UNORM: return VK_FORMAT_BC1_RGB_UNORM_BLOCK;
         case EImageFormat::FORMAT_BC1_RGB_SRGB: return VK_FORMAT_BC1_RGB_SRGB_BLOCK;
@@ -85,7 +83,6 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
         case EImageFormat::FORMAT_BC6H_SFLOAT: return VK_FORMAT_BC6H_SFLOAT_BLOCK;
         case EImageFormat::FORMAT_BC7_UNORM: return VK_FORMAT_BC7_UNORM_BLOCK;
         case EImageFormat::FORMAT_BC7_SRGB: return VK_FORMAT_BC7_SRGB_BLOCK;
->>>>>>> amd_compressonator
     }
 
     PFR_ASSERT(false, "Unknown image format!");

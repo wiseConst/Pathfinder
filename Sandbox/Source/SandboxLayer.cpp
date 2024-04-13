@@ -27,7 +27,8 @@ void SandboxLayer::Init()
         m_PointLights[i].Intensity    = glm::linearRand(1.0f, 3.0f);
         m_PointLights[i].Radius       = radius;
         m_PointLights[i].MinRadius    = radius * glm::linearRand(0.15f, 0.80f);
-        glm::vec3 color               = glm::vec3(0.f);
+
+        glm::vec3 color = glm::vec3(0.f);
         do
         {
             color = {glm::linearRand(glm::vec3(0, 0, 0), glm::vec3(1, 1, 1))};

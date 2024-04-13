@@ -138,7 +138,6 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include
 set_target_properties(fastgltf PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 
-<<<<<<< HEAD
 # imgui
 add_library(imgui STATIC)
 target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
@@ -162,8 +161,6 @@ set_target_properties(imgui PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_
 target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/imgui)
 
-
-=======
 # AMD Compressonator
 if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
 target_link_libraries(${PROJECT_NAME} PRIVATE
@@ -175,7 +172,6 @@ endif()
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/amd_compressonator/include)
 
 # Renderer compile config.
->>>>>>> amd_compressonator
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
 add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 

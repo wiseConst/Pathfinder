@@ -80,9 +80,7 @@ enum class EImageFormat : uint8_t
     FORMAT_S8_UINT,
     FORMAT_D16_UNORM_S8_UINT,
     FORMAT_D24_UNORM_S8_UINT,
-<<<<<<< HEAD
     FORMAT_D32_SFLOAT_S8_UINT,
-=======
 
     // BCn
     FORMAT_BC1_RGB_UNORM,
@@ -101,7 +99,6 @@ enum class EImageFormat : uint8_t
     FORMAT_BC6H_SFLOAT,
     FORMAT_BC7_UNORM,
     FORMAT_BC7_SRGB,
->>>>>>> amd_compressonator
 };
 
 struct ImageSpecification
