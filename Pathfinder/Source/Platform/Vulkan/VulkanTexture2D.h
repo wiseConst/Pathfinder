@@ -10,7 +10,7 @@ namespace Pathfinder
 class VulkanTexture2D final : public Texture2D
 {
   public:
-    VulkanTexture2D(const TextureSpecification& textureSpec);
+    VulkanTexture2D(const TextureSpecification& textureSpec, const void* data, const size_t dataSize);
     VulkanTexture2D() = delete;
     ~VulkanTexture2D() override { Destroy(); }
 
@@ -24,7 +24,7 @@ class VulkanTexture2D final : public Texture2D
     friend class VulkanBindlessRenderer;
 
     void Destroy() final override;
-    void Invalidate() final override;
+    void Invalidate(const void* data, const size_t dataSize) final override;
 };
 
 }  // namespace Pathfinder

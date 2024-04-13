@@ -49,11 +49,11 @@ enum class EImageFormat : uint8_t
 {
     FORMAT_UNDEFINED = 0,
 
+    FORMAT_R8_UNORM,
+    FORMAT_RG8_UNORM,
     FORMAT_RGB8_UNORM,
     FORMAT_RGBA8_UNORM,
     FORMAT_A2R10G10B10_UNORM_PACK32,
-
-    FORMAT_R8_UNORM,
 
     FORMAT_R16_UNORM,
     FORMAT_R16F,
@@ -271,6 +271,8 @@ static bool IsDepthFormat(const EImageFormat imageFormat)
 void* LoadRawImage(const std::filesystem::path& imagePath, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels);
 
 void* LoadRawImageFromMemory(const uint8_t* data, size_t dataSize, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels);
+
+void* ConvertRgbToRgba(const uint8_t* rgb, const uint32_t width, const uint32_t height);
 
 void UnloadRawImage(void* data);
 

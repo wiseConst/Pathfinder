@@ -93,10 +93,10 @@ void Renderer::Init()
     }
 
     {
-        uint32_t whiteColor                   = 0xFFFFFFFF;
-        TextureSpecification whiteTextureSpec = {1, 1, &whiteColor, sizeof(whiteColor)};
+        TextureSpecification whiteTextureSpec = {1, 1};
         whiteTextureSpec.bBindlessUsage       = true;
-        s_RendererData->WhiteTexture          = Texture2D::Create(whiteTextureSpec);
+        uint32_t whiteColor                   = 0xFFFFFFFF;
+        s_RendererData->WhiteTexture          = Texture2D::Create(whiteTextureSpec, &whiteColor, sizeof(whiteColor));
     }
 
     {
@@ -391,12 +391,12 @@ void Renderer::Init()
         {
             ssaoNoise.emplace_back(randomFloats(rndEngine) * 2.0 - 1.0, randomFloats(rndEngine) * 2.0 - 1.0, 0.0f);
         }
-        TextureSpecification aoNoiseTextureSpec = {4, 4, ssaoNoise.data(), ssaoNoise.size() * sizeof(ssaoNoise[0])};
+        TextureSpecification aoNoiseTextureSpec = {4, 4};
         aoNoiseTextureSpec.bBindlessUsage       = true;
         aoNoiseTextureSpec.Filter               = ESamplerFilter::SAMPLER_FILTER_LINEAR;
         aoNoiseTextureSpec.Wrap                 = ESamplerWrap::SAMPLER_WRAP_REPEAT;
         aoNoiseTextureSpec.Format               = EImageFormat::FORMAT_RGBA32F;
-        s_RendererData->AONoiseTexture          = Texture2D::Create(aoNoiseTextureSpec);
+        s_RendererData->AONoiseTexture = Texture2D::Create(aoNoiseTextureSpec, ssaoNoise.data(), ssaoNoise.size() * sizeof(ssaoNoise[0]));
     }
 
     {

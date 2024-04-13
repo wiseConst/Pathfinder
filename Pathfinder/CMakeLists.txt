@@ -139,9 +139,13 @@ set_target_properties(fastgltf PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_
 set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 
 # AMD Compressonator
- target_link_libraries(${PROJECT_NAME} PRIVATE
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+target_link_libraries(${PROJECT_NAME} PRIVATE
             $<$<CONFIG:Debug>:${VENDOR_DIR}/amd_compressonator/lib/bin/Compressonator_MDd.lib>
             $<$<CONFIG:Release>:${VENDOR_DIR}/amd_compressonator/lib/bin/Compressonator_MD.lib>)
+else()
+    message("TODO: Add libs for linux (AMD Compressonator).")
+endif()
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/amd_compressonator/include)
 
 # Renderer compile config.

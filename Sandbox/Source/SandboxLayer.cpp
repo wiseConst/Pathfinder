@@ -13,7 +13,7 @@ void SandboxLayer::Init()
     m_Dummy  = Mesh::Create("Assets/Meshes/dragon/scene.gltf");
     m_Sponza = Mesh::Create("Assets/Meshes/sponza/scene.gltf");
     m_Helmet = Mesh::Create("Assets/Meshes/damaged_helmet/DamagedHelmet.gltf");
- //   m_Gun    = Mesh::Create("Assets/Meshes/cerberus/scene.gltf");
+    m_Gun    = Mesh::Create("Assets/Meshes/cerberus/scene.gltf");
 
     const float radius = 2.5f;
     for (uint32_t i = 0; i < MAX_POINT_LIGHTS; ++i)
@@ -53,13 +53,13 @@ void SandboxLayer::OnUpdate(const float deltaTime)
     Renderer::BeginScene(*m_Camera);
 
     Renderer::SubmitMesh(m_Dummy, glm::translate(glm::mat4(1.f), glm::vec3(5, 1.2, 0)));
-    
+
     Renderer::SubmitMesh(m_Helmet, glm::translate(glm::mat4(1.f), glm::vec3(0, 5, 0)));
 
     Renderer::SubmitMesh(m_Sponza);
-  /*  Renderer::SubmitMesh(
+    Renderer::SubmitMesh(
         m_Gun, glm::translate(glm::mat4(1.f), glm::vec3(-3, 10, 0)) * glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(0, 1, 0)) *
-                   glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0)) * glm::scale(glm::mat4(1.f), glm::vec3(0.03f)));*/
+                   glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0)) * glm::scale(glm::mat4(1.f), glm::vec3(0.03f)));
 
 #if 0
     {

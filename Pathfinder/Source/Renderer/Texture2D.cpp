@@ -9,25 +9,20 @@
 
 namespace Pathfinder
 {
-Shared<Texture2D> Texture2D::Create(const TextureSpecification& textureSpec)
+
+Shared<Texture2D> Texture2D::Create(const TextureSpecification& textureSpec, const void* data, const size_t dataSize)
 {
     switch (RendererAPI::Get())
     {
-        case ERendererAPI::RENDERER_API_VULKAN: return MakeShared<VulkanTexture2D>(textureSpec);
+        case ERendererAPI::RENDERER_API_VULKAN: return MakeShared<VulkanTexture2D>(textureSpec, data, dataSize);
     }
 
     PFR_ASSERT(false, "Unknown Renderer API!");
     return nullptr;
 }
 
-void Texture2D::Invalidate()
+void Texture2D::Invalidate(const void* data = nullptr, const size_t dataSize = 0)
 {
-    if (m_Image)
-    {
-        PFR_ASSERT(false, "No texture invalidation implemented && tested!");
-        return;
-    }
-
     ImageSpecification imageSpec = {m_Specification.Width, m_Specification.Height};
     imageSpec.Format             = m_Specification.Format;
     imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
@@ -35,13 +30,17 @@ void Texture2D::Invalidate()
 
     m_Image = Image::Create(imageSpec);
 
-    m_Image->SetData(m_Specification.Data, m_Specification.DataSize);
+    if (data && dataSize > 0)
+    {
+        m_Image->SetData(data, dataSize);
+    }
     m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
 }
 
-void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImageFormat srcImageFormat)
+void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImageFormat srcImageFormat, const void* rawImageData,
+                                 const size_t rawImageSize, void** outImageData, size_t& outImageSize)
 {
-    PFR_ASSERT(textureSpec.Data && textureSpec.DataSize > 0, "Invalid image data to compress!");
+    PFR_ASSERT(rawImageData && rawImageSize > 0, "Invalid image data to compress!");
 
     CMP_Texture srcTexture = {};
     srcTexture.dwSize      = sizeof(srcTexture);
@@ -50,6 +49,18 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
 
     switch (srcImageFormat)
     {
+        case EImageFormat::FORMAT_R8_UNORM:
+        {
+            srcTexture.format  = CMP_FORMAT_R_8;
+            srcTexture.dwPitch = srcTexture.dwWidth * 1;
+            break;
+        }
+        case EImageFormat::FORMAT_RG8_UNORM:
+        {
+            srcTexture.format  = CMP_FORMAT_RG_8;
+            srcTexture.dwPitch = srcTexture.dwWidth * 2;
+            break;
+        }
         case EImageFormat::FORMAT_RGBA8_UNORM:
         {
             srcTexture.format  = CMP_FORMAT_RGBA_8888;
@@ -62,8 +73,8 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
             break;
         }
     }
-    srcTexture.dwDataSize = textureSpec.DataSize;
-    srcTexture.pData      = (CMP_BYTE*)textureSpec.Data;
+    srcTexture.dwDataSize = rawImageSize;
+    srcTexture.pData      = (CMP_BYTE*)rawImageData;
 
     CMP_Texture dstTexture = {};
     dstTexture.dwSize      = sizeof(dstTexture);
@@ -103,20 +114,23 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
     CMP_CompressOptions compressOptions = {0};
     compressOptions.dwSize              = sizeof(compressOptions);
     compressOptions.m_PrintInfoStr      = CMP_PrintInfoStr;
-    compressOptions.fquality            = 0.88f;
-    compressOptions.dwnumThreads        = JobSystem::GetNumThreads();
+    compressOptions.fquality            = 0.05f;  // 0.88f;
+    compressOptions.bUseGPUDecompress   = true;
+    compressOptions.bUseCGCompress      = true;
+    compressOptions.nEncodeWith         = CMP_GPU_VLK;
 
     const auto compressionStatus = CMP_ConvertTexture(&srcTexture, &dstTexture, &compressOptions, nullptr);
     PFR_ASSERT(compressionStatus == CMP_OK, "Failed to convert texture using AMD Compressonator!");
 
-    textureSpec.Data     = dstTexture.pData;
-    textureSpec.DataSize = dstTexture.dwDataSize;
+    *outImageData = dstTexture.pData;
+    outImageSize = dstTexture.dwDataSize;
 }
 
-void TextureCompressor::SaveCompressed(const TextureSpecification& textureSpec, const std::filesystem::path& savePath)
+void TextureCompressor::SaveCompressed(const std::filesystem::path& savePath, const TextureSpecification& textureSpec,
+                                       const void* imageData, const size_t imageSize)
 {
-    PFR_ASSERT(textureSpec.Data && textureSpec.DataSize > 0, "Invalid image data to save!");
     PFR_ASSERT(!savePath.empty(), "Invalid save path for compressed texture!");
+    PFR_ASSERT(imageData && imageSize > 0, "Invalid image data to save!");
 
     std::ofstream out(savePath, std::ios::out | std::ios::binary);
     if (!out.is_open())
@@ -125,14 +139,16 @@ void TextureCompressor::SaveCompressed(const TextureSpecification& textureSpec, 
         return;
     }
 
-    // Store texture header("specification"), then its data.
+    // Store texture specification and its data.
     out.write(reinterpret_cast<const char*>(&textureSpec), sizeof(textureSpec));
-    out.write(reinterpret_cast<const char*>(textureSpec.Data), textureSpec.DataSize);
+    out.write(reinterpret_cast<const char*>(&imageSize), sizeof(imageSize));
+    out.write(reinterpret_cast<const char*>(imageData), imageSize);
 
     out.close();
 }
 
-void TextureCompressor::LoadCompressed(TextureSpecification& textureSpec, const std::filesystem::path& loadPath)
+void TextureCompressor::LoadCompressed(const std::filesystem::path& loadPath, TextureSpecification& outTextureSpec,
+                                       std::vector<uint8_t>& outData)
 {
     PFR_ASSERT(!loadPath.empty(), "Invalid load path for compressed texture!");
 
@@ -143,12 +159,16 @@ void TextureCompressor::LoadCompressed(TextureSpecification& textureSpec, const 
         return;
     }
 
-    // Load texture header("specification").
-    in.read(reinterpret_cast<char*>(&textureSpec), sizeof(textureSpec));
+    // Load texture specification.
+    in.read(reinterpret_cast<char*>(&outTextureSpec), sizeof(outTextureSpec));
 
-    // Allocate space for compressed data. (should be free() after Texture2D::Create()).
-    textureSpec.Data = malloc(textureSpec.DataSize);
-    in.read(reinterpret_cast<char*>(textureSpec.Data), textureSpec.DataSize);
+    // Load compressed image size.
+    size_t dataSize = 0;
+    in.read(reinterpret_cast<char*>(&dataSize), sizeof(dataSize));
+    PFR_ASSERT(dataSize > 0, "Failed to load compressed image! DataSize is not > 0!");
+
+    outData.resize(dataSize);
+    in.read(reinterpret_cast<char*>(outData.data()), outData.size());
 
     in.close();
 }
