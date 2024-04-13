@@ -49,7 +49,7 @@ static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
     return ESamplerWrap::SAMPLER_WRAP_REPEAT;
 }
 
-static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures, const std::string& meshDir,
+static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures, const std::string& meshAssetsDir,
                                      const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor, const size_t textureIndex,
                                      TextureSpecification& textureSpec)
 {
@@ -77,22 +77,117 @@ static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Text
 
     if (loadedTextures.contains(textureName)) return loadedTextures[textureName];
 
-    Shared<Texture2D> texture = nullptr;
-    std::visit(fastgltf::visitor{[](auto& arg) {},
-                                 [&](const fastgltf::sources::URI& uri)
-                                 {
-                                     int32_t x = 1, y = 1, channels = 4;
-                                     const std::string texturePath = meshDir + std::string(uri.uri.string());
-                                     void* data       = ImageUtils::LoadRawImage(texturePath, textureSpec.bFlipOnLoad, &x, &y, &channels);
-                                     textureSpec.Data = data;
-                                     textureSpec.DataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
-                                     textureSpec.Width    = x;
-                                     textureSpec.Height   = y;
+    // TODO: Properly handle cached texture directory && working dir. via Application::GetSpec().WorkingDir
+    const auto ind = meshAssetsDir.find("Meshes/");
+    PFR_ASSERT(ind != std::string::npos, "Failed to find meshes substr index!");
+    const std::string meshDir                              = meshAssetsDir.substr(ind);
+    const std::string assetsDir                            = meshAssetsDir.substr(0, meshAssetsDir.size() - meshDir.size());
+    const std::filesystem::path currentMeshTextureCacheDir = assetsDir + "Cached/" + meshDir + "textures/";
+    if (!std::filesystem::exists(currentMeshTextureCacheDir))
+    {
+        std::filesystem::create_directories(currentMeshTextureCacheDir);
+    }
 
-                                     texture = Texture2D::Create(textureSpec);
-                                     ImageUtils::UnloadRawImage(data);
-                                 }},
-               imageData);
+    Shared<Texture2D> texture = nullptr;
+    std::visit(
+        fastgltf::visitor{
+            [](auto& arg) {},
+            [&](const fastgltf::sources::URI& uri)
+            {
+                std::filesystem::path textureURIPath = uri.uri.string();
+                if (const auto lastSlashIndex = textureURIPath.string().find_last_of("/"); lastSlashIndex != std::string::npos)
+                {
+                    // Strip extra info, all we want is texture name(everything after last slash).
+                    textureURIPath = uri.uri.string().substr(lastSlashIndex + 1);
+                }
+
+                std::string bcExtension = ".bc";
+                switch (textureSpec.Format)
+                {
+                    case EImageFormat::FORMAT_BC1_RGB_UNORM: bcExtension += "1_rgb_unorm"; break;
+                    case EImageFormat::FORMAT_BC1_RGB_SRGB: bcExtension += "1_rgb_srgb"; break;
+                    case EImageFormat::FORMAT_BC1_RGBA_UNORM: bcExtension += "1_rgba_unorm"; break;
+                    case EImageFormat::FORMAT_BC1_RGBA_SRGB: bcExtension += "1_rgba_srgb"; break;
+                    case EImageFormat::FORMAT_BC2_UNORM: bcExtension += "2_unorm"; break;
+                    case EImageFormat::FORMAT_BC2_SRGB: bcExtension += "2_srgb"; break;
+                    case EImageFormat::FORMAT_BC3_UNORM: bcExtension += "3_unorm"; break;
+                    case EImageFormat::FORMAT_BC3_SRGB: bcExtension += "3_srgb"; break;
+                    case EImageFormat::FORMAT_BC4_UNORM: bcExtension += "4_unorm"; break;
+                    case EImageFormat::FORMAT_BC4_SNORM: bcExtension += "4_snorm"; break;
+                    case EImageFormat::FORMAT_BC5_UNORM: bcExtension += "5_unorm"; break;
+                    case EImageFormat::FORMAT_BC5_SNORM: bcExtension += "5_snorm"; break;
+                    case EImageFormat::FORMAT_BC6H_UFLOAT: bcExtension += "6H_ufloat"; break;
+                    case EImageFormat::FORMAT_BC6H_SFLOAT: bcExtension += "6H_sfloat"; break;
+                    case EImageFormat::FORMAT_BC7_UNORM: bcExtension += "7_unorm"; break;
+                    case EImageFormat::FORMAT_BC7_SRGB: bcExtension += "7_srgb"; break;
+                    default: LOG_WARN("Image format is not a BC!"); break;
+                }
+
+                std::filesystem::path textureCacheFilePath = currentMeshTextureCacheDir / textureURIPath;
+                textureCacheFilePath.replace_extension(bcExtension);
+
+                // Firstly try to load compressed, otherwise compress and save.
+                if (std::filesystem::exists(textureCacheFilePath))
+                {
+                    std::vector<uint8_t> compressedImage;
+                    TextureCompressor::LoadCompressed(textureCacheFilePath, textureSpec, compressedImage);
+                    texture = Texture2D::Create(textureSpec, compressedImage.data(), compressedImage.size());
+                }
+                else
+                {
+                    int32_t x = 1, y = 1, channels = 4;
+                    const std::string texturePath   = meshAssetsDir + std::string(uri.uri.string());
+                    void* uncompressedData          = ImageUtils::LoadRawImage(texturePath, textureSpec.bFlipOnLoad, &x, &y, &channels);
+                    const auto uncompressedDataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
+                    textureSpec.Width               = x;
+                    textureSpec.Height              = y;
+
+                    void* rgbToRgbaBuffer = nullptr;
+                    if (channels == 3) rgbToRgbaBuffer = ImageUtils::ConvertRgbToRgba((uint8_t*)uncompressedData, x, y);
+
+                    if (textureSpec.Format ==
+                        EImageFormat::FORMAT_RGBA8_UNORM)  // Default format set in texture specification in case no BCn specified.
+                    {
+                        switch (channels)
+                        {
+                            case 1: textureSpec.Format = EImageFormat::FORMAT_R8_UNORM; break;   // Grayscale
+                            case 2: textureSpec.Format = EImageFormat::FORMAT_RG8_UNORM; break;  // Grayscale with alpha
+                            case 3:  // 24bpp(RGB) formats are hard to optimize in graphics hardware, so they're mostly
+                                     // not supported(also in Vulkan). (but we handle this by converting rgb to rgba)
+                            case 4: textureSpec.Format = EImageFormat::FORMAT_RGBA8_UNORM; break;  // RGBA
+                            default: PFR_ASSERT(false, "Unsupported number of image channels!");
+                        }
+                    }
+
+                    EImageFormat srcImageFormat = EImageFormat::FORMAT_RGBA8_UNORM;
+                    switch (channels)
+                    {
+                        case 1: srcImageFormat = EImageFormat::FORMAT_R8_UNORM; break;   // Grayscale
+                        case 2: srcImageFormat = EImageFormat::FORMAT_RG8_UNORM; break;  // Grayscale with alpha
+                        case 3:  // 24bpp(RGB) formats are hard to optimize in graphics hardware, so they're mostly
+                                 // not supported(also in Vulkan). (but we handle this by converting rgb to rgba)
+                        case 4: srcImageFormat = EImageFormat::FORMAT_RGBA8_UNORM; break;  // RGBA
+                        default: PFR_ASSERT(false, "Unsupported number of image channels!");
+                    }
+
+                    const void* whatToCompress = rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData;
+                    const size_t whatToCompressSize =
+                        rgbToRgbaBuffer ? static_cast<size_t>(x) * static_cast<size_t>(y) * 4 : uncompressedDataSize;
+
+                    void* compressedData      = nullptr;
+                    size_t compressedDataSize = 0;
+                    TextureCompressor::Compress(textureSpec, srcImageFormat, whatToCompress, whatToCompressSize, &compressedData,
+                                                compressedDataSize);
+
+                    texture = Texture2D::Create(textureSpec, compressedData, compressedDataSize);
+                    TextureCompressor::SaveCompressed(textureCacheFilePath, textureSpec, compressedData, compressedDataSize);
+
+                    ImageUtils::UnloadRawImage(uncompressedData);
+                    if (channels == 3) delete[] rgbToRgbaBuffer;
+                    free(compressedData);
+                }
+            }},
+        imageData);
 
     loadedTextures[textureName] = texture;
     return texture;
@@ -252,8 +347,7 @@ Mesh::Mesh(const std::string& meshPath)
     const auto gltfType = fastgltf::determineGltfFileType(&data);
     if (gltfType == fastgltf::GltfType::Invalid) PFR_ASSERT(false, "Failed to parse gltf!");
 
-    constexpr auto gltfOptions = fastgltf::Options::DontRequireValidAssetMember | /* fastgltf::Options::AllowDouble |
-                                                                                   */
+    constexpr auto gltfOptions = fastgltf::Options::DontRequireValidAssetMember | fastgltf::Options::AllowDouble |
                                  fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers |
                                  fastgltf::Options::GenerateMeshIndices;
 
@@ -422,6 +516,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.pbrData.baseColorTexture.has_value())
             {
                 TextureSpecification albedoTextureSpec = {};
+                albedoTextureSpec.Format               = EImageFormat::FORMAT_BC7_UNORM;
                 albedoTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.pbrData.baseColorTexture.value();
@@ -434,6 +529,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.normalTexture.has_value())
             {
                 TextureSpecification normalMapTextureSpec = {};
+                normalMapTextureSpec.Format               = EImageFormat::FORMAT_BC5_UNORM;
                 normalMapTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
@@ -446,6 +542,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.pbrData.metallicRoughnessTexture.has_value())
             {
                 TextureSpecification metallicRoughnessTextureSpec = {};
+                metallicRoughnessTextureSpec.Format               = EImageFormat::FORMAT_BC5_UNORM;
                 metallicRoughnessTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.pbrData.metallicRoughnessTexture.value();
@@ -458,6 +555,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.emissiveTexture.has_value())
             {
                 TextureSpecification emissiveTextureSpec = {};
+                emissiveTextureSpec.Format               = EImageFormat::FORMAT_BC7_UNORM;
                 emissiveTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.emissiveTexture.value();
@@ -470,6 +568,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
             if (materialAccessor.occlusionTexture.has_value())
             {
                 TextureSpecification occlusionTextureSpec = {};
+                occlusionTextureSpec.Format               = EImageFormat::FORMAT_BC4_UNORM;
                 occlusionTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.occlusionTexture.value();

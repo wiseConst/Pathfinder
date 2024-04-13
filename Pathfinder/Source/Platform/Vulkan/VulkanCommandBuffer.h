@@ -110,6 +110,13 @@ class VulkanCommandBuffer final : public CommandBuffer
         vkCmdDrawIndexed(m_Handle, indexCount, instanceCount, firstIndex, vertexOffset, firstInstance);
     }
 
+    FORCEINLINE void DrawIndexedIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
+                                         const uint32_t stride) const final override
+    {
+        PFR_ASSERT(drawBuffer && drawBuffer->Get(), "Invalid draw buffer!");
+
+        vkCmdDrawIndexedIndirect(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
+    }
     FORCEINLINE void Draw(const uint32_t vertexCount, const uint32_t instanceCount = 1, const uint32_t firstVertex = 0,
                           const uint32_t firstInstance = 0) const final override
     {

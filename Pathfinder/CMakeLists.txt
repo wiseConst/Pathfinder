@@ -138,6 +138,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include
 set_target_properties(fastgltf PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 
+<<<<<<< HEAD
 # imgui
 add_library(imgui STATIC)
 target_compile_definitions(imgui PRIVATE IMGUI_IMPL_VULKAN_NO_PROTOTYPES)
@@ -162,15 +163,26 @@ target_link_libraries(${PROJECT_NAME} PRIVATE imgui)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/imgui)
 
 
+=======
+# AMD Compressonator
+if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+target_link_libraries(${PROJECT_NAME} PRIVATE
+            $<$<CONFIG:Debug>:${VENDOR_DIR}/amd_compressonator/lib/bin/Compressonator_MDd.lib>
+            $<$<CONFIG:Release>:${VENDOR_DIR}/amd_compressonator/lib/bin/Compressonator_MD.lib>)
+else()
+    message("TODO: Add libs for linux (AMD Compressonator).")
+endif()
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/amd_compressonator/include)
+
+# Renderer compile config.
+>>>>>>> amd_compressonator
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
 add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 
-add_compile_options($<$<CONFIG:Debug>:-g>) # -lto
+add_compile_options($<$<CONFIG:Debug>:-Og>) # -lto
 add_compile_options($<$<CONFIG:Release>:-Ofast -lto>)
 
 # Dynamic MSVC runtime library linking
 if(MSVC)
     set(CMAKE_MSVC_RUNTIME_LIBRARY MultiThreaded$<$<CONFIG:Debug>:Debug>DLL$<$<NOT:$<CONFIG:Debug>>:>)
-else()
-    add_compile_options(-static-libstdc++)
 endif()

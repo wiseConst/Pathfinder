@@ -11,9 +11,9 @@
 namespace Pathfinder
 {
 
-VulkanTexture2D::VulkanTexture2D(const TextureSpecification& textureSpec) : Texture2D(textureSpec)
+VulkanTexture2D::VulkanTexture2D(const TextureSpecification& textureSpec, const void* data, const size_t dataSize) : Texture2D(textureSpec)
 {
-    Invalidate();
+    Invalidate(data, dataSize);
 }
 
 NODISCARD const VkDescriptorImageInfo& VulkanTexture2D::GetDescriptorInfo()
@@ -44,12 +44,12 @@ void VulkanTexture2D::Destroy()
     SamplerStorage::DestroySampler(samplerSpec);
 }
 
-void VulkanTexture2D::Invalidate()
+void VulkanTexture2D::Invalidate(const void* data, const size_t dataSize)
 {
     const SamplerSpecification samplerSpec = {m_Specification.Filter, m_Specification.Wrap};
     m_Sampler                              = (VkSampler)SamplerStorage::CreateOrRetrieveCachedSampler(samplerSpec);
 
-    Texture2D::Invalidate();
+    Texture2D::Invalidate(data, dataSize);
 
     if (m_Specification.bBindlessUsage)
     {

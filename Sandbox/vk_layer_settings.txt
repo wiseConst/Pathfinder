@@ -1,3 +1,0 @@
-khronos_validation.printf_buffer_size = 8192
-khronos_validation.report_flags = error,warn,perf,info
-khronos_validation.printf_verbose = true

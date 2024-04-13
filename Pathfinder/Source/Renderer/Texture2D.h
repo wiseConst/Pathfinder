@@ -8,12 +8,11 @@
 namespace Pathfinder
 {
 
+// TODO: Remove data and its size.
 struct TextureSpecification
 {
     uint32_t Width        = 1;
     uint32_t Height       = 1;
-    void* Data            = nullptr;
-    size_t DataSize       = 0;
     bool bGenerateMips    = false;
     bool bFlipOnLoad      = false;
     ESamplerWrap Wrap     = ESamplerWrap::SAMPLER_WRAP_REPEAT;
@@ -31,7 +30,8 @@ class Texture2D : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const { return m_Index; }
 
-    NODISCARD static Shared<Texture2D> Create(const TextureSpecification& textureSpec);
+    NODISCARD static Shared<Texture2D> Create(const TextureSpecification& textureSpec, const void* data = nullptr,
+                                              const size_t dataSize = 0);
 
   protected:
     Shared<Image> m_Image                = nullptr;
@@ -42,7 +42,27 @@ class Texture2D : private Uncopyable, private Unmovable
     Texture2D() = default;
 
     virtual void Destroy() = 0;
-    virtual void Invalidate();
+    virtual void Invalidate(const void* data, const size_t dataSize);
+};
+
+class TextureCompressor final : private Uncopyable, private Unmovable
+{
+  public:
+    ~TextureCompressor() override = default;
+
+    // NOTE:
+    // Compresses data from srcImageFormat into textureSpec.Format
+    // outImageData will be fullfiled, so you have to free() it manually.
+    static void Compress(TextureSpecification& textureSpec, const EImageFormat srcImageFormat, const void* rawImageData,
+                         const size_t rawImageSize, void** outImageData, size_t& outImageSize);
+
+    static void SaveCompressed(const std::filesystem::path& savePath, const TextureSpecification& textureSpec, const void* imageData,
+                               const size_t imageSize);
+
+    static void LoadCompressed(const std::filesystem::path& loadPath, TextureSpecification& outTextureSpec, std::vector<uint8_t>& outData);
+
+  private:
+    TextureCompressor() = default;
 };
 
 }  // namespace Pathfinder

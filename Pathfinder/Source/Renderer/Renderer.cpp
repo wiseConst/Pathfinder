@@ -80,10 +80,10 @@ void Renderer::Init()
                           { commandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER); });
 
     {
-        uint32_t whiteColor                   = 0xFFFFFFFF;
-        TextureSpecification whiteTextureSpec = {1, 1, &whiteColor, sizeof(whiteColor)};
+        TextureSpecification whiteTextureSpec = {1, 1};
         whiteTextureSpec.bBindlessUsage       = true;
-        s_RendererData->WhiteTexture          = Texture2D::Create(whiteTextureSpec);
+        uint32_t whiteColor                   = 0xFFFFFFFF;
+        s_RendererData->WhiteTexture          = Texture2D::Create(whiteTextureSpec, &whiteColor, sizeof(whiteColor));
     }
 
     {
@@ -425,13 +425,17 @@ void Renderer::Init()
         {
             ssaoNoise[i] = glm::vec4(randomFloats(rndEngine) * 2.0f - 1.0f, randomFloats(rndEngine) * 2.0f - 1.0f, 0.0f, 0.0f);
         }
+<<<<<<< HEAD
         TextureSpecification aoNoiseTextureSpec = {SSAO_NOISE_DIM, SSAO_NOISE_DIM, ssaoNoise.data(),
                                                    ssaoNoise.size() * sizeof(ssaoNoise[0])};
+=======
+        TextureSpecification aoNoiseTextureSpec = {4, 4};
+>>>>>>> amd_compressonator
         aoNoiseTextureSpec.bBindlessUsage       = true;
         aoNoiseTextureSpec.Filter               = ESamplerFilter::SAMPLER_FILTER_NEAREST;
         aoNoiseTextureSpec.Wrap                 = ESamplerWrap::SAMPLER_WRAP_REPEAT;
         aoNoiseTextureSpec.Format               = EImageFormat::FORMAT_RGBA32F;
-        s_RendererData->AONoiseTexture          = Texture2D::Create(aoNoiseTextureSpec);
+        s_RendererData->AONoiseTexture = Texture2D::Create(aoNoiseTextureSpec, ssaoNoise.data(), ssaoNoise.size() * sizeof(ssaoNoise[0]));
     }
 
     {
