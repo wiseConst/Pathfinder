@@ -5,6 +5,8 @@
 #include "RendererAPI.h"
 #include "Platform/Vulkan/VulkanShader.h"
 
+#include "Core/Application.h"
+
 namespace Pathfinder
 {
 
@@ -49,6 +51,18 @@ Shared<Shader> Shader::Create(const std::string_view shaderName)
 
     PFR_ASSERT(false, "Unknown RendererAPI!");
     return nullptr;
+}
+
+Shader::Shader()
+{
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& shadersDir        = appSpec.ShadersDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
+
+    PFR_ASSERT(std::filesystem::is_directory(workingDirFilePath / assetsDir / shadersDir), "Can't find shader source directory!");
+    if (const auto& cacheDir = appSpec.CacheDir; !std::filesystem::is_directory(workingDirFilePath / assetsDir / cacheDir / shadersDir))
+        std::filesystem::create_directories(workingDirFilePath / assetsDir / cacheDir / shadersDir);
 }
 
 void ShaderLibrary::Init()

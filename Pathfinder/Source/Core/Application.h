@@ -21,11 +21,17 @@ struct CommandLineArguments final
 
 struct ApplicationSpecification final
 {
-    ERendererAPI RendererAPI         = ERendererAPI::RENDERER_API_VULKAN;
-    uint32_t Width                   = 1280;
-    uint32_t Height                  = 720;
+    std::string WorkingDir           = s_DEFAULT_STRING;
+    std::string AssetsDir            = s_DEFAULT_STRING;
+    std::string MeshDir              = s_DEFAULT_STRING;
+    std::string ShadersDir           = s_DEFAULT_STRING;
+    std::string CacheDir             = s_DEFAULT_STRING;
     std::string_view Title           = "Pathfinder";
     CommandLineArguments CmdLineArgs = {};
+    uint32_t Width                   = 1280;
+    uint32_t Height                  = 720;
+    ERendererAPI RendererAPI         = ERendererAPI::RENDERER_API_VULKAN;
+    bool bEnableImGui                = false;
 };
 
 class Application : private Unmovable, private Uncopyable

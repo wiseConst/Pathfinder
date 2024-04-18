@@ -25,6 +25,7 @@ class VulkanTexture2D final : public Texture2D
 
     void Destroy() final override;
     void Invalidate(const void* data, const size_t dataSize) final override;
+    void GenerateMipMaps() final override;
 };
 
 }  // namespace Pathfinder

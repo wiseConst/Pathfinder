@@ -13,10 +13,10 @@ void SandboxLayer::Init()
 {
     m_Camera = Camera::Create(ECameraType::CAMERA_TYPE_PERSPECTIVE);
 
-    m_Dummy  = Mesh::Create("Assets/Meshes/dragon/scene.gltf");
-    m_Sponza = Mesh::Create("Assets/Meshes/sponza/scene.gltf");
-    m_Helmet = Mesh::Create("Assets/Meshes/damaged_helmet/DamagedHelmet.gltf");
-    m_Gun    = Mesh::Create("Assets/Meshes/cerberus/scene.gltf");
+    m_Dummy  = Mesh::Create("dragon/scene.gltf");
+    m_Sponza = Mesh::Create("sponza/scene.gltf");
+    m_Helmet = Mesh::Create("damaged_helmet/DamagedHelmet.gltf");
+    m_Gun    = Mesh::Create("cerberus/scene.gltf");
 
 #if POINT_LIGHT_TEST
     const float radius = 2.5f;
@@ -63,6 +63,8 @@ void SandboxLayer::Init()
     m_PointShadowCaster.Intensity    = 2.9f;
     m_PointShadowCaster.Radius       = 5.0f;
     m_PointShadowCaster.Position     = glm::vec3(0.0f, 4.0f, 0);
+
+    UILayer::SetDefaultFont("Fonts/Tilt_Neon/static/TiltNeon-Regular.ttf", 18.0f);
 }
 
 void SandboxLayer::Destroy() {}

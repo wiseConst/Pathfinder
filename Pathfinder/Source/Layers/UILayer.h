@@ -32,6 +32,8 @@ class UILayer : public Layer
 
     NODISCARD static Unique<UILayer> Create();
 
+    static void SetDefaultFont(const std::filesystem::path& fontPath, const float sizePixels);
+
     // Implemented per RHI.
     static void DrawImage(Shared<Image> image, const glm::vec2& imageSize, const glm::vec2& uv0, const glm::vec2& uv1,
                           const glm::vec4& tintCol = glm::vec4(1.0f), const glm::vec4& borderCol = glm::vec4(0.0f));
@@ -43,6 +45,7 @@ class UILayer : public Layer
 
     UILayer() : Layer("UILayer") {}
     virtual void UpdateTextureIDs() = 0;  // Should be called inside BeginRender().
+    void SetCustomTheme() const; // Should be called in the end of Init().
 };
 
 }  // namespace Pathfinder

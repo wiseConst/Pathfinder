@@ -49,12 +49,6 @@ layout(location = 0) in VertexInput
     mat3 TBNtoWorld;
 } i_VertexInput;
 
-// https://developer.download.nvidia.com/cg/saturate.html
-float saturate(float x)
-{
-  return clamp(x, 0.0, 1.0);
-}
-
 // https://forums.unrealengine.com/t/the-math-behind-combining-bc5-normals/365189
 vec3 GetNormalFromNormalMap(const PBRData mat)
 {

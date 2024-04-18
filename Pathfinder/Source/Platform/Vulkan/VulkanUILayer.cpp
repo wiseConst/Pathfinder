@@ -97,7 +97,6 @@ void VulkanUILayer::Init()
 
     const auto vkImageFormat                                     = ImageUtils::PathfinderImageFormatToVulkan(swapchain->GetImageFormat());
     initInfo.PipelineRenderingCreateInfo.pColorAttachmentFormats = &vkImageFormat;
-
     ImGui_ImplVulkan_Init(&initInfo);
 
     // execute a gpu command to upload imgui font textures
@@ -113,6 +112,8 @@ void VulkanUILayer::Init()
             s_LastActiveTextures.clear();
             s_TextureIDMap.clear();
         });
+
+    SetCustomTheme();
 }
 
 void VulkanUILayer::Destroy()

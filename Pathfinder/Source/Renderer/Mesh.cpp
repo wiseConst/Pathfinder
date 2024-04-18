@@ -8,6 +8,7 @@
 #include "Renderer.h"
 #include "BindlessRenderer.h"
 #include "RayTracingBuilder.h"
+#include "Core/Application.h"
 
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/parser.hpp>
@@ -79,19 +80,15 @@ static Shared<Texture2D> LoadMetallicRoughnessTexture(std::unordered_map<std::st
 
     const std::string textureName = fastgltfURI.uri.fspath().stem().string();
     PFR_ASSERT(textureName.data(), "Texture has no name!");
-
     if (loadedTextures.contains(textureName)) return loadedTextures[textureName];
 
-    // TODO: Properly handle cached texture directory && working dir. via Application::GetSpec().WorkingDir
-    const auto ind = meshAssetsDir.find("Meshes/");
+    const auto& appSpec = Application::Get().GetSpecification();
+    const auto ind      = meshAssetsDir.find(appSpec.MeshDir);
     PFR_ASSERT(ind != std::string::npos, "Failed to find meshes substr index!");
-    const std::string meshDir                              = meshAssetsDir.substr(ind);
-    const std::string assetsDir                            = meshAssetsDir.substr(0, meshAssetsDir.size() - meshDir.size());
-    const std::filesystem::path currentMeshTextureCacheDir = assetsDir + "Cached/" + meshDir + "textures/";
-    if (!std::filesystem::exists(currentMeshTextureCacheDir))
-    {
-        std::filesystem::create_directories(currentMeshTextureCacheDir);
-    }
+    const std::string meshDir = meshAssetsDir.substr(ind);  // contains something like: "Meshes/sponza/"
+    const std::filesystem::path currentMeshTextureCacheDir =
+        appSpec.WorkingDir + "/" + appSpec.AssetsDir + "/Cached/" + meshDir + "textures/";
+    if (!std::filesystem::exists(currentMeshTextureCacheDir)) std::filesystem::create_directories(currentMeshTextureCacheDir);
 
     Shared<Texture2D> texture = nullptr;
     std::visit(
@@ -229,19 +226,15 @@ static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Text
 
     const std::string textureName = fastgltfURI.uri.fspath().stem().string();
     PFR_ASSERT(textureName.data(), "Texture has no name!");
-
     if (loadedTextures.contains(textureName)) return loadedTextures[textureName];
 
-    // TODO: Properly handle cached texture directory && working dir. via Application::GetSpec().WorkingDir
-    const auto ind = meshAssetsDir.find("Meshes/");
+    const auto& appSpec = Application::Get().GetSpecification();
+    const auto ind      = meshAssetsDir.find(appSpec.MeshDir);
     PFR_ASSERT(ind != std::string::npos, "Failed to find meshes substr index!");
-    const std::string meshDir                              = meshAssetsDir.substr(ind);
-    const std::string assetsDir                            = meshAssetsDir.substr(0, meshAssetsDir.size() - meshDir.size());
-    const std::filesystem::path currentMeshTextureCacheDir = assetsDir + "Cached/" + meshDir + "textures/";
-    if (!std::filesystem::exists(currentMeshTextureCacheDir))
-    {
-        std::filesystem::create_directories(currentMeshTextureCacheDir);
-    }
+    const std::string meshDir = meshAssetsDir.substr(ind);  // contains something like: "Meshes/sponza/"
+    const std::filesystem::path currentMeshTextureCacheDir =
+        appSpec.WorkingDir + "/" + appSpec.AssetsDir + "/Cached/" + meshDir + "textures/";
+    if (!std::filesystem::exists(currentMeshTextureCacheDir)) std::filesystem::create_directories(currentMeshTextureCacheDir);
 
     Shared<Texture2D> texture = nullptr;
     std::visit(
@@ -329,17 +322,24 @@ static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Text
                     const size_t whatToCompressSize =
                         rgbToRgbaBuffer ? static_cast<size_t>(x) * static_cast<size_t>(y) * 4 : uncompressedDataSize;
 
-                    void* compressedData      = nullptr;
-                    size_t compressedDataSize = 0;
-                    TextureCompressor::Compress(textureSpec, srcImageFormat, whatToCompress, whatToCompressSize, &compressedData,
-                                                compressedDataSize);
+                    if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
+                    {
+                        texture = Texture2D::Create(textureSpec, whatToCompress, whatToCompressSize);
+                    }
+                    else
+                    {
+                        void* compressedData      = nullptr;
+                        size_t compressedDataSize = 0;
+                        TextureCompressor::Compress(textureSpec, srcImageFormat, whatToCompress, whatToCompressSize, &compressedData,
+                                                    compressedDataSize);
 
-                    texture = Texture2D::Create(textureSpec, compressedData, compressedDataSize);
-                    TextureCompressor::SaveCompressed(textureCacheFilePath, textureSpec, compressedData, compressedDataSize);
+                        texture = Texture2D::Create(textureSpec, compressedData, compressedDataSize);
+                        TextureCompressor::SaveCompressed(textureCacheFilePath, textureSpec, compressedData, compressedDataSize);
+                        free(compressedData);
+                    }
 
                     ImageUtils::UnloadRawImage(uncompressedData);
                     if (channels == 3) delete[] rgbToRgbaBuffer;
-                    free(compressedData);
                 }
             }},
         imageData);
@@ -490,7 +490,7 @@ static void BuildMeshlets(const std::vector<uint32_t>& indices, const std::vecto
 }
 }  // namespace MeshPreprocessorUtils
 
-Mesh::Mesh(const std::string& meshPath)
+Mesh::Mesh(const std::filesystem::path& meshPath)
 {
     // Optimally, you should reuse Parser instance across loads, but don't use it across threads.
     thread_local fastgltf::Parser parser;
@@ -506,23 +506,23 @@ Mesh::Mesh(const std::string& meshPath)
                                  fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers |
                                  fastgltf::Options::GenerateMeshIndices;
 
-    std::filesystem::path fsMeshPath(meshPath);
-    fastgltf::Expected<fastgltf::Asset> asset = parser.loadGltf(&data, fsMeshPath.parent_path(), gltfOptions);
+    fastgltf::Expected<fastgltf::Asset> asset = parser.loadGltf(&data, meshPath.parent_path(), gltfOptions);
     if (const auto error = asset.error(); error != fastgltf::Error::None)
     {
-        LOG_TAG_ERROR(FASTGLTF, "Error occured while loading mesh \"%s\"! Error name: %s / Message: %s", meshPath.data(),
+        LOG_TAG_ERROR(FASTGLTF, "Error occured while loading mesh \"%s\"! Error name: %s / Message: %s", meshPath.string().data(),
                       fastgltf::getErrorName(error).data(), fastgltf::getErrorMessage(error).data());
         PFR_ASSERT(false, "Failed to load mesh!");
     }
-    LOG_TAG_INFO(FASTGLTF, "\"%s\" has (%zu) buffers, (%zu) textures, (%zu) animations, (%zu) materials, (%zu) meshes.", meshPath.data(),
-                 asset->buffers.size(), asset->animations.size(), asset->textures.size(), asset->materials.size(), asset->meshes.size());
+    LOG_TAG_INFO(FASTGLTF, "\"%s\" has (%zu) buffers, (%zu) textures, (%zu) animations, (%zu) materials, (%zu) meshes.",
+                 meshPath.string().data(), asset->buffers.size(), asset->animations.size(), asset->textures.size(), asset->materials.size(),
+                 asset->meshes.size());
 
-    std::string meshDir = fsMeshPath.parent_path().string() + "/";
+    std::string currentMeshDir = meshPath.parent_path().string() + "/";
+    PFR_ASSERT(!currentMeshDir.empty(), "Current mesh directory path invalid!");
     std::unordered_map<std::string, Shared<Texture2D>> loadedTextures;
-    PFR_ASSERT(meshDir.length() > 1, "Mesh directory path invalid!");
     for (size_t meshIndex = 0; meshIndex < asset->meshes.size(); ++meshIndex)
     {
-        LoadSubmeshes(meshDir, loadedTextures, asset.get(), meshIndex);
+        LoadSubmeshes(currentMeshDir, loadedTextures, asset.get(), meshIndex);
     }
 
 #if TODO
@@ -537,12 +537,22 @@ Mesh::Mesh(const std::string& meshPath)
     PFR_ASSERT(fastgltf::validate(asset.get()) == fastgltf::Error::None, "Asset is not valid after processing?");
 #endif
 
-    LOG_TAG_INFO(FASTGLTF, "Time taken to load and create mesh - \"%s\": (%0.5f) seconds.", meshPath.data(), t.GetElapsedSeconds());
+    LOG_TAG_INFO(FASTGLTF, "Time taken to load and create mesh - \"%s\": (%0.5f) seconds.", meshPath.string().data(),
+                 t.GetElapsedSeconds());
 }
 
 Shared<Mesh> Mesh::Create(const std::string& meshPath)
 {
-    return MakeShared<Mesh>(meshPath);
+    PFR_ASSERT(!meshPath.empty(), "Mesh path is empty!");
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& meshDir           = appSpec.MeshDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
+
+    const std::filesystem::path fullMeshPath = workingDirFilePath / assetsDir / meshDir / meshPath;
+    std::string fullMeshPathString           = fullMeshPath.string();
+    std::replace(fullMeshPathString.begin(), fullMeshPathString.end(), '\\', '/');  // adjust
+    return MakeShared<Mesh>(fullMeshPathString);
 }
 
 void Mesh::Destroy()

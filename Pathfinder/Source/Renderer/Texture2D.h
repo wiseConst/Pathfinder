@@ -8,7 +8,6 @@
 namespace Pathfinder
 {
 
-// TODO: Remove data and its size.
 struct TextureSpecification
 {
     uint32_t Width        = 1;
@@ -39,10 +38,11 @@ class Texture2D : private Uncopyable, private Unmovable
     uint32_t m_Index                     = UINT32_MAX;  // bindless array purposes
 
     Texture2D(const TextureSpecification& textureSpec) : m_Specification(textureSpec) {}
-    Texture2D() = default;
+    Texture2D() = delete;
 
     virtual void Destroy() = 0;
     virtual void Invalidate(const void* data, const size_t dataSize);
+    virtual void GenerateMipMaps() = 0;
 };
 
 class TextureCompressor final : private Uncopyable, private Unmovable

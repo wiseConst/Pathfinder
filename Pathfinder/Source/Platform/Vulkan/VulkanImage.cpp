@@ -201,7 +201,7 @@ void VulkanImage::SetLayout(const EImageLayout newLayout)
 
     vulkanCommandBuffer->TransitionImageLayout(m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout),
                                                ImageUtils::PathfinderImageLayoutToVulkan(newLayout), imageAspectMask,
-                                               m_Specification.Layers, m_Specification.Mips);
+                                               m_Specification.Layers, 0, m_Specification.Mips, 0);
 
     vulkanCommandBuffer->EndRecording();
     vulkanCommandBuffer->Submit(true);
@@ -258,6 +258,7 @@ void VulkanImage::Invalidate()
 {
     if (m_Handle) Destroy();
 
+    PFR_ASSERT(m_Specification.Mips > 0, "Mips should be 1 at least!");
     const auto vkImageFormat = ImageUtils::PathfinderImageFormatToVulkan(m_Specification.Format);
     ImageUtils::CreateImage(m_Handle, m_Allocation, vkImageFormat,
                             ImageUtils::PathfinderImageUsageFlagsToVulkan(m_Specification.UsageFlags),
@@ -336,8 +337,8 @@ void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const g
     else
         imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
 
-    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkOldLayout, vkNewLayout, imageAspectMask, m_Specification.Layers,
-                                               m_Specification.Mips);
+    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkOldLayout, vkNewLayout, imageAspectMask, m_Specification.Layers, 0,
+                                               m_Specification.Mips, 0);
 
     const VkClearColorValue clearColorValue = {color.x, color.y, color.z, color.w};
     const VkImageSubresourceRange range     = {imageAspectMask, 0, m_Specification.Mips, 0, m_Specification.Layers};
@@ -345,8 +346,8 @@ void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const g
     const auto rawCommandBuffer = static_cast<VkCommandBuffer>(commandBuffer->Get());
     vkCmdClearColorImage(rawCommandBuffer, m_Handle, vkNewLayout, &clearColorValue, 1, &range);
 
-    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkNewLayout, vkOldLayout, imageAspectMask, m_Specification.Layers,
-                                               m_Specification.Mips);
+    vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkNewLayout, vkOldLayout, imageAspectMask, m_Specification.Layers, 0,
+                                               m_Specification.Mips, 0);
 }
 
 NODISCARD static ESamplerFilter VulkanSamplerFilterToPathfinder(const VkFilter filter)

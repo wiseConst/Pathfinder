@@ -15,6 +15,7 @@ void Logger::Init(const std::string_view& logFileName)
         PFR_ASSERT(!logFileName.empty(), "Log file name is empty!");
         s_LogFile.open(logFileName.data(), std::ios::out | std::ios::trunc);
         PFR_ASSERT(s_LogFile.is_open(), "Failed to open log file!");
+        s_LogBuffer.reserve(s_LogBufferSize);
 
         s_bIsLoggerInitialized = true;
     }
@@ -24,6 +25,7 @@ void Logger::Shutdown()
 {
     if (s_bIsLoggerInitialized)
     {
+        Flush();
         s_LogFile.close();
         s_bIsLoggerInitialized = false;
     }

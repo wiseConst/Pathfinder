@@ -27,6 +27,12 @@ void Texture2D::Invalidate(const void* data = nullptr, const size_t dataSize = 0
     imageSpec.Format             = m_Specification.Format;
     imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
     imageSpec.Layers             = m_Specification.Layers;
+    if (m_Specification.bGenerateMips)
+    {
+        imageSpec.Mips = static_cast<uint32_t>(std::floor(std::log2(std::max(m_Specification.Width, m_Specification.Height))) +
+                                               1);                          // +1 for base mip level.
+        imageSpec.UsageFlags |= EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT;  // For downsampling the source.
+    }
 
     m_Image = Image::Create(imageSpec);
 
@@ -34,7 +40,9 @@ void Texture2D::Invalidate(const void* data = nullptr, const size_t dataSize = 0
     {
         m_Image->SetData(data, dataSize);
     }
+
     m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    if (m_Specification.bGenerateMips) GenerateMipMaps();
 }
 
 void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImageFormat srcImageFormat, const void* rawImageData,
@@ -127,7 +135,7 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
 #if LOG_TEXTURE_COMPRESSION_INFO
     const CMP_Feedback_Proc compressionCallback = [](CMP_FLOAT fProgress, CMP_DWORD_PTR pUser1, CMP_DWORD_PTR pUser2) -> bool
     {
-        LOG_TAG_TRACE(AMD_COMPRESSONATOR, "Conversion texture progress: %3.0f%", fProgress);
+        LOG_TAG_TRACE(AMD_COMPRESSONATOR, "Conversion texture progress: (%0.3f)", fProgress);
         return 0;
     };
 #endif

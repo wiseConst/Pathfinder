@@ -213,23 +213,22 @@ static void PrintDescriptorSets(const std::vector<SpvReflectDescriptorSet*>& des
 #endif
 }
 
-// TODO: Move working dir out
 VulkanShader::VulkanShader(const std::string_view shaderName)
 {
-    PFR_ASSERT(!std::filesystem::is_directory("/Assets/Shaders/"), "Can't find shader source directory!");
-    if (!std::filesystem::is_directory(std::filesystem::current_path().string() + "/Assets/Cached/Shaders/"))
-        std::filesystem::create_directories(std::filesystem::current_path().string() + "/Assets/Cached/Shaders/");
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& shadersDir        = appSpec.ShadersDir;
+    const auto& cacheDir          = appSpec.CacheDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
 
-    // In case shader specified through folders
+    // In case shader specified through folders, handling cache.
     if (const auto fsShader = std::filesystem::path(shaderName); fsShader.has_parent_path())
-    {
-        std::filesystem::create_directories(std::filesystem::current_path().string() + "/Assets/Cached/Shaders/" +
-                                            fsShader.parent_path().string());
-    }
+        std::filesystem::create_directories(workingDirFilePath / assetsDir / cacheDir / shadersDir / fsShader.parent_path());
 
+    const std::string localShaderPathString = assetsDir + "/" + shadersDir + "/" + std::string(shaderName);
     for (const auto& shaderExt : s_SHADER_EXTENSIONS)
     {
-        const std::filesystem::path localShaderPath = std::string("Assets/Shaders/") + std::string(shaderName) + std::string(shaderExt);
+        const std::filesystem::path localShaderPath = localShaderPathString + std::string(shaderExt);
         if (!std::filesystem::exists(localShaderPath)) continue;
 
         // Detect shader type
@@ -444,8 +443,14 @@ void VulkanShader::Reflect(SpvReflectShaderModule& reflectModule, ShaderDescript
 std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
                                                             shaderc_shader_kind shaderKind)
 {
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& shadersDir        = appSpec.ShadersDir;
+    const auto& cacheDir          = appSpec.CacheDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
+
     // Firstly check if cache exists and retrieve it
-    const std::filesystem::path cachedShaderPath = std::string("Assets/Cached/Shaders/") + std::string(shaderName) + ".spv";
+    const std::filesystem::path cachedShaderPath = workingDirFilePath / assetsDir / cacheDir / shadersDir / (shaderName + ".spv");
 #if !VK_FORCE_SHADER_COMPILATION
     // TODO: Add extra shader directories if don't exist, cuz loading fucked up
     if (std::filesystem::exists(cachedShaderPath)) return LoadData<std::vector<uint32_t>>(cachedShaderPath.string());

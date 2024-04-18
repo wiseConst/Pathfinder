@@ -53,7 +53,7 @@ class Shader : private Uncopyable, private Unmovable
     virtual void DestroyGarbageIfNeeded() = 0;
 
   protected:
-    Shader() = default;
+    explicit Shader();
 
     virtual void Destroy() = 0;
 };

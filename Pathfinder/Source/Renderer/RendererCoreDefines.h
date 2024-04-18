@@ -11,7 +11,7 @@ namespace Pathfinder
 {
 
 #define LOG_SHADER_INFO 0
-#define LOG_TEXTURE_COMPRESSION_INFO 0
+#define LOG_TEXTURE_COMPRESSION_INFO 1
 
 static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
 

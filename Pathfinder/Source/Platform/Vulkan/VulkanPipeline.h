@@ -16,9 +16,6 @@ class VulkanPipeline final : public Pipeline
 
     NODISCARD FORCEINLINE VkPipelineLayout GetLayout() const { return m_Layout; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
-    NODISCARD FORCEINLINE const PipelineSpecification& GetSpecification() const final override { return m_Specification; }
-
-    FORCEINLINE void SetPolygonMode(const EPolygonMode polygonMode) final override { m_Specification.PolygonMode = polygonMode; }
 
     NODISCARD FORCEINLINE VkShaderStageFlags GetPushConstantShaderStageByIndex(const uint32_t pushConstantIndex) const
     {
@@ -26,7 +23,6 @@ class VulkanPipeline final : public Pipeline
     }
 
   private:
-    PipelineSpecification m_Specification = {};
     std::vector<VkPushConstantRange> m_PushConstants;  // FIXME: Wasting memory, but convenient way to bind push constants
     VkPipeline m_Handle       = VK_NULL_HANDLE;
     VkPipelineLayout m_Layout = VK_NULL_HANDLE;

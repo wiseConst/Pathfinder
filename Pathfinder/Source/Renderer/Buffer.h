@@ -183,7 +183,7 @@ class Buffer : private Uncopyable, private Unmovable
     uint32_t m_Index                    = UINT32_MAX;  // bindless array purposes
 
     Buffer(const BufferSpecification& bufferSpec) : m_Specification(bufferSpec) {}
-    explicit Buffer() = default;
+    Buffer() = delete;
 
     virtual void Destroy() = 0;
 };

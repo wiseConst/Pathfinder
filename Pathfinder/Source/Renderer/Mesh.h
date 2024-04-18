@@ -18,7 +18,7 @@ class Mesh final : private Uncopyable, private Unmovable
 {
   public:
     Mesh() = delete;
-    explicit Mesh(const std::string& meshPath);
+    explicit Mesh(const std::filesystem::path& meshPath);
     ~Mesh() override { Destroy(); }
 
     NODISCARD static Shared<Mesh> Create(const std::string& meshPath);

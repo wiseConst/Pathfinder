@@ -15,6 +15,7 @@
 #include <memory>
 #include <algorithm>
 
+#include <concepts>
 #include <ranges>
 #include <array>
 #include <queue>

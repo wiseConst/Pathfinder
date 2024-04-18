@@ -7,13 +7,15 @@
 #include "VulkanFramebuffer.h"
 #include "VulkanImage.h"
 
-#include "Core/Application.h"
-#include "Core/Window.h"
 #include "Renderer/Renderer.h"
 #include "VulkanBindlessRenderer.h"
 #include "Core/CoreUtils.h"
+#include "Core/Application.h"
 
 namespace Pathfinder
+{
+
+namespace PipelineUtils
 {
 
 static VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
@@ -57,34 +59,31 @@ static VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode)
     return VK_CULL_MODE_NONE;
 }
 
-static void PopulateShaderConstantsSpecializationInfo(const auto& shaderConstantsMap, auto& shaderConstantsInfo)
+struct ShaderConstantInfo
+{
+    VkSpecializationInfo SpecializationInfo               = {};
+    std::vector<VkSpecializationMapEntry> ConstantEntries = {};
+};
+
+static void PopulateShaderConstantsSpecializationInfo(const std::vector<PipelineSpecification::ShaderConstantType>& shaderConstantsMap,
+                                                      ShaderConstantInfo& shaderConstantsInfo)
 {
     size_t constantsDataSize = 0;  // Used as offset for constants and final size of all constants.
     for (uint32_t constant_id = 0; constant_id < shaderConstantsMap.size(); ++constant_id)
     {
         const auto& constantEntry = shaderConstantsMap[constant_id];
-        auto& vkConstantEntry     = shaderConstantsInfo.ConstantEntries.emplace_back(constant_id, constantsDataSize);
+        auto& vkConstantEntry     = shaderConstantsInfo.ConstantEntries.emplace_back(constant_id, /* offset */ 0, constantsDataSize);
 
         if (std::holds_alternative<bool>(constantEntry))
-        {
             vkConstantEntry.size = sizeof(VkBool32);
-        }
         else if (std::holds_alternative<int32_t>(constantEntry))
-        {
             vkConstantEntry.size = sizeof(int32_t);
-        }
         else if (std::holds_alternative<uint32_t>(constantEntry))
-        {
             vkConstantEntry.size = sizeof(uint32_t);
-        }
         else if (std::holds_alternative<float>(constantEntry))
-        {
             vkConstantEntry.size = sizeof(float);
-        }
         else
-        {
             PFR_ASSERT(false, "Unknown std::variant shader constant type!");
-        }
 
         constantsDataSize += vkConstantEntry.size;
     }
@@ -95,7 +94,9 @@ static void PopulateShaderConstantsSpecializationInfo(const auto& shaderConstant
     shaderConstantsInfo.SpecializationInfo.pData         = shaderConstantsMap.data();
 }
 
-VulkanPipeline::VulkanPipeline(const PipelineSpecification& pipelineSpec) : m_Specification(pipelineSpec)
+}  // namespace PipelineUtils
+
+VulkanPipeline::VulkanPipeline(const PipelineSpecification& pipelineSpec) : Pipeline(pipelineSpec)
 {
     Invalidate();
 }
@@ -218,13 +219,19 @@ void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& o
 {
     PFR_ASSERT(!pipelineName.empty(), "Every pipeline should've a name!");
 
-    if (!std::filesystem::is_directory(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/"))
-        std::filesystem::create_directories(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/");
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& cacheDir          = appSpec.CacheDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
+
+    // Validate cache directories.
+    const auto pipelineCacheDirFilePath = workingDirFilePath / assetsDir / cacheDir / "Pipelines";
+    if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
 
     VkPipelineCacheCreateInfo cacheCI = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, nullptr, 0};
     auto& context                     = VulkanContext::Get();
 #if !VK_FORCE_PIPELINE_COMPILATION
-    const std::string cachePath = std::string("Assets/Cached/Pipelines/") + pipelineName + std::string(".cache");
+    const std::string cachePath = pipelineCacheDirFilePath.string() + "/" + pipelineName + std::string(".cache");
     auto cacheData              = LoadData<std::vector<uint8_t>>(cachePath);
 
     // Validate retrieved pipeline cache
@@ -275,12 +282,7 @@ void VulkanPipeline::Invalidate()
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
 
     // Gather shader compile constants.
-    struct ShaderConstantInfo
-    {
-        VkSpecializationInfo SpecializationInfo               = {};
-        std::vector<VkSpecializationMapEntry> ConstantEntries = {};
-    };
-    std::map<EShaderStage, ShaderConstantInfo> shaderConstantsInfo = {};
+    std::map<EShaderStage, PipelineUtils::ShaderConstantInfo> shaderConstantsInfo = {};
 
     std::vector<VkPipelineShaderStageCreateInfo> shaderStages;
     const auto& shaderDescriptions = vulkanShader->GetDescriptions();
@@ -390,9 +392,9 @@ void VulkanPipeline::Invalidate()
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
             // Contains the configuration for what kind of topology will be drawn.
-            const VkPipelineInputAssemblyStateCreateInfo IAState = {VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, nullptr, 0,
-                                                                    PathfinderPrimitiveTopologyToVulkan(m_Specification.PrimitiveTopology),
-                                                                    VK_FALSE};
+            const VkPipelineInputAssemblyStateCreateInfo IAState = {
+                VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, nullptr, 0,
+                PipelineUtils::PathfinderPrimitiveTopologyToVulkan(m_Specification.PrimitiveTopology), VK_FALSE};
 
             VkPipelineVertexInputStateCreateInfo vertexInputState = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
 
@@ -445,10 +447,10 @@ void VulkanPipeline::Invalidate()
             constexpr VkPipelineTessellationStateCreateInfo tessellationState = {VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};
 
             VkPipelineRasterizationStateCreateInfo RasterizationState = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-            RasterizationState.cullMode                               = PathfinderCullModeToVulkan(m_Specification.CullMode);
+            RasterizationState.cullMode                               = PipelineUtils::PathfinderCullModeToVulkan(m_Specification.CullMode);
             RasterizationState.lineWidth                              = m_Specification.LineWidth;
             RasterizationState.polygonMode             = VulkanUtility::PathfinderPolygonModeToVulkan(m_Specification.PolygonMode);
-            RasterizationState.frontFace               = PathfinderFrontFaceToVulkan(m_Specification.FrontFace);
+            RasterizationState.frontFace               = PipelineUtils::PathfinderFrontFaceToVulkan(m_Specification.FrontFace);
             RasterizationState.rasterizerDiscardEnable = VK_FALSE;
 
             // TODO: Make it configurable?
@@ -632,8 +634,13 @@ void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string
 {
     PFR_ASSERT(!pipelineName.empty(), "Every pipeline should've a name!");
 
-    if (!std::filesystem::is_directory(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/"))
-        std::filesystem::create_directories(std::filesystem::current_path().string() + "/Assets/Cached/Pipelines/");
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& cacheDir          = appSpec.CacheDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
+
+    const auto pipelineCacheDirFilePath = workingDirFilePath / assetsDir / cacheDir / "Pipelines";
+    if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
 
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
 #if !VK_FORCE_PIPELINE_COMPILATION
@@ -643,7 +650,7 @@ void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string
     std::vector<uint8_t> cacheData(cacheSize);
     VK_CHECK(vkGetPipelineCacheData(logicalDevice, cache, &cacheSize, cacheData.data()), "Failed to retrieve pipeline cache data!");
 
-    const std::string cachePath = std::string("Assets/Cached/Pipelines/") + pipelineName + std::string(".cache");
+    const std::string cachePath = pipelineCacheDirFilePath.string() + "/" + pipelineName + std::string(".cache");
     if (!cacheData.data() || cacheSize <= 0)
     {
         LOG_TAG_WARN(VULKAN, "Invalid cache data or size! %s", cachePath.data());

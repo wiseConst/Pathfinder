@@ -235,6 +235,12 @@ float ScreenSpaceDepthToView(const float fScreenDepth)
     return -u_GlobalCameraData.Projection[3][2] / (fScreenDepth + u_GlobalCameraData.Projection[2][2]);
 }
 
+// https://developer.download.nvidia.com/cg/saturate.html
+float saturate(float x)
+{
+    return clamp(x, 0.0, 1.0);
+}
+
 #endif
 
 const uint32_t MAX_SHADOW_CASCADES = 5;

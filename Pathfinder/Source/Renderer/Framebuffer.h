@@ -76,7 +76,7 @@ class Framebuffer : private Uncopyable, private Unmovable
     FramebufferSpecification m_Specification = {};
 
     Framebuffer(const FramebufferSpecification& framebufferSpec) : m_Specification(framebufferSpec) {}
-    Framebuffer() = default;
+    Framebuffer() = delete;
 
     virtual void Invalidate() = 0;
     virtual void Destroy()    = 0;

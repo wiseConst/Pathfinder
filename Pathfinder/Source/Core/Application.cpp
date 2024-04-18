@@ -24,9 +24,14 @@ Application::Application(const ApplicationSpecification& appSpec) noexcept : m_S
     s_Instance   = this;
     s_bIsRunning = true;
 
+    if (m_Specification.WorkingDir == s_DEFAULT_STRING) m_Specification.WorkingDir = std::filesystem::current_path().string();
+
     Logger::Init(std::string(m_Specification.Title) + ".log");
     PFR_ASSERT(s_FRAMES_IN_FLIGHT != 0, "Frames in flight should be greater than zero!");
     PFR_ASSERT(s_WORKER_THREAD_COUNT > 0 && JobSystem::GetNumThreads() > 0, "No worker threads found!");
+    PFR_ASSERT(!m_Specification.AssetsDir.empty() && !m_Specification.MeshDir.empty() && !m_Specification.CacheDir.empty() &&
+                   !m_Specification.ShadersDir.empty(),
+               "Application specification doesn't have needed directories. (in e.g. AssetsDir)");
 
     JobSystem::Init();
 
@@ -38,7 +43,7 @@ Application::Application(const ApplicationSpecification& appSpec) noexcept : m_S
 
     Renderer::Init();
 
-    m_UILayer = UILayer::Create();
+    if (m_Specification.bEnableImGui) m_UILayer = UILayer::Create();
 }
 
 void Application::Run()
@@ -49,7 +54,7 @@ void Application::Run()
     double accumulatedDelta = 0.0;
 
     LOG_ERROR("Hi world! %f", 0.5f);
-    LOG_TRACE("Current working directory: %s", std::filesystem::current_path().string().data());
+    LOG_TRACE("Current working directory: %s", m_Specification.WorkingDir.data());
     while (m_Window->IsRunning() && s_bIsRunning)
     {
         Timer t = {};
@@ -60,9 +65,12 @@ void Application::Run()
 
             m_LayerQueue->OnUpdate(m_DeltaTime);
 
-            m_UILayer->BeginRender();
+            if (m_Specification.bEnableImGui)
+            {
+                m_UILayer->BeginRender();
 
-            m_LayerQueue->OnUIRender();
+                m_LayerQueue->OnUIRender();
+            }
 
             Renderer::Flush(m_UILayer);
             m_Window->SwapBuffers();
@@ -99,7 +107,7 @@ void Application::Run()
 
 void Application::OnEvent(Event& e)
 {
-    m_UILayer->OnEvent(e);
+    if (m_Specification.bEnableImGui) m_UILayer->OnEvent(e);
     m_LayerQueue->OnEvent(e);
 
     EventDispatcher dispatcher(e);
@@ -107,11 +115,6 @@ void Application::OnEvent(Event& e)
         [this](const auto& event)
         {
             const auto key = event.GetKey();
-
-            // if (key == EKey::KEY_ESCAPE)
-            // {
-            //     Close();
-            // }
 
             /* if (key == EKey::KEY_F1)
               {

@@ -84,15 +84,18 @@ class Pipeline : private Uncopyable, private Unmovable
   public:
     virtual ~Pipeline() = default;
 
-    NODISCARD FORCEINLINE virtual const PipelineSpecification& GetSpecification() const = 0;
-    NODISCARD FORCEINLINE virtual void* Get() const                                     = 0;
+    NODISCARD FORCEINLINE const PipelineSpecification& GetSpecification() const { return m_Specification; }
+    NODISCARD FORCEINLINE virtual void* Get() const = 0;
 
-    FORCEINLINE virtual void SetPolygonMode(const EPolygonMode polygonMode) = 0;
+    FORCEINLINE void SetPolygonMode(const EPolygonMode polygonMode) { m_Specification.PolygonMode = polygonMode; }
 
     NODISCARD static Shared<Pipeline> Create(const PipelineSpecification& pipelineSpec);
 
   protected:
-    Pipeline()                = default;
+    PipelineSpecification m_Specification = {};
+
+    Pipeline(const PipelineSpecification& pipelineSpec) : m_Specification(pipelineSpec) {}
+    Pipeline()                = delete;
     virtual void Invalidate() = 0;
     virtual void Destroy()    = 0;
 };

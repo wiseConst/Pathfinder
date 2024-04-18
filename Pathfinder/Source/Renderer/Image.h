@@ -139,7 +139,7 @@ class Image : private Uncopyable, private Unmovable
     UUID m_UUID                        = {};
 
     Image(const ImageSpecification& imageSpec) : m_Specification(imageSpec) {}
-    Image() = default;
+    Image() = delete;
 
     virtual void Invalidate() = 0;
     virtual void Destroy()    = 0;

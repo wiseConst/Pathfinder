@@ -31,11 +31,6 @@ vec3 ReconstructViewNormal(const vec3 viewPos)
     return viewNormal;
 }
 
-float saturate(float a)
-{
-	return clamp(a, 0.0, 1.0);
-}
-
 const float INFINITY = 1.f / 0.f;
 float ComputeAO(const vec3 N, const vec2 direction, const vec2 screenSize, const vec3 viewPos, const vec2 invRes)
 {

@@ -5,6 +5,8 @@
 
 #include <fstream>
 #include <mutex>
+#include <format>
+#include <vector>
 
 namespace Pathfinder
 {
@@ -57,45 +59,56 @@ class Logger final : private Uncopyable, private Unmovable
     {
         std::lock_guard lock(s_LogMutex);
 
-        static constexpr uint32_t s_MaxMessageLength        = 16384;
-        static char s_TempMessageBuffer[s_MaxMessageLength] = {0};
-        memset(s_TempMessageBuffer, 0, sizeof(s_TempMessageBuffer[0]) * s_MaxMessageLength);
-
-        // TODO: buffer resize
-        if (strlen(message) > s_MaxMessageLength)
+        // Calculate the length of the message with formatted arguments
+        const int32_t formattedMessageLength = snprintf(nullptr, 0, message, args...);
+        if (formattedMessageLength < 0)
         {
-            puts("TODO: Logger message length resize?");
-            puts(message);
+            puts("Error formatting message.");
             return;
         }
 
         // Fill message with N args
-        char formattedMessage[s_MaxMessageLength] = {0};
-        sprintf(formattedMessage, message, args...);
-        const char* systemTimeString = GetCurrentSystemTime();
+        std::string formattedMessage(formattedMessageLength, 0);
+        sprintf(formattedMessage.data(), message, args...);
 
         // Create structured log message
+        const char* systemTimeString = GetCurrentSystemTime();
+        std::string logMessage       = {};
         if (tag)
-            sprintf(s_TempMessageBuffer, "%s [%s]: [%s]: %s", systemTimeString, LogLevelToCString(level), tag, formattedMessage);
+            logMessage = std::format("{} [{}] [{}] {}", systemTimeString, LogLevelToCString(level), tag, formattedMessage);
         else
-            sprintf(s_TempMessageBuffer, "%s [%s]: %s", systemTimeString, LogLevelToCString(level), formattedMessage);
+            logMessage = std::format("{} [{}] {}", systemTimeString, LogLevelToCString(level), formattedMessage);
 
-        // Non-colored output into log
-        s_LogFile << s_TempMessageBuffer << std::endl;
+        // Push message and check if buffer is full and needs to be flushed
+        s_LogBuffer.push_back(logMessage);
+        if (s_LogBuffer.size() >= s_LogBufferSize) Flush();
 
-        // Add colors
-        sprintf(formattedMessage, "%s%s%s", LogLevelToASCIIColor(level), s_TempMessageBuffer,
-                LogLevelToASCIIColor(ELogLevel::LOG_LEVEL_NONE));
-        puts(formattedMessage);
+        const std::string coloredMessage =
+            std::format("{}{}{}", LogLevelToASCIIColor(level), logMessage, LogLevelToASCIIColor(ELogLevel::LOG_LEVEL_NONE));
+        puts(coloredMessage.data());
     }
 
   private:
     static inline std::ofstream s_LogFile;
     static inline std::mutex s_LogMutex;
+    static inline std::vector<std::string> s_LogBuffer;
+    static inline constexpr uint32_t s_LogBufferSize = 8;  // s_LogBufferSize strings and then flush
 
     Logger() noexcept  = default;
     ~Logger() override = default;
     static const char* GetCurrentSystemTime();
+    static void Flush()
+    {
+        // Should be called only in Log() and Shutdown().
+        if (s_LogFile.is_open())
+        {
+            for (const auto& message : s_LogBuffer)
+                s_LogFile << message << std::endl;
+
+            s_LogFile.flush();    // Ensure the messages are written immediately
+            s_LogBuffer.clear();  // Clear the buffer after flushing
+        }
+    }
 };
 
 }  // namespace Pathfinder
