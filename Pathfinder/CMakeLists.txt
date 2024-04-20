@@ -9,6 +9,12 @@ source_group("Source/Core" FILES ${CORE_SOURCES})
 file(GLOB_RECURSE EVENTS_SOURCES ${CORE_DIR}/Events/*.h ${CORE_DIR}/Events/*.cpp)
 source_group("Source/Events" FILES ${EVENTS_SOURCES})
 
+file(GLOB_RECURSE LAYERS_SOURCES ${CORE_DIR}/Layers/*.h ${CORE_DIR}/Layers/*.cpp)
+source_group("Source/Layers" FILES ${LAYERS_SOURCES})
+
+file(GLOB_RECURSE MEMORY_SOURCES ${CORE_DIR}/Memory/*.h ${CORE_DIR}/Memory/*.cpp)
+source_group("Source/Memory" FILES ${MEMORY_SOURCES})
+
 file(GLOB_RECURSE PLATFORM_SOURCES ${CORE_DIR}/Platform ${CORE_DIR}/Platform)
 source_group("Source/Platform" FILES ${PLATFORM_SOURCES})
 
@@ -18,13 +24,20 @@ source_group("Source/Platform/GLFW" FILES ${PLATFORM_GLFW_SOURCES})
 file(GLOB_RECURSE PLATFORM_VULKAN_SOURCES ${CORE_DIR}/Platform/Vulkan/*.h ${CORE_DIR}/Platform/Vulkan/*.cpp)
 source_group("Source/Platform/Vulkan" FILES ${PLATFORM_VULKAN_SOURCES})
 
-file(GLOB_RECURSE RENDERER_SOURCES ${CORE_DIR}/Renderer/*.h ${CORE_DIR}/Renderer/*.cpp)
+file(GLOB RENDERER_SOURCES ${CORE_DIR}/Renderer/*.h ${CORE_DIR}/Renderer/*.cpp)
 source_group("Source/Renderer" FILES ${RENDERER_SOURCES})
 
-file(GLOB_RECURSE LAYERS_SOURCES ${CORE_DIR}/Layers/*.h ${CORE_DIR}/Layers/*.cpp)
-source_group("Source/Layers" FILES ${LAYERS_SOURCES})
+file(GLOB RENDERER_RENDER_GRAPH_SOURCES ${CORE_DIR}/Renderer/RenderGraph/*.h ${CORE_DIR}/Renderer/RenderGraph/*.cpp)
+source_group("Source/Renderer/RenderGraph" FILES ${RENDERER_RENDER_GRAPH_SOURCES})
 
-#TODO: Add memory includes
+file(GLOB RENDERER_MESH_SOURCES ${CORE_DIR}/Renderer/Mesh/*.h ${CORE_DIR}/Renderer/Mesh/*.cpp)
+source_group("Source/Renderer/Mesh" FILES ${RENDERER_MESH_SOURCES})
+
+file(GLOB RENDERER_CAMERA_SOURCES ${CORE_DIR}/Renderer/Camera/*.h ${CORE_DIR}/Renderer/Camera/*.cpp)
+source_group("Source/Renderer/Camera" FILES ${RENDERER_CAMERA_SOURCES})
+
+file(GLOB RENDERER_DEBUG_SOURCES ${CORE_DIR}/Renderer/Debug/*.h ${CORE_DIR}/Renderer/Debug/*.cpp)
+source_group("Source/Renderer/Debug" FILES ${RENDERER_DEBUG_SOURCES})
 
 message("Building pathfinder rendering engine...")
 set(VULKAN_SDK_DIR $ENV{VULKAN_SDK})
@@ -34,10 +47,15 @@ set(ALL_FILES
         ${CORE_SOURCES}
         ${EVENTS_SOURCES}
         ${LAYERS_SOURCES}
+        ${MEMORY_SOURCES}
         ${PLATFORM_SOURCES}
         ${PLATFORM_GLFW_SOURCES}
         ${PLATFORM_VULKAN_SOURCES}
         ${RENDERER_SOURCES}
+        ${RENDERER_RENDER_GRAPH_SOURCES}
+        ${RENDERER_MESH_SOURCES}
+        ${RENDERER_CAMERA_SOURCES}
+        ${RENDERER_DEBUG_SOURCES}
 )
 
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
@@ -136,7 +154,7 @@ add_subdirectory(${VENDOR_DIR}/fastgltf)
 target_link_libraries(${PROJECT_NAME} PRIVATE fastgltf)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include)
 set_target_properties(fastgltf PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
-set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
+#set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 
 # imgui
 add_library(imgui STATIC)

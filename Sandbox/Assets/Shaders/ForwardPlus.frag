@@ -20,7 +20,7 @@ layout(constant_id = 0) const bool bRenderViewNormalMap = false;
     uint32_t StorageImageIndex; - u_AO
     uint32_t AlbedoTextureIndex; - storing cascade debug image
 
-    uint32_t MaterialBufferIndex; - current material
+    uint32_t MaterialBufferIndex; - material index
 
     vec4 pad0; x(far plane for point light shadow maps)
     vec3 pad1;
@@ -65,7 +65,7 @@ vec2 GetMetallicRoughnessMap(const PBRData mat)
 }
 
 void main()
-{ 
+{
     const PBRData mat = s_GlobalMaterialBuffers[nonuniformEXT(u_PC.MaterialBufferIndex)].mat;
 
     const vec3 N = normalize(i_VertexInput.TBNtoWorld * GetNormalFromNormalMap(mat));

@@ -3,9 +3,91 @@
 #extension GL_GOOGLE_include_directive : require
 #include "Assets/Shaders/Include/Globals.h"
 
-layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+struct DrawIndexedIndirectCommand
+{
+    uint32_t indexCount;
+    uint32_t instanceCount;
+    uint32_t firstIndex;
+    int32_t vertexOffset;
+    uint32_t firstInstance;
+};
+
+layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) writeonly buffer DrawBufferOpaque
+{
+    DrawIndexedIndirectCommand Commands[];
+} u_OpaqueDrawBuffer;
+
+layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) writeonly buffer DrawBufferTransparent
+{
+    DrawIndexedIndirectCommand Commands[];
+} u_TransparentDrawBuffer;
+
+// TODO: Refactor with plain array via offsets.
 
 void main()
-{       
+{
+	const uint gID = gl_GlobalInvocationID.x;
+	if (gID >= u_PC.StorageImageIndex) return; // StorageImageIndex contains Opaque/Transparent object count.
 
+    MeshData md;
+    if(u_PC.MaterialBufferIndex == 0)
+    {
+        md = s_GlobalMeshDataBufferOpaque.MeshesData[gID];
+        u_OpaqueDrawBuffer.Commands[gID].firstIndex = 0;
+        u_OpaqueDrawBuffer.Commands[gID].indexCount =  s_GlobalIndexBuffers[md.indexBufferIndex].indices.length();
+        u_OpaqueDrawBuffer.Commands[gID].instanceCount = 1;
+        u_OpaqueDrawBuffer.Commands[gID].vertexOffset = 0;
+        u_OpaqueDrawBuffer.Commands[gID].firstInstance = 0;
+    }else{
+        md = s_GlobalMeshDataBufferTransparent.MeshesData[gID];
+        u_TransparentDrawBuffer.Commands[gID].firstIndex = 0;
+        u_TransparentDrawBuffer.Commands[gID].indexCount = s_GlobalIndexBuffers[md.indexBufferIndex].indices.length();
+        u_TransparentDrawBuffer.Commands[gID].instanceCount = 1;
+        u_TransparentDrawBuffer.Commands[gID].vertexOffset = 0;
+        u_TransparentDrawBuffer.Commands[gID].firstInstance = 0;
+    }
+
+    const Sphere sphere           = md.sphere;
+    const vec3 scaledCenter = vec3(md.transform * vec4(sphere.Center, 1));
+
+    // Adjust radius by scaling
+    float scaledRadius = sphere.Radius;
+    {
+        // Get global scale is computed by doing the magnitude of
+        // X, Y and Z model matrix's column.
+        const vec3 globalScale = vec3(length(md.transform[0]), length(md.transform[1]),
+                                                length(md.transform[2]));
+
+        // To wrap correctly our shape, we need the maximum scale scalar.
+        const float maxScale = max(max(globalScale.x, globalScale.y), globalScale.z);
+
+        // Max scale is assuming for the diameter. So, we need the half to apply it to our radius
+        scaledRadius *= maxScale;
+        if (maxScale != 1.0f)
+        {
+            // NOTE: I constructed BS via radius, not diameter, so I do mul *0.5 only if scale changes, since by default it's real radius.
+            scaledRadius *= 0.5f;
+        }
+    }
+
+    for (uint32_t i = 0; i < 6; ++i)
+    {
+        const Plane plane = u_GlobalCameraData.ViewFrustum.Planes[i];
+        if (dot(plane.Normal, scaledCenter) - plane.Distance + scaledRadius <= 0.0)
+        {
+            if(u_PC.MaterialBufferIndex == 0)
+            {
+                u_OpaqueDrawBuffer.Commands[gID].indexCount = 9;
+                u_OpaqueDrawBuffer.Commands[gID].instanceCount = 0;
+            }else{
+                u_TransparentDrawBuffer.Commands[gID].indexCount = 0;
+                u_TransparentDrawBuffer.Commands[gID].instanceCount = 0;
+            }
+
+            return;
+            //return false;
+        }
+    }
 }

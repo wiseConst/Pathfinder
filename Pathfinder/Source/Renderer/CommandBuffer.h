@@ -23,7 +23,7 @@ enum class ECommandBufferLevel : uint8_t
     COMMAND_BUFFER_LEVEL_SECONDARY = 1
 };
 
-// NOTE: CommandBufferSpecification ? needs fence? needs timeline semaphore?
+// TODO: CommandBufferSpecification ? needs fence? needs timeline semaphore?
 
 class Pipeline;
 class CommandBuffer : private Uncopyable, private Unmovable
@@ -91,6 +91,9 @@ class CommandBuffer : private Uncopyable, private Unmovable
 
     FORCEINLINE virtual void DrawMeshTasks(const uint32_t groupCountX, const uint32_t groupCountY,
                                            const uint32_t groupCountZ = 1) const = 0;
+
+    FORCEINLINE virtual void DrawMeshTasksIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
+                                                   const uint32_t stride) const = 0;
 
     virtual void BindVertexBuffers(const std::vector<Shared<Buffer>>& vertexBuffers, const uint32_t firstBinding = 0,
                                    const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const                   = 0;

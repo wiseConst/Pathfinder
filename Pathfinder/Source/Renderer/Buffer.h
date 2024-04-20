@@ -149,6 +149,7 @@ enum EBufferUsage : uint32_t
     BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(7),
     BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE               = BIT(8),
     BUFFER_USAGE_SHADER_BINDING_TABLE                         = BIT(9),
+    BUFFER_USAGE_INDIRECT                                     = BIT(10),
 };
 typedef uint32_t BufferUsageFlags;
 
@@ -156,7 +157,7 @@ typedef uint32_t BufferUsageFlags;
 struct BufferSpecification
 {
     BufferUsageFlags BufferUsage = 0;
-    uint32_t BufferBinding       = 0;  // In case it's bindless
+    uint32_t BufferBinding       = 0;  // In case it's bindless, used for mesh purposes.
     bool bBindlessUsage          = false;
     bool bMapPersistent          = false;  // In case it's HOST_VISIBLE
     size_t BufferCapacity        = 0;

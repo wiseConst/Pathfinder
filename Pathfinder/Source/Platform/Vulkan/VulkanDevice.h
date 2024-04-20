@@ -4,6 +4,8 @@
 #include "VulkanCore.h"
 #include "Renderer/CommandBuffer.h"
 
+// TODO: Big renderer refactor, since I dropped default pipeline support, mesh-shading prior only.
+
 namespace Pathfinder
 {
 

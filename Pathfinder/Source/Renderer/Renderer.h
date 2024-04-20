@@ -41,6 +41,8 @@ class Renderer : private Uncopyable, private Unmovable
     static void AddPointLight(const PointLight& pl);
     static void AddSpotLight(const SpotLight& sl);
 
+    static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline>& pipeline);
+
     static const std::map<std::string, Shared<Image>> GetRenderTargetList();
     static const std::map<std::string, float>& GetPassStatistics()
     {
@@ -70,12 +72,17 @@ class Renderer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE static auto& GetStats() { return s_RendererStats; }
 
   private:
+    struct RenderObject
+    {
+        Shared<Submesh> submesh = nullptr;
+        glm::mat4 Transform     = glm::mat4(1.0f);
+    };
+
     struct RendererData
     {
         // MISC
         Unique<LightsData> LightStruct = nullptr;
         CameraData CameraStruct;
-        Frustum CullFrustum;
         std::map<std::string, float> PassStats;
         std::map<std::string, uint64_t> PipelineStats;
 
@@ -171,6 +178,14 @@ class Renderer : private Uncopyable, private Unmovable
         AO HBAO = {};
         std::array<Shared<Pipeline>, 2> BlurAOPipeline;
         std::array<Shared<Framebuffer>, 2> BlurAOFramebuffer;
+
+        // Indirect Rendering
+        Shared<Buffer> OpaqueDrawBuffer      = nullptr;
+        Shared<Buffer> TransparentDrawBuffer = nullptr;
+        Shared<Buffer> OpaqueMeshesData      = nullptr;
+        Shared<Buffer> TransparentMeshesData = nullptr;
+
+        Shared<Pipeline> ObjectCullingPipeline = nullptr;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
@@ -179,7 +194,6 @@ class Renderer : private Uncopyable, private Unmovable
     {
         bool bVSync;
 
-        bool bMeshShadingSupport;
         bool bRTXSupport;
         bool bBDASupport;
         bool bMultiDrawIndirectSupport;
@@ -202,10 +216,8 @@ class Renderer : private Uncopyable, private Unmovable
     {
         return s_RendererData && s_RendererData->TransparentObjects.empty() && s_RendererData->OpaqueObjects.empty();
     }
-    static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline>& pipeline);
-
-    // TODO: GPU-side frustum culling
     static bool IsInsideFrustum(const auto& renderObject);
+    static void ObjectCullingPass();
 
     static void DepthPrePass();
     static void DirShadowMapPass();

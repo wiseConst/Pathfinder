@@ -30,6 +30,8 @@ class SandboxLayer final : public Layer
     std::array<SpotLight, MAX_SPOT_LIGHTS> m_SpotLights;
 
     PointLight m_PointShadowCaster;
+
+    bool bRenderUI = false;
 };
 
 }  // namespace Pathfinder

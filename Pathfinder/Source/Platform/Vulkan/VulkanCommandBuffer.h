@@ -118,6 +118,7 @@ class VulkanCommandBuffer final : public CommandBuffer
 
         vkCmdDrawIndexedIndirect(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
     }
+
     FORCEINLINE void Draw(const uint32_t vertexCount, const uint32_t instanceCount = 1, const uint32_t firstVertex = 0,
                           const uint32_t firstInstance = 0) const final override
     {
@@ -133,6 +134,13 @@ class VulkanCommandBuffer final : public CommandBuffer
                                    const uint32_t groupCountZ = 1) const final override
     {
         vkCmdDrawMeshTasksEXT(m_Handle, groupCountX, groupCountY, groupCountZ);
+    }
+
+    FORCEINLINE void DrawMeshTasksIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
+                                           const uint32_t stride) const final override
+    {
+        PFR_ASSERT(drawBuffer && drawBuffer->Get(), "Invalid draw buffer!");
+        vkCmdDrawMeshTasksIndirectEXT(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
     }
 
     // COMPUTE

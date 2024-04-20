@@ -40,6 +40,13 @@ NODISCARD FORCEINLINE static bool IsNearlyEqual(const float lhs, const float rhs
     return glm::abs(rhs - lhs) <= s_PFR_SMALL_NUMBER;
 }
 
+NODISCARD FORCEINLINE static uint32_t DivideToNextMultiple(const uint32_t dividend, const uint32_t divisor)
+{
+    PFR_ASSERT(divisor != 0, "Division by zero!");
+
+    return (dividend + divisor - 1) / divisor;
+}
+
 }  // namespace Pathfinder
 
 #endif  // MATH_H

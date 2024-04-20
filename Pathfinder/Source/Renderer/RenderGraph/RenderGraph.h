@@ -64,7 +64,7 @@ class RenderGraph final : private Uncopyable, private Unmovable
     RenderGraph(const std::string& debugName) : m_DebugName(debugName) {}
     ~RenderGraph() override = default;
 
-    void Render(const std::vector<RenderObject>& opaqueObjects, const std::vector<RenderObject>& transparentObjects);
+    // void Render(const std::vector<RenderObject>& opaqueObjects, const std::vector<RenderObject>& transparentObjects);
 
     void AddNode(const RenderGraphNode& node)
     {

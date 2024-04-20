@@ -58,8 +58,8 @@ class MouseScrolledEvent final : public Event
 class MouseButtonPressedEvent final : public Event
 {
   public:
-    explicit MouseButtonPressedEvent(const int32_t key)
-        : Event("MouseButtonPressedEvent", EEventType::EVENT_TYPE_MOUSE_BUTTON_PRESSED), m_Key(key)
+    explicit MouseButtonPressedEvent(const int32_t key, const EModKey modKey)
+        : Event("MouseButtonPressedEvent", EEventType::EVENT_TYPE_MOUSE_BUTTON_PRESSED), m_Key(key), m_ModKey(modKey)
     {
     }
     ~MouseButtonPressedEvent() override = default;
@@ -67,21 +67,23 @@ class MouseButtonPressedEvent final : public Event
     DECLARE_STATIC_EVENT_TYPE(MOUSE_BUTTON_PRESSED)
     NODISCARD std::string Format() const final override
     {
-        std::string formatted = m_Name + ": (" + std::to_string(m_Key) + ")";
+        const std::string formatted = m_Name + ": (" + std::to_string(m_Key) + ")";
         return formatted;
     }
 
-    FORCEINLINE EKey GetKey() const { return static_cast<EKey>(m_Key); }
+    NODISCARD FORCEINLINE EKey GetKey() const { return static_cast<EKey>(m_Key); }
+    NODISCARD FORCEINLINE EModKey GetModKey() const { return m_ModKey; }
 
   private:
-    int32_t m_Key = 0;
+    int32_t m_Key    = 0;
+    EModKey m_ModKey = EModKey::MOD_KEY_UNKNOWN;
 };
 
 class MouseButtonReleasedEvent final : public Event
 {
   public:
-    explicit MouseButtonReleasedEvent(const int32_t key)
-        : Event("MouseButtonReleasedEvent", EEventType::EVENT_TYPE_MOUSE_BUTTON_RELEASED), m_Key(key)
+    explicit MouseButtonReleasedEvent(const int32_t key, const EModKey modKey)
+        : Event("MouseButtonReleasedEvent", EEventType::EVENT_TYPE_MOUSE_BUTTON_RELEASED), m_Key(key), m_ModKey(modKey)
     {
     }
     ~MouseButtonReleasedEvent() override = default;
@@ -89,14 +91,16 @@ class MouseButtonReleasedEvent final : public Event
     DECLARE_STATIC_EVENT_TYPE(MOUSE_BUTTON_RELEASED)
     NODISCARD std::string Format() const final override
     {
-        std::string formatted = m_Name + ": (" + std::to_string(m_Key) + ")";
+        const std::string formatted = m_Name + ": (" + std::to_string(m_Key) + ")";
         return formatted;
     }
 
-    FORCEINLINE EKey GetKey() const { return static_cast<EKey>(m_Key); }
+    NODISCARD FORCEINLINE EKey GetKey() const { return static_cast<EKey>(m_Key); }
+    NODISCARD FORCEINLINE EModKey GetModKey() const { return m_ModKey; }
 
   private:
-    int32_t m_Key = 0;
+    int32_t m_Key    = 0;
+    EModKey m_ModKey = EModKey::MOD_KEY_UNKNOWN;
 };
 
 }  // namespace Pathfinder

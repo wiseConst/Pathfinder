@@ -138,7 +138,7 @@ void Renderer2D::FlushBatch()
     rd->GBuffer->EndPass(renderCommandBuffer);
 
     renderCommandBuffer->EndRecording();
-    renderCommandBuffer->Submit();
+    renderCommandBuffer->Submit(true, false);
 
     memset(s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], 0, dataSize);
     s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex] = s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex];

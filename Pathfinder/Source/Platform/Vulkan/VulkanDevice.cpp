@@ -172,6 +172,7 @@ void VulkanDevice::CreateLogicalDevice()
     vulkan12Features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
     vulkan12Features.storageBuffer8BitAccess                    = VK_TRUE;
     vulkan12Features.shaderFloat16                              = VK_TRUE;
+    vulkan12Features.shaderInt8                                 = VK_TRUE;
 
     // Bindless
     vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
@@ -224,18 +225,17 @@ void VulkanDevice::CreateLogicalDevice()
     }
 
     VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
-    if (m_GPUInfo.bMeshShaderSupport && VK_MESH_SHADING)
-    {
-        meshShaderFeaturesEXT.meshShaderQueries = VK_TRUE;
-        meshShaderFeaturesEXT.meshShader        = VK_TRUE;
-        meshShaderFeaturesEXT.taskShader        = VK_TRUE;
+    PFR_ASSERT(m_GPUInfo.bMeshShaderSupport, "Mesh shading support required!");
+    meshShaderFeaturesEXT.meshShaderQueries = VK_TRUE;
+    meshShaderFeaturesEXT.meshShader        = VK_TRUE;
+    meshShaderFeaturesEXT.taskShader        = VK_TRUE;
 
-        *ppNext = &meshShaderFeaturesEXT;
-        ppNext  = &meshShaderFeaturesEXT.pNext;
-    }
+    *ppNext = &meshShaderFeaturesEXT;
+    ppNext  = &meshShaderFeaturesEXT.pNext;
 
     VkPhysicalDeviceVulkan11Features vulkan11Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
     vulkan11Features.storageBuffer16BitAccess         = VK_TRUE;
+    vulkan11Features.shaderDrawParameters             = VK_TRUE;  // Retrieve DrawCallID in vertex shader
 
     *ppNext = &vulkan11Features;
     ppNext  = &vulkan11Features.pNext;
@@ -247,6 +247,8 @@ void VulkanDevice::CreateLogicalDevice()
     physicalDeviceFeatures.pipelineStatisticsQuery  = VK_TRUE;
     physicalDeviceFeatures.geometryShader           = VK_TRUE;
     physicalDeviceFeatures.shaderInt16              = VK_TRUE;
+    physicalDeviceFeatures.multiDrawIndirect        = m_GPUInfo.GPUFeatures.multiDrawIndirect;
+    physicalDeviceFeatures.wideLines                = VK_TRUE;
     PFR_ASSERT(m_GPUInfo.GPUFeatures.pipelineStatisticsQuery && m_GPUInfo.GPUFeatures.fillModeNonSolid &&
                    m_GPUInfo.GPUFeatures.textureCompressionBC && m_GPUInfo.GPUFeatures.shaderInt16,
                "Required gpu features aren't supported!");
@@ -306,7 +308,6 @@ void VulkanDevice::CreateLogicalDevice()
     PFR_ASSERT(m_GPUInfo.GraphicsQueue && m_GPUInfo.PresentQueue && m_GPUInfo.TransferQueue && m_GPUInfo.ComputeQueue,
                "Failed to retrieve queue handles!");
 
-    Renderer::GetRendererSettings().bMeshShadingSupport       = VK_MESH_SHADING && m_GPUInfo.bMeshShaderSupport;
     Renderer::GetRendererSettings().bRTXSupport               = VK_RTX && m_GPUInfo.bRTXSupport;
     Renderer::GetRendererSettings().bBDASupport               = m_GPUInfo.bBDASupport;
     Renderer::GetRendererSettings().bMultiDrawIndirectSupport = m_GPUInfo.GPUFeatures.multiDrawIndirect;
@@ -549,7 +550,6 @@ bool VulkanDevice::IsDeviceSuitable(GPUInfo& gpuInfo)
     if (gpuInfo.SupportedDepthStencilFormats.empty() || !bRequiredDeviceExtensionsSupported) return false;
 
     gpuInfo.QueueFamilyIndices = QueueFamilyIndices::FindQueueFamilyIndices(gpuInfo.PhysicalDevice);
-    if (VK_PREFER_IGPU && gpuInfo.GPUProperties.deviceType != VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU) return false;
 
 #if VK_RTX
     if (!rayQueryFeatures.rayQuery || !asFeatures.accelerationStructure || !rtPipelineFeatures.rayTracingPipeline)

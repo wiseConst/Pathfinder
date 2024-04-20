@@ -15,12 +15,26 @@ uint32_t hash(uint32_t a)
     return a;
 }
 
+bool ConeCull(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxis, const float coneCutoff)
+{
+    return dot(normalize(coneApex - cameraPosition), normalize(coneAxis)) >= coneCutoff;
+}
+
 #endif
 
-#define MAX_MESHLET_VERTEX_COUNT 64u
-#define MAX_MESHLET_TRIANGLE_COUNT 124u
+#define MAX_MESHLET_VERTEX_COUNT 64u  // AMD says for better utilization meshlet vertex count should be multiple of warp size.
 #define MESHLET_LOCAL_GROUP_SIZE 32u  // AMD:64, NVidia:32
 #define MESHLET_CONE_WEIGHT 0.5f
+
+// The ‘6’ in 126 is not a typo. The first generation hardware allocates primitive indices in 128 byte granularity and and needs
+// to reserve 4 bytes for the primitive count. Therefore 3 * 126 + 4 maximizes the fit into a 3 * 128 = 384 bytes block.
+#define MAX_MESHLET_TRIANGLE_COUNT 124u
+
+struct MeshletTaskData
+{
+    uint8_t meshlets[MESHLET_LOCAL_GROUP_SIZE];  // Stores meshlet IDs (gl_WorkGroupID.x from task shaders)
+    uint32_t baseMeshletID; // gl_WorkGroupID.x * MESHLET_LOCAL_GROUP_SIZE;  // where the meshletIDs started from for this task workgroup
+};
 
 struct Meshlet
 {
@@ -38,3 +52,4 @@ struct Meshlet
     float coneAxis[3];
     float coneCutoff; /* = cos(angle/2) */
 };
+

@@ -1,0 +1,94 @@
+{
+    "asset" : {
+        "generator" : "Khronos glTF Blender I/O v3.2.43",
+        "version" : "2.0"
+    },
+    "scene" : 0,
+    "scenes" : [
+        {
+            "name" : "Scene",
+            "nodes" : [
+                0
+            ]
+        }
+    ],
+    "nodes" : [
+        {
+            "mesh" : 0,
+            "name" : "scene",
+            "rotation" : [
+                0.7071068286895752,
+                0,
+                0,
+                0.7071067094802856
+            ]
+        }
+    ],
+    "meshes" : [
+        {
+            "name" : "scene",
+            "primitives" : [
+                {
+                    "attributes" : {
+                        "POSITION" : 0,
+                        "NORMAL" : 1
+                    },
+                    "indices" : 2
+                }
+            ]
+        }
+    ],
+    "accessors" : [
+        {
+            "bufferView" : 0,
+            "componentType" : 5126,
+            "count" : 208353,
+            "max" : [
+                0.0610090009868145,
+                0.058800000697374344,
+                -0.032986998558044434
+            ],
+            "min" : [
+                -0.0946900025010109,
+                -0.06187399849295616,
+                -0.1873210072517395
+            ],
+            "type" : "VEC3"
+        },
+        {
+            "bufferView" : 1,
+            "componentType" : 5126,
+            "count" : 208353,
+            "type" : "VEC3"
+        },
+        {
+            "bufferView" : 2,
+            "componentType" : 5125,
+            "count" : 208353,
+            "type" : "SCALAR"
+        }
+    ],
+    "bufferViews" : [
+        {
+            "buffer" : 0,
+            "byteLength" : 2500236,
+            "byteOffset" : 0
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 2500236,
+            "byteOffset" : 2500236
+        },
+        {
+            "buffer" : 0,
+            "byteLength" : 833412,
+            "byteOffset" : 5000472
+        }
+    ],
+    "buffers" : [
+        {
+            "byteLength" : 5833884,
+            "uri" : "scene.bin"
+        }
+    ]
+}

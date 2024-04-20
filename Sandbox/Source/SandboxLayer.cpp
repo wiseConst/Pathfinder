@@ -13,7 +13,7 @@ void SandboxLayer::Init()
 {
     m_Camera = Camera::Create(ECameraType::CAMERA_TYPE_PERSPECTIVE);
 
-    m_Dummy  = Mesh::Create("dragon/scene.gltf");
+    m_Dummy  = Mesh::Create("stanford/dragon/scene.gltf");
     m_Sponza = Mesh::Create("sponza/scene.gltf");
     m_Helmet = Mesh::Create("damaged_helmet/DamagedHelmet.gltf");
     m_Gun    = Mesh::Create("cerberus/scene.gltf");
@@ -64,7 +64,7 @@ void SandboxLayer::Init()
     m_PointShadowCaster.Radius       = 5.0f;
     m_PointShadowCaster.Position     = glm::vec3(0.0f, 4.0f, 0);
 
-    UILayer::SetDefaultFont("Fonts/Tilt_Neon/static/TiltNeon-Regular.ttf", 18.0f);
+    UILayer::SetDefaultFont("Fonts/Manrope/static/Manrope-Bold.ttf", 18.0f);
 }
 
 void SandboxLayer::Destroy() {}
@@ -72,6 +72,20 @@ void SandboxLayer::Destroy() {}
 void SandboxLayer::OnEvent(Event& e)
 {
     m_Camera->OnEvent(e);
+
+    static bool bF3WasPressed = false;
+
+    EventDispatcher dispatcher(e);
+    dispatcher.Dispatch<KeyButtonReleasedEvent>(
+        [&](const KeyButtonReleasedEvent& event) -> bool
+        {
+            if (event.GetModKey() != EModKey::MOD_KEY_ALT) return true;
+            if (bF3WasPressed && Input::IsKeyReleased(EKey::KEY_F3)) bRenderUI = !bRenderUI;
+
+            return true;
+        });
+
+    bF3WasPressed = Input::IsKeyPressed(EKey::KEY_F3);
 }
 
 void SandboxLayer::OnUpdate(const float deltaTime)
@@ -81,13 +95,24 @@ void SandboxLayer::OnUpdate(const float deltaTime)
     Renderer::BeginScene(*m_Camera);
 
     Renderer::SubmitMesh(m_Dummy, glm::translate(glm::mat4(1.f), glm::vec3(5, 1.2, 0)));
+    DebugRenderer::DrawAABB(m_Dummy, glm::translate(glm::mat4(1.f), glm::vec3(5, 1.2, 0)), glm::vec4(1, 1, 0, 1));
 
     Renderer::SubmitMesh(m_Helmet, glm::translate(glm::mat4(1.f), glm::vec3(0, 5, 0)));
+    DebugRenderer::DrawAABB(m_Helmet, glm::translate(glm::mat4(1.f), glm::vec3(0, 5, 0)), glm::vec4(1, 1, 0, 1));
 
     Renderer::SubmitMesh(m_Sponza);
+    DebugRenderer::DrawAABB(m_Sponza, glm::mat4(1.f), {0,1,1,1});
+
     Renderer::SubmitMesh(
         m_Gun, glm::translate(glm::mat4(1.f), glm::vec3(-3, 10, 0)) * glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(0, 1, 0)) *
                    glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0)) * glm::scale(glm::mat4(1.f), glm::vec3(0.03f)));
+    DebugRenderer::DrawAABB(
+        m_Gun,
+        glm::translate(glm::mat4(1.f), glm::vec3(-3, 10, 0)) * glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(0, 1, 0)) *
+            glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0)) * glm::scale(glm::mat4(1.f), glm::vec3(0.03f)),
+        glm::vec4(1, 1, 0, 1));
+
+   // DebugRenderer::DrawLine(glm::vec3(0.f), glm::vec3(5.f), glm::vec4(1, 0, 1, 1));
 
 #if 0
     {
@@ -154,6 +179,8 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 
 void SandboxLayer::OnUIRender()
 {
+    if (!bRenderUI) return;
+
     static bool bShowDemoWindow = true;
     if (bShowDemoWindow) ImGui::ShowDemoWindow(&bShowDemoWindow);
 
@@ -162,7 +189,8 @@ void SandboxLayer::OnUIRender()
     {
         ImGui::Begin("Renderer Settings", &bShowRendererSettings);
 
-        ImGui::Checkbox("VSync", &Renderer::GetRendererSettings().bVSync);
+        auto& rs = Renderer::GetRendererSettings();
+        ImGui::Checkbox("VSync", &rs.bVSync);
         ImGui::Text("IsWindowHovered: %d", ImGui::IsWindowHovered());
 
         ImGui::End();

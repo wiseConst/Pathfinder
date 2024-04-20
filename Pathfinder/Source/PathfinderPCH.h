@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <algorithm>
+#include <execution>  // for std::execution::par
 
 #include <concepts>
 #include <ranges>

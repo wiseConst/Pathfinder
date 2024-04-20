@@ -1,0 +1,60 @@
+#version 460
+
+#extension GL_EXT_mesh_shader : require
+
+#extension GL_GOOGLE_include_directive : require
+#include "Assets/Shaders/Include/Globals.h"
+
+layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+shared uint32_t passedMeshletCount;
+
+taskPayloadSharedEXT MeshletTaskData tp_TaskData;
+    
+void main()
+{
+    const uint32_t mi = gl_WorkGroupID.x;
+    const uint32_t lid = gl_LocalInvocationID.x;
+
+    if(lid == 0) 
+    {
+        passedMeshletCount = 0;
+        tp_TaskData.baseMeshletID = gl_WorkGroupID.x * MESHLET_LOCAL_GROUP_SIZE;
+    }
+
+    barrier();
+
+    const Meshlet meshlet = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[tp_TaskData.baseMeshletID + lid];
+    const vec3 coneApex = vec3(u_PC.Transform * vec4(meshlet.coneApex[0], meshlet.coneApex[1], meshlet.coneApex[2], 1.f));
+    const vec3 coneAxis = mat3(u_PC.Transform) * vec3(meshlet.coneAxis[0], meshlet.coneAxis[1], meshlet.coneAxis[2]);
+    
+    const vec3 sphereCenterWS = vec3(u_PC.Transform * vec4(meshlet.center[0], meshlet.center[1], meshlet.center[2], 1.f));
+    
+    const vec3 globalScale = vec3(length(u_PC.Transform[0]), length(u_PC.Transform[1]), length(u_PC.Transform[2]));
+    const float maxScale = max(max(globalScale.x, globalScale.y), globalScale.z);
+    float scaledRadius = meshlet.radius * maxScale;
+    if(maxScale != 1.0f) scaledRadius *= .5f;
+
+    if (!ConeCull(u_GlobalCameraData.Position, coneApex, coneAxis, meshlet.coneCutoff))
+    {
+        bool bFrustumCull = false;
+        for (uint32_t i = 0; i < 6; ++i)
+        {
+            const Plane plane = u_GlobalCameraData.ViewFrustum.Planes[i];
+            if (dot(plane.Normal, sphereCenterWS) - plane.Distance + scaledRadius <= 0.0) bFrustumCull = true;
+        }
+
+        if(!bFrustumCull)
+        {
+            const uint32_t index = atomicAdd(passedMeshletCount, 1);
+            tp_TaskData.meshlets[index] = uint8_t(lid);
+        }
+    }
+
+    barrier();
+    
+    if (lid == 0 && passedMeshletCount != 0)
+    {
+        EmitMeshTasksEXT(passedMeshletCount, 1, 1);
+    }
+}

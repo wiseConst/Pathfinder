@@ -148,6 +148,17 @@ enum class EKey : int16_t
     MOUSE_BUTTON_MIDDLE = MOUSE_BUTTON_3
 };
 
+enum class EModKey : int8_t
+{
+    MOD_KEY_UNKNOWN = -1,
+    MOD_KEY_SHIFT   = 0,
+    MOD_KEY_CONTROL,
+    MOD_KEY_ALT,
+    MOD_KEY_SUPER,
+    MOD_KEY_CAPS_LOCK,
+    MOD_KEY_NUM_LOCK
+};
+
 // TODO: Joystick && gamepad currently not working, I think I should convert them somehow to EKey enum
 /*
 enum class EJoystickKey : uint8_t

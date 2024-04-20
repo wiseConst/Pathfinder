@@ -86,7 +86,6 @@ void Application::Run()
             std::stringstream ss;
             ss << std::fixed << std::setprecision(4);  // Set the float format
             ss << m_Window->GetSpecification().Title << " x64 / " << frameCount << " FPS ";
-            ss << "[mesh-shaders]: " << (Renderer::GetRendererSettings().bMeshShadingSupport ? "on " : "off ");
             ss << "[cpu]: " << t.GetElapsedMilliseconds() << "ms ";
             ss << "[gpu]: " << Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime << "ms ";
             ss << "[present]: " << Renderer::GetStats().SwapchainPresentTime << "ms ";

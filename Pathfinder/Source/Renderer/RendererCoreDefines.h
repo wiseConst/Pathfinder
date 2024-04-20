@@ -11,7 +11,7 @@ namespace Pathfinder
 {
 
 #define LOG_SHADER_INFO 0
-#define LOG_TEXTURE_COMPRESSION_INFO 1
+#define LOG_TEXTURE_COMPRESSION_INFO 0
 
 static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
 
@@ -170,17 +170,23 @@ struct QuadVertex
     glm::vec4 Color    = glm::vec4(1.0f);
 };
 
-class Submesh;
-struct RenderObject
+struct LineVertex
 {
-    Shared<Submesh> submesh = nullptr;
-    glm::mat4 Transform     = glm::mat4(1.0f);
+    glm::vec3 Position = glm::vec3(0.0f);
+    glm::vec4 Color    = glm::vec4(1.0f);
 };
 
 struct AccelerationStructure
 {
     Shared<Pathfinder::Buffer> Buffer = nullptr;
     void* Handle                      = nullptr;  // RHI handle
+};
+
+struct DrawMeshTasksIndirectCommand
+{
+    uint32_t groupCountX;
+    uint32_t groupCountY;
+    uint32_t groupCountZ;
 };
 
 enum class EShadowSetting : uint8_t

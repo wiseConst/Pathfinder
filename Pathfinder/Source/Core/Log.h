@@ -1,8 +1,6 @@
 #ifndef LOG_H
 #define LOG_H
 
-#include "Core.h"
-
 #include <fstream>
 #include <mutex>
 #include <format>
@@ -49,7 +47,7 @@ static const char* LogLevelToASCIIColor(const ELogLevel level)
     return "\033[0m";
 }
 
-class Logger final : private Uncopyable, private Unmovable
+class Logger
 {
   public:
     static void Init(const std::string_view& logFileName);
@@ -92,10 +90,10 @@ class Logger final : private Uncopyable, private Unmovable
     static inline std::ofstream s_LogFile;
     static inline std::mutex s_LogMutex;
     static inline std::vector<std::string> s_LogBuffer;
-    static inline constexpr uint32_t s_LogBufferSize = 8;  // s_LogBufferSize strings and then flush
+    static inline constexpr uint32_t s_LogBufferSize = 32;  // s_LogBufferSize strings and then flush
 
-    Logger() noexcept  = default;
-    ~Logger() override = default;
+    Logger() noexcept = delete;
+    ~Logger()         = default;
     static const char* GetCurrentSystemTime();
     static void Flush()
     {

@@ -28,7 +28,8 @@
 #include "Renderer/Image.h"
 #include "Renderer/Camera/Camera.h"
 #include "Renderer/Camera/OrthographicCamera.h"
-#include "Renderer/Mesh.h"
+#include "Renderer/Mesh/Mesh.h"
+#include "Renderer/Debug/DebugRenderer.h"
 
 // IMGUI
 #include <imgui.h>

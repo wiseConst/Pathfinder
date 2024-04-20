@@ -7,7 +7,7 @@
 #include "VulkanCommandBuffer.h"
 
 #include "Renderer/Material.h"
-#include "Renderer/Submesh.h"
+#include "Renderer/Mesh/Submesh.h"
 
 namespace Pathfinder
 {

@@ -22,10 +22,7 @@ namespace Pathfinder
 #define VK_LOG_VMA_ALLOCATIONS 0
 #define VK_LOG_INFO 0
 
-#define VK_PREFER_IGPU 0
-
 #define VK_RTX 0
-#define VK_MESH_SHADING 0
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -55,9 +52,7 @@ static const std::vector<const char*> s_DeviceExtensions = {
     VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,  // Borderless fullscreen window
 #endif
 
-#if VK_MESH_SHADING
     VK_EXT_MESH_SHADER_EXTENSION_NAME,  // Mesh shading advanced modern rendering
-#endif
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
 

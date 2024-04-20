@@ -159,11 +159,8 @@ void VulkanCommandBuffer::BeginPipelineStatisticsQuery()
                 VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT |                                                 //
                 VK_QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT |
                 VK_QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT |
-                VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT;
-
-            if (Renderer::GetRendererSettings().bMeshShadingSupport)
-                queryPoolCI.pipelineStatistics |= VK_QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT_EXT |
-                                                  VK_QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT_EXT;
+                VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT | VK_QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT_EXT |
+                VK_QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT_EXT;
         }
         else if (m_Type == ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE)
         {
@@ -585,6 +582,8 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
         vkCmdSetViewport(m_Handle, 0, 1, &viewport);
         vkCmdSetScissor(m_Handle, 0, 1, &scissor);
     }
+
+    if (pipeline->GetSpecification().LineWidth != 1.f) vkCmdSetLineWidth(m_Handle, pipeline->GetSpecification().LineWidth);
 
     vkCmdBindPipeline(m_Handle, pipelineBindPoint, (VkPipeline)pipeline->Get());
 }

@@ -235,10 +235,8 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         shaderc_shader_kind shaderKind = shaderc_vertex_shader;
         DetectShaderKind(shaderKind, shaderExt);
 
-        if (!Renderer::GetRendererSettings().bMeshShadingSupport &&
-                (shaderKind == shaderc_mesh_shader || shaderKind == shaderc_task_shader) ||
-            !Renderer::GetRendererSettings().bRTXSupport && shaderKind >= shaderc_raygen_shader &&
-                shaderKind <= shaderc_glsl_default_callable_shader)
+        if (!Renderer::GetRendererSettings().bRTXSupport && shaderKind >= shaderc_raygen_shader &&
+            shaderKind <= shaderc_glsl_default_callable_shader)
             continue;
 
         auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToPathfinder(shaderKind));

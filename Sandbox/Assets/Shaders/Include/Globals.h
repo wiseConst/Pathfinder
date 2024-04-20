@@ -5,15 +5,18 @@
 #include "Lights.h"
 #include "Primitives.h"
 
-using vec2 = glm::vec2;
-using vec3 = glm::vec3;
-using vec4 = glm::vec4;
-using mat4 = glm::mat4;
+using vec2    = glm::vec2;
+using u16vec2 = glm::u16vec2;
+using u8vec4  = glm::u8vec4;
+using vec3    = glm::vec3;
+using vec4    = glm::vec4;
+using mat4    = glm::mat4;
 
 // TODO: Make bindless renderer somehow automated for creation from shader headers files
 static constexpr uint32_t s_MAX_TEXTURES        = BIT(16);
 static constexpr uint32_t s_MAX_IMAGES          = BIT(16);
 static constexpr uint32_t s_MAX_STORAGE_BUFFERS = BIT(16);
+static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(16);
 
 #else
 
@@ -57,10 +60,14 @@ struct MeshPositionVertex
 // TODO: Packing
 struct MeshAttributeVertex
 {
-    vec4 Color;
+    u8vec4 Color;
     vec3 Normal;
     vec3 Tangent;
-    vec2 UV;
+#ifdef __cplusplus
+    u16vec2 UV;
+#else
+    f16vec2 UV;
+#endif
 };
 
 #ifdef __cplusplus
@@ -71,6 +78,17 @@ static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
     plane.Distance = glm::dot(plane.Normal, p0);  // signed distance to the origin using p0
 
     return plane;
+}
+
+#else
+vec4 UnpackU8Vec4ToVec4(u8vec4 packed)
+{
+    const float r = packed.r / 255.0f;
+    const float g = packed.g / 255.0f;
+    const float b = packed.b / 255.0f;
+    const float a = packed.a / 255.0f;
+
+    return vec4(r, g, b, a);
 }
 #endif
 
@@ -87,6 +105,19 @@ struct PBRData
     bool bIsOpaque;
 };
 
+struct MeshData
+{
+    mat4 transform;
+    Sphere sphere;
+    uint32_t vertexPosBufferIndex;
+    uint32_t vertexAttributeBufferIndex;
+    uint32_t indexBufferIndex;
+    uint32_t meshletVerticesBufferIndex;
+    uint32_t meshletTrianglesBufferIndex;
+    uint32_t meshletBufferIndex;
+    uint32_t materialBufferIndex;
+};
+
 // Images/Textures
 const uint32_t TEXTURE_STORAGE_IMAGE_SET = 0;
 
@@ -96,13 +127,15 @@ const uint32_t STORAGE_IMAGE_BINDING = 1;
 // Storage buffers
 const uint32_t STORAGE_BUFFER_SET = 1;
 
-const uint32_t STORAGE_BUFFER_VERTEX_POS_BINDING       = 0;
-const uint32_t STORAGE_BUFFER_VERTEX_ATTRIB_BINDING    = 1;
-const uint32_t STORAGE_BUFFER_MESHLET_BINDING          = 2;
-const uint32_t STORAGE_BUFFER_MESHLET_VERTEX_BINDING   = 3;
-const uint32_t STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING = 4;
-const uint32_t STORAGE_BUFFER_MESH_MATERIAL_BINDING    = 5;
-const uint32_t STORAGE_BUFFER_INDEX_BUFFER_BINDING     = 6;
+const uint32_t STORAGE_BUFFER_VERTEX_POS_BINDING            = 0;
+const uint32_t STORAGE_BUFFER_VERTEX_ATTRIB_BINDING         = 1;
+const uint32_t STORAGE_BUFFER_MESHLET_BINDING               = 2;
+const uint32_t STORAGE_BUFFER_MESHLET_VERTEX_BINDING        = 3;
+const uint32_t STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING      = 4;
+const uint32_t STORAGE_BUFFER_MESH_MATERIAL_BINDING         = 5;
+const uint32_t STORAGE_BUFFER_INDEX_BINDING                 = 6;
+const uint32_t STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING      = 7;
+const uint32_t STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING = 8;
 
 // Frame data set
 const uint32_t FRAME_DATA_BUFFER_SET = 2;
@@ -164,11 +197,24 @@ layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESH_MATERIAL_BINDING,
 }
 s_GlobalMaterialBuffers[];
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_INDEX_BUFFER_BINDING, scalar) readonly buffer MeshIndexBuffer
+layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_INDEX_BINDING, scalar) readonly buffer MeshIndexBuffer
 {
     uint32_t indices[];
 }
 s_GlobalIndexBuffers[];
+
+// Traditional pipeline, indirect.
+layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING, scalar) readonly buffer MeshDataBufferOpaque
+{
+    MeshData MeshesData[];
+}
+s_GlobalMeshDataBufferOpaque;
+
+layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING, scalar) readonly buffer MeshDataBufferTransparent
+{
+    MeshData MeshesData[];
+}
+s_GlobalMeshDataBufferTransparent;
 
 #endif
 
@@ -187,6 +233,7 @@ layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_CAMERA_BINDING, 
     float zFar;
     float FOV;
     vec2 FullResolution;
+    Frustum ViewFrustum;
 }
 #ifdef __cplusplus
 ;

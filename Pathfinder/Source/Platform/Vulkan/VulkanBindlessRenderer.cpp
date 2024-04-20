@@ -247,12 +247,19 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
         const VkDescriptorSetLayoutBinding materialBufferBinding = {STORAGE_BUFFER_MESH_MATERIAL_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                                                                     s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
 
-        const VkDescriptorSetLayoutBinding indexBufferBinding = {STORAGE_BUFFER_INDEX_BUFFER_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
+        const VkDescriptorSetLayoutBinding indexBufferBinding = {STORAGE_BUFFER_INDEX_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER,
                                                                  s_MAX_STORAGE_BUFFERS, VK_SHADER_STAGE_ALL};
 
+        const VkDescriptorSetLayoutBinding meshDataBufferOpaqueBinding = {STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING,
+                                                                          VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_ALL};
+
+        const VkDescriptorSetLayoutBinding meshDataBufferTransparentBinding = {STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING,
+                                                                               VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_ALL};
+
         const std::vector<VkDescriptorSetLayoutBinding> bindings = {
-            vertexPosBufferBinding,        vertexAttribBufferBinding, meshletBufferBinding, meshletVerticesBufferBinding,
-            meshletTrianglesBufferBinding, materialBufferBinding,     indexBufferBinding};
+            vertexPosBufferBinding,       vertexAttribBufferBinding,     meshletBufferBinding,
+            meshletVerticesBufferBinding, meshletTrianglesBufferBinding, materialBufferBinding,
+            indexBufferBinding,           meshDataBufferOpaqueBinding,   meshDataBufferTransparentBinding};
 
         const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), bindingFlag);
         const VkDescriptorSetLayoutBindingFlagsCreateInfo storageBufferExtendedInfo = {
@@ -324,7 +331,7 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
         {
             // STORAGE BUFFERS
             const std::vector<VkDescriptorPoolSize> storageBufferPoolSizes = {
-                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7 * s_MAX_STORAGE_BUFFERS}};
+                {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 7 * s_MAX_STORAGE_BUFFERS + 2}};  // +2 for MeshDataBuffer(opaque + transparents)
             const VkDescriptorPoolCreateInfo storageBufferPoolCI = {
                 VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,        nullptr,
                 VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,      1,

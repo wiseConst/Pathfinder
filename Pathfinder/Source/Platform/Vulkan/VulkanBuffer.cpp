@@ -50,6 +50,8 @@ VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUs
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDIRECT) vkBufferUsage |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
+
     // RTX
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY)
         vkBufferUsage |= VK_BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY_BIT_KHR;
@@ -94,7 +96,7 @@ VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUs
         PFR_ASSERT(false, "Buffer usage can't be both VERTEX and INDEX!");
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX || bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX ||
-        bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE)
+        bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_INDIRECT)
         return VMA_MEMORY_USAGE_GPU_ONLY;
     else if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE)
         return VMA_MEMORY_USAGE_CPU_ONLY;
@@ -183,6 +185,7 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         const auto& rd = Renderer::GetRendererData();
         rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
 
+#if TODO
         if (auto commandBuffer = rd->CurrentTransferCommandBuffer.lock())
         {
             auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
@@ -192,6 +195,7 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
             vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
         }
         else
+#endif
         {
             auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
             vulkanCommandBuffer->BeginRecording(true);

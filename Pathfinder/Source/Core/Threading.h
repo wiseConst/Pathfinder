@@ -44,6 +44,15 @@ class JobSystem final : private Uncopyable, private Unmovable
         return std::clamp(std::thread::hardware_concurrency() - 1u, 1u, (uint32_t)s_WORKER_THREAD_COUNT);
     }
 
+    // NOTE: Returns index into array of workers.
+    FORCEINLINE static uint32_t MapThreadID(const std::thread::id& threadID)
+    {
+        for (uint32_t i{}; i < s_Workers.size(); ++i)
+            if (s_Workers[i].get_id() == threadID) return i;
+
+        return 0;
+    }
+
   private:
     static inline bool s_bShutdownRequested = false;
     static inline std::vector<std::jthread> s_Workers;

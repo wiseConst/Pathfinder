@@ -6,7 +6,7 @@
 #include "Assets/Shaders/Include/Globals.h"
 
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
-layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out; // 126 optimal nvidia
+layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out;
 
 layout(location = 0) out VertexOutput
 {
@@ -18,17 +18,25 @@ layout(location = 0) out VertexOutput
 
 #define DEBUG_MESHLETS 0
 
+taskPayloadSharedEXT MeshletTaskData tp_TaskData;
+
 void main()
 {
-    const uint mi = gl_WorkGroupID.x;
-    const uint ti = gl_LocalInvocationID.x;
+    uint32_t i = 0; // reusable var
+    const uint32_t mi = tp_TaskData.baseMeshletID + uint32_t(tp_TaskData.meshlets[gl_WorkGroupID.x]);
+    const uint32_t ti = gl_LocalInvocationID.x;
 
-    const uint primitiveCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleCount;
-    const uint vertexCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexCount;
-    if (ti == 0) SetMeshOutputsEXT(vertexCount, primitiveCount);
+    const uint32_t primitiveCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleCount;
+    const uint32_t vertexCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexCount;
+    // This call will reserve output memory for storing vertex and primitive attributes (other than the vertex position). 
+    // Requesting memory early helps hiding the latency required for memory allocation in the geometry engine.
+    if (ti == 0) 
+    {
+        SetMeshOutputsEXT(vertexCount, primitiveCount);
+    }
 
     #if DEBUG_MESHLETS
-        const uint mhash = hash(mi);
+        const uint32_t mhash = hash(mi);
         const vec3 mcolor = vec3(float(mhash & 255), float((mhash >> 8) & 255), float((mhash >> 16) & 255)) / 255.0;
     #endif
     
@@ -36,14 +44,14 @@ void main()
  
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
     const mat4 mvp = u_GlobalCameraData.ViewProjection * u_PC.Transform;
-    for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
+    for(i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
-        const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
+        const uint32_t vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
         const vec4 localPos = vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
         const vec4 WorldPos = u_PC.Transform * localPos;
         gl_MeshVerticesEXT[i].gl_Position = mvp * localPos;
         
-        o_VertexOutput[i].Color = s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color;
+        o_VertexOutput[i].Color = UnpackU8Vec4ToVec4(s_GlobalVertexAttribBuffers[u_PC.VertexAttribBufferIndex].Attributes[vi].Color);
         #if DEBUG_MESHLETS
               o_VertexOutput[i].Color = vec4(mcolor, 1.0);
         #endif
@@ -59,11 +67,12 @@ void main()
     }
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;
-    for(uint i = ti; i < primitiveCount; i += MESHLET_LOCAL_GROUP_SIZE)
+    for(i = ti; i < primitiveCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+0], 
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+1], 
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+2]);
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 0], 
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 1], 
+            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 2]);
     }
+
 }

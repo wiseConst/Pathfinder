@@ -196,11 +196,22 @@ void GLFWWindow::SetEventCallbacks() const
                                    const auto userWindow = static_cast<GLFWWindow*>(data);
                                    PFR_ASSERT(userWindow, "Failed to retrieve window data from window user pointer!");
 
+                                   EModKey modKey = EModKey::MOD_KEY_UNKNOWN;
+                                   switch (mods)
+                                   {
+                                       case GLFW_MOD_SHIFT: modKey = EModKey::MOD_KEY_SHIFT; break;
+                                       case GLFW_MOD_CONTROL: modKey = EModKey::MOD_KEY_CONTROL; break;
+                                       case GLFW_MOD_ALT: modKey = EModKey::MOD_KEY_ALT; break;
+                                       case GLFW_MOD_SUPER: modKey = EModKey::MOD_KEY_SUPER; break;
+                                       case GLFW_MOD_CAPS_LOCK: modKey = EModKey::MOD_KEY_CAPS_LOCK; break;
+                                       case GLFW_MOD_NUM_LOCK: modKey = EModKey::MOD_KEY_NUM_LOCK; break;
+                                   }
+
                                    switch (action)
                                    {
                                        case GLFW_PRESS:
                                        {
-                                           MouseButtonPressedEvent e(button);
+                                           MouseButtonPressedEvent e(button, modKey);
                                            userWindow->m_Specification.EventCallback(e);
                                            break;
                                        }
@@ -210,7 +221,7 @@ void GLFWWindow::SetEventCallbacks() const
                                        }
                                        case GLFW_RELEASE:
                                        {
-                                           MouseButtonReleasedEvent e(button);
+                                           MouseButtonReleasedEvent e(button, modKey);
                                            userWindow->m_Specification.EventCallback(e);
                                            break;
                                        }
@@ -226,23 +237,34 @@ void GLFWWindow::SetEventCallbacks() const
                            const auto userWindow = static_cast<GLFWWindow*>(data);
                            PFR_ASSERT(userWindow, "Failed to retrieve window data from window user pointer!");
 
+                           EModKey modKey = EModKey::MOD_KEY_UNKNOWN;
+                           switch (mods)
+                           {
+                               case GLFW_MOD_SHIFT: modKey = EModKey::MOD_KEY_SHIFT; break;
+                               case GLFW_MOD_CONTROL: modKey = EModKey::MOD_KEY_CONTROL; break;
+                               case GLFW_MOD_ALT: modKey = EModKey::MOD_KEY_ALT; break;
+                               case GLFW_MOD_SUPER: modKey = EModKey::MOD_KEY_SUPER; break;
+                               case GLFW_MOD_CAPS_LOCK: modKey = EModKey::MOD_KEY_CAPS_LOCK; break;
+                               case GLFW_MOD_NUM_LOCK: modKey = EModKey::MOD_KEY_NUM_LOCK; break;
+                           }
+
                            switch (action)
                            {
                                case GLFW_PRESS:
                                {
-                                   KeyButtonPressedEvent e(key, scancode);
+                                   KeyButtonPressedEvent e(key, scancode, modKey);
                                    userWindow->m_Specification.EventCallback(e);
                                    break;
                                }
                                case GLFW_REPEAT:
                                {
-                                   KeyButtonRepeatedEvent e(key, scancode);
+                                   KeyButtonRepeatedEvent e(key, scancode, modKey);
                                    userWindow->m_Specification.EventCallback(e);
                                    break;
                                }
                                case GLFW_RELEASE:
                                {
-                                   KeyButtonReleasedEvent e(key, scancode);
+                                   KeyButtonReleasedEvent e(key, scancode, modKey);
                                    userWindow->m_Specification.EventCallback(e);
                                    break;
                                }
