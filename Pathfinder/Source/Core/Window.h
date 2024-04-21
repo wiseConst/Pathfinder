@@ -28,7 +28,6 @@ struct WindowSpecification final
     uint32_t Width         = 1280;
     uint32_t Height        = 720;
     EWindowMode WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
-    bool bVSync            = false;
 };
 
 using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
@@ -44,8 +43,8 @@ class Window : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetSwapchain() const { return m_Swapchain; }
     NODISCARD FORCEINLINE const WindowSpecification& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const = 0;
+    bool IsVSync() const;
 
-    NODISCARD FORCEINLINE bool IsVSync() const { return m_Specification.bVSync; }
     NODISCARD FORCEINLINE bool IsRunning() const { return m_bIsRunning; }
     NODISCARD FORCEINLINE bool IsMinimized() const { return m_Specification.Height == 0 || m_Specification.Width == 0; }
 
@@ -70,7 +69,7 @@ class Window : private Uncopyable, private Unmovable
     WindowSpecification m_Specification;
     bool m_bIsRunning = true;
 
-    explicit Window(const WindowSpecification& windowSpec) noexcept; 
+    explicit Window(const WindowSpecification& windowSpec) noexcept;
     virtual void Destroy() = 0;
 };
 

@@ -20,7 +20,6 @@ class Swapchain : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const   = 0;
     NODISCARD FORCEINLINE virtual const uint32_t GetImageCount() const          = 0;
     NODISCARD FORCEINLINE virtual bool IsVSync() const                          = 0;
-    NODISCARD FORCEINLINE virtual bool WasInvalidatedDuringCurrentFrame() const = 0;
 
     virtual void SetClearColor(const glm::vec3& clearColor = glm::vec3(1.0f)) = 0;
     virtual void SetVSync(bool bVSync)                                        = 0;

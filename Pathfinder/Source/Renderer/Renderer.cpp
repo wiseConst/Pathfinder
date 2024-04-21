@@ -654,7 +654,9 @@ void Renderer::Shutdown()
 
 void Renderer::Begin()
 {
+    // Update VSync state.
     auto& window = Application::Get().GetWindow();
+    window->SetVSync(s_RendererSettings.bVSync);
 
     Timer t = {};
     s_RendererData->LastBoundPipeline.reset();
@@ -840,11 +842,6 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     s_RendererData->TransparentObjects.clear();
 
     s_RendererStats.RHITime += t.GetElapsedMilliseconds();
-
-    // Update VSync state.
-
-    auto& window = Application::Get().GetWindow();
-    window->SetVSync(s_RendererSettings.bVSync);
 }
 
 void Renderer::BeginScene(const Camera& camera)

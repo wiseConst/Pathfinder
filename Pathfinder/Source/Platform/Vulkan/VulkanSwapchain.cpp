@@ -233,8 +233,8 @@ void VulkanSwapchain::SetWindowMode(const EWindowMode windowMode)
     }
 #endif
 
-    m_WindowMode = windowMode;
-    Invalidate();
+    m_WindowMode     = windowMode;
+    m_bNeedsRecreate = true;
 
 #if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     if (m_WindowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
@@ -251,7 +251,9 @@ void VulkanSwapchain::Invalidate()
     const auto& logicalDevice  = context.GetDevice()->GetLogicalDevice();
     const auto& physicalDevice = context.GetDevice()->GetPhysicalDevice();
 
-    const auto oldSwapchain = m_Handle;
+    m_bNeedsRecreate = false;
+
+    auto oldSwapchain = m_Handle;
     if (oldSwapchain)
     {
         std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
@@ -278,7 +280,7 @@ void VulkanSwapchain::Invalidate()
                               VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore),
                                        "Failed to create semaphore!");
 
-                              const std::string semaphoreName = "VK_RENDER_FINISHED_SEMAPHORE]";
+                              const std::string semaphoreName = "VK_RENDER_FINISHED_SEMAPHORE";
                               VK_SetDebugName(logicalDevice, semaphore, VK_OBJECT_TYPE_SEMAPHORE, semaphoreName.data());
                           });
 
@@ -301,7 +303,16 @@ void VulkanSwapchain::Invalidate()
     swapchainCreateInfo.clipped                  = VK_TRUE;
     swapchainCreateInfo.imageArrayLayers         = 1;
     swapchainCreateInfo.surface                  = m_Surface;
-    swapchainCreateInfo.oldSwapchain             = oldSwapchain;
+
+    if (m_bVSync && m_CurrentPresentMode != VK_PRESENT_MODE_FIFO_KHR)
+    {
+        vkDestroySwapchainKHR(logicalDevice, m_Handle, nullptr);
+        oldSwapchain = nullptr;
+    }
+    else
+    {
+        swapchainCreateInfo.oldSwapchain = oldSwapchain;
+    }
 
     const auto Details               = SwapchainSupportDetails::QuerySwapchainSupportDetails(physicalDevice, m_Surface);
     swapchainCreateInfo.preTransform = Details.SurfaceCapabilities.currentTransform;
@@ -361,7 +372,7 @@ void VulkanSwapchain::Invalidate()
     m_ImageViews.resize(m_Images.size());
     for (uint32_t i = 0; i < m_ImageViews.size(); ++i)
     {
-        ImageUtils::CreateImageView(m_Images[i], m_ImageViews[i], m_ImageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D,
+        ImageUtils::CreateImageView(m_Images[i], m_ImageViews[i], m_ImageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, 1,
                                     1);
 
         std::string debugName = "Swapchain image[" + std::to_string(i) + "]";
@@ -371,25 +382,24 @@ void VulkanSwapchain::Invalidate()
     }
 
     m_ImageLayouts.assign(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
-    m_bWasInvalidated = true;
 }
 
 bool VulkanSwapchain::AcquireImage()
 {
-    m_bWasInvalidated         = false;
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
 
     VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_RenderFence[m_FrameIndex], VK_TRUE, UINT64_MAX),
              "Failed to wait on swapchain-render submit fence!");
 
-    VK_CHECK(vkResetFences(logicalDevice, 1, &m_RenderFence[m_FrameIndex]), "Failed to reset swapchain-render submit fence!");
-
     const auto result =
         vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphore[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
-
     m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (result == VK_SUCCESS) return true;
+    if (result == VK_SUCCESS)
+    {
+        VK_CHECK(vkResetFences(logicalDevice, 1, &m_RenderFence[m_FrameIndex]), "Failed to reset swapchain-render submit fence!");
+        return true;
+    }
 
     if (result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR)
     {
@@ -397,13 +407,12 @@ bool VulkanSwapchain::AcquireImage()
         PFR_ASSERT(false, ResultMessage.data());
     }
 
-    Recreate();
+    m_bNeedsRecreate = true;
     return false;
 }
 
 void VulkanSwapchain::PresentImage()
 {
-    m_bWasInvalidated = false;
     bool bWasEverUsed = true;  // In case Renderer didn't use it, we should set waitSemaphore to imageAvaliable, otherwise renderSemaphore.
     if (m_ImageLayouts[m_ImageIndex] != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
     {
@@ -438,10 +447,11 @@ void VulkanSwapchain::PresentImage()
     if (result == VK_SUCCESS)
     {
         m_FrameIndex = (m_FrameIndex + 1) % s_FRAMES_IN_FLIGHT;
-        return;
     }
+    else
+        m_bNeedsRecreate = true;
 
-    Recreate();
+    if (m_bNeedsRecreate) Recreate();
 }
 
 void VulkanSwapchain::BeginPass(const Shared<CommandBuffer>& commandBuffer, const bool bPreserveContents)

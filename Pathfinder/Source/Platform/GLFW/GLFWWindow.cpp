@@ -30,6 +30,11 @@ Window::Window(const WindowSpecification& windowSpec) noexcept : m_Specification
 
 Window::~Window() = default;
 
+bool Window::IsVSync() const
+{
+    return m_Swapchain && m_Swapchain->IsVSync();
+}
+
 Unique<Window> Window::Create(const WindowSpecification& windowSpec)
 {
     return MakeUnique<GLFWWindow>(windowSpec);
@@ -37,13 +42,11 @@ Unique<Window> Window::Create(const WindowSpecification& windowSpec)
 
 void Window::SetVSync(const bool bVSync)
 {
-    if (m_Specification.bVSync == bVSync) return;
-
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    m_Specification.bVSync = bVSync;
+    if (m_Swapchain->IsVSync() == bVSync) return;
 
     // Update VSync state.
-    m_Swapchain->SetVSync(m_Specification.bVSync);
+    m_Swapchain->SetVSync(bVSync);
 }
 
 std::vector<const char*> Window::GetWSIExtensions()
@@ -122,7 +125,7 @@ void GLFWWindow::SwapBuffers()
 {
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
 
-    if (!m_Swapchain->WasInvalidatedDuringCurrentFrame()) m_Swapchain->PresentImage();
+    m_Swapchain->PresentImage();
 }
 
 void GLFWWindow::PollEvents()

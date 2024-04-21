@@ -78,6 +78,8 @@ void DebugRenderer::Shutdown()
 
 void DebugRenderer::UpdateState()
 {
+    if (!s_bDebugRendererInit) return;
+
     auto& rd = Renderer::GetRendererData();
     if (s_DebugRendererData->FrameIndex == rd->FrameIndex) return;
 
@@ -89,7 +91,6 @@ void DebugRenderer::UpdateState()
 void DebugRenderer::Flush()
 {
     if (!s_bDebugRendererInit) return;
-
     UpdateState();
 
     const uint32_t dataSize = s_DebugRendererData->LineVertexCount * sizeof(LineVertex);
@@ -124,7 +125,6 @@ void DebugRenderer::Flush()
 void DebugRenderer::DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm::vec4& color)
 {
     if (!s_bDebugRendererInit) return;
-
     UpdateState();
 
     s_DebugRendererData->LineVertexCurrent[s_DebugRendererData->FrameIndex]->Position = p0;
@@ -141,7 +141,6 @@ void DebugRenderer::DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm
 void DebugRenderer::DrawRect(const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color)
 {
     if (!s_bDebugRendererInit) return;
-
     UpdateState();
 
     const glm::vec3& p0 = glm::vec3(center.x - halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
@@ -158,7 +157,6 @@ void DebugRenderer::DrawRect(const glm::vec3& center, const glm::vec3& halfExten
 void DebugRenderer::DrawRect(const glm::mat4& transform, const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color)
 {
     if (!s_bDebugRendererInit) return;
-
     UpdateState();
 
     glm::vec3 lineVertices[4] = {glm::vec3(center + halfExtents),
@@ -177,7 +175,6 @@ void DebugRenderer::DrawRect(const glm::mat4& transform, const glm::vec3& center
 void DebugRenderer::DrawAABB(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color)
 {
     if (!s_bDebugRendererInit) return;
-
     UpdateState();
 
     if (!mesh) return;

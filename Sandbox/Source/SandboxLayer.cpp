@@ -16,7 +16,7 @@ void SandboxLayer::Init()
     m_Dummy  = Mesh::Create("stanford/dragon/scene.gltf");
     m_Sponza = Mesh::Create("sponza/scene.gltf");
     m_Helmet = Mesh::Create("damaged_helmet/DamagedHelmet.gltf");
-    m_Gun    = Mesh::Create("cerberus/scene.gltf");
+    m_Gun    = Mesh::Create("flintlock_pistol/scene.gltf");
 
 #if POINT_LIGHT_TEST
     const float radius = 2.5f;
@@ -26,7 +26,7 @@ void SandboxLayer::Init()
         m_PointLights[i].Position     = glm::linearRand(minLightPos, maxLightPos);
         m_PointLights[i].Intensity    = glm::linearRand(1.0f, 3.0f);
         m_PointLights[i].Radius       = radius;
-        m_PointLights[i].MinRadius    = radius * glm::linearRand(0.15f, 0.80f);
+        m_PointLights[i].MinRadius    = radius * glm::linearRand(0.15f, 0.95f);
 
         glm::vec3 color = glm::vec3(0.f);
         do
@@ -94,25 +94,33 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 
     Renderer::BeginScene(*m_Camera);
 
-    Renderer::SubmitMesh(m_Dummy, glm::translate(glm::mat4(1.f), glm::vec3(5, 1.2, 0)));
-    DebugRenderer::DrawAABB(m_Dummy, glm::translate(glm::mat4(1.f), glm::vec3(5, 1.2, 0)), glm::vec4(1, 1, 0, 1));
+    {
+        const glm::mat4 transform = glm::translate(glm::mat4(1.f), glm::vec3(5, 1.2, 0));
+        Renderer::SubmitMesh(m_Dummy, transform);
+        DebugRenderer::DrawAABB(m_Dummy, transform, glm::vec4(1, 1, 0, 1));
+    }
 
-    Renderer::SubmitMesh(m_Helmet, glm::translate(glm::mat4(1.f), glm::vec3(0, 5, 0)));
-    DebugRenderer::DrawAABB(m_Helmet, glm::translate(glm::mat4(1.f), glm::vec3(0, 5, 0)), glm::vec4(1, 1, 0, 1));
+    {
+        const glm::mat4 transform = glm::translate(glm::mat4(1.f), glm::vec3(0, 5, 0));
+        Renderer::SubmitMesh(m_Helmet, transform);
+        DebugRenderer::DrawAABB(m_Helmet, transform, glm::vec4(1, 1, 0, 1));
+    }
 
-    Renderer::SubmitMesh(m_Sponza);
-    DebugRenderer::DrawAABB(m_Sponza, glm::mat4(1.f), {0,1,1,1});
+    {
+        Renderer::SubmitMesh(m_Sponza);
+        //   DebugRenderer::DrawAABB(m_Sponza, glm::mat4(1.f), {0, 1, 1, 1});
+    }
 
-    Renderer::SubmitMesh(
-        m_Gun, glm::translate(glm::mat4(1.f), glm::vec3(-3, 10, 0)) * glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(0, 1, 0)) *
-                   glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0)) * glm::scale(glm::mat4(1.f), glm::vec3(0.03f)));
-    DebugRenderer::DrawAABB(
-        m_Gun,
-        glm::translate(glm::mat4(1.f), glm::vec3(-3, 10, 0)) * glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(0, 1, 0)) *
-            glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0)) * glm::scale(glm::mat4(1.f), glm::vec3(0.03f)),
-        glm::vec4(1, 1, 0, 1));
+    {
+        const glm::mat4 transform = glm::translate(glm::mat4(1.f), glm::vec3(-3, 10, 0)) *
+                                    glm::rotate(glm::mat4(1.f), glm::radians(90.f), glm::vec3(0, 1, 0)) /* *
+glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0))*/
+                                    * glm::scale(glm::mat4(1.f), glm::vec3(0.09f));
+        Renderer::SubmitMesh(m_Gun, transform);
+        DebugRenderer::DrawAABB(m_Gun, transform, glm::vec4(1, 0, 1, 1));
+    }
 
-   // DebugRenderer::DrawLine(glm::vec3(0.f), glm::vec3(5.f), glm::vec4(1, 0, 1, 1));
+    // DebugRenderer::DrawLine(glm::vec3(0.f), glm::vec3(5.f), glm::vec4(1, 0, 1, 1));
 
 #if 0
     {
@@ -201,7 +209,7 @@ void SandboxLayer::OnUIRender()
     {
         ImGui::Begin("Renderer Target List", &bShowRenderTargetList);
 
-        for (const auto [name, image] : Renderer::GetRenderTargetList())
+        for (const auto& [name, image] : Renderer::GetRenderTargetList())
         {
             ImGui::Text("%s", name.data());
             UILayer::DrawImage(image, {image->GetSpecification().Width / 2, image->GetSpecification().Height / 2}, {0, 0}, {1, 1});
@@ -223,6 +231,14 @@ void SandboxLayer::OnUIRender()
         ImGui::SeparatorText("Pipeline Statistics");
         for (const auto& [pipelineStat, stat] : Renderer::GetPipelineStatistics())
             ImGui::Text("%s: %llu", pipelineStat.data(), stat);
+
+        ImGui::End();
+    }
+
+    static bool bShowWorldOutliner = true;
+    if (bShowWorldOutliner)
+    {
+        ImGui::Begin("World Outliner", &bShowWorldOutliner);
 
         ImGui::End();
     }

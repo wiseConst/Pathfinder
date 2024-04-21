@@ -28,8 +28,8 @@ class VulkanSwapchain final : public Swapchain
     {
         if (m_bVSync == bVSync) return;
 
-        m_bVSync = bVSync;
-        Recreate();
+        m_bVSync         = bVSync;
+        m_bNeedsRecreate = true;
         LOG_DEBUG("VSync: %s.", m_bVSync ? "ON" : "OFF");
     }
     void SetWindowMode(const EWindowMode windowMode) final override;
@@ -69,9 +69,7 @@ class VulkanSwapchain final : public Swapchain
     uint32_t m_FrameIndex{0};
 
     EWindowMode m_WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
-    bool m_bWasInvalidated   = false;
-
-    NODISCARD FORCEINLINE bool WasInvalidatedDuringCurrentFrame() const final override { return m_bWasInvalidated; }
+    bool m_bNeedsRecreate      = false;
 
     void Recreate();
     void Destroy() final override;

@@ -27,10 +27,27 @@ namespace Pathfinder
 
 #define BIT(x) (1 << x)
 
-// TODO: Add VERIFY for release mode since assert is descended
+extern void PathfinderShutdown();
 
+#define PRR_DIST 0
 #if PFR_RELEASE
+
+#if PFR_DIST
+
 #define PFR_ASSERT(x, msg) (x)
+
+#else
+
+#define PFR_ASSERT(x, msg)                                                                                                                 \
+    {                                                                                                                                      \
+        if (!(x))                                                                                                                          \
+        {                                                                                                                                  \
+            LOG_ERROR(msg);                                                                                                                \
+            PathfinderShutdown();                                                                                                          \
+        }                                                                                                                                  \
+    }
+#endif
+
 #elif PFR_DEBUG
 #define PFR_ASSERT(x, msg)                                                                                                                 \
     {                                                                                                                                      \
