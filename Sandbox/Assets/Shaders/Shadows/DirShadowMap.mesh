@@ -3,7 +3,7 @@
 #extension GL_EXT_mesh_shader : require
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Globals.h"
 
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out; // 126 optimal nvidia

@@ -3,8 +3,8 @@
 #define SHADER_DEBUG_PRINTF 0
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Culling.h"
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Culling.h"
+#include "Include/Globals.h"
 
 layout(local_size_x = LIGHT_CULLING_TILE_SIZE, local_size_y = LIGHT_CULLING_TILE_SIZE, local_size_z = 1) in;
 
@@ -231,7 +231,7 @@ void main()
       const vec3 plPosVS = vec3(u_GlobalCameraData.View * vec4(pl.Position, 1));
 
       Sphere sphere = {plPosVS, pl.Radius};
-      if ( SphereInsideFrustum( sphere, groupFrustum, nearClipVS, maxDepthVS ) )
+      if ( SphereInsideTileFrustum( sphere, groupFrustum, nearClipVS, maxDepthVS ) )
       {
        //if (SphereInsidePlane(sphere, minPlane)) continue;
         if (!SphereIntersectsAABB(sphere, groupAABB)) continue;// tighter fit than sphere-frustum culling
@@ -255,14 +255,14 @@ void main()
 
         #if SPOTLIGHT_SPHERE_CULLING 
         Sphere sphere = GetConeBoundingSphere(spl.Position, spl.Height, splDirVS, spl.OuterCutOff);
-        if ( SphereInsideFrustum( sphere, groupFrustum, nearClipVS, maxDepthVS ) )
+        if ( SphereInsideTileFrustum( sphere, groupFrustum, nearClipVS, maxDepthVS ) )
         {
             //if (SphereInsidePlane(sphere, minPlane)) continue;
          // if (!SphereIntersectsAABB(sphere, groupAABB)) continue;// tighter fit than sphere-frustum culling
         #else 
         const vec3 splPosVS = vec3(u_GlobalCameraData.View * vec4(spl.Position, 1));
         Cone cone = { splPosVS, spl.Height, splDirVS, spl.Radius};
-        if ( ConeInsideFrustum( cone, groupFrustum, nearClipVS, maxDepthVS ) )
+        if ( ConeInsideTileFrustum( cone, groupFrustum, nearClipVS, maxDepthVS ) )
         {
             if ( ConeInsidePlane( cone, minPlane ) ) continue;
         #endif

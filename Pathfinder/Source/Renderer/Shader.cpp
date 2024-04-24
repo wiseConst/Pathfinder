@@ -22,7 +22,10 @@ shaderc_include_result* GLSLShaderIncluder::GetInclude(const char* requested_sou
     auto* container          = new std::array<std::string, 2>();
     includeResult->user_data = container;
 
-    auto shaderSrc = LoadData<std::string>(requested_source);
+    const auto& appSpec            = Application::Get().GetSpecification();
+    const auto requestedSourcePath = std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / appSpec.ShadersDir / requested_source;
+
+    auto shaderSrc = LoadData<std::string>(requestedSourcePath.string().data());
     PFR_ASSERT(!shaderSrc.empty(), "Failed to load shader header!");
 
     (*container)[0] = requested_source;
@@ -84,9 +87,12 @@ void ShaderLibrary::Load(const std::string& shaderName)
         return;
     }
 
-    Timer t               = {};
+#if PFR_DEBUG
+    Timer t = {};
+#endif
+
     s_Shaders[shaderName] = Shader::Create(shaderName);
-#if LOG_SHADER_INFO
+#if LOG_SHADER_INFO && PFR_DEBUG
     LOG_TAG_TRACE(SHADER_LIBRARY, "Time took to compile \"%s\" shader, %0.2fms", shaderName.data(), t.GetElapsedMilliseconds() * 1000.0f);
 #endif
 }
@@ -110,11 +116,16 @@ void ShaderLibrary::Load(const std::vector<std::string>& shaderNames)
         futures.emplace_back([future] { future.get(); });
     }
 
+#if PFR_DEBUG
     Timer t = {};
+#endif
+
     for (auto& future : futures)
         future();
 
+#if PFR_DEBUG
     LOG_TAG_INFO(SHADER_LIBRARY, "Time took to create (%zu) shaders: %0.2fms", shaderNames.size(), t.GetElapsedMilliseconds());
+#endif
 }
 
 const Shared<Shader>& ShaderLibrary::Get(const std::string& shaderName)

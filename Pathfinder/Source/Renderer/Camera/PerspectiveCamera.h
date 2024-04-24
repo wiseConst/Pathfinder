@@ -244,6 +244,9 @@ class PerspectiveCamera final : public Camera
         m_CullFrustum.Planes[3] = ComputePlane(m_Position, glm::cross(m_Right, forwardFar - m_Up * halfVSide));
         m_CullFrustum.Planes[4] = ComputePlane(m_Position + m_Forward * GetNearPlaneDepth(), m_Forward);
         m_CullFrustum.Planes[5] = ComputePlane(m_Position + forwardFar, -m_Forward);
+
+        for (auto& plane : m_CullFrustum.Planes)
+            plane.Normal = glm::normalize(plane.Normal);
     }
 };
 

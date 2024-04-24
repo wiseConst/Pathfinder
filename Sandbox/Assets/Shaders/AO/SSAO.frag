@@ -1,7 +1,7 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Globals.h"
 
 layout(location = 0) out float outFragColor;
 layout(location = 0) in vec2 inUV;

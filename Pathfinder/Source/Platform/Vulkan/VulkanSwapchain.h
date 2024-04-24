@@ -21,18 +21,25 @@ class VulkanSwapchain final : public Swapchain
     NODISCARD FORCEINLINE void* GetImageAvailableSemaphore() const final override { return m_ImageAcquiredSemaphore[m_FrameIndex]; }
     NODISCARD FORCEINLINE void* GetRenderFence() const final override { return m_RenderFence[m_FrameIndex]; }
     NODISCARD FORCEINLINE void* GetRenderSemaphore() const final override { return m_RenderSemaphore[m_FrameIndex]; }
-    NODISCARD FORCEINLINE bool IsVSync() const final override { return m_bVSync; }
 
     void SetClearColor(const glm::vec3& clearColor) final override;
     void SetVSync(bool bVSync) final override
     {
-        if (m_bVSync == bVSync) return;
+        if (bVSync && m_PresentMode == EPresentMode::PRESENT_MODE_FIFO || !bVSync && m_PresentMode == EPresentMode::PRESENT_MODE_MAILBOX)
+            return;
 
-        m_bVSync         = bVSync;
+        m_PresentMode    = bVSync ? EPresentMode::PRESENT_MODE_FIFO : EPresentMode::PRESENT_MODE_MAILBOX;
         m_bNeedsRecreate = true;
-        LOG_DEBUG("VSync: %s.", m_bVSync ? "ON" : "OFF");
     }
     void SetWindowMode(const EWindowMode windowMode) final override;
+
+    void SetPresentMode(const EPresentMode presentMode) final override
+    {
+        if (m_PresentMode == presentMode) return;
+
+        m_PresentMode    = presentMode;
+        m_bNeedsRecreate = true;
+    }
 
     void Invalidate() final override;
 
@@ -59,17 +66,17 @@ class VulkanSwapchain final : public Swapchain
     VkSurfaceFullScreenExclusiveInfoEXT m_SurfaceFullScreenExclusiveInfo = {VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT};
 #endif
 
-    VkSurfaceKHR m_Surface           = VK_NULL_HANDLE;
-    VkSurfaceFormatKHR m_ImageFormat = {VK_FORMAT_UNDEFINED, VK_COLORSPACE_SRGB_NONLINEAR_KHR};
-
+    VkSurfaceKHR m_Surface                = VK_NULL_HANDLE;
+    VkSurfaceFormatKHR m_ImageFormat      = {VK_FORMAT_UNDEFINED, VK_COLORSPACE_SRGB_NONLINEAR_KHR};
     VkPresentModeKHR m_CurrentPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-    VkExtent2D m_ImageExtent              = {1280, 720};
+
+    VkExtent2D m_ImageExtent = {1280, 720};
 
     uint32_t m_ImageIndex{0};
     uint32_t m_FrameIndex{0};
 
     EWindowMode m_WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
-    bool m_bNeedsRecreate      = false;
+    bool m_bNeedsRecreate    = false;
 
     void Recreate();
     void Destroy() final override;

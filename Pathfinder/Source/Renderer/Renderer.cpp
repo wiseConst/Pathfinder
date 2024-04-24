@@ -41,7 +41,7 @@ void Renderer::Init()
 
     ShaderLibrary::Load(std::vector<std::string>{"pathtrace", "ForwardPlus", "DepthPrePass", "ObjectCulling", "LightCulling",
                                                  "ComputeFrustums", "Composite", "AO/SSAO", "AO/HBAO", "Shadows/DirShadowMap",
-                                                 "Shadows/PointLightShadowMap", "AtmosphericScattering", "Post/GaussianBlur"});
+                                                 "Shadows/PointLightShadowMap", "AtmosphericScattering", "Post/GaussianBlur", "Post/MedianBlur"});
 
     std::ranges::for_each(s_RendererData->UploadHeap,
                           [](auto& uploadHeap)
@@ -139,7 +139,8 @@ void Renderer::Init()
                                                                  glm::vec4(0),
                                                                  true,
                                                                  ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                                                 ESamplerFilter::SAMPLER_FILTER_LINEAR};
+                                                                 ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                                                 true};
             framebufferSpec.Attachments.emplace_back(attachmentSpec);
         }
 
@@ -222,13 +223,8 @@ void Renderer::Init()
     }
 
     {
-        Application::Get().GetWindow()->AddResizeCallback(
-            [&](uint32_t width, uint32_t height)
-            {
-                s_RendererData->CompositeFramebuffer->Resize(width, height);
-                s_RendererData->CompositePipeline->GetSpecification().Shader->Set("u_Albedo",
-                                                                                  s_RendererData->GBuffer->GetAttachments()[0].Attachment);
-            });
+        Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height)
+                                                          { s_RendererData->CompositeFramebuffer->Resize(width, height); });
 
         PipelineSpecification compositePipelineSpec = {"Composite", EPipelineType::PIPELINE_TYPE_GRAPHICS};
         compositePipelineSpec.TargetFramebuffer     = s_RendererData->CompositeFramebuffer;
@@ -487,6 +483,15 @@ void Renderer::Init()
                 std::ranges::for_each(s_RendererData->BlurAOFramebuffer,
                                       [&](const auto& framebuffer) { framebuffer->Resize(width, height); });
             });
+
+        {
+            PipelineSpecification blurAOPipelineSpec = {"MedianBlurAO", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+            blurAOPipelineSpec.Shader                = ShaderLibrary::Get("Post/MedianBlur");
+            blurAOPipelineSpec.TargetFramebuffer     = s_RendererData->BlurAOFramebuffer[1];
+            blurAOPipelineSpec.bBindlessCompatible   = true;
+            blurAOPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
+            PipelineBuilder::Push(s_RendererData->MedianBlurAOPipeline, blurAOPipelineSpec);
+        }
     }
 
     {
@@ -581,12 +586,9 @@ void Renderer::Init()
         }
 
         Application::Get().GetWindow()->AddResizeCallback(
-            [](uint32_t width, uint32_t height)
-            {
+            [](uint32_t width, uint32_t height) {
                 std::ranges::for_each(s_RendererData->BloomFramebuffer,
                                       [&](const auto& framebuffer) { framebuffer->Resize(width, height); });
-                s_RendererData->CompositePipeline->GetSpecification().Shader->Set(
-                    "u_BloomBlur", s_RendererData->BloomFramebuffer[1]->GetAttachments()[0].Attachment);
             });
     }
 
@@ -613,10 +615,6 @@ void Renderer::Init()
                                                                               s_RendererData->SpotLightIndicesStorageBuffer);
     s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
                                                                                    s_RendererData->SpotLightIndicesStorageBuffer);
-
-    s_RendererData->CompositePipeline->GetSpecification().Shader->Set("u_Albedo", s_RendererData->GBuffer->GetAttachments()[0].Attachment);
-    s_RendererData->CompositePipeline->GetSpecification().Shader->Set("u_BloomBlur",
-                                                                      s_RendererData->BloomFramebuffer[1]->GetAttachments()[0].Attachment);
 
     {
         std::vector<Shared<Image>> attachments(s_RendererData->DirShadowMaps.size());
@@ -1172,21 +1170,40 @@ void Renderer::BlurAOPass()
     if (IsWorldEmpty()) return;
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
-    for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+
+    if (s_RendererSettings.BlurType == EBlurType::BLUR_TYPE_GAUSSIAN)
     {
-        s_RendererData->BlurAOFramebuffer[i]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+        for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+        {
+            s_RendererData->BlurAOFramebuffer[i]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+            PushConstantBlock pc  = {};
+            pc.AlbedoTextureIndex = (i == 0 ? s_RendererData->SSAO.Framebuffer->GetAttachments()[0].m_Index
+                                            : s_RendererData->BlurAOFramebuffer[i - 1]->GetAttachments()[0].m_Index);
+
+            BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BlurAOPipeline[i]);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->BlurAOPipeline[i], 0, 0,
+                                                                                               sizeof(pc), &pc);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
+
+            s_RendererData->BlurAOFramebuffer[i]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+        }
+    }
+    else if (s_RendererSettings.BlurType == EBlurType::BLUR_TYPE_MEDIAN)
+    {
+        s_RendererData->BlurAOFramebuffer[1]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
         PushConstantBlock pc  = {};
-        pc.AlbedoTextureIndex = (i == 0 ? s_RendererData->SSAO.Framebuffer->GetAttachments()[0].m_Index
-                                        : s_RendererData->BlurAOFramebuffer[i - 1]->GetAttachments()[0].m_Index);
+        pc.AlbedoTextureIndex = s_RendererData->SSAO.Framebuffer->GetAttachments()[0].m_Index;
 
-        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BlurAOPipeline[i]);
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->BlurAOPipeline[i], 0, 0,
+        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->MedianBlurAOPipeline);
+        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->MedianBlurAOPipeline, 0, 0,
                                                                                            sizeof(pc), &pc);
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
 
-        s_RendererData->BlurAOFramebuffer[i]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+        s_RendererData->BlurAOFramebuffer[1]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     }
+
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
 }
 
@@ -1206,10 +1223,11 @@ void Renderer::ComputeFrustumsPass()
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ComputeFrustumsPipeline, 0, 0,
                                                                                            sizeof(pc), &pc);
 
+        // Divide twice to make use of threads inside warps instead of creating frustum per warp.
         const auto& framebufferSpec = s_RendererData->DepthPrePassFramebuffer->GetSpecification();
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Dispatch(
-            DivideToNextMultiple(framebufferSpec.Width, LIGHT_CULLING_TILE_SIZE),
-            DivideToNextMultiple(framebufferSpec.Height, LIGHT_CULLING_TILE_SIZE));
+            DivideToNextMultiple(framebufferSpec.Width, LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE),
+            DivideToNextMultiple(framebufferSpec.Height, LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE));
 
         // Insert buffer memory barrier to prevent light culling pass reading until frustum computing is done.
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
@@ -1471,6 +1489,12 @@ void Renderer::CompositePass()
 
     s_RendererData->CompositeFramebuffer->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->CompositePipeline);
+
+    PushConstantBlock pc  = {};
+    pc.StorageImageIndex  = s_RendererData->GBuffer->GetAttachments()[0].m_Index;
+    pc.AlbedoTextureIndex = s_RendererData->BloomFramebuffer[1]->GetAttachments()[0].m_Index;
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->CompositePipeline, 0, 0, sizeof(pc),
+                                                                                       &pc);
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
 

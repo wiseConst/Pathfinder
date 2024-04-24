@@ -162,6 +162,12 @@ enum class ESamplerWrap : uint8_t
     SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE,
 };
 
+enum class EBlurType : uint8_t
+{
+    BLUR_TYPE_GAUSSIAN = 0,
+    BLUR_TYPE_MEDIAN
+};
+
 struct QuadVertex
 {
     glm::vec3 Position = glm::vec3(0.0f);

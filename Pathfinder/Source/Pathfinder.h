@@ -22,6 +22,7 @@
 #include "Events/MouseEvent.h"
 
 // RENDERING
+#include "Renderer/Swapchain.h"
 #include "Renderer/RendererAPI.h"
 #include "Renderer/Renderer2D.h"
 #include "Renderer/Renderer.h"

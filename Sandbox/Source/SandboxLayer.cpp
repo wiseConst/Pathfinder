@@ -127,22 +127,25 @@ glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0))*/
         static double iTime = 0.0;
         iTime += (double)deltaTime;
         DirectionalLight dl = {};
-        dl.Color            = glm::vec3(.9f, .6f, .08f);
+        dl.Color            = glm::vec3(.9f, .65f, .1f);
         dl.Direction        = glm::vec3(-5.f, 2.f, 0.f);
-        dl.Intensity        = 5.5f;
-        dl.bCastShadows     = true;
+        dl.Intensity        = 1.5f;
+        //      dl.bCastShadows     = true;
 
-        dl.Direction = glm::vec3(.5, .4 * (1. + glm::sin(.5 * iTime)), -1.);
+        //    dl.Direction = glm::vec3(.5, .4 * (1. + glm::sin(.5 * iTime)), -1.);
 
         Renderer::AddDirectionalLight(dl);
     }
 
+#if 0
     m_PointShadowCaster.Position += glm::vec3(3, 0, 0) * deltaTime;
     if (m_PointShadowCaster.Position.x > maxLightPos.x)
     {
         m_PointShadowCaster.Position.x -= (maxLightPos.x - minLightPos.x);
     }
     Renderer::AddPointLight(m_PointShadowCaster);
+#endif
+
 #endif
 
 #if SPOT_LIGHT_TEST
@@ -197,9 +200,63 @@ void SandboxLayer::OnUIRender()
     {
         ImGui::Begin("Renderer Settings", &bShowRendererSettings);
 
-        auto& rs = Renderer::GetRendererSettings();
-        ImGui::Checkbox("VSync", &rs.bVSync);
-        ImGui::Text("IsWindowHovered: %d", ImGui::IsWindowHovered());
+        auto& rs              = Renderer::GetRendererSettings();
+        const bool bIsChecked = ImGui::Checkbox("VSync", &rs.bVSync);
+        ImGui::Separator();
+
+        const auto& mainWindowSwapchain   = Application::Get().GetWindow()->GetSwapchain();
+        const char* items[3]              = {"FIFO", "IMMEDIATE", "MAILBOX"};
+        const auto currentPresentMode     = mainWindowSwapchain->GetPresentMode();
+        const char* currentPresentModeStr = currentPresentMode == EPresentMode::PRESENT_MODE_FIFO        ? items[0]
+                                            : currentPresentMode == EPresentMode::PRESENT_MODE_IMMEDIATE ? items[1]
+                                                                                                         : items[2];
+        ImGui::Text("PresentMode");
+        if (!bIsChecked && ImGui::BeginCombo("##presentModeCombo", currentPresentModeStr))
+        {
+            uint32_t presentModeIndex = UINT32_MAX;
+            for (uint32_t n{}; n < IM_ARRAYSIZE(items); ++n)
+            {
+                const auto bIsSeleceted = strcmp(currentPresentModeStr, items[n]) == 0;
+                if (ImGui::Selectable(items[n], bIsSeleceted))
+                {
+                    currentPresentModeStr = items[n];
+                    presentModeIndex      = n;
+                }
+                if (bIsSeleceted) ImGui::SetItemDefaultFocus();
+            }
+
+            if (presentModeIndex != UINT32_MAX)
+            {
+                rs.bVSync = presentModeIndex == 0;
+
+                mainWindowSwapchain->SetPresentMode(presentModeIndex == 0   ? EPresentMode::PRESENT_MODE_FIFO
+                                                    : presentModeIndex == 1 ? EPresentMode::PRESENT_MODE_IMMEDIATE
+                                                                            : EPresentMode::PRESENT_MODE_MAILBOX);
+            }
+
+            ImGui::EndCombo();
+        }
+        ImGui::Separator();
+
+        const char* currentBlurTypeStr = rs.BlurType == EBlurType::BLUR_TYPE_GAUSSIAN ? "GAUSSIAN" : "MEDIAN";
+        const char* blurItems[2]       = {"GAUSSIAN", "MEDIAN"};
+        ImGui::Text("BlurType");
+        if (ImGui::BeginCombo("##blurTypeCombo", currentBlurTypeStr))
+        {
+            for (uint32_t n{}; n < IM_ARRAYSIZE(blurItems); ++n)
+            {
+                const auto bIsSeleceted = strcmp(currentBlurTypeStr, blurItems[n]) == 0;
+                if (ImGui::Selectable(blurItems[n], bIsSeleceted))
+                {
+                    currentBlurTypeStr = blurItems[n];
+                }
+                if (bIsSeleceted) ImGui::SetItemDefaultFocus();
+            }
+
+            rs.BlurType = strcmp(currentBlurTypeStr, "GAUSSIAN") == 0 ? EBlurType::BLUR_TYPE_GAUSSIAN : EBlurType::BLUR_TYPE_MEDIAN;
+            ImGui::EndCombo();
+        }
+        ImGui::Separator();
 
         ImGui::End();
     }

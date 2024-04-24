@@ -1,17 +1,17 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Globals.h"
 
 #define PHONG 0
 #define PBR 1
 
 #if PHONG
-#include "Assets/Shaders/Include/PhongShading.glslh"
+#include "Include/PhongShading.glslh"
 #endif
 
 #if PBR
-#include "Assets/Shaders/Include/PBRShading.glslh"
+#include "Include/PBRShading.glslh"
 #endif
 
 layout(constant_id = 0) const bool bRenderViewNormalMap = false;

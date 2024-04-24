@@ -34,9 +34,9 @@ static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(16);
 // NOTE: Mark things as Global to make sure that basic shader reflection won't catch it!
 
 // MESHLETS
-#include "Assets/Shaders/Include/Meshlets.h"
-#include "Assets/Shaders/Include/Lights.h"
-#include "Assets/Shaders/Include/Primitives.h"
+#include "Include/Meshlets.h"
+#include "Include/Lights.h"
+#include "Include/Primitives.h"
 
 #endif
 
@@ -83,10 +83,11 @@ static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
 #else
 vec4 UnpackU8Vec4ToVec4(u8vec4 packed)
 {
-    const float r = packed.r / 255.0f;
-    const float g = packed.g / 255.0f;
-    const float b = packed.b / 255.0f;
-    const float a = packed.a / 255.0f;
+    const float invDivisor = 1 / 255.0f;
+    const float r = invDivisor * packed.r;
+    const float g = invDivisor * packed.g;
+    const float b = invDivisor * packed.b;
+    const float a = invDivisor * packed.a;
 
     return vec4(r, g, b, a);
 }

@@ -4,7 +4,7 @@
 #ifdef __cplusplus
 #include "Primitives.h"
 #else 
-#include "Assets/Shaders/Include/Primitives.h"
+#include "Include/Primitives.h"
 #endif
 
 Plane ComputePlane(const vec3 p0, const vec3 p1, const vec3 p2)
@@ -25,7 +25,7 @@ bool SphereInsidePlane(Sphere sphere, Plane plane)
     return dot(plane.Normal, sphere.Center) - plane.Distance + sphere.Radius <= 0.0;
 }
 
-bool SphereInsideFrustum(Sphere sphere, TileFrustum frustum, float zNear, float zFar)
+bool SphereInsideTileFrustum(Sphere sphere, TileFrustum frustum, float zNear, float zFar)
 {
     // Better to just unroll:
     bool result = true;
@@ -66,7 +66,7 @@ bool ConeInsidePlane(Cone cone, Plane plane)
     return PointInsidePlane(cone.Tip, plane) && PointInsidePlane(Q, plane);
 }
 
-bool ConeInsideFrustum(Cone cone, TileFrustum frustum, float zNear, float zFar)
+bool ConeInsideTileFrustum(Cone cone, TileFrustum frustum, float zNear, float zFar)
 {
     // NOTE: View space, facing towards -Z
     const Plane nearPlane = {vec3(0, 0, -1), -zNear};
@@ -80,6 +80,21 @@ bool ConeInsideFrustum(Cone cone, TileFrustum frustum, float zNear, float zFar)
     }
 
     return true;
+}
+
+bool SphereInsideFrustum(Sphere sphere, Frustum frustum)
+{
+    // Better to just unroll:
+    bool result = true;
+
+    result = (SphereInsidePlane(sphere, frustum.Planes[0]) ? false : result);
+    result = (SphereInsidePlane(sphere, frustum.Planes[1]) ? false : result);
+    result = (SphereInsidePlane(sphere, frustum.Planes[2]) ? false : result);
+    result = (SphereInsidePlane(sphere, frustum.Planes[3]) ? false : result);
+    result = (SphereInsidePlane(sphere, frustum.Planes[4]) ? false : result);
+    result = (SphereInsidePlane(sphere, frustum.Planes[5]) ? false : result);
+
+    return result;
 }
 
 #endif

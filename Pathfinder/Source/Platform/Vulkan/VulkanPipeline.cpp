@@ -107,25 +107,24 @@ void VulkanPipeline::CreateLayout()
 
     std::vector<VkPushConstantRange> pushConstants;
     std::vector<VkDescriptorSetLayout> setLayouts;
+    const auto& vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
+    PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
     if (m_Specification.bBindlessCompatible)
     {
-        const auto& vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
-        PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
-
-        setLayouts.push_back(vulkanBR->GetTextureStorageImageSetLayout());
-        setLayouts.push_back(vulkanBR->GetStorageBufferSetLayout());
-        setLayouts.push_back(vulkanBR->GetFrameDataSetLayout());
-
-        pushConstants.push_back(vulkanBR->GetPushConstantBlock());
+        const auto brDescriptorSets = vulkanBR->GetDescriptorSetLayouts();
+        setLayouts.insert(setLayouts.begin(), brDescriptorSets.begin(), brDescriptorSets.end());
+        pushConstants.emplace_back(vulkanBR->GetPushConstantBlock());
     }
+    const auto descriptorSetLayoutsSizeAfterBindlessCheck = static_cast<uint16_t>(setLayouts.size());
+    const auto pushConstantsSizeAfterBindlessCheck        = static_cast<uint16_t>(pushConstants.size());
 
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(m_Specification.Shader);
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
 
-    const auto appendVecFunc = [&](auto& src, const auto& additionalVec)
+    const auto appendVecFunc = [&](auto& dst, const auto& src)
     {
-        for (auto& elem : additionalVec)
-            src.emplace_back(elem);
+        for (const auto& elem : src)
+            dst.emplace_back(elem);
     };
     switch (m_Specification.PipelineType)
     {
@@ -204,6 +203,17 @@ void VulkanPipeline::CreateLayout()
     }
 
     appendVecFunc(m_PushConstants, pushConstants);
+
+    // In case nothing was append(we received 0 extra push constants or descriptor sets from shader), we can reuse bindless renderer
+    // pipeline layout.
+    const auto descriptorSetLayoutsSizeAfterShaderAppend = static_cast<uint16_t>(setLayouts.size());
+    const auto pushConstantsSizeAfterShaderAppend        = static_cast<uint16_t>(pushConstants.size());
+    if (m_Specification.bBindlessCompatible && pushConstantsSizeAfterBindlessCheck == pushConstantsSizeAfterShaderAppend &&
+        descriptorSetLayoutsSizeAfterBindlessCheck == descriptorSetLayoutsSizeAfterShaderAppend)
+    {
+        m_Layout = vulkanBR->GetPipelineLayout();
+        return;
+    }
 
     layoutCI.pSetLayouts    = setLayouts.data();
     layoutCI.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
@@ -665,10 +675,17 @@ void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string
 
 void VulkanPipeline::Destroy()
 {
-    auto& context             = VulkanContext::Get();
-    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
+    const auto& vulkanDevice = VulkanContext::Get().GetDevice();
+    vulkanDevice->WaitDeviceOnFinish();
 
-    vkDestroyPipelineLayout(logicalDevice, m_Layout, nullptr);
+    const auto& logicalDevice = vulkanDevice->GetLogicalDevice();
+    const auto& vulkanBR      = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
+    if (vulkanBR->GetPipelineLayout() !=
+        m_Layout)  // Since I don't create useless pipeline layouts because of empty descriptor sets excluding bindless.
+    {
+        vkDestroyPipelineLayout(logicalDevice, m_Layout, nullptr);
+    }
+
     vkDestroyPipeline(logicalDevice, m_Handle, nullptr);
     m_Handle = VK_NULL_HANDLE;
 }

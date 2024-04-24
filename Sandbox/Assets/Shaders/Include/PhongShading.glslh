@@ -1,6 +1,6 @@
 
 // #extension GL_GOOGLE_include_directive : require
-// #include "Assets/Shaders/Include/Lights.h"
+// #include "Include/Lights.h"
 
 vec3 DirectionalLightContribution(const float kShadow, const vec3 V, const vec3 normal, const DirectionalLight dl, const vec3 albedo, const float ao)
 {

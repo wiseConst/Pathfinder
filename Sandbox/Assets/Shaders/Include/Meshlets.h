@@ -1,8 +1,10 @@
-
 #ifdef __cplusplus
 #pragma once
+#endif
 
-#else
+
+#ifndef __cplusplus
+
 // https://burtleburtle.net/bob/hash/integer.html
 uint32_t hash(uint32_t a)
 {
@@ -29,12 +31,6 @@ bool ConeCull(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxi
 // The ‘6’ in 126 is not a typo. The first generation hardware allocates primitive indices in 128 byte granularity and and needs
 // to reserve 4 bytes for the primitive count. Therefore 3 * 126 + 4 maximizes the fit into a 3 * 128 = 384 bytes block.
 #define MAX_MESHLET_TRIANGLE_COUNT 124u
-
-struct MeshletTaskData
-{
-    uint8_t meshlets[MESHLET_LOCAL_GROUP_SIZE];  // Stores meshlet IDs (gl_WorkGroupID.x from task shaders)
-    uint32_t baseMeshletID; // gl_WorkGroupID.x * MESHLET_LOCAL_GROUP_SIZE;  // where the meshletIDs started from for this task workgroup
-};
 
 struct Meshlet
 {

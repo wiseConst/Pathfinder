@@ -49,6 +49,13 @@ void Window::SetVSync(const bool bVSync)
     m_Swapchain->SetVSync(bVSync);
 }
 
+void Window::SetPresentMode(const EPresentMode presentMode)
+{
+    PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
+
+    m_Swapchain->SetPresentMode(presentMode);
+}
+
 std::vector<const char*> Window::GetWSIExtensions()
 {
     InitGLFW();

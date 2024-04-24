@@ -1,7 +1,7 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Globals.h"
 
 layout(triangles, invocations = MAX_SHADOW_CASCADES) in;
 layout(triangle_strip, max_vertices = 3) out;

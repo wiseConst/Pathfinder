@@ -174,9 +174,10 @@ class Renderer : private Uncopyable, private Unmovable
             Shared<Pathfinder::Pipeline> Pipeline       = nullptr;
             Shared<Pathfinder::Framebuffer> Framebuffer = nullptr;
         };
-        AO SSAO = {};
-        AO HBAO = {};
-        std::array<Shared<Pipeline>, 2> BlurAOPipeline;
+        AO SSAO                               = {};
+        AO HBAO                               = {};
+        Shared<Pipeline> MedianBlurAOPipeline = nullptr;
+        std::array<Shared<Pipeline>, 2> BlurAOPipeline;  // gaussian
         std::array<Shared<Framebuffer>, 2> BlurAOFramebuffer;
 
         // Indirect Rendering
@@ -197,6 +198,7 @@ class Renderer : private Uncopyable, private Unmovable
         bool bRTXSupport;
         bool bBDASupport;
         bool bMultiDrawIndirectSupport;
+        EBlurType BlurType = EBlurType::BLUR_TYPE_GAUSSIAN;
     };
     static inline RendererSettings s_RendererSettings = {};
 

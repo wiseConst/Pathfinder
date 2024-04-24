@@ -6,7 +6,7 @@ layout (triangle_strip, max_vertices = 18) out;
 layout(location = 0) out vec4 outFragPos; // FragPos from GS (output per emitvertex)
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Globals.h"
 
 /*
     If a shader statically assigns a value to gl_Layer, layered rendering mode is enabled.

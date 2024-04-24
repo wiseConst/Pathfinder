@@ -20,6 +20,13 @@ enum class EWindowMode : uint8_t
     WINDOW_MODE_FULLSCREEN_EXCLUSIVE
 };
 
+enum class EPresentMode : uint8_t
+{
+    PRESENT_MODE_FIFO = 0,   // VSync on.
+    PRESENT_MODE_IMMEDIATE,  // VSync off.
+    PRESENT_MODE_MAILBOX,    // Triple-buffered.
+};
+
 struct WindowSpecification final
 {
     using EventFn = std::function<void(Event&)>;
@@ -50,6 +57,7 @@ class Window : private Uncopyable, private Unmovable
 
     virtual void SetClearColor(const glm::vec3& clearColor = glm::vec3(1.0f)) = 0;
     void SetVSync(const bool bVSync);
+    void SetPresentMode(const EPresentMode presentMode);
     virtual void SetWindowMode(const EWindowMode windowMode) = 0;
     virtual void SetWindowTitle(const char* title)           = 0;
 

@@ -31,9 +31,10 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     void FreeBuffer(uint32_t& bufferIndex, const uint32_t bufferBinding) final override;
     void FreeTexture(uint32_t& textureIndex) final override;
 
-    NODISCARD FORCEINLINE const auto& GetTextureStorageImageSetLayout() const { return m_TextureStorageImageSetLayout; }
-    NODISCARD FORCEINLINE const auto& GetStorageBufferSetLayout() const { return m_StorageBufferSetLayout; }
-    NODISCARD FORCEINLINE const auto& GetFrameDataSetLayout() const { return m_FrameDataSetLayout; }
+    NODISCARD FORCEINLINE const auto GetDescriptorSetLayouts() const
+    {
+        return std::vector<VkDescriptorSetLayout>{m_TextureStorageImageSetLayout, m_StorageBufferSetLayout, m_FrameDataSetLayout};
+    }
     NODISCARD FORCEINLINE const VkPushConstantRange& GetPushConstantBlock() const { return m_PCBlock; }
     NODISCARD FORCEINLINE const auto& GetPipelineLayout() const { return m_Layout; }
 

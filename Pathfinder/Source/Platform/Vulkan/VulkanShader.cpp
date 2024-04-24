@@ -457,11 +457,12 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
     // Got no cache, let's compile then
     thread_local shaderc::Compiler compiler;
     thread_local shaderc::CompileOptions compileOptions;
-    compileOptions.SetOptimizationLevel(shaderc_optimization_level_zero);
     compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
-    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_4);
     compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
+    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_5);
     compileOptions.SetWarningsAsErrors();
+    compileOptions.SetOptimizationLevel(shaderc_optimization_level_performance);
+    compileOptions.SetGenerateDebugInfo();
     compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
 
     const auto shaderSrc = LoadData<std::string>(localShaderPath);

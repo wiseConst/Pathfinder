@@ -20,6 +20,64 @@
 namespace Pathfinder
 {
 
+static VkPresentModeKHR PathfinderPresentModeToVulkan(const EPresentMode presentMode)
+{
+    switch (presentMode)
+    {
+        case EPresentMode::PRESENT_MODE_FIFO: return VK_PRESENT_MODE_FIFO_KHR;
+        case EPresentMode::PRESENT_MODE_IMMEDIATE: return VK_PRESENT_MODE_IMMEDIATE_KHR;
+        case EPresentMode::PRESENT_MODE_MAILBOX: return VK_PRESENT_MODE_MAILBOX_KHR;
+    }
+
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+static EPresentMode VulkanPresentModeToPathfinder(const VkPresentModeKHR presentMode)
+{
+    switch (presentMode)
+    {
+        case VK_PRESENT_MODE_FIFO_KHR: return EPresentMode::PRESENT_MODE_FIFO;
+        case VK_PRESENT_MODE_IMMEDIATE_KHR: return EPresentMode::PRESENT_MODE_IMMEDIATE;
+        case VK_PRESENT_MODE_MAILBOX_KHR: return EPresentMode::PRESENT_MODE_MAILBOX;
+    }
+
+    return EPresentMode::PRESENT_MODE_FIFO;
+}
+
+static EImageFormat VulkanImageFormatToPathfinder(const VkFormat imageFormat)
+{
+    switch (imageFormat)
+    {
+        case VK_FORMAT_UNDEFINED: return EImageFormat::FORMAT_UNDEFINED;
+        case VK_FORMAT_R8G8B8_UNORM: return EImageFormat::FORMAT_RGB8_UNORM;
+        case VK_FORMAT_R8G8B8A8_UNORM: return EImageFormat::FORMAT_RGBA8_UNORM;
+        case VK_FORMAT_B8G8R8A8_UNORM: return EImageFormat::FORMAT_BGRA8_UNORM;
+        case VK_FORMAT_A2R10G10B10_UNORM_PACK32: return EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32;
+        case VK_FORMAT_R8_UNORM: return EImageFormat::FORMAT_R8_UNORM;
+        case VK_FORMAT_R16_UNORM: return EImageFormat::FORMAT_R16_UNORM;
+        case VK_FORMAT_R16_SFLOAT: return EImageFormat::FORMAT_R16F;
+        case VK_FORMAT_R32_SFLOAT: return EImageFormat::FORMAT_R32F;
+        case VK_FORMAT_R64_SFLOAT: return EImageFormat::FORMAT_R64F;
+        case VK_FORMAT_R16G16B16_UNORM: return EImageFormat::FORMAT_RGB16_UNORM;
+        case VK_FORMAT_R16G16B16_SFLOAT: return EImageFormat::FORMAT_RGB16F;
+        case VK_FORMAT_R16G16B16A16_UNORM: return EImageFormat::FORMAT_RGBA16_UNORM;
+        case VK_FORMAT_R16G16B16A16_SFLOAT: return EImageFormat::FORMAT_RGBA16F;
+        case VK_FORMAT_R32G32B32_SFLOAT: return EImageFormat::FORMAT_RGB32F;
+        case VK_FORMAT_R32G32B32A32_SFLOAT: return EImageFormat::FORMAT_RGBA32F;
+        case VK_FORMAT_R64G64B64_SFLOAT: return EImageFormat::FORMAT_RGB64F;
+        case VK_FORMAT_R64G64B64A64_SFLOAT: return EImageFormat::FORMAT_RGBA64F;
+
+        case VK_FORMAT_D16_UNORM: return EImageFormat::FORMAT_D16_UNORM;
+        case VK_FORMAT_D32_SFLOAT: return EImageFormat::FORMAT_D32F;
+        case VK_FORMAT_S8_UINT: return EImageFormat::FORMAT_S8_UINT;
+        case VK_FORMAT_D16_UNORM_S8_UINT: return EImageFormat::FORMAT_D16_UNORM_S8_UINT;
+        case VK_FORMAT_D24_UNORM_S8_UINT: return EImageFormat::FORMAT_D24_UNORM_S8_UINT;
+    }
+
+    PFR_ASSERT(false, "Unknown image format!");
+    return EImageFormat::FORMAT_UNDEFINED;
+}
+
 struct SwapchainSupportDetails final
 {
   public:
@@ -76,12 +134,12 @@ struct SwapchainSupportDetails final
         return ImageFormats[0];
     }
 
-    VkPresentModeKHR ChooseBestPresentMode(bool bIsVSync) const
+    VkPresentModeKHR ChooseBestPresentMode(const VkPresentModeKHR requestedPresentMode) const
     {
-        if (bIsVSync) return VK_PRESENT_MODE_FIFO_KHR;
+        if (requestedPresentMode == VK_PRESENT_MODE_FIFO_KHR) return VK_PRESENT_MODE_FIFO_KHR;
 
         for (const auto& presentMode : PresentModes)
-            if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR) return presentMode;  // Battery-drain mode on mobile devices
+            if (presentMode == requestedPresentMode) return presentMode;
 
         return VK_PRESENT_MODE_FIFO_KHR;
     }
@@ -107,40 +165,6 @@ struct SwapchainSupportDetails final
     std::vector<VkPresentModeKHR> PresentModes;
     std::vector<VkSurfaceFormatKHR> ImageFormats;
 };
-
-static EImageFormat VulkanImageFormatToPathfinder(const VkFormat imageFormat)
-{
-    switch (imageFormat)
-    {
-        case VK_FORMAT_UNDEFINED: return EImageFormat::FORMAT_UNDEFINED;
-        case VK_FORMAT_R8G8B8_UNORM: return EImageFormat::FORMAT_RGB8_UNORM;
-        case VK_FORMAT_R8G8B8A8_UNORM: return EImageFormat::FORMAT_RGBA8_UNORM;
-        case VK_FORMAT_B8G8R8A8_UNORM: return EImageFormat::FORMAT_BGRA8_UNORM;
-        case VK_FORMAT_A2R10G10B10_UNORM_PACK32: return EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32;
-        case VK_FORMAT_R8_UNORM: return EImageFormat::FORMAT_R8_UNORM;
-        case VK_FORMAT_R16_UNORM: return EImageFormat::FORMAT_R16_UNORM;
-        case VK_FORMAT_R16_SFLOAT: return EImageFormat::FORMAT_R16F;
-        case VK_FORMAT_R32_SFLOAT: return EImageFormat::FORMAT_R32F;
-        case VK_FORMAT_R64_SFLOAT: return EImageFormat::FORMAT_R64F;
-        case VK_FORMAT_R16G16B16_UNORM: return EImageFormat::FORMAT_RGB16_UNORM;
-        case VK_FORMAT_R16G16B16_SFLOAT: return EImageFormat::FORMAT_RGB16F;
-        case VK_FORMAT_R16G16B16A16_UNORM: return EImageFormat::FORMAT_RGBA16_UNORM;
-        case VK_FORMAT_R16G16B16A16_SFLOAT: return EImageFormat::FORMAT_RGBA16F;
-        case VK_FORMAT_R32G32B32_SFLOAT: return EImageFormat::FORMAT_RGB32F;
-        case VK_FORMAT_R32G32B32A32_SFLOAT: return EImageFormat::FORMAT_RGBA32F;
-        case VK_FORMAT_R64G64B64_SFLOAT: return EImageFormat::FORMAT_RGB64F;
-        case VK_FORMAT_R64G64B64A64_SFLOAT: return EImageFormat::FORMAT_RGBA64F;
-
-        case VK_FORMAT_D16_UNORM: return EImageFormat::FORMAT_D16_UNORM;
-        case VK_FORMAT_D32_SFLOAT: return EImageFormat::FORMAT_D32F;
-        case VK_FORMAT_S8_UINT: return EImageFormat::FORMAT_S8_UINT;
-        case VK_FORMAT_D16_UNORM_S8_UINT: return EImageFormat::FORMAT_D16_UNORM_S8_UINT;
-        case VK_FORMAT_D24_UNORM_S8_UINT: return EImageFormat::FORMAT_D24_UNORM_S8_UINT;
-    }
-
-    PFR_ASSERT(false, "Unknown image format!");
-    return EImageFormat::FORMAT_UNDEFINED;
-}
 
 VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(windowHandle)
 {
@@ -304,7 +328,8 @@ void VulkanSwapchain::Invalidate()
     swapchainCreateInfo.imageArrayLayers         = 1;
     swapchainCreateInfo.surface                  = m_Surface;
 
-    if (m_bVSync && m_CurrentPresentMode != VK_PRESENT_MODE_FIFO_KHR)
+    if (m_CurrentPresentMode == VK_PRESENT_MODE_FIFO_KHR &&
+        m_PresentMode != EPresentMode::PRESENT_MODE_FIFO)  // Current present mode is not fifo, but we want to make it fifo.
     {
         vkDestroySwapchainKHR(logicalDevice, m_Handle, nullptr);
         oldSwapchain = nullptr;
@@ -321,8 +346,17 @@ void VulkanSwapchain::Invalidate()
     swapchainCreateInfo.imageColorSpace = m_ImageFormat.colorSpace;
     swapchainCreateInfo.imageFormat     = m_ImageFormat.format;
 
-    m_CurrentPresentMode            = Details.ChooseBestPresentMode(m_bVSync);
+    m_CurrentPresentMode            = Details.ChooseBestPresentMode(PathfinderPresentModeToVulkan(m_PresentMode));
     swapchainCreateInfo.presentMode = m_CurrentPresentMode;
+    m_PresentMode                   = VulkanPresentModeToPathfinder(m_CurrentPresentMode);
+
+#if PFR_DEBUG
+    const char* presentModeStr = m_PresentMode == EPresentMode::PRESENT_MODE_FIFO        ? "FIFO"
+                                 : m_PresentMode == EPresentMode::PRESENT_MODE_IMMEDIATE ? "IMMEDIATE"
+                                 : m_PresentMode == EPresentMode::PRESENT_MODE_MAILBOX   ? "MAILBOX"
+                                                                                         : "UNKNOWN";
+    LOG_DEBUG("PresentMode: %s.", presentModeStr);
+#endif
 
     PFR_ASSERT(Details.SurfaceCapabilities.maxImageCount > 0, "Swapchain max image count less than zero!");
     uint32_t imageCount               = std::clamp(Details.SurfaceCapabilities.minImageCount + 1, Details.SurfaceCapabilities.minImageCount,
