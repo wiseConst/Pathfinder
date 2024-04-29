@@ -137,7 +137,7 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
     }
 
     VkRenderingInfo renderingInfo = {VK_STRUCTURE_TYPE_RENDERING_INFO};
-    if (vulkanCommandBuffer->GetLevel() == ECommandBufferLevel::COMMAND_BUFFER_LEVEL_SECONDARY)
+    if (vulkanCommandBuffer->GetSpecification().Level == ECommandBufferLevel::COMMAND_BUFFER_LEVEL_SECONDARY)
         renderingInfo.flags |= VK_RENDERING_CONTENTS_SECONDARY_COMMAND_BUFFERS_BIT;
 
     renderingInfo.renderArea = {0, 0, m_Specification.Width, m_Specification.Height};

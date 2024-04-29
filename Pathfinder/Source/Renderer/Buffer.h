@@ -142,7 +142,7 @@ enum EBufferUsage : uint32_t
     BUFFER_USAGE_VERTEX                                       = BIT(0),
     BUFFER_USAGE_INDEX                                        = BIT(1),
     BUFFER_USAGE_STORAGE                                      = BIT(2),
-    BUFFER_USAGE_TRANSFER_SOURCE                              = BIT(3),
+    BUFFER_USAGE_TRANSFER_SOURCE                              = BIT(3),  // NOTE: Mark as BUFFER_USAGE_TRANSFER_SOURCE to place in CPU only.
     BUFFER_USAGE_TRANSFER_DESTINATION                         = BIT(4),
     BUFFER_USAGE_UNIFORM                                      = BIT(5),
     BUFFER_USAGE_SHADER_DEVICE_ADDRESS                        = BIT(6),
@@ -159,7 +159,7 @@ struct BufferSpecification
     BufferUsageFlags BufferUsage = 0;
     uint32_t BufferBinding       = 0;  // In case it's bindless, used for mesh purposes.
     bool bBindlessUsage          = false;
-    bool bMapPersistent          = false;  // In case it's HOST_VISIBLE
+    bool bMapPersistent          = false;  // In case it's HOST_VISIBLE, or I force it to be it.
     size_t BufferCapacity        = 0;
     const void* Data             = nullptr;
     size_t DataSize              = 0;
@@ -173,6 +173,8 @@ class Buffer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual void* Get() const = 0;
     NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const { return m_Index; }
+    NODISCARD FORCEINLINE virtual void* GetMapped() const = 0;
+    virtual uint64_t GetBDA() const                       = 0;
 
     virtual void SetData(const void* data, const size_t dataSize) = 0;
     virtual void Resize(const size_t newBufferCapacity)           = 0;

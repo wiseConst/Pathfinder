@@ -20,6 +20,7 @@ class DebugRenderer
     static void DrawAABB(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color);
     static void DrawRect(const glm::mat4& transform, const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color);
     static void DrawRect(const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color);
+    static void DrawSphere(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color);
 
     static void Flush();
 

@@ -80,18 +80,17 @@ float ComputeAO(const vec3 N, const vec2 direction, const vec2 screenSize, const
 void main()
 {
     const float fDepth = texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], inUV).r;
-    const uvec2 noiseScale = uvec2(u_GlobalCameraData.FullResolution / textureSize(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], 0));
+    const uvec2 noiseScale = uvec2(u_PC.CameraDataBuffer.InvFullResolution * textureSize(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], 0));
     const vec3 randomVec = normalize(texture(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], inUV * noiseScale).xyz);
-    const vec2 invRes = 1.0f / u_GlobalCameraData.FullResolution;
 
-    const vec3 viewPos = ScreenSpaceToView(vec4(inUV, fDepth, 1), invRes).xyz;
+    const vec3 viewPos = ScreenSpaceToView(vec4(inUV, fDepth, 1), u_PC.CameraDataBuffer.InvFullResolution).xyz;
     const vec3 N = ReconstructViewNormal(viewPos);
 
 	float result = 0.f;
-	result += ComputeAO(N, vec2(randomVec), u_GlobalCameraData.FullResolution, viewPos, invRes);
-	result += ComputeAO(N, -vec2(randomVec), u_GlobalCameraData.FullResolution, viewPos, invRes);
-	result += ComputeAO(N, vec2(-randomVec.y, randomVec.x), u_GlobalCameraData.FullResolution, viewPos, invRes);
-	result += ComputeAO(N, vec2(randomVec.y, -randomVec.x), u_GlobalCameraData.FullResolution, viewPos, invRes);
+	result += ComputeAO(N, vec2(randomVec), u_PC.CameraDataBuffer.FullResolution, viewPos, u_PC.CameraDataBuffer.InvFullResolution);
+	result += ComputeAO(N, -vec2(randomVec), u_PC.CameraDataBuffer.FullResolution, viewPos, u_PC.CameraDataBuffer.InvFullResolution);
+	result += ComputeAO(N, vec2(-randomVec.y, randomVec.x), u_PC.CameraDataBuffer.FullResolution, viewPos, u_PC.CameraDataBuffer.InvFullResolution);
+	result += ComputeAO(N, vec2(randomVec.y, -randomVec.x), u_PC.CameraDataBuffer.FullResolution, viewPos, u_PC.CameraDataBuffer.InvFullResolution);
 
     const float ao = 1.f - result / 4;
 	outFragColor = pow(ao, 4);

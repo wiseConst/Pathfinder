@@ -1,4 +1,4 @@
-#ifndef VULKANCORE_H
+﻿#ifndef VULKANCORE_H
 #define VULKANCORE_H
 
 #include <volk/volk.h>
@@ -10,7 +10,11 @@
 namespace Pathfinder
 {
 
+#ifdef SHADER_DEBUG_PRINTF
+#undef SHADER_DEBUG_PRINTF
 #define SHADER_DEBUG_PRINTF 0
+#endif
+
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
 #define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
@@ -21,8 +25,6 @@ namespace Pathfinder
 
 #define VK_LOG_VMA_ALLOCATIONS 0
 #define VK_LOG_INFO 0
-
-#define VK_RTX 0
 
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
@@ -38,35 +40,41 @@ static const std::vector<const char*> s_InstanceLayers = {
 
 };
 static const std::vector<const char*> s_InstanceExtensions = {
-    VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,        // Required by full screen ext
-    VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,  // To get advanced info about device.
+    VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,  // Required by full screen ext
 };
 
 static const std::vector<const char*> s_DeviceExtensions = {
-    VK_KHR_SWAPCHAIN_EXTENSION_NAME,           // For rendering into OS-window
-    VK_KHR_DRIVER_PROPERTIES_EXTENSION_NAME,   // To get advanced info about gpu
-    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,   // To neglect renderpasses as my target is desktop only
-    VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,  // To do async work with proper synchronization on device side.
+    VK_KHR_SWAPCHAIN_EXTENSION_NAME,                     // For rendering into OS-window
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,             // To neglect renderpasses as my target is desktop only
+    VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,            // To do async work with proper synchronization on device side.
+    VK_KHR_MAINTENANCE_4_EXTENSION_NAME,                 // Shader SPIRV 1.6
+    VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,             // Advanced synchronization types
+    VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,                 // Provides query for current memory usage and budget.
+    VK_EXT_PAGEABLE_DEVICE_LOCAL_MEMORY_EXTENSION_NAME,  // It will allow device-local memory allocations to be paged in and out by the
+                                                         // operating system, and may not return VK_ERROR_OUT_OF_DEVICE_MEMORY even if
+                                                         // device-local memory appears to be full, but will instead page this, or other
+                                                         // allocations, out to make room. The Vulkan implementation will also ensure that
+                                                         // host-local memory allocations will never be promoted to device-local memory by
+                                                         // the operating system, or consume device-local memory.
+    VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME,               // Required by PAGEABLE_DEVICE_LOCAL_MEMORY
 
 #if VK_EXCLUSIVE_FULL_SCREEN_TEST
     VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,  // Borderless fullscreen window
 #endif
 
-    VK_EXT_MESH_SHADER_EXTENSION_NAME,  // Mesh shading advanced modern rendering
+    VK_EXT_MESH_SHADER_EXTENSION_NAME,  // Mesh shading
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
 
-#if VK_RTX
     VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,  // To build acceleration structures
     VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,    // To use vkCmdTraceRaysKHR
 
     VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structure,
     // allows the driver to run some expensive CPU-based Vulkan API calls asynchronously(such as a Vulkan API call that builds an
-    // acceleration structure on a CPU instead of a GPU) � much like launching a thread in C++ to perform a task asynchronously, then
+    // acceleration structure on a CPU instead of a GPU) — much like launching a thread in C++ to perform a task asynchronously, then
     // waiting for it to complete.
 
     VK_KHR_RAY_QUERY_EXTENSION_NAME,  // To trace rays in every shader I want
-#endif
 #if SHADER_DEBUG_PRINTF
     VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,  // debugPrintEXT shaders
 #endif
@@ -160,7 +168,7 @@ static std::string VK_GetResultString(const VkResult result)
 #endif
 
 static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes,
-                              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, void* pUserData)
+                              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, [[maybe_unused]] void* pUserData)
 {
     switch (messageSeverity)
     {

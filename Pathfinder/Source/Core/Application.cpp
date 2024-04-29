@@ -65,6 +65,8 @@ void Application::Run()
         Timer t = {};
         if (!m_Window->IsMinimized() && m_Window->BeginFrame())
         {
+            m_GraphicsContext->Begin();
+
             Renderer::Begin();
             m_Window->SetClearColor(glm::vec3(0.15f));
 
@@ -79,6 +81,8 @@ void Application::Run()
 
             Renderer::Flush(m_UILayer);
             m_Window->SwapBuffers();
+
+            m_GraphicsContext->End();
         }
 
         m_Window->PollEvents();
@@ -95,6 +99,7 @@ void Application::Run()
             ss << "[gpu]: " << Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime << "ms ";
             ss << "[present]: " << Renderer::GetStats().SwapchainPresentTime << "ms ";
             ss << "[rhi]: " << Renderer::GetStats().RHITime << "ms ";
+            ss << "[objects]: " << Renderer::GetStats().ObjectsDrawn;
             ss << " [tris]: " << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
             ss << " [meshlets]: " << Renderer::GetStats().MeshletCount;
             ss << " [2D batches]: " << Renderer2D::GetStats().BatchCount;

@@ -6,24 +6,41 @@
 
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 
-struct DrawIndexedIndirectCommand
+struct DrawMeshTasksIndirectCommand
 {
-    uint32_t indexCount;
-    uint32_t instanceCount;
-    uint32_t firstIndex;
-    int32_t vertexOffset;
-    uint32_t firstInstance;
+    uint32_t groupCountX;
+    uint32_t groupCountY;
+    uint32_t groupCountZ;
 };
 
-layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) writeonly buffer DrawBufferOpaque
+layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) buffer DrawBufferOpaque
 {
-    DrawIndexedIndirectCommand Commands[];
-} u_OpaqueDrawBuffer;
+    uint32_t Count;
+    DrawMeshTasksIndirectCommand Commands[];
+} s_DrawBufferOpaque;
 
-layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) writeonly buffer DrawBufferTransparent
+layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) buffer DrawBufferTransparent
 {
-    DrawIndexedIndirectCommand Commands[];
-} u_TransparentDrawBuffer;
+    uint32_t Count;
+    DrawMeshTasksIndirectCommand Commands[];
+} s_DrawBufferTransparent;
+
+layout(set = LAST_BINDLESS_SET + 1, binding = 2, scalar) writeonly buffer CulledMeshIDBufferOpaque
+{
+    uint32_t CulledMeshIDs[];
+} s_CulledMeshIDBufferOpaque;
+
+layout(set = LAST_BINDLESS_SET + 1, binding = 3, scalar) writeonly buffer CulledMeshIDBufferTransparent
+{
+    uint32_t CulledMeshIDs[];
+} s_CulledMeshIDBufferTransparent;
+
+uint32_t DivideToNextMultiple(const uint32_t dividend, const uint32_t divisor)
+{
+    if(divisor == 0) return 0;
+
+    return (dividend + divisor - 1) / divisor;
+}
 
 void main()
 {
@@ -34,59 +51,45 @@ void main()
     if(u_PC.MaterialBufferIndex == 0)
     {
         md = s_GlobalMeshDataBufferOpaque.MeshesData[gID];
-        u_OpaqueDrawBuffer.Commands[gID].firstIndex = 0;
-        u_OpaqueDrawBuffer.Commands[gID].indexCount =  s_GlobalIndexBuffers[md.indexBufferIndex].indices.length();
-        u_OpaqueDrawBuffer.Commands[gID].instanceCount = 1;
-        u_OpaqueDrawBuffer.Commands[gID].vertexOffset = 0;
-        u_OpaqueDrawBuffer.Commands[gID].firstInstance = 0;
     }else{
         md = s_GlobalMeshDataBufferTransparent.MeshesData[gID];
-        u_TransparentDrawBuffer.Commands[gID].firstIndex = 0;
-        u_TransparentDrawBuffer.Commands[gID].indexCount = s_GlobalIndexBuffers[md.indexBufferIndex].indices.length();
-        u_TransparentDrawBuffer.Commands[gID].instanceCount = 1;
-        u_TransparentDrawBuffer.Commands[gID].vertexOffset = 0;
-        u_TransparentDrawBuffer.Commands[gID].firstInstance = 0;
     }
 
-    const Sphere sphere           = md.sphere;
-    const vec3 scaledCenter = vec3(md.transform * vec4(sphere.Center, 1));
-
-    // Adjust radius by scaling
-    float scaledRadius = sphere.Radius;
+    Sphere sphere;
+    sphere.Center = RotateByQuat(md.sphere.Center, md.orientation) * md.scale + md.translation;
+    sphere.Radius = md.sphere.Radius * max(max(md.scale.x, md.scale.y), md.scale.z);
+    if(SphereInsideFrustum(sphere, u_PC.CameraDataBuffer.ViewFrustum))
     {
-        // Get global scale is computed by doing the magnitude of
-        // X, Y and Z model matrix's column.
-        const vec3 globalScale = vec3(length(md.transform[0]), length(md.transform[1]),
-                                                length(md.transform[2]));
-
-        // To wrap correctly our shape, we need the maximum scale scalar.
-        const float maxScale = max(max(globalScale.x, globalScale.y), globalScale.z);
-
-        // Max scale is assuming for the diameter. So, we need the half to apply it to our radius
-        scaledRadius *= maxScale;
-        if (maxScale != 1.0f)
-        {
-            // NOTE: I constructed BS via radius, not diameter, so I do mul *0.5 only if scale changes, since by default it's real radius.
-            scaledRadius *= 0.5f;
-        }
-    }
-
-    for (uint32_t i = 0; i < 6; ++i)
-    {
-        const Plane plane = u_GlobalCameraData.ViewFrustum.Planes[i];
-        if (dot(plane.Normal, scaledCenter) - plane.Distance + scaledRadius <= 0.0)
-        {
             if(u_PC.MaterialBufferIndex == 0)
             {
-                u_OpaqueDrawBuffer.Commands[gID].indexCount = 9;
-                u_OpaqueDrawBuffer.Commands[gID].instanceCount = 0;
-            }else{
-                u_TransparentDrawBuffer.Commands[gID].indexCount = 0;
-                u_TransparentDrawBuffer.Commands[gID].instanceCount = 0;
-            }
+                 s_DrawBufferOpaque.Commands[gID].groupCountX = DivideToNextMultiple(s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets.length(), MESHLET_LOCAL_GROUP_SIZE);
+                 s_DrawBufferOpaque.Commands[gID].groupCountY = 1;
+                 s_DrawBufferOpaque.Commands[gID].groupCountZ = 1;
+                 const uint32_t index = atomicAdd(s_DrawBufferOpaque.Count, 1);
 
-            return;
-            //return false;
+                 s_CulledMeshIDBufferOpaque.CulledMeshIDs[index] = gID;
+            } else {
+                 s_DrawBufferTransparent.Commands[gID].groupCountX = DivideToNextMultiple(s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets.length(), MESHLET_LOCAL_GROUP_SIZE);
+                 s_DrawBufferTransparent.Commands[gID].groupCountY = 1;
+                 s_DrawBufferTransparent.Commands[gID].groupCountZ = 1;
+                 const uint32_t index = atomicAdd(s_DrawBufferTransparent.Count, 1);
+                
+                 s_CulledMeshIDBufferTransparent.CulledMeshIDs[index] = gID;
+            }
+    }
+
+    barrier();
+
+    if(gl_LocalInvocationID.x == 0)
+    {
+        if(s_DrawBufferOpaque.Count < s_CulledMeshIDBufferOpaque.CulledMeshIDs.length())
+        {
+             s_CulledMeshIDBufferOpaque.CulledMeshIDs[s_DrawBufferOpaque.Count] = s_INVALID_CULLED_OBJECT_INDEX;
+        }
+
+        if(s_DrawBufferTransparent.Count < s_CulledMeshIDBufferTransparent.CulledMeshIDs.length())
+        {
+             s_CulledMeshIDBufferTransparent.CulledMeshIDs[s_DrawBufferTransparent.Count] = s_INVALID_CULLED_OBJECT_INDEX;
         }
     }
 }

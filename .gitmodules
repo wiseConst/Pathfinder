@@ -29,3 +29,6 @@
 	path = Pathfinder/vendor/imgui
 	url = https://github.com/ocornut/imgui.git
 	branch = docking
+[submodule "Pathfinder/vendor/entt"]
+	path = Pathfinder/vendor/entt
+	url = https://github.com/skypjack/entt.git

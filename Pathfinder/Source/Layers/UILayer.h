@@ -18,7 +18,7 @@ class UILayer : public Layer
   public:
     virtual ~UILayer() override = default;
 
-    FORCEINLINE void SetBlockEvents(const bool bBlockEvents) { m_bBlockEvents = bBlockEvents; }
+    FORCEINLINE static void SetBlockEvents(const bool bBlockEvents) { m_bBlockEvents = bBlockEvents; }
 
     virtual void Init()    = 0;
     virtual void Destroy() = 0;
@@ -39,13 +39,13 @@ class UILayer : public Layer
                           const glm::vec4& tintCol = glm::vec4(1.0f), const glm::vec4& borderCol = glm::vec4(0.0f));
 
   protected:
-    bool m_bBlockEvents = false;
+    static inline bool m_bBlockEvents = false;
     static inline std::unordered_map<UUID, ImTextureID> s_TextureIDMap;  // Cleared in Destroy().
     static inline std::unordered_map<UUID, bool> s_LastActiveTextures;
 
     UILayer() : Layer("UILayer") {}
     virtual void UpdateTextureIDs() = 0;  // Should be called inside BeginRender().
-    void SetCustomTheme() const; // Should be called in the end of Init().
+    void SetCustomTheme() const;          // Should be called in the end of Init().
 };
 
 }  // namespace Pathfinder

@@ -14,7 +14,9 @@ layout(location = 2) out vec4  outColor;
 
 void main()
 {
-    gl_Position = u_GlobalCameraData.Projection * u_GlobalCameraData.View * u_PC.Transform * vec4(inPosition, 1.0);
+// TODO: RotateByQuat
+//    const vec4 worldPos();
+    gl_Position = u_PC.CameraDataBuffer.ViewProjection * u_PC.Transform * vec4(inPosition, 1.0);
     
     outUV = inUV;
     outNormal = inNormal;

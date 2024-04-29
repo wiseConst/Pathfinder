@@ -24,12 +24,15 @@ class VulkanContext final : public GraphicsContext
     FORCEINLINE const auto& GetDevice() const { return m_Device; }
     FORCEINLINE const auto& GetInstance() const { return m_VulkanInstance; }
 
-
   private:
     VkInstance m_VulkanInstance               = VK_NULL_HANDLE;
     VkDebugUtilsMessengerEXT m_DebugMessenger = VK_NULL_HANDLE;
 
     Unique<VulkanDevice> m_Device;
+
+    void Begin() final override;
+    void End() final override;
+    void FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudgets) final override;
 
     void Destroy() final override;
     void CreateInstance();

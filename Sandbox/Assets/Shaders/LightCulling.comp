@@ -168,19 +168,18 @@ Sphere GetConeBoundingSphere(const vec3 tip, const float radius, const vec3 dire
 
 void main()
 {
-    if(any(greaterThan(vec2(gl_GlobalInvocationID), u_GlobalCameraData.FullResolution))) return;
+    if(any(greaterThan(vec2(gl_GlobalInvocationID), u_PC.CameraDataBuffer.FullResolution))) return;
     const uvec3 wgid = gl_WorkGroupID;
     const uint lti = gl_LocalInvocationIndex;
     const ivec2 pixelCoords = ivec2(gl_GlobalInvocationID.xy);
-    const vec2 invRes = 1.0f / u_GlobalCameraData.FullResolution;
     uint i = 0; // reusable vars
 
-    const vec2 UV = pixelCoords * invRes;
+    const vec2 UV = pixelCoords * u_PC.CameraDataBuffer.InvFullResolution;
     const float fDepth = texelFetch(u_GlobalTextures[nonuniformEXT(u_PC.MeshIndexBufferIndex)], pixelCoords, 0).r; // try to read earlier since warps/threads can be swapped to reduce stalling
 
     if(lti == 0)
     {
-        const uint linearTileIndex = GetLinearGridIndex(pixelCoords, u_GlobalCameraData.FullResolution.x);
+        const uint linearTileIndex = GetLinearGridIndex(pixelCoords, u_PC.CameraDataBuffer.FullResolution.x);
         groupFrustum = s_GridFrustumsBuffer.frustums[linearTileIndex];
         visiblePointLightCount = 0;
         visibleSpotLightCount = 0;
@@ -207,7 +206,7 @@ void main()
 
     // TODO: Maybe make it shared?
     // frustum AABB around min-max depth in View Space
-    AABB groupAABB = ComputeAABB(wgid.xy, fMinDepth, fMaxDepth, invRes); 
+    AABB groupAABB = ComputeAABB(wgid.xy, fMinDepth, fMaxDepth, u_PC.CameraDataBuffer.InvFullResolution); 
 
     const float minDepthVS = ScreenSpaceDepthToView(fMinDepth);
     const float maxDepthVS = ScreenSpaceDepthToView(fMaxDepth);
@@ -228,7 +227,7 @@ void main()
       if(visiblePointLightCount >= u_Lights.PointLightCount) break;
 
       const PointLight pl = u_Lights.PointLights[i];
-      const vec3 plPosVS = vec3(u_GlobalCameraData.View * vec4(pl.Position, 1));
+      const vec3 plPosVS = vec3(u_PC.CameraDataBuffer.View * vec4(pl.Position, 1));
 
       Sphere sphere = {plPosVS, pl.Radius};
       if ( SphereInsideTileFrustum( sphere, groupFrustum, nearClipVS, maxDepthVS ) )
@@ -251,7 +250,7 @@ void main()
         if(visibleSpotLightCount >= u_Lights.SpotLightCount) break;
 
         const SpotLight spl = u_Lights.SpotLights[i];
-        const vec3 splDirVS =  vec3(u_GlobalCameraData.View * vec4(spl.Direction, 0));
+        const vec3 splDirVS =  vec3(u_PC.CameraDataBuffer.View * vec4(spl.Direction, 0));
 
         #if SPOTLIGHT_SPHERE_CULLING 
         Sphere sphere = GetConeBoundingSphere(spl.Position, spl.Height, splDirVS, spl.OuterCutOff);
@@ -260,7 +259,7 @@ void main()
             //if (SphereInsidePlane(sphere, minPlane)) continue;
          // if (!SphereIntersectsAABB(sphere, groupAABB)) continue;// tighter fit than sphere-frustum culling
         #else 
-        const vec3 splPosVS = vec3(u_GlobalCameraData.View * vec4(spl.Position, 1));
+        const vec3 splPosVS = vec3(u_PC.CameraDataBuffer.View * vec4(spl.Position, 1));
         Cone cone = { splPosVS, spl.Height, splDirVS, spl.Radius};
         if ( ConeInsideTileFrustum( cone, groupFrustum, nearClipVS, maxDepthVS ) )
         {
@@ -277,7 +276,7 @@ void main()
 
     if(lti == 0)
     { 
-        const uint linearTileIndex = GetLinearGridIndex(pixelCoords, u_GlobalCameraData.FullResolution.x);
+        const uint linearTileIndex = GetLinearGridIndex(pixelCoords, u_PC.CameraDataBuffer.FullResolution.x);
         // Handling point lights
         {   
             const uint offset = linearTileIndex * MAX_POINT_LIGHTS;
@@ -314,15 +313,15 @@ void main()
 #if FRUSTUM_IMAGE_DEBUG
     const uint half_tile = LIGHT_CULLING_TILE_SIZE / 2;
     vec3 frustumColor = abs(groupFrustum.Planes[1].Normal);
-    const uint gridIndex = GetLinearGridIndex(pixelCoords, u_GlobalCameraData.FullResolution.x);
+    const uint gridIndex = GetLinearGridIndex(pixelCoords, u_PC.CameraDataBuffer.FullResolution.x);
 
-    if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), u_GlobalCameraData.FullResolution.x) == gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),u_GlobalCameraData.FullResolution.x) == gridIndex)
+    if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), u_PC.CameraDataBuffer.FullResolution.x) == gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),u_PC.CameraDataBuffer.FullResolution.x) == gridIndex)
     {
         frustumColor = abs(groupFrustum.Planes[0].Normal);
-    }else if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), u_GlobalCameraData.FullResolution.x) != gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),u_GlobalCameraData.FullResolution.x) == gridIndex)
+    }else if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), u_PC.CameraDataBuffer.FullResolution.x) != gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),u_PC.CameraDataBuffer.FullResolution.x) == gridIndex)
     {
         frustumColor = abs(groupFrustum.Planes[2].Normal);
-    }else if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), u_GlobalCameraData.FullResolution.x) == gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),u_GlobalCameraData.FullResolution.x) != gridIndex)
+    }else if(GetLinearGridIndex(vec2(pixelCoords.x+half_tile,pixelCoords.y), u_PC.CameraDataBuffer.FullResolution.x) == gridIndex && GetLinearGridIndex(vec2(pixelCoords.x,pixelCoords.y+half_tile),u_PC.CameraDataBuffer.FullResolution.x) != gridIndex)
     {
         frustumColor = abs(groupFrustum.Planes[3].Normal);
     }

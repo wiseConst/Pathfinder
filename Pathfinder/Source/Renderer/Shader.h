@@ -11,7 +11,7 @@
 namespace Pathfinder
 {
 
-static constexpr uint16_t s_SHADER_EXTENSIONS_SIZE                                                = 13;
+static constexpr uint8_t s_SHADER_EXTENSIONS_SIZE                                                 = 13;
 static constexpr std::array<const std::string_view, s_SHADER_EXTENSIONS_SIZE> s_SHADER_EXTENSIONS = {
     ".vert", ".tesc", ".tese", ".geom", ".frag", ".mesh", ".task", ".comp", ".rmiss", ".rgen", ".rchit", ".rahit", ".rcall"};
 

@@ -23,7 +23,13 @@ enum class ECommandBufferLevel : uint8_t
     COMMAND_BUFFER_LEVEL_SECONDARY = 1
 };
 
-// TODO: CommandBufferSpecification ? needs fence? needs timeline semaphore?
+struct CommandBufferSpecification
+{
+    ECommandBufferType Type   = ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS;
+    ECommandBufferLevel Level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY;
+    uint8_t FrameIndex        = 0;
+    uint8_t ThreadID          = 0;
+};
 
 class Pipeline;
 class CommandBuffer : private Uncopyable, private Unmovable
@@ -31,8 +37,7 @@ class CommandBuffer : private Uncopyable, private Unmovable
   public:
     virtual ~CommandBuffer() = default;
 
-    NODISCARD FORCEINLINE virtual ECommandBufferType GetType() const                        = 0;
-    NODISCARD FORCEINLINE virtual ECommandBufferLevel GetLevel() const                      = 0;
+    NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual void* Get() const                                         = 0;
     NODISCARD FORCEINLINE virtual void* GetWaitSemaphore() const                            = 0;
     NODISCARD FORCEINLINE virtual void* GetTimelineSemaphore(bool bIncrementCounter = true) = 0;
@@ -72,8 +77,7 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = nullptr) = 0;
     virtual void EndRecording()                                                                     = 0;
 
-    virtual void BindPipeline(Shared<Pipeline>& pipeline) const = 0;
-
+    virtual void BindPipeline(Shared<Pipeline>& pipeline) const                                 = 0;
     virtual void BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const = 0;
     virtual void BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
                                    const void* data = nullptr) const                            = 0;
@@ -95,11 +99,16 @@ class CommandBuffer : private Uncopyable, private Unmovable
     FORCEINLINE virtual void DrawMeshTasksIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
                                                    const uint32_t stride) const = 0;
 
+    FORCEINLINE virtual void DrawMeshTasksMultiIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset,
+                                                        const Shared<Buffer>& countBuffer, const uint64_t countBufferOffset,
+                                                        const uint32_t maxDrawCount, const uint32_t stride) const = 0;
+
     virtual void BindVertexBuffers(const std::vector<Shared<Buffer>>& vertexBuffers, const uint32_t firstBinding = 0,
                                    const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const                   = 0;
     virtual void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const = 0;
 
     virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const = 0;
+    virtual void FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const          = 0;
 
     virtual void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EAccessFlags srcAccessFlags,
                                         const EPipelineStage dstPipelineStage, const EAccessFlags dstAccessFlags) const = 0;
@@ -113,10 +122,11 @@ class CommandBuffer : private Uncopyable, private Unmovable
                         const std::vector<uint64_t>& signalSemaphoreValues = {}, const void* submitFence = nullptr) = 0;
     virtual void Reset()                                                                                            = 0;
 
-    static Shared<CommandBuffer> Create(ECommandBufferType type,
-                                        ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
+    static Shared<CommandBuffer> Create(const CommandBufferSpecification& commandBufferSpec);
 
   protected:
+    CommandBufferSpecification m_Specification = {};
+
     static constexpr uint32_t s_MAX_TIMESTAMPS          = 32;
     static constexpr uint32_t s_MAX_PIPELINE_STATISITCS = 13;
 
@@ -143,7 +153,8 @@ class CommandBuffer : private Uncopyable, private Unmovable
         {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT, "Mesh shader invocations            "}      // MS
     };
 
-    CommandBuffer()        = default;
+    CommandBuffer(const CommandBufferSpecification& commandBufferSpec) : m_Specification(commandBufferSpec) {}
+    CommandBuffer()        = delete;
     virtual void Destroy() = 0;
 };
 

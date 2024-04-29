@@ -49,7 +49,7 @@ class Renderer2D final : private Uncopyable, private Unmovable
 
         std::vector<Sprite> Sprites;
 
-        uint32_t FrameIndex = 0;
+        uint8_t FrameIndex = 0;
 
         static constexpr uint32_t s_MAX_QUADS              = 2500;
         static constexpr uint32_t s_MAX_VERTICES           = s_MAX_QUADS * 4;

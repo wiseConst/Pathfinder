@@ -11,6 +11,8 @@ constexpr glm::vec3 maxLightPos{15, 20, 5};
 
 void SandboxLayer::Init()
 {
+    Application::Get().GetWindow()->SetIconImage("Other/Logo.png");
+
     m_Camera = Camera::Create(ECameraType::CAMERA_TYPE_PERSPECTIVE);
 
     m_Dummy  = Mesh::Create("stanford/dragon/scene.gltf");
@@ -192,8 +194,16 @@ void SandboxLayer::OnUIRender()
 {
     if (!bRenderUI) return;
 
+    bool bAnythingHovered = false;
+    bool bAnythingFocused = false;
+
     static bool bShowDemoWindow = true;
-    if (bShowDemoWindow) ImGui::ShowDemoWindow(&bShowDemoWindow);
+    if (bShowDemoWindow)
+    {
+        ImGui::ShowDemoWindow(&bShowDemoWindow);
+        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
+        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
+    }
 
     static bool bShowRendererSettings = true;
     if (bShowRendererSettings)
@@ -258,6 +268,9 @@ void SandboxLayer::OnUIRender()
         }
         ImGui::Separator();
 
+        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
+        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
+
         ImGui::End();
     }
 
@@ -272,6 +285,9 @@ void SandboxLayer::OnUIRender()
             UILayer::DrawImage(image, {image->GetSpecification().Width / 2, image->GetSpecification().Height / 2}, {0, 0}, {1, 1});
             ImGui::Separator();
         }
+
+        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
+        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
 
         ImGui::End();
     }
@@ -289,6 +305,21 @@ void SandboxLayer::OnUIRender()
         for (const auto& [pipelineStat, stat] : Renderer::GetPipelineStatistics())
             ImGui::Text("%s: %llu", pipelineStat.data(), stat);
 
+        const auto& rs = Renderer::GetStats();
+        ImGui::SeparatorText("Memory Statistics");
+        for (uint32_t memoryHeapIndex = 0; const auto& memoryBudget : rs.MemoryBudgets)
+        {
+            ImGui::Text("Heap[%u]:\n\tBudget: %0.3f MB\n\tUsage: %0.3f MB\n\tBlocks: %u\n\t(Sub-)DedicatedAllocationsCount: "
+                        "%u\n\tDedicatedAllocationsReserved: %0.3f MB\n\tDedicatedAllocationsUsage: %0.3f MB",
+                        memoryHeapIndex, memoryBudget.BudgetBytes / 1024.0f / 1024.0f, memoryBudget.UsageBytes / 1024.0f / 1024.0f,
+                        memoryBudget.BlockCount, memoryBudget.AllocationCount, memoryBudget.BlockBytes / 1024.0f / 1024.0f,
+                        memoryBudget.AllocationBytes / 1024.0f / 1024.0f);
+            ++memoryHeapIndex;
+        }
+
+        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
+        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
+
         ImGui::End();
     }
 
@@ -297,8 +328,13 @@ void SandboxLayer::OnUIRender()
     {
         ImGui::Begin("World Outliner", &bShowWorldOutliner);
 
+        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
+        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
+
         ImGui::End();
     }
+
+    UILayer::SetBlockEvents(bAnythingHovered || bAnythingFocused);
 }
 
 }  // namespace Pathfinder

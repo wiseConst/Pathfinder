@@ -1,6 +1,7 @@
 #include "PathfinderPCH.h"
 #include "Renderer2D.h"
 
+#include "Core/Threading.h"
 #include "Renderer.h"
 #include "Pipeline.h"
 #include "Shader.h"
@@ -102,8 +103,8 @@ void Renderer2D::Begin()
 {
     s_Renderer2DStats = {};
 
-    auto& rd = Renderer::GetRendererData();
-
+    auto& rd                                                          = Renderer::GetRendererData();
+    s_RendererData2D->FrameIndex                                      = rd->FrameIndex;
     s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex] = s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex];
     s_RendererData2D->Sprites.clear();
 }
@@ -113,7 +114,10 @@ void Renderer2D::FlushBatch()
     const uint32_t dataSize = s_Renderer2DStats.QuadCount * sizeof(QuadVertex) * 4;
     if (dataSize == 0) return;
 
-    auto renderCommandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                               ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, s_RendererData2D->FrameIndex,
+                                               JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+    auto renderCommandBuffer                = CommandBuffer::Create(cbSpec);
     renderCommandBuffer->BeginRecording(true);
 
     auto& rd = Renderer::GetRendererData();
@@ -126,13 +130,14 @@ void Renderer2D::FlushBatch()
         s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], dataSize);
 
     PushConstantBlock pc = {};
-    renderCommandBuffer->BindPipeline(s_RendererData2D->QuadPipeline);
-    renderCommandBuffer->BindPushConstants(s_RendererData2D->QuadPipeline, 0, 0, sizeof(pc), &pc);
+    pc.CameraDataBuffer  = rd->CameraSSBO[rd->FrameIndex]->GetBDA();
 
     constexpr uint64_t offset = 0;
     renderCommandBuffer->BindVertexBuffers({s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]}, 0, 1, &offset);
     renderCommandBuffer->BindIndexBuffer(s_RendererData2D->QuadIndexBuffer);
 
+    renderCommandBuffer->BindPipeline(s_RendererData2D->QuadPipeline);
+    renderCommandBuffer->BindPushConstants(s_RendererData2D->QuadPipeline, 0, 0, sizeof(pc), &pc);
     renderCommandBuffer->DrawIndexed(s_Renderer2DStats.QuadCount * 6);
 
     rd->GBuffer->EndPass(renderCommandBuffer);

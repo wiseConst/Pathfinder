@@ -18,6 +18,8 @@ class VulkanBuffer final : public Buffer
 
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE const auto& GetDescriptorInfo() const { return m_DescriptorInfo; }
+    NODISCARD FORCEINLINE void* GetMapped() const final override;
+    uint64_t GetBDA() const final override;
 
     void SetData(const void* data, const size_t dataSize) final override;
     void Resize(const size_t newBufferCapacity) final override;

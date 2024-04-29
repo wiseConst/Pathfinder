@@ -88,11 +88,11 @@ class Renderer : private Uncopyable, private Unmovable
 
         // NOTE: PerFramed should be objects that are used by host and device.
         BufferPerFrame LightsSSBO;
-        BufferPerFrame CameraUB;
+        BufferPerFrame CameraSSBO;
         BufferPerFrame UploadHeap;
 
         static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB
-        uint32_t FrameIndex                                = 0;
+        uint8_t FrameIndex                                 = 0;
 
         Weak<Pipeline> LastBoundPipeline;
 
@@ -106,9 +106,6 @@ class Renderer : private Uncopyable, private Unmovable
         Weak<CommandBuffer> CurrentTransferCommandBuffer;
 
         Unique<Pathfinder::RenderGraph> RenderGraph = nullptr;
-
-        Shared<Image> PathtracedImage        = nullptr;
-        Shared<Pipeline> PathtracingPipeline = nullptr;
 
         Shared<Framebuffer> CompositeFramebuffer = nullptr;
         Shared<Pipeline> CompositePipeline       = nullptr;
@@ -181,10 +178,19 @@ class Renderer : private Uncopyable, private Unmovable
         std::array<Shared<Framebuffer>, 2> BlurAOFramebuffer;
 
         // Indirect Rendering
-        Shared<Buffer> OpaqueDrawBuffer      = nullptr;
-        Shared<Buffer> TransparentDrawBuffer = nullptr;
-        Shared<Buffer> OpaqueMeshesData      = nullptr;
-        Shared<Buffer> TransparentMeshesData = nullptr;
+        struct ObjectCullStatistics
+        {
+            uint32_t DrawCountOpaque;
+            uint32_t DrawCountTransparent;
+        } ObjectCullStats;
+
+        Shared<Buffer> DrawBufferOpaque         = nullptr;
+        Shared<Buffer> MeshesDataOpaque         = nullptr;
+        Shared<Buffer> CulledMeshesBufferOpaque = nullptr;
+
+        Shared<Buffer> DrawBufferTransparent         = nullptr;
+        Shared<Buffer> MeshesDataTransparent         = nullptr;
+        Shared<Buffer> CulledMeshesBufferTransparent = nullptr;
 
         Shared<Pipeline> ObjectCullingPipeline = nullptr;
     };
@@ -195,9 +201,6 @@ class Renderer : private Uncopyable, private Unmovable
     {
         bool bVSync;
 
-        bool bRTXSupport;
-        bool bBDASupport;
-        bool bMultiDrawIndirectSupport;
         EBlurType BlurType = EBlurType::BLUR_TYPE_GAUSSIAN;
     };
     static inline RendererSettings s_RendererSettings = {};
@@ -208,9 +211,11 @@ class Renderer : private Uncopyable, private Unmovable
         uint32_t DescriptorSetCount;
         uint32_t DescriptorPoolCount;
         uint32_t MeshletCount;
+        uint32_t ObjectsDrawn;
         float GPUTime;
         float SwapchainPresentTime;
         float RHITime;
+        std::vector<MemoryBudget> MemoryBudgets;
     };
     static inline RendererStats s_RendererStats = {};
 
@@ -218,7 +223,6 @@ class Renderer : private Uncopyable, private Unmovable
     {
         return s_RendererData && s_RendererData->TransparentObjects.empty() && s_RendererData->OpaqueObjects.empty();
     }
-    static bool IsInsideFrustum(const auto& renderObject);
     static void ObjectCullingPass();
 
     static void DepthPrePass();

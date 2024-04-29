@@ -39,6 +39,9 @@ source_group("Source/Renderer/Camera" FILES ${RENDERER_CAMERA_SOURCES})
 file(GLOB RENDERER_DEBUG_SOURCES ${CORE_DIR}/Renderer/Debug/*.h ${CORE_DIR}/Renderer/Debug/*.cpp)
 source_group("Source/Renderer/Debug" FILES ${RENDERER_DEBUG_SOURCES})
 
+file(GLOB_RECURSE SCENE_SOURCES ${CORE_DIR}/Scene/*.h ${CORE_DIR}/Scene/*.cpp)
+source_group("Source/Scene" FILES ${SCENE_SOURCES})
+
 message("Building pathfinder rendering engine...")
 set(VULKAN_SDK_DIR $ENV{VULKAN_SDK})
 message("VULKAN_SDK PATH: ${VULKAN_SDK_DIR}")
@@ -56,6 +59,7 @@ set(ALL_FILES
         ${RENDERER_MESH_SOURCES}
         ${RENDERER_CAMERA_SOURCES}
         ${RENDERER_DEBUG_SOURCES}
+        ${SCENE_SOURCES}
 )
 
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
@@ -139,12 +143,12 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/glm)
 set_target_properties(glm PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
 # simdjson (currently unused since fastgltf includes it)
-#set(SIMDJSON_BUILD_STATIC_LIB ON)
-#add_subdirectory(${VENDOR_DIR}/simdjson)
-#target_link_libraries(${PROJECT_NAME} PRIVATE simdjson_static)
+set(SIMDJSON_BUILD_STATIC_LIB ON)
+add_subdirectory(${VENDOR_DIR}/simdjson)
+target_link_libraries(${PROJECT_NAME} PRIVATE simdjson_static)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/simdjson/include)
-#set_target_properties(simdjson_static PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
-#set_target_properties(simdjson PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
+set_target_properties(simdjson_static PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
+set_target_properties(simdjson PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
 
 # stb
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/stb)
@@ -154,7 +158,6 @@ add_subdirectory(${VENDOR_DIR}/fastgltf)
 target_link_libraries(${PROJECT_NAME} PRIVATE fastgltf)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include)
 set_target_properties(fastgltf PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
-#set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 
 # imgui
 add_library(imgui STATIC)
@@ -189,12 +192,16 @@ else()
 endif()
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/amd_compressonator/include)
 
+# entt
+add_subdirectory(${VENDOR_DIR}/entt)
+target_link_libraries(${PROJECT_NAME} PRIVATE EnTT::EnTT)
+
 # Renderer compile config.
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
 add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 
 add_compile_options($<$<CONFIG:Debug>:-Og>) # -lto
-add_compile_options($<$<CONFIG:Release>:-Ofast -lto>)
+add_compile_options($<$<CONFIG:Release>:-O3 -lto>)
 
 # Dynamic MSVC runtime library linking
 if(MSVC)

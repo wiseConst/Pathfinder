@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include "Renderer/Swapchain.h"
+#include "Renderer/Image.h"
 
 #include "Core/Application.h"
 #include "Events/WindowEvent.h"
@@ -122,10 +123,30 @@ void GLFWWindow::SetWindowMode(const EWindowMode windowMode)
     m_Swapchain->SetWindowMode(windowMode);
 }
 
-void GLFWWindow::SetWindowTitle(const char* title)
+void GLFWWindow::SetIconImage(const std::string_view& iconFilePath)
 {
-    if (!title) return;
-    glfwSetWindowTitle(m_Handle, title);
+    const auto& appSpec = Application::Get().GetSpecification();
+
+    const std::filesystem::path iconFSPath = std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / iconFilePath;
+    if (!std::filesystem::exists(iconFSPath))
+    {
+        LOG_WARN("SetIconImage(): Path <%s> doesn't exist!", iconFSPath.string().data());
+        return;
+    }
+
+    GLFWimage image  = {};
+    int32_t channels = 4;
+    image.pixels     = (uint8_t*)ImageUtils::LoadRawImage(iconFSPath, false, &image.width, &image.height, &channels);
+
+    glfwSetWindowIcon(m_Handle, 1, &image);
+
+    ImageUtils::UnloadRawImage(image.pixels);
+}
+
+void GLFWWindow::SetWindowTitle(const std::string_view& title)
+{
+    if (!title.data()) return;
+    glfwSetWindowTitle(m_Handle, title.data());
 }
 
 void GLFWWindow::SwapBuffers()

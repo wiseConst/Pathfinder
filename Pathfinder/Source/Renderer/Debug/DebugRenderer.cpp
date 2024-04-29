@@ -14,6 +14,12 @@ namespace Pathfinder
 {
 static bool s_bDebugRendererInit = false;
 
+#define UPDATE_STATE_ROUTINE                                                                                                               \
+    {                                                                                                                                      \
+        if (!s_bDebugRendererInit) return;                                                                                                 \
+        UpdateState();                                                                                                                     \
+    }
+
 void DebugRenderer::Init()
 {
     PFR_ASSERT(!s_bDebugRendererInit, "DebugRenderer already initialized!");
@@ -90,8 +96,7 @@ void DebugRenderer::UpdateState()
 
 void DebugRenderer::Flush()
 {
-    if (!s_bDebugRendererInit) return;
-    UpdateState();
+    UPDATE_STATE_ROUTINE;
 
     const uint32_t dataSize = s_DebugRendererData->LineVertexCount * sizeof(LineVertex);
     if (dataSize == 0) return;
@@ -107,10 +112,14 @@ void DebugRenderer::Flush()
         s_DebugRendererData->LineVertexBuffer[s_DebugRendererData->FrameIndex]->SetData(
             s_DebugRendererData->LineVertexBase[s_DebugRendererData->FrameIndex], dataSize);
 
-        Renderer::BindPipeline(renderCommandBuffer, s_DebugRendererData->LinePipeline);
+        PushConstantBlock pc = {};
+        pc.CameraDataBuffer  = rd->CameraSSBO[rd->FrameIndex]->GetBDA();
 
         constexpr uint64_t offset = 0;
         renderCommandBuffer->BindVertexBuffers({s_DebugRendererData->LineVertexBuffer[s_DebugRendererData->FrameIndex]}, 0, 1, &offset);
+
+        Renderer::BindPipeline(renderCommandBuffer, s_DebugRendererData->LinePipeline);
+        renderCommandBuffer->BindPushConstants(s_DebugRendererData->LinePipeline, 0, 0, sizeof(pc), &pc);
         renderCommandBuffer->Draw(s_DebugRendererData->LineVertexCount);
 
         rd->GBuffer->EndPass(renderCommandBuffer);
@@ -124,8 +133,7 @@ void DebugRenderer::Flush()
 
 void DebugRenderer::DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm::vec4& color)
 {
-    if (!s_bDebugRendererInit) return;
-    UpdateState();
+    UPDATE_STATE_ROUTINE;
 
     s_DebugRendererData->LineVertexCurrent[s_DebugRendererData->FrameIndex]->Position = p0;
     s_DebugRendererData->LineVertexCurrent[s_DebugRendererData->FrameIndex]->Color    = color;
@@ -140,8 +148,7 @@ void DebugRenderer::DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm
 
 void DebugRenderer::DrawRect(const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color)
 {
-    if (!s_bDebugRendererInit) return;
-    UpdateState();
+    UPDATE_STATE_ROUTINE;
 
     const glm::vec3& p0 = glm::vec3(center.x - halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
     const glm::vec3& p1 = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
@@ -156,8 +163,7 @@ void DebugRenderer::DrawRect(const glm::vec3& center, const glm::vec3& halfExten
 
 void DebugRenderer::DrawRect(const glm::mat4& transform, const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color)
 {
-    if (!s_bDebugRendererInit) return;
-    UpdateState();
+    UPDATE_STATE_ROUTINE;
 
     glm::vec3 lineVertices[4] = {glm::vec3(center + halfExtents),
                                  glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z + halfExtents.z),
@@ -174,8 +180,7 @@ void DebugRenderer::DrawRect(const glm::mat4& transform, const glm::vec3& center
 
 void DebugRenderer::DrawAABB(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color)
 {
-    if (!s_bDebugRendererInit) return;
-    UpdateState();
+    UPDATE_STATE_ROUTINE;
 
     if (!mesh) return;
 
@@ -262,6 +267,11 @@ void DebugRenderer::DrawAABB(const Shared<Mesh>& mesh, const glm::mat4& transfor
             DrawLine(lineVertices[i], lineVertices[nextLineVertexIndex == 2 ? 0 : nextLineVertexIndex], color);
         }
     }
+}
+
+void DebugRenderer::DrawSphere(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color)
+{
+    UPDATE_STATE_ROUTINE;
 }
 
 }  // namespace Pathfinder

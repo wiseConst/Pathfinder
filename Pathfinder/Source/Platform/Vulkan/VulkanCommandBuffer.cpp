@@ -16,18 +16,6 @@
 namespace Pathfinder
 {
 
-static VkCommandBufferLevel PathfinderCommandBufferLevelToVulkan(ECommandBufferLevel level)
-{
-    switch (level)
-    {
-        case Pathfinder::ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY: return VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-        case Pathfinder::ECommandBufferLevel::COMMAND_BUFFER_LEVEL_SECONDARY: return VK_COMMAND_BUFFER_LEVEL_SECONDARY;
-    }
-
-    PFR_ASSERT(false, "Unknown command buffer level!");
-    return VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-}
-
 static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const ShaderStageFlags shaderStageFlags)
 {
     VkShaderStageFlags vkShaderStageFlags = 0;
@@ -54,13 +42,13 @@ static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const ShaderStageFl
     return vkShaderStageFlags;
 }
 
-VulkanCommandBuffer::VulkanCommandBuffer(ECommandBufferType type, ECommandBufferLevel level) : m_Type(type), m_Level(level)
+VulkanCommandBuffer::VulkanCommandBuffer(const CommandBufferSpecification& commandBufferSpec) : CommandBuffer(commandBufferSpec)
 {
     const auto& context = VulkanContext::Get();
-    context.GetDevice()->AllocateCommandBuffer(m_Handle, type, PathfinderCommandBufferLevelToVulkan(m_Level));
+    context.GetDevice()->AllocateCommandBuffer(m_Handle, m_Specification);
 
     std::string commandBufferTypeStr;
-    switch (m_Type)
+    switch (m_Specification.Type)
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS: commandBufferTypeStr = "GRAPHICS"; break;
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE: commandBufferTypeStr = "COMPUTE"; break;
@@ -130,7 +118,7 @@ const std::vector<float> VulkanCommandBuffer::GetTimestampsResults()
     if (m_CurrentTimestampIndex == 0) return result;
 
     // NOTE: timestampPeriod contains the number of nanoseconds it takes for a timestamp query value to be increased by 1("tick").
-    const float timestampPeriod = VulkanContext::Get().GetDevice()->GetGPUProperties().limits.timestampPeriod;
+    const float timestampPeriod = VulkanContext::Get().GetDevice()->GetTimestampPeriod();
 
     uint16_t k = 0;
     for (size_t i = 0; i < m_TimestampsResults.size() - 1; i += 2)
@@ -148,7 +136,7 @@ void VulkanCommandBuffer::BeginPipelineStatisticsQuery()
     if (!m_PipelineStatisticsQuery)
     {
         VkQueryPoolCreateInfo queryPoolCI = {VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO, nullptr, 0, VK_QUERY_TYPE_PIPELINE_STATISTICS, 1};
-        if (m_Type == ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS)
+        if (m_Specification.Type == ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS)
         {
             queryPoolCI.pipelineStatistics =
                 VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT | VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT |  //
@@ -162,7 +150,7 @@ void VulkanCommandBuffer::BeginPipelineStatisticsQuery()
                 VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT | VK_QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT_EXT |
                 VK_QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT_EXT;
         }
-        else if (m_Type == ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE)
+        else if (m_Specification.Type == ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE)
         {
             queryPoolCI.pipelineStatistics = VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT;
         }
@@ -238,7 +226,7 @@ void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheri
 
     VkCommandBufferBeginInfo commandBufferBeginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
 
-    if (m_Level == ECommandBufferLevel::COMMAND_BUFFER_LEVEL_SECONDARY)
+    if (m_Specification.Level == ECommandBufferLevel::COMMAND_BUFFER_LEVEL_SECONDARY)
     {
         commandBufferBeginInfo.flags |= VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
         PFR_ASSERT(inheritanceInfo, "Secondary command buffer requires valid inheritance info!");
@@ -249,7 +237,7 @@ void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheri
     commandBufferBeginInfo.pInheritanceInfo = static_cast<const VkCommandBufferInheritanceInfo*>(inheritanceInfo);
     VK_CHECK(vkBeginCommandBuffer(m_Handle, &commandBufferBeginInfo), "Failed to begin command buffer recording!");
 
-    if (m_Type == ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER) return;
+    if (m_Specification.Type == ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER) return;
 
     m_CurrentTimestampIndex = 0;
 }
@@ -299,7 +287,7 @@ void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit, bool bSignalWaitSemaphor
 
     auto& context = VulkanContext::Get();
     VkQueue queue = VK_NULL_HANDLE;
-    switch (m_Type)
+    switch (m_Specification.Type)
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
         {
@@ -433,11 +421,7 @@ void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Share
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(shader);
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
 
-    const auto appendVecFunc = [&](auto& src, const auto& additionalVec)
-    {
-        for (auto& elem : additionalVec)
-            src.emplace_back(elem);
-    };
+    const auto appendVecFunc = [&](auto& dst, const auto& src) { dst.insert(dst.end(), src.begin(), src.end()); };
 
     std::vector<VkDescriptorSet> descriptorSets;
     VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -445,22 +429,22 @@ void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Share
     {
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
-            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_FRAGMENT));
-
             if (pipeline->GetSpecification().bMeshShading)
             {
-                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_MESH));
                 appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_MESH));
             }
             else
             {
-                // clang-format off
                 appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
-                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
                 appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
-                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
-                // clang-format on
+                appendVecFunc(descriptorSets,
+                              vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
+
+                appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
             }
+
+            appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_FRAGMENT));
 
             pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
             break;
@@ -488,7 +472,7 @@ void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Share
 
     if (descriptorSets.empty()) return;
 
-    // Since first 0, 1, 2 are busy by bindless stuff we make an offset
+    // Since first 0 is busy by bindless stuff we make an offset
     const uint32_t firstSet = pipeline->GetSpecification().bBindlessCompatible ? LAST_BINDLESS_SET + 1 : 0;
     vkCmdBindDescriptorSets(m_Handle, pipelineBindPoint, vulkanPipeline->GetLayout(), firstSet,
                             static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
@@ -510,7 +494,7 @@ void VulkanCommandBuffer::Destroy()
 
     auto& context = VulkanContext::Get();
     context.GetDevice()->WaitDeviceOnFinish();
-    context.GetDevice()->FreeCommandBuffer(m_Handle, m_Type);
+    context.GetDevice()->FreeCommandBuffer(m_Handle, m_Specification);
 
     const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
     vkDestroyFence(logicalDevice, m_SubmitFence, VK_NULL_HANDLE);
@@ -655,6 +639,15 @@ void VulkanCommandBuffer::CopyImageToImage(const Shared<Image> srcImage, Shared<
                           0, srcImage->GetSpecification().Mips, 0);
     TransitionImageLayout(vkDstImage, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, vkDstLayout, dstAspectMask, dstImage->GetSpecification().Layers,
                           0, dstImage->GetSpecification().Mips, 0);
+}
+
+void VulkanCommandBuffer::FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const
+{
+    const auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
+    PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
+
+    vkCmdFillBuffer(m_Handle, (VkBuffer)vulkanBuffer->Get(), vulkanBuffer->GetDescriptorInfo().offset,
+                    vulkanBuffer->GetDescriptorInfo().range, data);
 }
 
 }  // namespace Pathfinder

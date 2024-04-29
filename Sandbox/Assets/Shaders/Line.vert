@@ -10,7 +10,7 @@ layout(location = 0) out vec4 outColor;
 
 void main()
 {
-    gl_Position = u_GlobalCameraData.ViewProjection * vec4(inPosition, 1.0);
+    gl_Position = u_PC.CameraDataBuffer.ViewProjection * vec4(inPosition, 1.0);
     
     outColor = inColor;
 }

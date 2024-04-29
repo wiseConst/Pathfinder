@@ -8,6 +8,9 @@
 
 #include "Renderer/Material.h"
 #include "Renderer/Mesh/Submesh.h"
+#include "Renderer/Renderer.h"
+
+#include "Core/Threading.h"
 
 namespace Pathfinder
 {
@@ -130,7 +133,10 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
         // Over the limit or last BLAS element
         if (batchSize >= batchLimit || i == nbBlas - 1)
         {
-            auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+            const CommandBufferSpecification cbSpec = {
+                ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+            auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(cbSpec);
             vkCmdBuf->BeginRecording(true);
 
             //  VkCommandBuffer cmdBuf = m_cmdPool.createCommandBuffer();
@@ -188,7 +194,10 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
 
             if (queryPool)
             {
-                auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+                const CommandBufferSpecification cbSpec = {
+                    ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                    Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+                auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(cbSpec);
                 vkCmdBuf->BeginRecording(true);
 
                 //  cmdCompactBlas(cmdBuf, indices, buildAs, queryPool);
@@ -294,7 +303,10 @@ AccelerationStructure VulkanRayTracingBuilder::BuildTLASImpl(const std::vector<A
         // assert(m_tlas.accel == VK_NULL_HANDLE || update);
         uint32_t countInstance = static_cast<uint32_t>(blases.size());
 
-        auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+        const CommandBufferSpecification cbSpec = {
+            ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+            Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+        auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(cbSpec);
         vkCmdBuf->BeginRecording(true);
 
         // Command buffer to create the TLAS

@@ -7,6 +7,7 @@
 #include "VulkanImage.h"
 
 #include "Core/Application.h"
+#include "Core/Threading.h"
 #include "Core/Window.h"
 
 #include "Renderer/Renderer.h"
@@ -208,7 +209,7 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
                                                      VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
             m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_GENERAL;
 
-            vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                                VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
         }
 
@@ -225,7 +226,8 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
                                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_TRANSFER_WRITE_BIT, 0, 1, 0, 1, 0);
         m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
     }
 
@@ -376,11 +378,10 @@ void VulkanSwapchain::Invalidate()
     if (Details.SurfaceCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         swapchainCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-    if (context.GetDevice()->GetQueueFamilyIndices().GraphicsFamily != context.GetDevice()->GetQueueFamilyIndices().PresentFamily)
+    if (context.GetDevice()->GetGraphicsFamily() != context.GetDevice()->GetPresentFamily())
     {
         PFR_ASSERT(false, "This shouldn't happen: GraphicsFamily != PresentFamily!");
-        const uint32_t indices[]                  = {context.GetDevice()->GetQueueFamilyIndices().GraphicsFamily,
-                                                     context.GetDevice()->GetQueueFamilyIndices().PresentFamily};
+        const uint32_t indices[]                  = {context.GetDevice()->GetGraphicsFamily(), context.GetDevice()->GetPresentFamily()};
         swapchainCreateInfo.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
         swapchainCreateInfo.queueFamilyIndexCount = 2;
         swapchainCreateInfo.pQueueFamilyIndices   = indices;
@@ -450,7 +451,10 @@ void VulkanSwapchain::PresentImage()
     bool bWasEverUsed = true;  // In case Renderer didn't use it, we should set waitSemaphore to imageAvaliable, otherwise renderSemaphore.
     if (m_ImageLayouts[m_ImageIndex] != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
     {
-        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+        const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                                   ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
+                                                   JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+        auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
         const auto imageBarrier =
@@ -529,9 +533,9 @@ void VulkanSwapchain::EndPass(const Shared<CommandBuffer>& commandBuffer)
     vulkanCommandBuffer->EndRendering();
 
     {
-        const auto imageBarrier =
-            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
-                                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, 0, 1, 0, 1, 0);
+        const auto imageBarrier = VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+                                                                       m_ImageLayouts[m_ImageIndex], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                                                       VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_NONE, 1, 0, 1, 0);
 
         vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
@@ -594,26 +598,29 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
     }
     else
     {
-        vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+        const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                                   ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
+                                                   JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+        vulkanCommandBuffer                     = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
     }
 
     vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain", glm::vec3(0.9f, 0.1f, 0.1f));
 
-    // NOTE: Best practices says here's RAR barrier?? wtf
     {
-        const auto srcImageBarrier =
-            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-                                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
-        const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+        const auto srcImageBarrier = VulkanUtility::GetImageMemoryBarrier(
             (VkImage)image->Get(),
             ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
             ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0,
             VK_ACCESS_TRANSFER_READ_BIT, 1, 0, 1, 0);
+        const auto dstImageBarrier =
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+                                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
 
         const std::vector<VkImageMemoryBarrier> imageBarriers = {srcImageBarrier, dstImageBarrier};
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT,
-                                           0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()), imageBarriers.data());
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()),
+                                           imageBarriers.data());
     }
 
     VkImageBlit region               = {};
@@ -631,19 +638,19 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
 
     {
-        const auto srcImageBarrier =
+        const auto dstImageBarrier =
             VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_TRANSFER_WRITE_BIT, 0, 1, 0, 1, 0);
         m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+        const auto srcImageBarrier = VulkanUtility::GetImageMemoryBarrier(
             (VkImage)image->Get(),
             ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout),
             VK_ACCESS_TRANSFER_READ_BIT, 0, 1, 0, 1, 0);
 
         const std::vector<VkImageMemoryBarrier> imageBarriers = {srcImageBarrier, dstImageBarrier};
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()),
                                            imageBarriers.data());
     }

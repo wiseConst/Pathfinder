@@ -15,6 +15,7 @@ namespace Pathfinder
 {
 
 static constexpr const char* s_DEFAULT_STRING = "NONE";
+static constexpr std::string_view s_ENGINE_NAME = "PATHFINDER";
 
 static constexpr uint16_t s_WORKER_THREAD_COUNT = 16;
 

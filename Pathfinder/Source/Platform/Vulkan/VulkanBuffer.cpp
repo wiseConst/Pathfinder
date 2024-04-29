@@ -8,6 +8,8 @@
 #include "Renderer/Renderer.h"
 #include "VulkanBindlessRenderer.h"
 
+#include "Core/Threading.h"
+
 namespace Pathfinder
 {
 
@@ -63,7 +65,7 @@ VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUs
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE &&
         (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM))
+         bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM))
         PFR_ASSERT(false, "Buffer usage that has STAGING usage can't have any other flags!");
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM &&
@@ -84,7 +86,7 @@ VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUs
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE &&
         (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM))
+         bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM))
         PFR_ASSERT(false, "Buffer usage that has STAGING usage can't have any other flags!");
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM &&
@@ -95,13 +97,14 @@ VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUs
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX && bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX)
         PFR_ASSERT(false, "Buffer usage can't be both VERTEX and INDEX!");
 
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX || bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX ||
-        bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_INDIRECT)
-        return VMA_MEMORY_USAGE_GPU_ONLY;
-    else if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE)
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE)
         return VMA_MEMORY_USAGE_CPU_ONLY;
     else if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM)
         return VMA_MEMORY_USAGE_CPU_TO_GPU;
+
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX || bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX ||
+        bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_INDIRECT)
+        return VMA_MEMORY_USAGE_GPU_ONLY;
 
     return memoryUsage;
 }
@@ -135,11 +138,32 @@ VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec) : Buffer(buffe
         m_Specification.DataSize = 0;
     }
 
+    if (m_Specification.BufferCapacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
+    {
+        void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
+        m_bIsMapped  = true;
+    }
+
     if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
     {
-        const auto bufferInfo = GetDescriptorInfo();
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&bufferInfo, m_Specification.BufferBinding, m_Index);
+        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.BufferBinding, m_Index);
     }
+}
+
+NODISCARD void* VulkanBuffer::GetMapped() const
+{
+    if (!m_bIsMapped)
+    {
+        LOG_WARN("Buffer is not mapped! Returning nullptr.");
+        return nullptr;
+    }
+
+    return VulkanContext::Get().GetDevice()->GetAllocator()->GetMapped(m_Allocation);
+}
+
+uint64_t VulkanBuffer::GetBDA() const
+{
+    return VulkanContext::Get().GetDevice()->GetBufferDeviceAddress(m_Handle);
 }
 
 void VulkanBuffer::SetData(const void* data, const size_t dataSize)
@@ -197,7 +221,11 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         else
 #endif
         {
-            auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+
+            const CommandBufferSpecification cbSpec = {
+                ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+            auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(cbSpec);
             vulkanCommandBuffer->BeginRecording(true);
 
             const VkBufferCopy region = {0, 0, dataSize};
@@ -223,13 +251,17 @@ void VulkanBuffer::Resize(const size_t newBufferCapacity)
     BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
                               BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
                               BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
-
     m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
+
+    if (m_Specification.BufferCapacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
+    {
+        void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
+        m_bIsMapped  = true;
+    }
 
     if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
     {
-        const auto bufferInfo = GetDescriptorInfo();
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&bufferInfo, m_Specification.BufferBinding, m_Index);
+        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.BufferBinding, m_Index);
     }
 }
 

@@ -235,10 +235,6 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         shaderc_shader_kind shaderKind = shaderc_vertex_shader;
         DetectShaderKind(shaderKind, shaderExt);
 
-        if (!Renderer::GetRendererSettings().bRTXSupport && shaderKind >= shaderc_raygen_shader &&
-            shaderKind <= shaderc_glsl_default_callable_shader)
-            continue;
-
         auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToPathfinder(shaderKind));
 
         // Compile or retrieve cache && load vulkan shader module
@@ -280,7 +276,7 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
                 auto& bindingInfo = ds->bindings[i];
                 descriptorSetInfo.emplace(bindingInfo->name, VkDescriptorSetLayoutBinding{});
 
-                auto& dsBinding              = descriptorSetInfo[bindingInfo->name];
+                auto& dsBinding              = descriptorSetInfo.at(bindingInfo->name);
                 dsBinding.binding            = bindingInfo->binding;
                 dsBinding.descriptorCount    = bindingInfo->count;
                 dsBinding.descriptorType     = static_cast<VkDescriptorType>(bindingInfo->descriptor_type);
@@ -305,6 +301,9 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
                                                            static_cast<uint32_t>(bindings.size()), bindings.data()};
             VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &dslci, nullptr, &setLayout),
                      "Failed to create descriptor layout for shader needs!");
+
+            const std::string descriptorSetLayoutName = "VK_DESCRIPTOR_SET_LAYOUT_" + shaderNameExt;
+            VK_SetDebugName(logicalDevice, setLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, descriptorSetLayoutName.data());
         }
         reflectedDescriptorSets.clear();
 
@@ -316,10 +315,14 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         {
             for (auto& dsPerFrame : currentShaderDescription.Sets)
             {
-                for (auto& ds : dsPerFrame)
+                for (uint32_t frameIndex{}; frameIndex < dsPerFrame.size(); ++frameIndex)
                 {
-                    PFR_ASSERT(VulkanContext::Get().GetDevice()->GetDescriptorAllocator()->Allocate(ds, setLayout),
+                    PFR_ASSERT(VulkanContext::Get().GetDevice()->GetDescriptorAllocator()->Allocate(dsPerFrame.at(frameIndex), setLayout),
                                "Failed to allocate descriptor set!");
+
+                    const std::string descriptorSetName = "VK_DESCRIPTOR_SET_" + shaderNameExt + "_FRAME_" + std::to_string(frameIndex);
+                    VK_SetDebugName(logicalDevice, dsPerFrame.at(frameIndex).second, VK_OBJECT_TYPE_DESCRIPTOR_SET,
+                                    descriptorSetName.data());
                 }
             }
         }
@@ -386,7 +389,8 @@ void VulkanShader::Reflect(SpvReflectShaderModule& reflectModule, ShaderDescript
                 const auto& obj = ds->bindings[i];
                 if (!obj->name) continue;
 
-                if (const std::string bindingName(obj->name); bindingName.find("Global") != std::string::npos)
+                if (const std::string bindingName(obj->name);
+                    bindingName.find("Global") != std::string::npos || bindingName.find("BDA") != std::string::npos)
                 {
                     bIsBindlessSet = true;
                     break;
@@ -459,7 +463,7 @@ std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& s
     thread_local shaderc::CompileOptions compileOptions;
     compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
     compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
-    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_5);
+    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_6);
     compileOptions.SetWarningsAsErrors();
     compileOptions.SetOptimizationLevel(shaderc_optimization_level_performance);
     compileOptions.SetGenerateDebugInfo();

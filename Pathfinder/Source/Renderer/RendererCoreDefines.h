@@ -208,6 +208,17 @@ const static std::map<EShadowSetting, uint16_t> s_ShadowsSettings = {
     {EShadowSetting::SHADOW_SETTING_HIGH, 4096}     //
 };
 
+// Same as VmaBudget
+struct MemoryBudget
+{
+    uint32_t BlockCount      = 0;  // number of device memory objects
+    uint32_t AllocationCount = 0;  // number of dedicated (sub-)allocations
+    uint64_t BlockBytes      = 0;  // bytes allocated in dedicated allocations
+    uint64_t AllocationBytes = 0;  // bytes occupied by all (sub-)allocations
+    uint64_t UsageBytes      = 0;  // Estimated current memory usage of the program
+    uint64_t BudgetBytes     = 0;  // Estimated amount of memory available to the program
+};
+
 }  // namespace Pathfinder
 
 #endif  // RENDERERCOREDEFINES_H

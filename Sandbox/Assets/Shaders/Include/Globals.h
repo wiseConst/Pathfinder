@@ -24,6 +24,7 @@ static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(16);
 
 #extension GL_EXT_nonuniform_qualifier : require
 #extension GL_EXT_scalar_block_layout : require
+#extension GL_EXT_buffer_reference2 : require  // GL_EXT_buffer_reference extension is also implicitly enabled.
 
 #extension GL_EXT_shader_explicit_arithmetic_types : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
@@ -57,7 +58,6 @@ struct MeshPositionVertex
     vec3 Position;
 };
 
-// TODO: Packing
 struct MeshAttributeVertex
 {
     u8vec4 Color;
@@ -84,14 +84,25 @@ static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
 vec4 UnpackU8Vec4ToVec4(u8vec4 packed)
 {
     const float invDivisor = 1 / 255.0f;
-    const float r = invDivisor * packed.r;
-    const float g = invDivisor * packed.g;
-    const float b = invDivisor * packed.b;
-    const float a = invDivisor * packed.a;
+    const float r          = invDivisor * packed.r;
+    const float g          = invDivisor * packed.g;
+    const float b          = invDivisor * packed.b;
+    const float a          = invDivisor * packed.a;
 
     return vec4(r, g, b, a);
 }
+
+// From glm
+vec3 RotateByQuat(const vec3 position, const vec4 orientation)
+{
+    const vec3 uv  = cross(orientation.xyz, position);
+    const vec3 uuv = cross(orientation.xyz, uv);
+    return position + ((uv * orientation.w) + uuv) * 2.0;
+}
+
 #endif
+
+const uint32_t s_INVALID_CULLED_OBJECT_INDEX = 2 << 20;
 
 struct PBRData
 {
@@ -108,7 +119,9 @@ struct PBRData
 
 struct MeshData
 {
-    mat4 transform;
+    vec3 translation;
+    vec3 scale;
+    vec4 orientation;
     Sphere sphere;
     uint32_t vertexPosBufferIndex;
     uint32_t vertexAttributeBufferIndex;
@@ -119,99 +132,90 @@ struct MeshData
     uint32_t materialBufferIndex;
 };
 
-// Images/Textures
-const uint32_t TEXTURE_STORAGE_IMAGE_SET = 0;
+const uint32_t BINDLESS_MEGA_SET = 0;
 
 const uint32_t TEXTURE_BINDING       = 0;
 const uint32_t STORAGE_IMAGE_BINDING = 1;
 
-// Storage buffers
-const uint32_t STORAGE_BUFFER_SET = 1;
+const uint32_t STORAGE_BUFFER_VERTEX_POS_BINDING            = 2;
+const uint32_t STORAGE_BUFFER_VERTEX_ATTRIB_BINDING         = 3;
+const uint32_t STORAGE_BUFFER_MESHLET_BINDING               = 4;
+const uint32_t STORAGE_BUFFER_MESHLET_VERTEX_BINDING        = 5;
+const uint32_t STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING      = 6;
+const uint32_t STORAGE_BUFFER_MESH_MATERIAL_BINDING         = 7;
+const uint32_t STORAGE_BUFFER_INDEX_BINDING                 = 8;
+const uint32_t STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING      = 9;
+const uint32_t STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING = 10;
 
-const uint32_t STORAGE_BUFFER_VERTEX_POS_BINDING            = 0;
-const uint32_t STORAGE_BUFFER_VERTEX_ATTRIB_BINDING         = 1;
-const uint32_t STORAGE_BUFFER_MESHLET_BINDING               = 2;
-const uint32_t STORAGE_BUFFER_MESHLET_VERTEX_BINDING        = 3;
-const uint32_t STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING      = 4;
-const uint32_t STORAGE_BUFFER_MESH_MATERIAL_BINDING         = 5;
-const uint32_t STORAGE_BUFFER_INDEX_BINDING                 = 6;
-const uint32_t STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING      = 7;
-const uint32_t STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING = 8;
-
-// Frame data set
-const uint32_t FRAME_DATA_BUFFER_SET = 2;
-
-const uint32_t FRAME_DATA_BUFFER_CAMERA_BINDING = 0;
-const uint32_t FRAME_DATA_BUFFER_LIGHTS_BINDING = 1;
+const uint32_t FRAME_DATA_BUFFER_LIGHTS_BINDING = 11;
 
 // NOTE: I'll have to offset manually in other shaders from this set.
-const uint32_t LAST_BINDLESS_SET = FRAME_DATA_BUFFER_SET;
+const uint32_t LAST_BINDLESS_SET = BINDLESS_MEGA_SET;
 
 #ifdef __cplusplus
 #else
 
-layout(set = TEXTURE_STORAGE_IMAGE_SET, binding = TEXTURE_BINDING) uniform sampler2D u_GlobalTextures[];
-layout(set = TEXTURE_STORAGE_IMAGE_SET, binding = TEXTURE_BINDING) uniform usampler2D u_GlobalTextures_uint[];
-layout(set = TEXTURE_STORAGE_IMAGE_SET, binding = TEXTURE_BINDING) uniform sampler3D u_GlobalTextures3D[];
-layout(set = TEXTURE_STORAGE_IMAGE_SET, binding = TEXTURE_BINDING) uniform usampler3D u_GlobalTextures3D_uint[];
+layout(set = BINDLESS_MEGA_SET, binding = TEXTURE_BINDING) uniform sampler2D u_GlobalTextures[];
+layout(set = BINDLESS_MEGA_SET, binding = TEXTURE_BINDING) uniform usampler2D u_GlobalTextures_uint[];
+layout(set = BINDLESS_MEGA_SET, binding = TEXTURE_BINDING) uniform sampler3D u_GlobalTextures3D[];
+layout(set = BINDLESS_MEGA_SET, binding = TEXTURE_BINDING) uniform usampler3D u_GlobalTextures3D_uint[];
 
-layout(set = TEXTURE_STORAGE_IMAGE_SET, binding = STORAGE_IMAGE_BINDING, rgba8) uniform image2D u_GlobalImages_RGBA8[];
-layout(set = TEXTURE_STORAGE_IMAGE_SET, binding = STORAGE_IMAGE_BINDING, rgba16f) uniform image2D u_GlobalImages_RGBA16F[];
-layout(set = TEXTURE_STORAGE_IMAGE_SET, binding = STORAGE_IMAGE_BINDING, rgba32f) uniform image2D u_GlobalImages_RGBA32F[];
-layout(set = TEXTURE_STORAGE_IMAGE_SET, binding = STORAGE_IMAGE_BINDING, r32f) uniform image2D u_GlobalImages_R32F[];
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, rgba8) uniform image2D u_GlobalImages_RGBA8[];
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, rgba16f) uniform image2D u_GlobalImages_RGBA16F[];
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, rgba32f) uniform image2D u_GlobalImages_RGBA32F[];
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, r32f) uniform image2D u_GlobalImages_R32F[];
 
 // NOTE: Every submesh has it's own storage buffer, where stored array of Positions, etc...
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_VERTEX_POS_BINDING, scalar) readonly buffer VertexPosBuffer
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_VERTEX_POS_BINDING, scalar) readonly buffer VertexPosBuffer
 {
     MeshPositionVertex Positions[];
 }
 s_GlobalVertexPosBuffers[];
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, scalar) readonly buffer VertexAttribBuffer
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, scalar) readonly buffer VertexAttribBuffer
 {
     MeshAttributeVertex Attributes[];
 }
 s_GlobalVertexAttribBuffers[];
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESHLET_BINDING, scalar) readonly buffer MeshletBuffer
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESHLET_BINDING, scalar) readonly buffer MeshletBuffer
 {
     Meshlet meshlets[];
 }
 s_GlobalMeshletBuffers[];
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESHLET_VERTEX_BINDING, scalar) readonly buffer MeshletVerticesBuffer
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESHLET_VERTEX_BINDING, scalar) readonly buffer MeshletVerticesBuffer
 {
     uint32_t vertices[];
 }
 s_GlobalMeshletVerticesBuffers[];
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, scalar) readonly buffer MeshletTrianglesBuffer
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, scalar) readonly buffer MeshletTrianglesBuffer
 {
     uint8_t triangles[];
 }
 s_GlobalMeshletTrianglesBuffers[];
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESH_MATERIAL_BINDING, scalar) readonly buffer MaterialBuffer
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESH_MATERIAL_BINDING, scalar) readonly buffer MaterialBuffer
 {
     PBRData mat;
 }
 s_GlobalMaterialBuffers[];
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_INDEX_BINDING, scalar) readonly buffer MeshIndexBuffer
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_INDEX_BINDING, scalar) readonly buffer MeshIndexBuffer
 {
     uint32_t indices[];
 }
 s_GlobalIndexBuffers[];
 
-// Traditional pipeline, indirect.
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING, scalar) readonly buffer MeshDataBufferOpaque
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING, scalar) readonly buffer MeshDataBufferOpaque
 {
     MeshData MeshesData[];
 }
 s_GlobalMeshDataBufferOpaque;
 
-layout(set = STORAGE_BUFFER_SET, binding = STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING, scalar) readonly buffer MeshDataBufferTransparent
+layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING, scalar) readonly buffer MeshDataBufferTransparent
 {
     MeshData MeshesData[];
 }
@@ -220,9 +224,9 @@ s_GlobalMeshDataBufferTransparent;
 #endif
 
 #ifdef __cplusplus
-struct CameraData
+struct alignas(16) CameraData
 #else
-layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_CAMERA_BINDING, scalar) uniform CameraUB
+layout(buffer_reference, buffer_reference_align = /* 4 */ 16, scalar) readonly buffer CameraData
 #endif
 {
     mat4 Projection;
@@ -234,61 +238,13 @@ layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_CAMERA_BINDING, 
     float zFar;
     float FOV;
     vec2 FullResolution;
+    vec2 InvFullResolution;
     Frustum ViewFrustum;
 }
 #ifdef __cplusplus
 ;
 #else
-u_GlobalCameraData;
-#endif
-
-#ifndef __cplusplus
-vec4 ClipSpaceToView(const vec4 clip)
-{
-    vec4 view = u_GlobalCameraData.InverseProjection * clip;
-    return view / view.w;
-}
-
-/* RHI and their NDCs:
-    OpenGL, OpenGL ES and WebGL NDC: +Y is up. Point(-1, -1) is at the bottom left corner.
-    Framebuffer coordinate: +Y is up.Origin(0, 0) is at the bottom left corner.
-    Texture coordinate:     +Y is up.Origin(0, 0) is at the bottom left corner.
-    See OpenGL 4.6 spec, Figure 8.4.
-
-    D3D12 and Metal NDC:    +Y is up. Point(-1, -1) is at the bottom left corner
-    Framebuffer coordinate: +Y is down. Origin(0, 0) is at the top left corner
-    Texture coordinate:     +Y is down. Origin(0, 0) is at the top left corner.
-
-    Vulkan NDC: +Y is down. Point(-1, -1) is at the top left corner.
-    Framebuffer coordinate: +Y is down. Origin(0, 0) is at the top left corner.
-        See the description about “VkViewport” and “FragCoord” in Vulkan 1.1 spec.
-        But we can flip the viewport coordinate via a negative viewport height value. NOTE!!!: Works only via graphics pipelines!
-    Texture coordinate:     +Y is down. Origin(0, 0) is at the top left corner.
-*/
-vec4 ScreenSpaceToView(const vec4 screen, const vec2 inverseScreenDimensions)
-{
-    const vec2 uv = screen.xy * inverseScreenDimensions;  // convert from range [0, width]-[0, height] to [0, 1], [0, 1]
-
-    /* If screen origin is top left like in DX or Vulkan: (uv.x, 1.0f - uv.y), screen.z - depth in range [0, 1] like in DX or Vulkan*/
-    const vec4 clip = vec4(vec2(uv.x, 1.0 - uv.y) * 2.0 - 1.0, screen.z,  // doesn't affect vulkan
-                           screen.w);  // convert from [0, 1] to NDC([-1, 1]), without touching depth since it's [0, 1] as I require.
-    return ClipSpaceToView(clip);
-}
-
-// NOTE: A bit faster than inverse matrix mul.
-// XeGTAO uses same thing, also better explanation is right there:
-// https://www.youtube.com/watch?v=z1KG2Cwi1pk&list=PLU2nPsAdxKWQYxkmQ3TdbLsyc1l2j25XM&index=125&ab_channel=GameEngineSeries
-float ScreenSpaceDepthToView(const float fScreenDepth)
-{
-    return -u_GlobalCameraData.Projection[3][2] / (fScreenDepth + u_GlobalCameraData.Projection[2][2]);
-}
-
-// https://developer.download.nvidia.com/cg/saturate.html
-float saturate(float x)
-{
-    return clamp(x, 0.0, 1.0);
-}
-
+s_CameraDataBDA;  // Name is unused btw
 #endif
 
 const uint32_t MAX_SHADOW_CASCADES = 5;
@@ -296,7 +252,7 @@ const uint32_t MAX_SHADOW_CASCADES = 5;
 #ifdef __cplusplus
 struct LightsData
 #else
-layout(set = FRAME_DATA_BUFFER_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, scalar) readonly buffer LightsSB
+layout(set = BINDLESS_MEGA_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, scalar) readonly buffer LightsSB
 #endif
 {
     PointLight PointLights[MAX_POINT_LIGHTS];
@@ -336,11 +292,64 @@ layout(push_constant, scalar) uniform PushConstantBlock
 
     uint32_t MaterialBufferIndex;
 
+#ifdef __cplusplus
+    uint64_t CameraDataBuffer;
+#else
+    CameraData CameraDataBuffer;
+#endif
     vec4 pad0;
-    vec3 pad1;
 }
 #ifdef __cplusplus
 ;
 #else
 u_PC;
+#endif
+
+#ifndef __cplusplus
+vec4 ClipSpaceToView(const vec4 clip)
+{
+    vec4 view = u_PC.CameraDataBuffer.InverseProjection * clip;
+    return view / view.w;
+}
+
+/* RHI and their NDCs:
+    OpenGL, OpenGL ES and WebGL NDC: +Y is up. Point(-1, -1) is at the bottom left corner.
+    Framebuffer coordinate: +Y is up.Origin(0, 0) is at the bottom left corner.
+    Texture coordinate:     +Y is up.Origin(0, 0) is at the bottom left corner.
+    See OpenGL 4.6 spec, Figure 8.4.
+
+    D3D12 and Metal NDC:    +Y is up. Point(-1, -1) is at the bottom left corner
+    Framebuffer coordinate: +Y is down. Origin(0, 0) is at the top left corner
+    Texture coordinate:     +Y is down. Origin(0, 0) is at the top left corner.
+
+    Vulkan NDC: +Y is down. Point(-1, -1) is at the top left corner.
+    Framebuffer coordinate: +Y is down. Origin(0, 0) is at the top left corner.
+        See the description about “VkViewport” and “FragCoord” in Vulkan 1.1 spec.
+        But we can flip the viewport coordinate via a negative viewport height value. NOTE!!!: Works only via graphics pipelines!
+    Texture coordinate:     +Y is down. Origin(0, 0) is at the top left corner.
+*/
+vec4 ScreenSpaceToView(const vec4 screen, const vec2 inverseScreenDimensions)
+{
+    const vec2 uv = screen.xy * inverseScreenDimensions;  // convert from range [0, width]-[0, height] to [0, 1], [0, 1]
+
+    /* If screen origin is top left like in DX or Vulkan: (uv.x, 1.0f - uv.y), screen.z - depth in range [0, 1] like in DX or Vulkan*/
+    const vec4 clip = vec4(vec2(uv.x, 1.0 - uv.y) * 2.0 - 1.0, screen.z,  // doesn't affect vulkan
+                           screen.w);  // convert from [0, 1] to NDC([-1, 1]), without touching depth since it's [0, 1] as I require.
+    return ClipSpaceToView(clip);
+}
+
+// NOTE: A bit faster than inverse matrix mul.
+// XeGTAO uses same thing, also better explanation is right there:
+// https://www.youtube.com/watch?v=z1KG2Cwi1pk&list=PLU2nPsAdxKWQYxkmQ3TdbLsyc1l2j25XM&index=125&ab_channel=GameEngineSeries
+float ScreenSpaceDepthToView(const float fScreenDepth)
+{
+    return -u_PC.CameraDataBuffer.Projection[3][2] / (fScreenDepth + u_PC.CameraDataBuffer.Projection[2][2]);
+}
+
+// https://developer.download.nvidia.com/cg/saturate.html
+float saturate(float x)
+{
+    return clamp(x, 0.0, 1.0);
+}
+
 #endif

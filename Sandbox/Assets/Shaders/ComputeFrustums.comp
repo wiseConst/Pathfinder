@@ -15,8 +15,7 @@ layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) writeonly buffer LightC
 void main()
 {
     const vec2 wgid = vec2(gl_GlobalInvocationID.xy); // Each thread inside warp creates 1 frustum.
-    if(any(greaterThan(wgid, u_GlobalCameraData.FullResolution))) return;
-    const vec2 invRes = 1.0f / u_GlobalCameraData.FullResolution;
+    if(any(greaterThan(wgid, u_PC.CameraDataBuffer.FullResolution))) return;
 
     // -Z = -1
     vec4 screenSpace[4];
@@ -31,11 +30,11 @@ void main()
     
     vec3 viewSpace[4];
     for(uint i = 0; i < 4; ++i)
-        viewSpace[i] = ScreenSpaceToView(screenSpace[i], invRes).xyz;
+        viewSpace[i] = ScreenSpaceToView(screenSpace[i], u_PC.CameraDataBuffer.InvFullResolution).xyz;
 
     // View space eye position is always at the origin.
     const vec3 eyePos = vec3(0);
-    const uint linearTileIndex = GetLinearGridIndex(wgid * LIGHT_CULLING_TILE_SIZE, u_GlobalCameraData.FullResolution.x);
+    const uint linearTileIndex = GetLinearGridIndex(wgid * LIGHT_CULLING_TILE_SIZE, u_PC.CameraDataBuffer.FullResolution.x);
     s_GridFrustumsBuffer.frustums[linearTileIndex].Planes[0] = ComputePlane(eyePos, viewSpace[2], viewSpace[0]);
     s_GridFrustumsBuffer.frustums[linearTileIndex].Planes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
     s_GridFrustumsBuffer.frustums[linearTileIndex].Planes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);

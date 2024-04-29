@@ -1,8 +1,6 @@
 #include "PathfinderPCH.h"
 #include "Submesh.h"
 
-#include "Renderer/Renderer.h"
-
 namespace Pathfinder
 {
 

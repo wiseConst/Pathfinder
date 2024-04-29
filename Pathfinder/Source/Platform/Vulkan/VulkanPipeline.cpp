@@ -112,7 +112,7 @@ void VulkanPipeline::CreateLayout()
     if (m_Specification.bBindlessCompatible)
     {
         const auto brDescriptorSets = vulkanBR->GetDescriptorSetLayouts();
-        setLayouts.insert(setLayouts.begin(), brDescriptorSets.begin(), brDescriptorSets.end());
+        setLayouts.insert(setLayouts.end(), brDescriptorSets.begin(), brDescriptorSets.end());
         pushConstants.emplace_back(vulkanBR->GetPushConstantBlock());
     }
     const auto descriptorSetLayoutsSizeAfterBindlessCheck = static_cast<uint16_t>(setLayouts.size());
@@ -121,48 +121,35 @@ void VulkanPipeline::CreateLayout()
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(m_Specification.Shader);
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
 
-    const auto appendVecFunc = [&](auto& dst, const auto& src)
-    {
-        for (const auto& elem : src)
-            dst.emplace_back(elem);
-    };
+    const auto appendVecFunc = [&](auto& dst, const auto& src) { dst.insert(dst.end(), src.begin(), src.end()); };
     switch (m_Specification.PipelineType)
     {
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
+
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
+            appendVecFunc(setLayouts,
+                          vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
+
             appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_FRAGMENT));
 
             // For bindless compatibility, push constants should be identical.
-            if (m_Specification.bMeshShading)
+            if (!m_Specification.bBindlessCompatible)
             {
-                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
-                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
 
-                if (!m_Specification.bBindlessCompatible)
-                {
-                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
-                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
-                }
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
+                appendVecFunc(pushConstants,
+                              vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
             }
-            else
-            {
-                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
-                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
-                appendVecFunc(setLayouts,
-                              vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
-                appendVecFunc(setLayouts,
-                              vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
 
-                if (!m_Specification.bBindlessCompatible)
-                {
-                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
-                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
-                    appendVecFunc(pushConstants,
-                                  vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
-                    appendVecFunc(pushConstants,
-                                  vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
-                }
-            }
             break;
         }
         case EPipelineType::PIPELINE_TYPE_COMPUTE:
@@ -221,8 +208,11 @@ void VulkanPipeline::CreateLayout()
     layoutCI.pPushConstantRanges    = pushConstants.data();
     layoutCI.pushConstantRangeCount = static_cast<uint32_t>(pushConstants.size());
 
-    VK_CHECK(vkCreatePipelineLayout(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &layoutCI, nullptr, &m_Layout),
-             "Failed to create pipeline layout!");
+    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+    VK_CHECK(vkCreatePipelineLayout(logicalDevice, &layoutCI, nullptr, &m_Layout), "Failed to create pipeline layout!");
+
+    const std::string pipelineLayoutName = "VK_PIPELINE_LAYOUT_" + m_Specification.DebugName;
+    VK_SetDebugName(logicalDevice, m_Layout, VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayoutName.data());
 }
 
 void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName) const

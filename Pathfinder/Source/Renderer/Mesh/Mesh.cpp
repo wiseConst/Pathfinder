@@ -1,21 +1,21 @@
 #include "PathfinderPCH.h"
 #include "Mesh.h"
+#include "Submesh.h"
+#include "Globals.h"
 
 #include "Renderer/Buffer.h"
 #include "Renderer/Material.h"
 #include "Renderer/Image.h"
 #include "Renderer/Texture2D.h"
 #include "Renderer/Renderer.h"
-#include "Renderer/BindlessRenderer.h"
-#include "Renderer/RayTracingBuilder.h"
 #include "Core/Application.h"
+
+#include "MeshManager.h"
 
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/core.hpp>
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
-
-#include <meshoptimizer.h>
 
 namespace Pathfinder
 {
@@ -350,165 +350,6 @@ static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Text
 
 }  // namespace FastGLTFUtils
 
-namespace MeshPreprocessorUtils
-{
-
-static u8vec4 PackVec4ToU8Vec4(const glm::vec4& vec)
-{
-    // Normalize the components to [0, 255]
-    const uint8_t r = static_cast<uint8_t>(vec.r * 255.0f);
-    const uint8_t g = static_cast<uint8_t>(vec.g * 255.0f);
-    const uint8_t b = static_cast<uint8_t>(vec.b * 255.0f);
-    const uint8_t a = static_cast<uint8_t>(vec.a * 255.0f);
-
-    return u8vec4(r, g, b, a);
-}
-
-// TODO: SIMDify it?
-static AABB GenerateAABB(const std::vector<MeshPositionVertex>& points)
-{
-    glm::vec3 min = glm::vec3(FLT_MAX);
-    glm::vec3 max = glm::vec3(FLT_MIN);
-    for (const auto& point : points)
-    {
-        min = glm::min(point.Position, min);
-        max = glm::max(point.Position, max);
-    }
-
-    const glm::vec3 center = (max + min) * .5f;
-    return {center, max - center};
-}
-
-static Sphere GenerateBoundingSphere(const std::vector<MeshPositionVertex>& points)
-{
-    glm::vec3 farthestVtx[2] = {points[0].Position, points[0].Position};
-    glm::vec3 averagedVertexPos(0.0f);
-
-    // First pass - find averaged vertex pos.
-    for (const auto& point : points)
-        averagedVertexPos += point.Position;
-
-    averagedVertexPos /= points.size();
-    const auto aabb = GenerateAABB(points);
-
-    // Second pass - find farthest vertices for both averaged vertex position and AABB centroid.
-    for (const auto& point : points)
-    {
-        if (glm::distance2(averagedVertexPos, point.Position) > glm::distance2(averagedVertexPos, farthestVtx[0]))
-            farthestVtx[0] = point.Position;
-        if (glm::distance2(aabb.Center, point.Position) > glm::distance2(aabb.Center, farthestVtx[1])) farthestVtx[1] = point.Position;
-    }
-
-    const float averagedVtxToFarthestDistance  = glm::distance(farthestVtx[0], averagedVertexPos);
-    const float aabbCentroidToFarthestDistance = glm::distance(farthestVtx[1], aabb.Center);
-
-    Sphere sphere = {};
-    sphere.Center = averagedVtxToFarthestDistance < aabbCentroidToFarthestDistance ? averagedVertexPos : aabb.Center;
-    sphere.Radius = glm::min(averagedVtxToFarthestDistance, aabbCentroidToFarthestDistance);
-
-    return sphere;
-}
-
-struct MeshoptimizeVertex
-{
-    glm::vec3 Position = glm::vec3(0.0f);
-    u8vec4 Color       = u8vec4(255);
-    glm::vec3 Normal   = glm::vec3(0.0f);
-    glm::vec3 Tangent  = glm::vec3(0.0f);
-    glm::u16vec2 UV    = glm::u16vec2(0);
-};
-
-static void OptimizeMesh(const std::vector<uint32_t>& srcIndices, const std::vector<MeshoptimizeVertex>& srcVertices,
-                         std::vector<uint32_t>& outIndices, std::vector<MeshoptimizeVertex>& outVertices)
-{
-    // #1 INDEXING
-    std::vector<uint32_t> remappedIndices(srcIndices.size());
-    const size_t remappedVertexCount = meshopt_generateVertexRemap(remappedIndices.data(), srcIndices.data(), srcIndices.size(),
-                                                                   srcVertices.data(), srcVertices.size(), sizeof(srcVertices[0]));
-
-    outIndices.resize(remappedIndices.size());
-    meshopt_remapIndexBuffer(outIndices.data(), srcIndices.data(), remappedIndices.size(), remappedIndices.data());
-
-    outVertices.resize(remappedVertexCount);
-    meshopt_remapVertexBuffer(outVertices.data(), srcVertices.data(), srcVertices.size(), sizeof(srcVertices[0]), remappedIndices.data());
-
-    // #2 VERTEX CACHE
-    meshopt_optimizeVertexCache(outIndices.data(), outIndices.data(), outIndices.size(), outVertices.size());
-
-    // #3 OVERDRAW
-    meshopt_optimizeOverdraw(outIndices.data(), outIndices.data(), outIndices.size(), &outVertices[0].Position.x, outVertices.size(),
-                             sizeof(outVertices[0]),
-                             1.05f);  // max 5% vertex cache hit ratio can be worse then before
-
-    // NOTE: I don't think I rly need to call these funcs twice since I'm using 2 vertex streams, cuz I've already merged them in
-    // MeshoptimizeVertex and then I unmerge them xd
-    // #4 VERTEX FETCH
-    meshopt_optimizeVertexFetch(outVertices.data(), outIndices.data(), outIndices.size(), outVertices.data(), outVertices.size(),
-                                sizeof(outVertices[0]));
-}
-
-static void BuildMeshlets(const std::vector<uint32_t>& indices, const std::vector<MeshPositionVertex>& vertexPositions,
-                          std::vector<Meshlet>& outMeshlets, std::vector<uint32_t>& outMeshletVertices,
-                          std::vector<uint8_t>& outMeshletTriangles)
-{
-    const size_t maxMeshletCount = meshopt_buildMeshletsBound(indices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_TRIANGLE_COUNT);
-    std::vector<meshopt_Meshlet> meshopt_meshlets(maxMeshletCount);
-    outMeshletVertices.resize(maxMeshletCount * MAX_MESHLET_VERTEX_COUNT);
-    outMeshletTriangles.resize(maxMeshletCount * MAX_MESHLET_TRIANGLE_COUNT * 3);
-
-    const size_t actualMeshletCount =
-        meshopt_buildMeshlets(meshopt_meshlets.data(), outMeshletVertices.data(), outMeshletTriangles.data(), indices.data(),
-                              indices.size(), &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(vertexPositions[0]),
-                              MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_TRIANGLE_COUNT, MESHLET_CONE_WEIGHT);
-
-    {
-        // Trimming
-        const meshopt_Meshlet& last = meshopt_meshlets[actualMeshletCount - 1];
-        outMeshletVertices.resize(last.vertex_offset + last.vertex_count);
-        outMeshletVertices.shrink_to_fit();
-
-        outMeshletTriangles.resize(last.triangle_offset + ((last.triangle_count * 3 + 3) & ~3));
-        outMeshletTriangles.shrink_to_fit();
-
-        meshopt_meshlets.resize(actualMeshletCount);
-        meshopt_meshlets.shrink_to_fit();
-    }
-
-    // For optimal performance, it is recommended to further optimize each meshlet in isolation for better triangle and vertex locality
-    for (size_t i{}; i < meshopt_meshlets.size(); ++i)
-    {
-        meshopt_optimizeMeshlet(&outMeshletVertices[meshopt_meshlets[i].vertex_offset],
-                                &outMeshletTriangles[meshopt_meshlets[i].triangle_offset], meshopt_meshlets[i].triangle_count,
-                                meshopt_meshlets[i].vertex_count);
-    }
-
-    outMeshlets.resize(meshopt_meshlets.size());
-    for (size_t i = 0; i < actualMeshletCount; ++i)
-    {
-        const auto& meshopt_m       = meshopt_meshlets[i];
-        const meshopt_Bounds bounds = meshopt_computeMeshletBounds(
-            &outMeshletVertices[meshopt_m.vertex_offset], &outMeshletTriangles[meshopt_m.triangle_offset], meshopt_m.triangle_count,
-            &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(vertexPositions[0]));
-
-        auto& m          = outMeshlets[i];
-        m.vertexOffset   = meshopt_m.vertex_offset;
-        m.vertexCount    = meshopt_m.vertex_count;
-        m.triangleOffset = meshopt_m.triangle_offset;
-        m.triangleCount  = meshopt_m.triangle_count;
-
-        m.center[0] = bounds.center[0];
-        m.center[1] = bounds.center[1];
-        m.center[2] = bounds.center[2];
-
-        m.coneAxis[0] = bounds.cone_axis[0];
-        m.coneAxis[1] = bounds.cone_axis[1];
-        m.coneAxis[2] = bounds.cone_axis[2];
-
-        m.coneCutoff = bounds.cone_cutoff;
-    }
-}
-}  // namespace MeshPreprocessorUtils
-
 Mesh::Mesh(const std::filesystem::path& meshPath)
 {
     // Optimally, you should reuse Parser instance across loads, but don't use it across threads.
@@ -544,17 +385,11 @@ Mesh::Mesh(const std::filesystem::path& meshPath)
         LoadSubmeshes(currentMeshDir, loadedTextures, asset.get(), meshIndex);
     }
 
-#if TODO
-    if (Renderer::GetRendererSettings().bRTXSupport)
-    {
-        m_BLASes = RayTracingBuilder::BuildBLASes(m_Submeshes);
-        m_TLAS   = RayTracingBuilder::BuildTLAS(m_BLASes);
-    }
-#endif
-
 #if PFR_DEBUG
     PFR_ASSERT(fastgltf::validate(asset.get()) == fastgltf::Error::None, "Asset is not valid after processing?");
 #endif
+
+    m_Submeshes.shrink_to_fit();
 
     LOG_TAG_INFO(FASTGLTF, "Time taken to load and create mesh - \"%s\": (%0.5f) seconds.", meshPath.string().data(),
                  t.GetElapsedSeconds());
@@ -572,20 +407,6 @@ Shared<Mesh> Mesh::Create(const std::string& meshPath)
     std::string fullMeshPathString           = fullMeshPath.string();
     std::replace(fullMeshPathString.begin(), fullMeshPathString.end(), '\\', '/');  // adjust
     return MakeShared<Mesh>(fullMeshPathString);
-}
-
-void Mesh::Destroy()
-{
-#if TODO
-    if (Renderer::GetRendererSettings().bRTXSupport)
-    {
-        RayTracingBuilder::DestroyAccelerationStructure(m_TLAS);
-        for (auto& blas : m_BLASes)
-            RayTracingBuilder::DestroyAccelerationStructure(blas);
-    }
-#endif
-
-    m_Submeshes.clear();
 }
 
 void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures,
@@ -623,8 +444,8 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
                                      [&](const fastgltf::TRS& transform)
                                      {
                                          const glm::vec3 tl(transform.translation[0], transform.translation[1], transform.translation[2]);
-                                         const glm::quat rot(transform.rotation[3], transform.rotation[0], transform.rotation[1],
-                                                             transform.rotation[2]);
+                                         const glm::quat rot(transform.rotation[0], transform.rotation[1], transform.rotation[2],
+                                                             transform.rotation[3]);
                                          const glm::vec3 sc(transform.scale[0], transform.scale[1], transform.scale[2]);
 
                                          const glm::mat4 tm = glm::translate(glm::mat4(1.f), tl);
@@ -635,7 +456,7 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
                                      }},
                    fastGLTFnode.transform);
 
-        std::vector<MeshPreprocessorUtils::MeshoptimizeVertex> meshoptimizeVertices(positionAccessor.count);
+        std::vector<MeshManager::MeshoptimizeVertex> meshoptimizeVertices(positionAccessor.count);
         fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, positionAccessor,
                                                       [&](const glm::vec3& position, std::size_t idx)
                                                       { meshoptimizeVertices[idx].Position = localTransform * vec4(position, 1.0); });
@@ -660,10 +481,8 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
         if (const auto& color_0_It = p.findAttribute("COLOR_0"); color_0_It != p.attributes.end())
         {
             fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[color_0_It->second],
-                                                          [&](const glm::vec4& color, std::size_t idx) {
-                                                              meshoptimizeVertices[idx].Color =
-                                                                  MeshPreprocessorUtils::PackVec4ToU8Vec4(color);
-                                                          });
+                                                          [&](const glm::vec4& color, std::size_t idx)
+                                                          { meshoptimizeVertices[idx].Color = PackVec4ToU8Vec4(color); });
         }
 
         // UV
@@ -779,17 +598,14 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
         }
 
         std::vector<uint32_t> finalIndices;
-        std::vector<MeshPreprocessorUtils::MeshoptimizeVertex> finalVertices;
-        MeshPreprocessorUtils::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
+        std::vector<MeshManager::MeshoptimizeVertex> finalVertices;
+        MeshManager::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
 
         BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_INDEX_BINDING, true};
         ibSpec.Data                = finalIndices.data();
         ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);
-        if (Renderer::GetRendererSettings().bRTXSupport)
-        {
-            ibSpec.BufferUsage |=
-                EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
-        }
+        ibSpec.BufferUsage |=
+            EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         submesh->m_IndexBuffer = Buffer::Create(ibSpec);
 
         std::vector<MeshPositionVertex> vertexPositions(finalVertices.size());
@@ -811,29 +627,23 @@ void Mesh::LoadSubmeshes(const std::string& meshDir, std::unordered_map<std::str
         BufferSpecification vbPosSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_VERTEX_POS_BINDING, true};
         vbPosSpec.Data                = vertexPositions.data();
         vbPosSpec.DataSize            = vertexPositions.size() * sizeof(vertexPositions[0]);
-        if (Renderer::GetRendererSettings().bRTXSupport)
-        {
-            vbPosSpec.BufferUsage |=
-                EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
-        }
+        vbPosSpec.BufferUsage |=
+            EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         submesh->m_VertexPositionBuffer = Buffer::Create(vbPosSpec);
 
         BufferSpecification vbAttribSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, true};
         vbAttribSpec.Data                = vertexAttributes.data();
         vbAttribSpec.DataSize            = vertexAttributes.size() * sizeof(vertexAttributes[0]);
-        if (Renderer::GetRendererSettings().bRTXSupport)
-        {
-            vbAttribSpec.BufferUsage |=
-                EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
-        }
+        vbAttribSpec.BufferUsage |=
+            EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         submesh->m_VertexAttributeBuffer = Buffer::Create(vbAttribSpec);
 
-        submesh->m_BoundingSphere = MeshPreprocessorUtils::GenerateBoundingSphere(vertexPositions);
+        submesh->m_BoundingSphere = MeshManager::GenerateBoundingSphere(vertexPositions);
 
         std::vector<uint32_t> meshletVertices;
         std::vector<uint8_t> meshletTriangles;
         std::vector<Meshlet> meshlets;
-        MeshPreprocessorUtils::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
+        MeshManager::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
 
         BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_BINDING, true};
         mbSpec.Data                = meshlets.data();

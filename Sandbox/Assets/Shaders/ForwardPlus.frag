@@ -20,22 +20,20 @@ layout(constant_id = 0) const bool bRenderViewNormalMap = false;
     uint32_t StorageImageIndex; - u_AO
     uint32_t AlbedoTextureIndex; - storing cascade debug image
 
-    uint32_t MaterialBufferIndex; - material index
-
     vec4 pad0; x(far plane for point light shadow maps)
     vec3 pad1;
 */
 
-layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) buffer readonly VisiblePointLightIndicesBuffer
+layout(set = LAST_BINDLESS_SET + 3, binding = 0, scalar) buffer readonly VisiblePointLightIndicesBuffer
 {
     LIGHT_INDEX_TYPE indices[];
 } s_VisiblePointLightIndicesBuffer;
-layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) buffer readonly VisibleSpotLightIndicesBuffer
+layout(set = LAST_BINDLESS_SET + 3, binding = 1, scalar) buffer readonly VisibleSpotLightIndicesBuffer
 {
     LIGHT_INDEX_TYPE indices[];
 } s_VisibleSpotLightIndicesBuffer;
-layout(set = LAST_BINDLESS_SET + 1, binding = 2) uniform sampler2DArray u_DirShadowmap[MAX_DIR_LIGHTS];
-layout(set = LAST_BINDLESS_SET + 1, binding = 3) uniform samplerCube u_PointShadowmap[MAX_POINT_LIGHTS];
+layout(set = LAST_BINDLESS_SET + 3, binding = 2) uniform sampler2DArray u_DirShadowmap[MAX_DIR_LIGHTS];
+layout(set = LAST_BINDLESS_SET + 3, binding = 3) uniform samplerCube u_PointShadowmap[MAX_POINT_LIGHTS];
 
 layout(location = 0) out vec4 outFragColor;
 layout(location = 1) out vec4 outBrightColor;
@@ -47,6 +45,7 @@ layout(location = 0) in VertexInput
     vec2 UV;
     vec3 WorldPos;
     mat3 TBNtoWorld;
+    flat uint32_t MaterialBufferIndex;
 } i_VertexInput;
 
 // https://forums.unrealengine.com/t/the-math-behind-combining-bc5-normals/365189
@@ -66,10 +65,10 @@ vec2 GetMetallicRoughnessMap(const PBRData mat)
 
 void main()
 {
-    const PBRData mat = s_GlobalMaterialBuffers[nonuniformEXT(u_PC.MaterialBufferIndex)].mat;
+    const PBRData mat = s_GlobalMaterialBuffers[nonuniformEXT(i_VertexInput.MaterialBufferIndex)].mat;
 
     const vec3 N = normalize(i_VertexInput.TBNtoWorld * GetNormalFromNormalMap(mat));
-    const vec3 V = normalize(u_GlobalCameraData.Position - i_VertexInput.WorldPos);
+    const vec3 V = normalize(u_PC.CameraDataBuffer.Position - i_VertexInput.WorldPos);
 
     // <0> is reserved for white texture
     const vec3 emissive = mat.EmissiveTextureIndex != 0 ? texture(u_GlobalTextures[nonuniformEXT(mat.EmissiveTextureIndex)], i_VertexInput.UV).rgb : vec3(0.f);
@@ -95,7 +94,7 @@ void main()
 
         float kShadow = 1.0f;
         if (dl.bCastShadows) {
-            const vec4 fragPosVS = u_GlobalCameraData.View * vec4(i_VertexInput.WorldPos, 1);
+            const vec4 fragPosVS = u_PC.CameraDataBuffer.View * vec4(i_VertexInput.WorldPos, 1);
             const float depthVS = abs(fragPosVS.z);
 
             int layer = -1;
@@ -124,7 +123,7 @@ void main()
             float biasMultiplier = 1.f;
             if (layer == MAX_SHADOW_CASCADES - 1)
             {
-                biasMultiplier = 1.f / (u_GlobalCameraData.zFar * .5f);
+                biasMultiplier = 1.f / (u_PC.CameraDataBuffer.zFar * .5f);
             }
             else
             {
@@ -140,7 +139,7 @@ void main()
         #endif
     }
     
-    const uint linearTileIndex = GetLinearGridIndex(gl_FragCoord.xy, u_GlobalCameraData.FullResolution.x);
+    const uint linearTileIndex = GetLinearGridIndex(gl_FragCoord.xy, u_PC.CameraDataBuffer.FullResolution.x);
     // Point lights
     {
         const uint offset = linearTileIndex * MAX_POINT_LIGHTS;
@@ -151,7 +150,7 @@ void main()
 
             PointLight pl = u_Lights.PointLights[lightIndex];
             float kShadow = 1.0f;
-            if(pl.bCastShadows) kShadow = 1.f - PointShadowCalculation(u_PointShadowmap[lightIndex], i_VertexInput.WorldPos, u_GlobalCameraData.Position, pl, u_PC.pad0.x /* far plane for point light shadow maps */);
+            if(pl.bCastShadows) kShadow = 1.f - PointShadowCalculation(u_PointShadowmap[lightIndex], i_VertexInput.WorldPos, u_PC.CameraDataBuffer.Position, pl, u_PC.pad0.x /* far plane for point light shadow maps */);
 
             #if PHONG
                 irradiance += PointLightContribution(kShadow, i_VertexInput.WorldPos, N, V, pl, albedo.rgb, ao);
@@ -186,6 +185,6 @@ void main()
 
     if(bRenderViewNormalMap)
     {
-        outViewNormalMap = u_GlobalCameraData.View * vec4(N, 1);
+        outViewNormalMap = u_PC.CameraDataBuffer.View * vec4(N, 1);
     }
 }

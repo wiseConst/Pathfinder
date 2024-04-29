@@ -2,6 +2,8 @@
 #include "RenderGraphBuilder.h"
 #include "RenderGraph.h"
 
+#include "Core/Application.h"
+
 #include <simdjson.h>
 
 namespace Pathfinder
@@ -33,11 +35,17 @@ static ERenderGraphResourceType StringToResourceType(const std::string& type)
 
 Unique<RenderGraph> RenderGraphBuilder::Create(const std::filesystem::path& renderGraphSpecificationPath)
 {
+    return nullptr;
+
     PFR_ASSERT(!renderGraphSpecificationPath.empty(), "Invalid render graph specification path!");
+
+    const auto& appSpec = Application::Get().GetSpecification();
+    const std::filesystem::path renderGraphFilePath =
+        std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / renderGraphSpecificationPath;
 
     using namespace simdjson;
     ondemand::parser parser;
-    const auto parsedJson  = padded_string::load(renderGraphSpecificationPath.string());
+    const auto parsedJson  = padded_string::load(renderGraphFilePath.string());
     ondemand::document doc = parser.iterate(parsedJson);
 
     std::string debugName = s_DEFAULT_STRING;

@@ -5,6 +5,7 @@
 #define GLM_FORCE_CTOR_INIT
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE
 #define GLM_FORCE_QUAT_DATA_XYZW
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/quaternion.hpp>
@@ -12,6 +13,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/random.hpp>
 #include <glm/ext/quaternion_trigonometric.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
 
 #include "CoreDefines.h"
 
@@ -45,6 +47,17 @@ NODISCARD FORCEINLINE static uint32_t DivideToNextMultiple(const uint32_t divide
     PFR_ASSERT(divisor != 0, "Division by zero!");
 
     return (dividend + divisor - 1) / divisor;
+}
+
+static glm::u8vec4 PackVec4ToU8Vec4(const glm::vec4& vec)
+{
+    // Normalize the components to [0, 255]
+    const uint8_t r = static_cast<uint8_t>(vec.r * 255.0f);
+    const uint8_t g = static_cast<uint8_t>(vec.g * 255.0f);
+    const uint8_t b = static_cast<uint8_t>(vec.b * 255.0f);
+    const uint8_t a = static_cast<uint8_t>(vec.a * 255.0f);
+
+    return glm::u8vec4(r, g, b, a);
 }
 
 }  // namespace Pathfinder
