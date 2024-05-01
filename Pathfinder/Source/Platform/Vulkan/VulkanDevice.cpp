@@ -29,6 +29,10 @@ VulkanDevice::VulkanDevice(const VkInstance& instance, const VulkanDeviceSpecifi
     m_PresentFamily  = vulkanDeviceSpec.PresentFamily;
     m_ComputeFamily  = vulkanDeviceSpec.ComputeFamily;
     m_TransferFamily = vulkanDeviceSpec.TransferFamily;
+    m_DeviceName     = vulkanDeviceSpec.DeviceName;
+    m_VendorID       = vulkanDeviceSpec.VendorID;
+    m_DeviceID       = vulkanDeviceSpec.DeviceID;
+    memcpy(m_PipelineCacheUUID, vulkanDeviceSpec.PipelineCacheUUID, sizeof(vulkanDeviceSpec.PipelineCacheUUID[0]) * VK_UUID_SIZE);
 
     // Since all depth/stencil formats may be optional, we need to find a supported depth/stencil formats
     for (const std::vector<VkFormat> availableDepthStencilFormats = {VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT,

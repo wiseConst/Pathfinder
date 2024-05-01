@@ -75,6 +75,10 @@ Unique<VulkanDevice> VulkanDeviceManager::ChooseBestFitDevice(const VkInstance& 
     vulkanDeviceSpec.PresentFamily             = suitableGpu.QueueFamilyIndices.PresentFamily;
     vulkanDeviceSpec.ComputeFamily             = suitableGpu.QueueFamilyIndices.ComputeFamily;
     vulkanDeviceSpec.TransferFamily            = suitableGpu.QueueFamilyIndices.TransferFamily;
+    vulkanDeviceSpec.DeviceID                  = suitableGpu.Properties.deviceID;
+    vulkanDeviceSpec.VendorID                  = suitableGpu.Properties.vendorID;
+    memcpy(vulkanDeviceSpec.PipelineCacheUUID, suitableGpu.Properties.pipelineCacheUUID,
+           sizeof(suitableGpu.Properties.pipelineCacheUUID[0]) * VK_UUID_SIZE);
 
     return MakeUnique<VulkanDevice>(instance, vulkanDeviceSpec);
 }

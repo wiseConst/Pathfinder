@@ -15,6 +15,9 @@ void SandboxLayer::Init()
 
     m_Camera = Camera::Create(ECameraType::CAMERA_TYPE_PERSPECTIVE);
 
+    m_ActiveScene = MakeShared<Scene>("TestBed");
+    m_ActiveScene->CreateEntity();
+
     m_Dummy  = Mesh::Create("stanford/dragon/scene.gltf");
     m_Sponza = Mesh::Create("sponza/scene.gltf");
     m_Helmet = Mesh::Create("damaged_helmet/DamagedHelmet.gltf");
@@ -59,13 +62,6 @@ void SandboxLayer::Init()
     }
 #endif
 
-    m_PointShadowCaster              = {};
-    m_PointShadowCaster.bCastShadows = true;
-    m_PointShadowCaster.Color        = glm::vec3(1, 0.1f, 0.2f);
-    m_PointShadowCaster.Intensity    = 2.9f;
-    m_PointShadowCaster.Radius       = 5.0f;
-    m_PointShadowCaster.Position     = glm::vec3(0.0f, 4.0f, 0);
-
     UILayer::SetDefaultFont("Fonts/Manrope/static/Manrope-Bold.ttf", 18.0f);
 }
 
@@ -96,6 +92,8 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 
     Renderer::BeginScene(*m_Camera);
 
+    m_ActiveScene->OnUpdate(deltaTime);
+
     {
         const glm::mat4 transform = glm::translate(glm::mat4(1.f), glm::vec3(5, 1.2, 0));
         Renderer::SubmitMesh(m_Dummy, transform);
@@ -119,7 +117,8 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0))*/
                                     * glm::scale(glm::mat4(1.f), glm::vec3(0.09f));
         Renderer::SubmitMesh(m_Gun, transform);
-        DebugRenderer::DrawAABB(m_Gun, transform, glm::vec4(1, 0, 1, 1));
+        //  DebugRenderer::DrawAABB(m_Gun, transform, glm::vec4(1, 0, 1, 1));
+        DebugRenderer::DrawSphere(m_Gun, transform, glm::vec4(1, 0, 1, 1));
     }
 
     // DebugRenderer::DrawLine(glm::vec3(0.f), glm::vec3(5.f), glm::vec4(1, 0, 1, 1));
@@ -138,15 +137,6 @@ glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0))*/
 
         Renderer::AddDirectionalLight(dl);
     }
-
-#if 0
-    m_PointShadowCaster.Position += glm::vec3(3, 0, 0) * deltaTime;
-    if (m_PointShadowCaster.Position.x > maxLightPos.x)
-    {
-        m_PointShadowCaster.Position.x -= (maxLightPos.x - minLightPos.x);
-    }
-    Renderer::AddPointLight(m_PointShadowCaster);
-#endif
 
 #endif
 
@@ -192,7 +182,11 @@ glm::rotate(glm::mat4(1.f), glm::radians(-90.f), glm::vec3(1, 0, 0))*/
 
 void SandboxLayer::OnUIRender()
 {
-    if (!bRenderUI) return;
+    if (!bRenderUI)
+    {
+        UILayer::SetBlockEvents(false);
+        return;
+    }
 
     bool bAnythingHovered = false;
     bool bAnythingFocused = false;
@@ -248,14 +242,20 @@ void SandboxLayer::OnUIRender()
         }
         ImGui::Separator();
 
-        const char* currentBlurTypeStr = rs.BlurType == EBlurType::BLUR_TYPE_GAUSSIAN ? "GAUSSIAN" : "MEDIAN";
-        const char* blurItems[2]       = {"GAUSSIAN", "MEDIAN"};
+        std::string currentBlurTypeStr = s_DEFAULT_STRING;
+        switch (rs.BlurType)
+        {
+            case EBlurType::BLUR_TYPE_GAUSSIAN: currentBlurTypeStr = "GAUSSIAN"; break;
+            case EBlurType::BLUR_TYPE_MEDIAN: currentBlurTypeStr = "MEDIAN"; break;
+            case EBlurType::BLUR_TYPE_BOX: currentBlurTypeStr = "BOX"; break;
+        }
+        const char* blurItems[3] = {"GAUSSIAN", "MEDIAN", "BOX"};
         ImGui::Text("BlurType");
-        if (ImGui::BeginCombo("##blurTypeCombo", currentBlurTypeStr))
+        if (ImGui::BeginCombo("##blurTypeCombo", currentBlurTypeStr.data()))
         {
             for (uint32_t n{}; n < IM_ARRAYSIZE(blurItems); ++n)
             {
-                const auto bIsSeleceted = strcmp(currentBlurTypeStr, blurItems[n]) == 0;
+                const auto bIsSeleceted = strcmp(currentBlurTypeStr.data(), blurItems[n]) == 0;
                 if (ImGui::Selectable(blurItems[n], bIsSeleceted))
                 {
                     currentBlurTypeStr = blurItems[n];
@@ -263,7 +263,18 @@ void SandboxLayer::OnUIRender()
                 if (bIsSeleceted) ImGui::SetItemDefaultFocus();
             }
 
-            rs.BlurType = strcmp(currentBlurTypeStr, "GAUSSIAN") == 0 ? EBlurType::BLUR_TYPE_GAUSSIAN : EBlurType::BLUR_TYPE_MEDIAN;
+            if (strcmp(currentBlurTypeStr.data(), "GAUSSIAN") == 0)
+            {
+                rs.BlurType = EBlurType::BLUR_TYPE_GAUSSIAN;
+            }
+            else if (strcmp(currentBlurTypeStr.data(), "MEDIAN") == 0)
+            {
+                rs.BlurType = EBlurType::BLUR_TYPE_MEDIAN;
+            }
+            else if (strcmp(currentBlurTypeStr.data(), "BOX") == 0)
+            {
+                rs.BlurType = EBlurType::BLUR_TYPE_BOX;
+            }
             ImGui::EndCombo();
         }
         ImGui::Separator();
@@ -327,6 +338,16 @@ void SandboxLayer::OnUIRender()
     if (bShowWorldOutliner)
     {
         ImGui::Begin("World Outliner", &bShowWorldOutliner);
+
+        if (ImGui::BeginPopupContextWindow(0, ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+        {
+            if (ImGui::MenuItem("Create Empty Entity"))
+            {
+                /* m_Context->CreateEntity("Empty Entity");*/
+            }
+
+            ImGui::EndPopup();
+        }
 
         bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
         bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();

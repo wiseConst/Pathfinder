@@ -55,21 +55,6 @@ void VulkanBindlessRenderer::UpdateDataIfNeeded()
     m_Writes.clear();
 }
 
-void VulkanBindlessRenderer::UpdateLightData(const Shared<Buffer>& lightDataSSBO)
-{
-    const auto vulkanLightDataUniformBuffer = std::static_pointer_cast<VulkanBuffer>(lightDataSSBO);
-    PFR_ASSERT(vulkanLightDataUniformBuffer, "Failed to cast Buffer to VulkanBuffer!");
-
-    const auto currentFrame             = Application::Get().GetWindow()->GetCurrentFrameIndex();
-    VkWriteDescriptorSet cameraWriteSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET};
-    cameraWriteSet.descriptorCount      = 1;
-    cameraWriteSet.descriptorType       = VK_DESCRIPTOR_TYPE_STORAGE_BUFFER;
-    cameraWriteSet.dstBinding           = FRAME_DATA_BUFFER_LIGHTS_BINDING;
-    cameraWriteSet.dstSet               = m_MegaSet[currentFrame];
-    cameraWriteSet.pBufferInfo          = &vulkanLightDataUniformBuffer->GetDescriptorInfo();
-    m_Writes.emplace_back(cameraWriteSet);
-}
-
 void VulkanBindlessRenderer::LoadImage(const void* pImageInfo, uint32_t& outIndex)
 {
     const VkDescriptorImageInfo* vkImageInfo = (const VkDescriptorImageInfo*)pImageInfo;
@@ -218,14 +203,10 @@ void VulkanBindlessRenderer::CreateDescriptorPools()
 
         const VkDescriptorSetLayoutBinding meshDataBufferTransparentBinding = {STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING,
                                                                                VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1, VK_SHADER_STAGE_ALL};
-
-        const VkDescriptorSetLayoutBinding lightDataBinding = {FRAME_DATA_BUFFER_LIGHTS_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_BUFFER, 1,
-                                                               VK_SHADER_STAGE_ALL};
-
         const std::vector<VkDescriptorSetLayoutBinding> bindings = {
             textureBinding,       storageImageBinding,          vertexPosBufferBinding,           vertexAttribBufferBinding,
             meshletBufferBinding, meshletVerticesBufferBinding, meshletTrianglesBufferBinding,    materialBufferBinding,
-            indexBufferBinding,   meshDataBufferOpaqueBinding,  meshDataBufferTransparentBinding, lightDataBinding};
+            indexBufferBinding,   meshDataBufferOpaqueBinding,  meshDataBufferTransparentBinding};
 
         const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), bindingFlag);
         const VkDescriptorSetLayoutBindingFlagsCreateInfo megaSetLayoutExtendedInfo = {

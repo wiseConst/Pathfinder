@@ -176,14 +176,11 @@ void MeshManager::BuildMeshlets(const std::vector<uint32_t>& indices, const std:
         m.triangleOffset = meshopt_m.triangle_offset;
         m.triangleCount  = meshopt_m.triangle_count;
 
-        m.center[0] = bounds.center[0];
-        m.center[1] = bounds.center[1];
-        m.center[2] = bounds.center[2];
+        m.center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
+        m.radius = bounds.radius;
 
-        m.coneAxis[0] = bounds.cone_axis[0];
-        m.coneAxis[1] = bounds.cone_axis[1];
-        m.coneAxis[2] = bounds.cone_axis[2];
-
+        m.coneApex   = glm::vec3(bounds.cone_apex[0], bounds.cone_apex[1], bounds.cone_apex[2]);
+        m.coneAxis   = glm::vec3(bounds.cone_axis[0], bounds.cone_axis[1], bounds.cone_axis[2]);
         m.coneCutoff = bounds.cone_cutoff;
     }
 }

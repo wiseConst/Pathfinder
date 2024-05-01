@@ -19,6 +19,9 @@ struct VulkanDeviceSpecification
     uint32_t ComputeFamily                          = UINT32_MAX;
     uint32_t TransferFamily                         = UINT32_MAX;
     float TimestampPeriod                           = 1.f;
+    uint32_t VendorID                               = 0;
+    uint32_t DeviceID                               = 0;
+    uint8_t PipelineCacheUUID[VK_UUID_SIZE]         = {0};
 };
 
 class VulkanAllocator;
@@ -77,6 +80,10 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     // Should be called each frame.
     void ResetCommandPools() const;
 
+    NODISCARD FORCEINLINE const auto& GetPipelineCacheUUID() const { return m_PipelineCacheUUID; }
+    NODISCARD FORCEINLINE const auto GetVendorID() const { return m_VendorID; }
+    NODISCARD FORCEINLINE const auto GetDeviceID() const { return m_DeviceID; }
+
   private:
     std::vector<VkFormat> m_SupportedDepthStencilFormats;
 
@@ -85,6 +92,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     VulkanCommandPoolPerFrame m_TransferCommandPools;
     VulkanCommandPoolPerFrame m_ComputeCommandPools;
 
+    std::string m_DeviceName          = s_DEFAULT_STRING;
     VkDevice m_LogicalDevice          = VK_NULL_HANDLE;
     VkPhysicalDevice m_PhysicalDevice = VK_NULL_HANDLE;
 
@@ -98,6 +106,10 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     uint32_t m_ComputeFamily  = UINT32_MAX;
     uint32_t m_TransferFamily = UINT32_MAX;
     float m_TimestampPeriod   = 1.f;
+
+    uint32_t m_VendorID                       = 0;
+    uint32_t m_DeviceID                       = 0;
+    uint8_t m_PipelineCacheUUID[VK_UUID_SIZE] = {0};
 
     Unique<VulkanAllocator> m_VMA;
     Unique<VulkanDescriptorAllocator> m_VDA;

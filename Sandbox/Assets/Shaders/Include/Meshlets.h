@@ -2,7 +2,6 @@
 #pragma once
 #endif
 
-
 #ifndef __cplusplus
 
 // https://burtleburtle.net/bob/hash/integer.html
@@ -17,9 +16,10 @@ uint32_t hash(uint32_t a)
     return a;
 }
 
-bool ConeCull(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxis, const float coneCutoff)
+bool ConeCull(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxis, const float coneCutoff, const float radius)
 {
-    return dot(normalize(coneApex - cameraPosition), normalize(coneAxis)) >= coneCutoff;
+    const vec3 camDir = coneApex - cameraPosition;
+    return dot(normalize(camDir), normalize(coneAxis)) >= coneCutoff * length(camDir) + radius;
 }
 
 #endif
@@ -32,6 +32,17 @@ bool ConeCull(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxi
 // to reserve 4 bytes for the primitive count. Therefore 3 * 126 + 4 maximizes the fit into a 3 * 128 = 384 bytes block.
 #define MAX_MESHLET_TRIANGLE_COUNT 124u
 
+#ifdef __cplusplus
+
+using vec2    = glm::vec2;
+using u16vec2 = glm::u16vec2;
+using u8vec4  = glm::u8vec4;
+using vec3    = glm::vec3;
+using vec4    = glm::vec4;
+using mat4    = glm::mat4;
+
+#endif
+
 struct Meshlet
 {
     /* offsets within meshlet_vertices and meshlet_triangles arrays with meshlet data */
@@ -41,11 +52,10 @@ struct Meshlet
     uint32_t vertexCount;
     uint32_t triangleCount;
     /* bounding sphere, useful for frustum and occlusion culling */
-    float center[3];
+    vec3 center;
     float radius;
     /* normal cone, useful for backface culling */
-    float coneApex[3];
-    float coneAxis[3];
+    vec3 coneApex;
+    vec3 coneAxis;
     float coneCutoff; /* = cos(angle/2) */
 };
-

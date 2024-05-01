@@ -129,7 +129,7 @@ void main()
     // Fix aspect
     uv.x *= u_PC.CameraDataBuffer.FullResolution.x * u_PC.CameraDataBuffer.InvFullResolution.y;
     
-    sundir = normalize(u_Lights.DirectionalLights[0].Direction);//normalize(vec3(.5, .4 * (1. + sin(.5 * iTime)), -1.));
+    sundir = normalize(u_PC.LightDataBuffer.DirectionalLights[0].Direction);//normalize(vec3(.5, .4 * (1. + sin(.5 * iTime)), -1.));
     
     vec3 O = vec3(0., 0., 0.);
     vec3 D = normalize(vec3(uv, -2.));

@@ -10,13 +10,16 @@ namespace Pathfinder
 class Entity final
 {
   public:
-    Entity()  = delete;
+    Entity(entt::entity entity, Scene* scenePtr);
     ~Entity() = default;
 
-    Entity(entt::entity entity, Scene* scene);
+    operator entt::entity() const { return m_Handle; }
 
   private:
     entt::entity m_Handle = {entt::null};
+    Scene* m_ScenePtr     = nullptr;
+
+    Entity() = delete;
 };
 
 }  // namespace Pathfinder

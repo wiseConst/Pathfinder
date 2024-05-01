@@ -1,7 +1,5 @@
 #version 460
 
-#define SHADER_DEBUG_PRINTF 0
-
 #extension GL_GOOGLE_include_directive : require
 #include "Include/Culling.h"
 #include "Include/Globals.h"
@@ -41,7 +39,13 @@ layout(set = LAST_BINDLESS_SET + 1, binding = 2, scalar) writeonly buffer Visibl
       uint32_t MeshIndexBufferIndex - u_DepthTex
 */
 
+// 2.5D Culling
+#define ADVANCED_CULLING 1
+
+#if ADVANCED_CULLING
 shared uint tileDepthMask;
+#endif
+
 shared TileFrustum groupFrustum;
 shared uint uMinDepth;
 shared uint uMaxDepth;
@@ -73,6 +77,7 @@ vec4 Heatmap(uint lightCount)
 }
 #endif
 
+#if ADVANCED_CULLING
  uint ConstructLightMask(in float depthRangeMin, in float depthRangeRecip, in Sphere bounds)
 {
 	// We create a entity mask to decide if the entity is really touching something
@@ -107,6 +112,7 @@ vec4 Heatmap(uint lightCount)
 
 	return uLightMask;
 }
+#endif
 
 AABB ComputeAABB(uvec2 wgid, const float fMinDepth, const float fMaxDepth, const vec2 invRes)
 {
@@ -185,7 +191,9 @@ void main()
         visibleSpotLightCount = 0;
         uMinDepth = 0x7f7fffff;
 		uMaxDepth = 0;
+#if ADVANCED_CULLING
         tileDepthMask = 0;
+#endif
     }
     
     barrier();
@@ -212,21 +220,23 @@ void main()
     const float maxDepthVS = ScreenSpaceDepthToView(fMaxDepth);
     const float nearClipVS = ScreenSpaceDepthToView(1.0f); // I use Reversed-Z, where N:1, F:0
 
+#if ADVANCED_CULLING
     // 2.5D culling
     // Divide depth range into 32 slices.
     const float depthRangeRcp = 32.0f / (maxDepthVS - minDepthVS);
     const float realDepthVS = ScreenSpaceDepthToView(fDepth);
     const uint depthMaskCellIndex = max(0, min(31, uint( floor((realDepthVS - minDepthVS) * depthRangeRcp) )));
     atomicOr(tileDepthMask, 1 << depthMaskCellIndex);
+#endif
 
     barrier();
 
     const Plane minPlane = { vec3(0, 0, -1), -minDepthVS};
-    for(i = lti; i < u_Lights.PointLightCount; i += LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE)
+    for(i = lti; i < u_PC.LightDataBuffer.PointLightCount; i += LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE)
     {
-      if(visiblePointLightCount >= u_Lights.PointLightCount) break;
+      if(visiblePointLightCount >= u_PC.LightDataBuffer.PointLightCount) break;
 
-      const PointLight pl = u_Lights.PointLights[i];
+      const PointLight pl = u_PC.LightDataBuffer.PointLights[i];
       const vec3 plPosVS = vec3(u_PC.CameraDataBuffer.View * vec4(pl.Position, 1));
 
       Sphere sphere = {plPosVS, pl.Radius};
@@ -235,21 +245,23 @@ void main()
        //if (SphereInsidePlane(sphere, minPlane)) continue;
         if (!SphereIntersectsAABB(sphere, groupAABB)) continue;// tighter fit than sphere-frustum culling
 
+#if ADVANCED_CULLING
         const bool intersect2_5D = (tileDepthMask & ConstructLightMask(minDepthVS, depthRangeRcp, sphere)) > 0;
         if(!intersect2_5D) continue;
-        
+#endif
+
         const uint32_t offset = atomicAdd(visiblePointLightCount, 1);
-        if(offset < u_Lights.PointLightCount)
+        if(offset < u_PC.LightDataBuffer.PointLightCount)
            visiblePointLightIndices[offset] = LIGHT_INDEX_TYPE(i);
       }
     }
 
     // TODO: Optimize cone culling via bounding spheres: https://www.youtube.com/watch?v=z1KG2Cwi1pk&list=PLU2nPsAdxKWQYxkmQ3TdbLsyc1l2j25XM&index=125&ab_channel=GameEngineSeries
-    for(i = lti; i < u_Lights.SpotLightCount; i += LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE)
+    for(i = lti; i < u_PC.LightDataBuffer.SpotLightCount; i += LIGHT_CULLING_TILE_SIZE * LIGHT_CULLING_TILE_SIZE)
     {
-        if(visibleSpotLightCount >= u_Lights.SpotLightCount) break;
+        if(visibleSpotLightCount >= u_PC.LightDataBuffer.SpotLightCount) break;
 
-        const SpotLight spl = u_Lights.SpotLights[i];
+        const SpotLight spl = u_PC.LightDataBuffer.SpotLights[i];
         const vec3 splDirVS =  vec3(u_PC.CameraDataBuffer.View * vec4(spl.Direction, 0));
 
         #if SPOTLIGHT_SPHERE_CULLING 
@@ -267,7 +279,7 @@ void main()
         #endif
 
             const uint32_t offset = atomicAdd(visibleSpotLightCount, 1);
-            if(offset < u_Lights.SpotLightCount)
+            if(offset < u_PC.LightDataBuffer.SpotLightCount)
                visibleSpotLightIndices[offset] = LIGHT_INDEX_TYPE(i);
         }
     }
@@ -285,7 +297,7 @@ void main()
                 s_VisiblePointLightIndicesBuffer.indices[offset + i] = visiblePointLightIndices[i];
 
             // NOTE: Mark end as invalid
-            if(visiblePointLightCount < u_Lights.PointLightCount)
+            if(visiblePointLightCount < u_PC.LightDataBuffer.PointLightCount)
             {
                 s_VisiblePointLightIndicesBuffer.indices[offset + visiblePointLightCount] = INVALID_LIGHT_INDEX;
             }
@@ -299,7 +311,7 @@ void main()
                 s_VisibleSpotLightIndicesBuffer.indices[offset + i] = visibleSpotLightIndices[i];
 
             // NOTE: Mark end as invalid
-            if(visibleSpotLightCount < u_Lights.SpotLightCount)
+            if(visibleSpotLightCount < u_PC.LightDataBuffer.SpotLightCount)
             {
                 s_VisibleSpotLightIndicesBuffer.indices[offset + visibleSpotLightCount] = INVALID_LIGHT_INDEX;
             }

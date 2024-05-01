@@ -239,14 +239,14 @@ void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& o
     {
         bool bSamePipelineUUID = true;
         for (uint16_t i = 0; i < VK_UUID_SIZE; ++i)
-            if (context.GetDevice()->GetGPUProperties().pipelineCacheUUID[i] != cacheData[16 + i]) bSamePipelineUUID = false;
+            if (context.GetDevice()->GetPipelineCacheUUID()[i] != cacheData[16 + i]) bSamePipelineUUID = false;
 
         bool bSameVendorID = true;
         bool bSameDeviceID = true;
         for (uint16_t i = 0; i < 4; ++i)
         {
-            if (cacheData[8 + i] != ((context.GetDevice()->GetGPUProperties().vendorID >> (8 * i)) & 0xff)) bSameVendorID = false;
-            if (cacheData[12 + i] != ((context.GetDevice()->GetGPUProperties().deviceID >> (8 * i)) & 0xff)) bSameDeviceID = false;
+            if (cacheData[8 + i] != ((context.GetDevice()->GetVendorID() >> (8 * i)) & 0xff)) bSameVendorID = false;
+            if (cacheData[12 + i] != ((context.GetDevice()->GetDeviceID() >> (8 * i)) & 0xff)) bSameDeviceID = false;
 
             if (!bSameDeviceID || !bSameVendorID || !bSamePipelineUUID) break;
         }

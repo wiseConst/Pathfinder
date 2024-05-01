@@ -34,7 +34,6 @@ static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(16);
 
 // NOTE: Mark things as Global to make sure that basic shader reflection won't catch it!
 
-// MESHLETS
 #include "Include/Meshlets.h"
 #include "Include/Lights.h"
 #include "Include/Primitives.h"
@@ -147,8 +146,6 @@ const uint32_t STORAGE_BUFFER_INDEX_BINDING                 = 8;
 const uint32_t STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING      = 9;
 const uint32_t STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING = 10;
 
-const uint32_t FRAME_DATA_BUFFER_LIGHTS_BINDING = 11;
-
 // NOTE: I'll have to offset manually in other shaders from this set.
 const uint32_t LAST_BINDLESS_SET = BINDLESS_MEGA_SET;
 
@@ -224,11 +221,12 @@ s_GlobalMeshDataBufferTransparent;
 #endif
 
 #ifdef __cplusplus
-struct alignas(16) CameraData
+struct CameraData
 #else
-layout(buffer_reference, buffer_reference_align = /* 4 */ 16, scalar) readonly buffer CameraData
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer CameraData
 #endif
 {
+    Frustum ViewFrustum;
     mat4 Projection;
     mat4 View;
     mat4 ViewProjection;
@@ -239,24 +237,22 @@ layout(buffer_reference, buffer_reference_align = /* 4 */ 16, scalar) readonly b
     float FOV;
     vec2 FullResolution;
     vec2 InvFullResolution;
-    Frustum ViewFrustum;
 }
 #ifdef __cplusplus
 ;
 #else
-s_CameraDataBDA;  // Name is unused btw
+s_CameraDataBDA;  // Name unused, check u_PC
 #endif
 
 const uint32_t MAX_SHADOW_CASCADES = 5;
 
 #ifdef __cplusplus
-struct LightsData
+struct alignas(8) LightData
 #else
-layout(set = BINDLESS_MEGA_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, scalar) readonly buffer LightsSB
+layout(buffer_reference, buffer_reference_align = 8, scalar) buffer LightData
 #endif
 {
     PointLight PointLights[MAX_POINT_LIGHTS];
-    mat4 PointLightViewProjMatrices[MAX_POINT_LIGHTS * 6];
     SpotLight SpotLights[MAX_SPOT_LIGHTS];
     DirectionalLight DirectionalLights[MAX_DIR_LIGHTS];
     mat4 DirLightViewProjMatrices[MAX_DIR_LIGHTS * MAX_SHADOW_CASCADES];
@@ -268,7 +264,7 @@ layout(set = BINDLESS_MEGA_SET, binding = FRAME_DATA_BUFFER_LIGHTS_BINDING, scal
 #ifdef __cplusplus
 ;
 #else
-u_Lights;
+s_LightsBDA;  // Name unused, check u_PC
 #endif
 
 #ifdef __cplusplus
@@ -287,10 +283,13 @@ layout(push_constant, scalar) uniform PushConstantBlock
     uint32_t VertexAttribBufferIndex;
 
     uint32_t MeshletBufferIndex;
-    uint32_t MeshletVerticesBufferIndex;
-    uint32_t MeshletTrianglesBufferIndex;
-
     uint32_t MaterialBufferIndex;
+
+#ifdef __cplusplus
+    uint64_t LightDataBuffer;
+#else
+    LightData LightDataBuffer;
+#endif
 
 #ifdef __cplusplus
     uint64_t CameraDataBuffer;

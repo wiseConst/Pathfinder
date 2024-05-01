@@ -40,11 +40,11 @@ void Renderer::Init()
     RayTracingBuilder::Init();
 
     s_RendererSettings.bVSync   = Application::Get().GetWindow()->IsVSync();
-    s_RendererData->LightStruct = MakeUnique<LightsData>();
+    s_RendererData->LightStruct = MakeUnique<LightData>();
 
     ShaderLibrary::Load(std::vector<std::string>{"ForwardPlus", "DepthPrePass", "ObjectCulling", "LightCulling", "ComputeFrustums",
-                                                 "Composite", "AO/SSAO", "AO/HBAO", "Shadows/DirShadowMap", "Shadows/PointLightShadowMap",
-                                                 "AtmosphericScattering", "Post/GaussianBlur", "Post/MedianBlur"});
+                                                 "Composite", "AO/SSAO", "AO/HBAO", "Shadows/DirShadowMap", "AtmosphericScattering",
+                                                 "Post/GaussianBlur", "Post/MedianBlur", "Post/BoxBlur"});
 
     std::ranges::for_each(s_RendererData->UploadHeap,
                           [](auto& uploadHeap)
@@ -72,9 +72,10 @@ void Renderer::Init()
                           [](Shared<Buffer>& lightsSSBO)
                           {
                               BufferSpecification lightsSSBOSpec = {EBufferUsage::BUFFER_USAGE_STORAGE |
+                                                                    EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS |
                                                                     EBufferUsage::BUFFER_USAGE_TRANSFER_DESTINATION};
                               lightsSSBOSpec.Data                = s_RendererData->LightStruct.get();
-                              lightsSSBOSpec.DataSize            = sizeof(LightsData);
+                              lightsSSBOSpec.DataSize            = sizeof(LightData);
 
                               lightsSSBO = Buffer::Create(lightsSSBOSpec);
                           });
@@ -530,6 +531,15 @@ void Renderer::Init()
             blurAOPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
             PipelineBuilder::Push(s_RendererData->MedianBlurAOPipeline, blurAOPipelineSpec);
         }
+
+        {
+            PipelineSpecification blurAOPipelineSpec = {"BoxBlurAO", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+            blurAOPipelineSpec.Shader                = ShaderLibrary::Get("Post/BoxBlur");
+            blurAOPipelineSpec.TargetFramebuffer     = s_RendererData->BlurAOFramebuffer[1];
+            blurAOPipelineSpec.bBindlessCompatible   = true;
+            blurAOPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
+            PipelineBuilder::Push(s_RendererData->BoxBlurAOPipeline, blurAOPipelineSpec);
+        }
     }
 
     {
@@ -554,7 +564,7 @@ void Renderer::Init()
             [](uint32_t width, uint32_t height)
             {
                 // To recalculate shadow maps view projection matrices
-                s_RendererData->LightStruct = MakeUnique<LightsData>();
+                s_RendererData->LightStruct = MakeUnique<LightData>();
             });
 
         PFR_ASSERT(!s_RendererData->DirShadowMaps.empty() && MAX_DIR_LIGHTS > 0, "Failed to create directional shadow map framebuffers!");
@@ -568,30 +578,6 @@ void Renderer::Init()
         dirShadowMapPipelineSpec.bDepthWrite           = true;
         dirShadowMapPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
         PipelineBuilder::Push(s_RendererData->DirShadowMapPipeline, dirShadowMapPipelineSpec);
-    }
-
-    {
-        s_RendererData->PointLightShadowMapInfos.resize(MAX_POINT_LIGHTS);
-
-        {
-            FramebufferSpecification framebufferSpec = {"PointLightShadowMap"};
-            auto& pointLightDepthAttachmentSpec      = framebufferSpec.Attachments.emplace_back(
-                EImageFormat::FORMAT_D32F, EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ELoadOp::CLEAR, EStoreOp::STORE,
-                glm::vec4(1.0f), false, ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE, ESamplerFilter::SAMPLER_FILTER_NEAREST, false, 6);
-            framebufferSpec.Width = framebufferSpec.Height                  = s_ShadowsSettings.at(s_RendererData->CurrentShadowSetting);
-            s_RendererData->PointLightShadowMapInfos[0].PointLightShadowMap = Framebuffer::Create(framebufferSpec);
-        }
-
-        PipelineSpecification pointLightShadowMapPipelineSpec = {"PointShadowMap", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-        pointLightShadowMapPipelineSpec.Shader                = ShaderLibrary::Get("Shadows/PointLightShadowMap");
-        pointLightShadowMapPipelineSpec.TargetFramebuffer     = s_RendererData->PointLightShadowMapInfos[0].PointLightShadowMap;
-        pointLightShadowMapPipelineSpec.bBindlessCompatible   = true;
-        pointLightShadowMapPipelineSpec.bMeshShading          = true;
-        pointLightShadowMapPipelineSpec.CullMode              = ECullMode::CULL_MODE_FRONT;
-        pointLightShadowMapPipelineSpec.bDepthTest            = true;
-        pointLightShadowMapPipelineSpec.bDepthWrite           = true;
-        pointLightShadowMapPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
-        PipelineBuilder::Push(s_RendererData->PointLightShadowMapPipeline, pointLightShadowMapPipelineSpec);
     }
 
     {
@@ -788,8 +774,7 @@ void Renderer::Begin()
 void Renderer::Flush(const Unique<UILayer>& uiLayer)
 {
     Timer t = {};
-    s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->SetData(s_RendererData->LightStruct.get(), sizeof(LightsData));
-    s_BindlessRenderer->UpdateLightData(s_RendererData->LightsSSBO[s_RendererData->FrameIndex]);
+    s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->SetData(s_RendererData->LightStruct.get(), sizeof(LightData));
 
     s_BindlessRenderer->UpdateDataIfNeeded();
 
@@ -803,7 +788,6 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     s_RendererData->GBuffer->Clear(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     DepthPrePass();
     DirShadowMapPass();
-    PointLightShadowMapPass();
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
         EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
@@ -877,7 +861,8 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
 void Renderer::BeginScene(const Camera& camera)
 {
     if (s_RendererData->CameraStruct.FOV != camera.GetZoom()) s_RendererData->bNeedsFrustumsRecomputing = true;
-    s_RendererData->CameraStruct = {camera.GetProjection(),
+    s_RendererData->CameraStruct = {camera.GetFrustum(),
+                                    camera.GetProjection(),
                                     camera.GetView(),
                                     camera.GetViewProjection(),
                                     camera.GetInverseProjection(),
@@ -888,8 +873,7 @@ void Renderer::BeginScene(const Camera& camera)
                                     glm::vec2(s_RendererData->CompositeFramebuffer->GetSpecification().Width,
                                               s_RendererData->CompositeFramebuffer->GetSpecification().Height),
                                     glm::vec2(1.f / s_RendererData->CompositeFramebuffer->GetSpecification().Width,
-                                              1.f / s_RendererData->CompositeFramebuffer->GetSpecification().Height),
-                                    camera.GetFrustum()};
+                                              1.f / s_RendererData->CompositeFramebuffer->GetSpecification().Height)};
 
     s_RendererData->LightStruct->CascadePlaneDistances[0] = camera.GetFarPlaneDepth() / 400.0f;
     s_RendererData->LightStruct->CascadePlaneDistances[1] = camera.GetFarPlaneDepth() / 200.0f;
@@ -965,13 +949,12 @@ void Renderer::ObjectCullingPass()
     std::vector<MeshData> opaqueMeshesData = {};
     for (const auto& [submesh, transform] : s_RendererData->OpaqueObjects)
     {
-        glm::mat4 transformation;  // your transformation matrix.
         glm::vec3 scale;
         glm::quat rotation;
         glm::vec3 translation;
         glm::vec3 skew;
         glm::vec4 perspective;
-        glm::decompose(transformation, scale, rotation, translation, skew, perspective);
+        glm::decompose(transform, scale, rotation, translation, skew, perspective);
         auto& meshData = opaqueMeshesData.emplace_back(
             translation, scale, glm::vec4(rotation.x, rotation.y, rotation.z, rotation.w), submesh->GetBoundingSphere(),
             submesh->GetVertexPositionBuffer()->GetBindlessIndex(), submesh->GetVertexAttributeBuffer()->GetBindlessIndex(),
@@ -1013,13 +996,12 @@ void Renderer::ObjectCullingPass()
     std::vector<MeshData> transparentMeshesData = {};
     for (const auto& [submesh, transform] : s_RendererData->TransparentObjects)
     {
-        glm::mat4 transformation;  // your transformation matrix.
         glm::vec3 scale;
         glm::quat rotation;
         glm::vec3 translation;
         glm::vec3 skew;
         glm::vec4 perspective;
-        glm::decompose(transformation, scale, rotation, translation, skew, perspective);
+        glm::decompose(transform, scale, rotation, translation, skew, perspective);
         auto& meshData = transparentMeshesData.emplace_back(
             translation, scale, glm::vec4(rotation.x, rotation.y, rotation.z, rotation.w), submesh->GetBoundingSphere(),
             submesh->GetVertexPositionBuffer()->GetBindlessIndex(), submesh->GetVertexAttributeBuffer()->GetBindlessIndex(),
@@ -1173,41 +1155,59 @@ void Renderer::BlurAOPass()
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
 
-    if (s_RendererSettings.BlurType == EBlurType::BLUR_TYPE_GAUSSIAN)
+    PushConstantBlock pc  = {};
+    pc.AlbedoTextureIndex = s_RendererData->SSAO.Framebuffer->GetAttachments()[0].m_Index;
+
+    switch (s_RendererSettings.BlurType)
     {
-        for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+        case EBlurType::BLUR_TYPE_GAUSSIAN:
         {
-            s_RendererData->BlurAOFramebuffer[i]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+            for (uint32_t i{}; i < s_RendererData->BloomFramebuffer.size(); ++i)
+            {
+                s_RendererData->BlurAOFramebuffer[i]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
-            PushConstantBlock pc  = {};
-            pc.CameraDataBuffer   = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
-            pc.AlbedoTextureIndex = (i == 0 ? s_RendererData->SSAO.Framebuffer->GetAttachments()[0].m_Index
-                                            : s_RendererData->BlurAOFramebuffer[i - 1]->GetAttachments()[0].m_Index);
+                pc.AlbedoTextureIndex = (i == 0 ? s_RendererData->SSAO.Framebuffer->GetAttachments()[0].m_Index
+                                                : s_RendererData->BlurAOFramebuffer.at(i - 1)->GetAttachments()[0].m_Index);
 
-            BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BlurAOPipeline[i]);
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->BlurAOPipeline[i], 0, 0,
+                BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BlurAOPipeline[i]);
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->BlurAOPipeline[i], 0, 0,
+                                                                                                   sizeof(pc), &pc);
+
+                s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
+                s_RendererData->BlurAOFramebuffer[i]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+            }
+
+            break;
+        }
+
+        case EBlurType::BLUR_TYPE_MEDIAN:
+        {
+            s_RendererData->BlurAOFramebuffer[1]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+            BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->MedianBlurAOPipeline);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->MedianBlurAOPipeline, 0, 0,
                                                                                                sizeof(pc), &pc);
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
 
-            s_RendererData->BlurAOFramebuffer[i]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
+            s_RendererData->BlurAOFramebuffer[1]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+            break;
+        }
+
+        case EBlurType::BLUR_TYPE_BOX:
+        {
+            s_RendererData->BlurAOFramebuffer[1]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+            BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BoxBlurAOPipeline);
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->BoxBlurAOPipeline, 0, 0,
+                                                                                               sizeof(pc), &pc);
+
+            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
+            s_RendererData->BlurAOFramebuffer[1]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
+
+            break;
         }
     }
-    else if (s_RendererSettings.BlurType == EBlurType::BLUR_TYPE_MEDIAN)
-    {
-        s_RendererData->BlurAOFramebuffer[1]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-
-        PushConstantBlock pc  = {};
-        pc.CameraDataBuffer   = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
-        pc.AlbedoTextureIndex = s_RendererData->SSAO.Framebuffer->GetAttachments()[0].m_Index;
-
-        BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->MedianBlurAOPipeline);
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->MedianBlurAOPipeline, 0, 0,
-                                                                                           sizeof(pc), &pc);
-        s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Draw(3);
-
-        s_RendererData->BlurAOFramebuffer[1]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-    }
-
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
 }
 
@@ -1260,6 +1260,7 @@ void Renderer::LightCullingPass()
         pc.StorageImageIndex    = s_RendererData->LightHeatMapImage->GetBindlessIndex();
         pc.MeshIndexBufferIndex = s_RendererData->DepthPrePassFramebuffer->GetAttachments()[0].m_Index;
         pc.CameraDataBuffer     = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+        pc.LightDataBuffer      = s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->GetBDA();
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
             EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
@@ -1320,6 +1321,7 @@ void Renderer::GeometryPass()
 
     PushConstantBlock pc   = {};
     pc.CameraDataBuffer    = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+    pc.LightDataBuffer     = s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->GetBDA();
     pc.MaterialBufferIndex = 0;
     pc.pad0.x              = 25.0f;
     pc.AlbedoTextureIndex  = s_RendererData->CascadeDebugImage->GetBindlessIndex();
@@ -1362,13 +1364,13 @@ void Renderer::DirShadowMapPass()
     {
         auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t directionalLightIndex)
         {
-            PushConstantBlock pc           = {renderObject.Transform};
-            pc.MeshletBufferIndex          = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
-            pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
-            pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
-            pc.VertexPosBufferIndex        = renderObject.submesh->GetVertexPositionBuffer()->GetBindlessIndex();
-            pc.StorageImageIndex           = directionalLightIndex;  // Index into matrices projection array
-            pc.CameraDataBuffer            = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+            PushConstantBlock pc  = {renderObject.Transform};
+            pc.MeshletBufferIndex = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
+            //  pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
+            //  pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
+            pc.VertexPosBufferIndex = renderObject.submesh->GetVertexPositionBuffer()->GetBindlessIndex();
+            pc.StorageImageIndex    = directionalLightIndex;  // Index into matrices projection array
+            pc.CameraDataBuffer     = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
 
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->DirShadowMapPipeline, 0, 0,
                                                                                                sizeof(pc), &pc);
@@ -1404,64 +1406,6 @@ void Renderer::DirShadowMapPass()
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
 
             s_RendererData->DirShadowMaps[dirLightIndex]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-        }
-    }
-
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
-}
-
-void Renderer::PointLightShadowMapPass()
-{
-    if (IsWorldEmpty()) return;
-
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
-
-    if (s_RendererData->LightStruct->PointLightCount != 0)
-    {
-        auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t pointLightIndex)
-        {
-            PushConstantBlock pc           = {renderObject.Transform};
-            pc.VertexPosBufferIndex        = renderObject.submesh->GetVertexPositionBuffer()->GetBindlessIndex();
-            pc.MeshletBufferIndex          = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
-            pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
-            pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
-            pc.StorageImageIndex           = pointLightIndex;  // Index into matrices projection array
-            pc.pad0.x                      = 25.0f;
-            pc.CameraDataBuffer            = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
-
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->PointLightShadowMapPipeline,
-                                                                                               0, 0, sizeof(pc), &pc);
-            const uint32_t meshletCount = renderObject.submesh->GetMeshletBuffer()->GetSpecification().BufferCapacity / sizeof(Meshlet);
-            const uint32_t groupCountX  = DivideToNextMultiple(meshletCount, MESHLET_LOCAL_GROUP_SIZE);
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(groupCountX, 1, 1);
-
-            s_RendererStats.MeshletCount += meshletCount;
-            s_RendererStats.TriangleCount +=
-                renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
-        };
-
-        for (const auto& pointLightShadowMapInfo : s_RendererData->PointLightShadowMapInfos)
-        {
-            if (pointLightShadowMapInfo.LightAndMatrixIndex == INVALID_LIGHT_INDEX) continue;
-
-            BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->PointLightShadowMapPipeline);
-            pointLightShadowMapInfo.PointLightShadowMap->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
-            for (const auto& opaque : s_RendererData->OpaqueObjects)
-            {
-                renderMeshFunc(opaque, pointLightShadowMapInfo.LightAndMatrixIndex);
-            }
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
-
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("TRANSPARENT", glm::vec3(0.5f, 0.9f, 0.2f));
-            for (const auto& transparent : s_RendererData->TransparentObjects)
-            {
-                renderMeshFunc(transparent, pointLightShadowMapInfo.LightAndMatrixIndex);
-            }
-            s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
-
-            pointLightShadowMapInfo.PointLightShadowMap->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
         }
     }
 
@@ -1649,58 +1593,7 @@ void Renderer::AddPointLight(const PointLight& pl)
         return;
     }
 
-    const auto& prevPl             = s_RendererData->LightStruct->PointLights[s_RendererData->LightStruct->PointLightCount];
-    bool bNeedsMatrixRecalculation = false;
-    for (uint32_t i{}; i < 3; ++i)
-    {
-        if (!IsNearlyEqual(pl.Position[i], prevPl.Position[i]))
-        {
-            bNeedsMatrixRecalculation = true;
-            break;
-        }
-    }
-
     s_RendererData->LightStruct->PointLights[s_RendererData->LightStruct->PointLightCount] = pl;
-    if (pl.bCastShadows && bNeedsMatrixRecalculation)
-    {
-        auto& currentPointLightShadowMapInfo = s_RendererData->PointLightShadowMapInfos[s_RendererData->LightStruct->PointLightCount];
-        if (!currentPointLightShadowMapInfo.PointLightShadowMap)
-        {
-            FramebufferSpecification framebufferSpec = {"PointLightShadowMap"};
-            auto& pointLightDepthAttachmentSpec      = framebufferSpec.Attachments.emplace_back(
-                EImageFormat::FORMAT_D32F, EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, ELoadOp::CLEAR, EStoreOp::STORE,
-                glm::vec4(1.0f), false, ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE, ESamplerFilter::SAMPLER_FILTER_NEAREST, 6);
-
-            framebufferSpec.Width = framebufferSpec.Height     = s_ShadowsSettings.at(s_RendererData->CurrentShadowSetting);
-            currentPointLightShadowMapInfo.PointLightShadowMap = Framebuffer::Create(framebufferSpec);
-        }
-        currentPointLightShadowMapInfo.LightAndMatrixIndex = s_RendererData->LightStruct->PointLightCount;
-
-        const float ar = static_cast<float>(Application::Get().GetWindow()->GetSpecification().Width) /
-                         static_cast<float>(Application::Get().GetWindow()->GetSpecification().Height);
-        const glm::mat4 proj = glm::perspective(glm::radians(90.0f), ar, 1.0f, 25.0f);
-
-        std::vector<glm::mat4> shadowTransforms;  // right, left, top, bottom, near, far
-        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(1.0, 0.0, 0.0), glm::vec3(0.0, -1.0, 0.0)));
-        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(-1.0, 0.0, 0.0), glm::vec3(0.0, -1.0, 0.0)));
-        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(0.0, 1.0, 0.0), glm::vec3(0.0, 0.0, 1.0)));
-        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(0.0, -1.0, 0.0), glm::vec3(0.0, 0.0, -1.0)));
-        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(0.0, 0.0, 1.0), glm::vec3(0.0, -1.0, 0.0)));
-        shadowTransforms.emplace_back(proj * glm::lookAt(pl.Position, pl.Position + glm::vec3(0.0, 0.0, -1.0), glm::vec3(0.0, -1.0, 0.0)));
-
-        for (uint32_t i = 0; i < 6; ++i)
-            s_RendererData->LightStruct->PointLightViewProjMatrices[currentPointLightShadowMapInfo.LightAndMatrixIndex * 6 + i] =
-                shadowTransforms[i];
-
-        // TODO: Remove duplicate Shader->Sets() since opaque and transparent pipelines tied to only one shader.(but shouldn't, each
-        // pipeline should have its own shader)
-        s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set(
-            "u_PointShadowmap", std::vector<Shared<Image>>{currentPointLightShadowMapInfo.PointLightShadowMap->GetDepthAttachment()});
-
-        s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set(
-            "u_PointShadowmap", std::vector<Shared<Image>>{currentPointLightShadowMapInfo.PointLightShadowMap->GetDepthAttachment()});
-    }
-
     ++s_RendererData->LightStruct->PointLightCount;
 }
 

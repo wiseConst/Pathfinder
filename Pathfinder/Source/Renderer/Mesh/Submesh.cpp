@@ -7,7 +7,7 @@ namespace Pathfinder
 void Submesh::Destroy()
 {
     m_VertexPositionBuffer.reset();
-    m_VertexPositionBuffer.reset();
+    m_VertexAttributeBuffer.reset();
     m_IndexBuffer.reset();
 
     m_MeshletBuffer.reset();

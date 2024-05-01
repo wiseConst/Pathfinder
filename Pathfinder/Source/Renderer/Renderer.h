@@ -81,7 +81,7 @@ class Renderer : private Uncopyable, private Unmovable
     struct RendererData
     {
         // MISC
-        Unique<LightsData> LightStruct = nullptr;
+        Unique<LightData> LightStruct = nullptr;
         CameraData CameraStruct;
         std::map<std::string, float> PassStats;
         std::map<std::string, uint64_t> PipelineStats;
@@ -134,15 +134,6 @@ class Renderer : private Uncopyable, private Unmovable
         std::vector<Shared<Framebuffer>> DirShadowMaps;
         Shared<Pipeline> DirShadowMapPipeline = nullptr;
 
-        // TODO: How do I handle them properly?
-        // PointLightShadowMaps
-        struct PointLightShadowMapInfo
-        {
-            Shared<Framebuffer> PointLightShadowMap = nullptr;
-            uint32_t LightAndMatrixIndex            = INVALID_LIGHT_INDEX;  // PointLight array index, index into viewproj
-        };
-        std::vector<PointLightShadowMapInfo> PointLightShadowMapInfos;
-        Shared<Pipeline> PointLightShadowMapPipeline = nullptr;
         /*              SHADOWS                */
 
         std::vector<RenderObject> OpaqueObjects;
@@ -174,6 +165,7 @@ class Renderer : private Uncopyable, private Unmovable
         AO SSAO                               = {};
         AO HBAO                               = {};
         Shared<Pipeline> MedianBlurAOPipeline = nullptr;
+        Shared<Pipeline> BoxBlurAOPipeline    = nullptr;
         std::array<Shared<Pipeline>, 2> BlurAOPipeline;  // gaussian
         std::array<Shared<Framebuffer>, 2> BlurAOFramebuffer;
 
@@ -227,7 +219,6 @@ class Renderer : private Uncopyable, private Unmovable
 
     static void DepthPrePass();
     static void DirShadowMapPass();
-    static void PointLightShadowMapPass();
 
     static void ComputeFrustumsPass();
     static void LightCullingPass();

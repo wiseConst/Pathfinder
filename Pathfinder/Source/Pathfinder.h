@@ -32,6 +32,12 @@
 #include "Renderer/Mesh/Mesh.h"
 #include "Renderer/Debug/DebugRenderer.h"
 
+// ECS
+#include "Scene/Components.h"
+#include "Scene/SceneSerializer.h"
+#include "Scene/Scene.h"
+#include "Scene/Entity.h"
+
 // IMGUI
 #include <imgui.h>
 

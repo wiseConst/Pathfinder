@@ -33,7 +33,7 @@ struct PointLight
     float Intensity;
     float Radius;
     float MinRadius;
-    bool bCastShadows;
+    uint32_t bCastShadows;
 };
 
 struct DirectionalLight
@@ -41,7 +41,7 @@ struct DirectionalLight
     vec3 Direction;
     vec3 Color;
     float Intensity;
-    bool bCastShadows;
+    uint32_t bCastShadows;
 };
 
 struct SpotLight
@@ -97,6 +97,8 @@ float DirShadowCalculation(sampler2DArray dirShadowMap, const float biasMultipli
     return shadow;
 }
 
+// TODO: SSHVSM from ExileCon
+#if 0 
 float PointShadowCalculation(samplerCube pointShadowMap, const vec3 worldPos, const vec3 cameraPos, const PointLight pl,
                              const float farPlane)
 {
@@ -132,5 +134,7 @@ float PointShadowCalculation(samplerCube pointShadowMap, const vec3 worldPos, co
 
     return shadow;
 }
+#endif
+
 
 #endif

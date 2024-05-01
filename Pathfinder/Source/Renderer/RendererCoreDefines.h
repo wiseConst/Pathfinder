@@ -165,7 +165,8 @@ enum class ESamplerWrap : uint8_t
 enum class EBlurType : uint8_t
 {
     BLUR_TYPE_GAUSSIAN = 0,
-    BLUR_TYPE_MEDIAN
+    BLUR_TYPE_MEDIAN,
+    BLUR_TYPE_BOX,
 };
 
 struct QuadVertex

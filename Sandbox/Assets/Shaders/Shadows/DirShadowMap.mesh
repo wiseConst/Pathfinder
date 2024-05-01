@@ -10,6 +10,7 @@ layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_
 
 void main()
 {
+#if 0
     const uint mi = gl_WorkGroupID.x;
     const uint ti = gl_LocalInvocationID.x;
 
@@ -23,7 +24,7 @@ void main()
         const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
         const vec4 WorldPos = u_PC.Transform * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
         
-        gl_MeshVerticesEXT[i].gl_Position = u_Lights.DirLightViewProjMatrices[u_PC.StorageImageIndex] * WorldPos;
+        gl_MeshVerticesEXT[i].gl_Position = u_PC.LightDataBuffer.DirLightViewProjMatrices[u_PC.StorageImageIndex] * WorldPos;
     }
 
     const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;
@@ -34,4 +35,5 @@ void main()
             s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+1], 
             s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset+3*i+2]);
     }
+    #endif
 }

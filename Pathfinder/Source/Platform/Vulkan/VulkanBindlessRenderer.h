@@ -18,8 +18,6 @@ class VulkanBindlessRenderer final : public BindlessRenderer
               const EPipelineStage overrideBindPoint = EPipelineStage::PIPELINE_STAGE_NONE) final override;
     void UpdateDataIfNeeded() final override;
 
-    void UpdateLightData(const Shared<Buffer>& lightDataSSBO) final override;
-
     void LoadImage(const void* pImageInfo, uint32_t& outIndex) final override;
     void LoadTexture(const void* pTextureInfo, uint32_t& outIndex) final override;
 

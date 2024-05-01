@@ -33,7 +33,6 @@ layout(set = LAST_BINDLESS_SET + 3, binding = 1, scalar) buffer readonly Visible
     LIGHT_INDEX_TYPE indices[];
 } s_VisibleSpotLightIndicesBuffer;
 layout(set = LAST_BINDLESS_SET + 3, binding = 2) uniform sampler2DArray u_DirShadowmap[MAX_DIR_LIGHTS];
-layout(set = LAST_BINDLESS_SET + 3, binding = 3) uniform samplerCube u_PointShadowmap[MAX_POINT_LIGHTS];
 
 layout(location = 0) out vec4 outFragColor;
 layout(location = 1) out vec4 outBrightColor;
@@ -44,8 +43,8 @@ layout(location = 0) in VertexInput
     vec4 Color;
     vec2 UV;
     vec3 WorldPos;
-    mat3 TBNtoWorld;
     flat uint32_t MaterialBufferIndex;
+    mat3 TBNtoWorld;
 } i_VertexInput;
 
 // https://forums.unrealengine.com/t/the-math-behind-combining-bc5-normals/365189
@@ -85,22 +84,22 @@ void main()
     #if PBR
     const vec3 F0 = mix(vec3(0.04), albedo.rgb, metallic);
     const vec3 ambient = albedo.rgb * ao * .04f;
-    irradiance += (u_Lights.DirectionalLightCount + u_Lights.PointLightCount + u_Lights.SpotLightCount) > 0 ? ambient : vec3(0);
+    irradiance += (u_PC.LightDataBuffer.DirectionalLightCount + u_PC.LightDataBuffer.PointLightCount + u_PC.LightDataBuffer.SpotLightCount) > 0 ? ambient : vec3(0);
     #endif
     
-    for(uint i = 0; i < u_Lights.DirectionalLightCount; ++i)
+    for(uint i = 0; i < u_PC.LightDataBuffer.DirectionalLightCount; ++i)
     {
-        DirectionalLight dl = u_Lights.DirectionalLights[i];
+        DirectionalLight dl = u_PC.LightDataBuffer.DirectionalLights[i];
 
         float kShadow = 1.0f;
-        if (dl.bCastShadows) {
+        if (dl.bCastShadows > 0) {
             const vec4 fragPosVS = u_PC.CameraDataBuffer.View * vec4(i_VertexInput.WorldPos, 1);
             const float depthVS = abs(fragPosVS.z);
 
             int layer = -1;
             for(int cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES - 1; ++cascadeIndex)
             {
-                if(depthVS < u_Lights.CascadePlaneDistances[cascadeIndex])
+                if(depthVS < u_PC.LightDataBuffer.CascadePlaneDistances[cascadeIndex])
                 {
                     layer = cascadeIndex;
                     break;
@@ -127,9 +126,9 @@ void main()
             }
             else
             {
-                biasMultiplier = 1.f / (u_Lights.CascadePlaneDistances[layer] * .5f);
+                biasMultiplier = 1.f / (u_PC.LightDataBuffer.CascadePlaneDistances[layer] * .5f);
             }
-            kShadow = 1.f - DirShadowCalculation(u_DirShadowmap[i], biasMultiplier, layer, u_Lights.DirLightViewProjMatrices[i * MAX_DIR_LIGHTS + layer + int(bLayerNeedsFix)] * vec4(i_VertexInput.WorldPos, 1), N, normalize(dl.Direction));
+            kShadow = 1.f - DirShadowCalculation(u_DirShadowmap[i], biasMultiplier, layer, u_PC.LightDataBuffer.DirLightViewProjMatrices[i * MAX_DIR_LIGHTS + layer + int(bLayerNeedsFix)] * vec4(i_VertexInput.WorldPos, 1), N, normalize(dl.Direction));
         }
 
         #if PHONG
@@ -143,14 +142,14 @@ void main()
     // Point lights
     {
         const uint offset = linearTileIndex * MAX_POINT_LIGHTS;
-        for(uint i = 0; i < u_Lights.PointLightCount && s_VisiblePointLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i) 
+        for(uint i = 0; i < u_PC.LightDataBuffer.PointLightCount && s_VisiblePointLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i) 
         {
             const uint lightIndex = s_VisiblePointLightIndicesBuffer.indices[offset + i];
-            if (lightIndex >= u_Lights.PointLightCount) continue;
+            if (lightIndex >= u_PC.LightDataBuffer.PointLightCount) continue;
 
-            PointLight pl = u_Lights.PointLights[lightIndex];
+            PointLight pl = u_PC.LightDataBuffer.PointLights[lightIndex];
             float kShadow = 1.0f;
-            if(pl.bCastShadows) kShadow = 1.f - PointShadowCalculation(u_PointShadowmap[lightIndex], i_VertexInput.WorldPos, u_PC.CameraDataBuffer.Position, pl, u_PC.pad0.x /* far plane for point light shadow maps */);
+           // if(pl.bCastShadows > 0) kShadow = 1.f - PointShadowCalculation(u_PointShadowmap[lightIndex], i_VertexInput.WorldPos, u_PC.CameraDataBuffer.Position, pl, u_PC.pad0.x /* far plane for point light shadow maps */);
 
             #if PHONG
                 irradiance += PointLightContribution(kShadow, i_VertexInput.WorldPos, N, V, pl, albedo.rgb, ao);
@@ -163,12 +162,12 @@ void main()
     // Spot lights
     {
         const uint offset = linearTileIndex * MAX_SPOT_LIGHTS;
-        for(uint i = 0; i < u_Lights.SpotLightCount && s_VisibleSpotLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i)
+        for(uint i = 0; i < u_PC.LightDataBuffer.SpotLightCount && s_VisibleSpotLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i)
         {
            const uint lightIndex = s_VisibleSpotLightIndicesBuffer.indices[offset + i];
-           if (lightIndex >= u_Lights.SpotLightCount) continue;
+           if (lightIndex >= u_PC.LightDataBuffer.SpotLightCount) continue;
 
-           SpotLight spl = u_Lights.SpotLights[lightIndex];
+           SpotLight spl = u_PC.LightDataBuffer.SpotLights[lightIndex];
            #if PHONG
                irradiance += SpotLightContribution(i_VertexInput.WorldPos, N, V, spl, albedo.rgb, ao);
            #elif PBR

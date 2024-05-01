@@ -45,18 +45,18 @@ void main()
     barrier();
 
     const Meshlet meshlet = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[tp_TaskData.baseMeshletID + lid];
-    const vec3 coneApex = RotateByQuat(vec3(meshlet.coneApex[0], meshlet.coneApex[1], meshlet.coneApex[2]), md.orientation) * md.scale + md.translation;
-    const vec3 coneAxis = RotateByQuat(vec3(meshlet.coneAxis[0], meshlet.coneAxis[1], meshlet.coneAxis[2]), md.orientation);
+    const vec3 coneApex = RotateByQuat(meshlet.coneApex * md.scale, md.orientation)+ md.translation;
+    const vec3 coneAxis = RotateByQuat(meshlet.coneAxis, md.orientation);
 
     const float maxScale = max(max(md.scale.x, md.scale.y), md.scale.z);
     float scaledRadius = meshlet.radius * maxScale;
     if(maxScale != 1.0f) scaledRadius *= .5f;
 
     Sphere sphere;
-    sphere.Center = RotateByQuat(vec3(meshlet.center[0], meshlet.center[1], meshlet.center[2]), md.orientation) * md.scale + md.translation;
+    sphere.Center = RotateByQuat(meshlet.center, md.orientation) * md.scale + md.translation;
     sphere.Radius = scaledRadius;
 
-    if (!ConeCull(u_PC.CameraDataBuffer.Position, coneApex, coneAxis, meshlet.coneCutoff) && SphereInsideFrustum(sphere, u_PC.CameraDataBuffer.ViewFrustum))
+    if (!ConeCull(u_PC.CameraDataBuffer.Position, coneApex, coneAxis, meshlet.coneCutoff, sphere.Radius) && SphereInsideFrustum(sphere, u_PC.CameraDataBuffer.ViewFrustum))
     {
        const uint32_t index = atomicAdd(passedMeshletCount, 1);
        tp_TaskData.meshlets[index] = uint8_t(lid);

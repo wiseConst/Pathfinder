@@ -26,6 +26,8 @@ namespace Pathfinder
 #define VK_LOG_VMA_ALLOCATIONS 0
 #define VK_LOG_INFO 0
 
+#define RENDERDOC_DEBUG 0
+
 #if PFR_DEBUG
 constexpr static bool s_bEnableValidationLayers = true;
 #else
@@ -66,6 +68,8 @@ static const std::vector<const char*> s_DeviceExtensions = {
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
 
+#if !RENDERDOC_DEBUG
+
     VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,  // To build acceleration structures
     VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,    // To use vkCmdTraceRaysKHR
 
@@ -75,6 +79,8 @@ static const std::vector<const char*> s_DeviceExtensions = {
     // waiting for it to complete.
 
     VK_KHR_RAY_QUERY_EXTENSION_NAME,  // To trace rays in every shader I want
+#endif
+
 #if SHADER_DEBUG_PRINTF
     VK_KHR_SHADER_NON_SEMANTIC_INFO_EXTENSION_NAME,  // debugPrintEXT shaders
 #endif
