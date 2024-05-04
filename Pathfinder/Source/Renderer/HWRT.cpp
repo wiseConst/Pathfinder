@@ -1,8 +1,8 @@
 #include "PathfinderPCH.h"
-#include "RayTracingBuilder.h"
+#include "HWRT.h"
 
 #include "RendererAPI.h"
-#include "Platform/Vulkan/VulkanRayTracingBuilder.h"
+#include "Platform/Vulkan/VulkanHWRT.h"
 
 namespace Pathfinder
 {

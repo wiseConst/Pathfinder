@@ -101,7 +101,6 @@ void Application::Run()
             ss << "[rhi]: " << Renderer::GetStats().RHITime << "ms ";
             ss << "[objects]: " << Renderer::GetStats().ObjectsDrawn;
             ss << " [tris]: " << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
-            ss << " [meshlets]: " << Renderer::GetStats().MeshletCount;
             ss << " [2D batches]: " << Renderer2D::GetStats().BatchCount;
             ss << " [descriptor pools]: " << Renderer::GetStats().DescriptorPoolCount;
             ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
@@ -118,35 +117,6 @@ void Application::OnEvent(Event& e)
 {
     if (m_Specification.bEnableImGui) m_UILayer->OnEvent(e);
     m_LayerQueue->OnEvent(e);
-
-    EventDispatcher dispatcher(e);
-    dispatcher.Dispatch<KeyButtonPressedEvent>(
-        [this](const auto& event)
-        {
-            const auto key = event.GetKey();
-
-            /* if (key == EKey::KEY_F1)
-              {
-                  m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_WINDOWED);
-                  return true;
-              }
-
-              if (key == EKey::KEY_F2)
-              {
-                  m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN);
-
-                  return true;
-              }
-
-              if (key == EKey::KEY_F3)
-              {
-                  m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE);
-
-                  return true;
-              }*/
-
-            return false;
-        });
 }
 
 Application::~Application()

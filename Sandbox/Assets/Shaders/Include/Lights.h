@@ -16,17 +16,32 @@ using vec4 = glm::vec4;
 #ifdef __cplusplus
 
 static const LIGHT_INDEX_TYPE INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? LIGHT_INDEX_TYPE(MAX_POINT_LIGHTS)
-                                                                               : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
+                                                                                       : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
 
 #else
 
 const LIGHT_INDEX_TYPE INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? LIGHT_INDEX_TYPE(MAX_POINT_LIGHTS)
-                                                                        : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
-
+                                                                                : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
 
 #endif
 
-struct PointLight
+struct
+#ifdef __cplusplus
+    alignas(4)
+#endif
+        DirectionalLight
+{
+    vec3 Direction;
+    vec3 Color;
+    float Intensity;
+    uint32_t bCastShadows;
+};
+
+struct
+#ifdef __cplusplus
+    alignas(4)
+#endif
+        PointLight
 {
     vec3 Position;
     vec3 Color;
@@ -36,15 +51,11 @@ struct PointLight
     uint32_t bCastShadows;
 };
 
-struct DirectionalLight
-{
-    vec3 Direction;
-    vec3 Color;
-    float Intensity;
-    uint32_t bCastShadows;
-};
-
-struct SpotLight
+struct
+#ifdef __cplusplus
+    alignas(4)
+#endif
+        SpotLight
 {
     vec3 Position;
     vec3 Direction;
@@ -135,6 +146,5 @@ float PointShadowCalculation(samplerCube pointShadowMap, const vec3 worldPos, co
     return shadow;
 }
 #endif
-
 
 #endif

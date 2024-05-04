@@ -13,7 +13,7 @@
 #include "Renderer/Renderer.h"
 
 #include <GLFW/glfw3.h>
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
+#if PFR_WINDOWS
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #endif
@@ -172,16 +172,16 @@ VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(w
     VK_CHECK(glfwCreateWindowSurface(VulkanContext::Get().GetInstance(), static_cast<GLFWwindow*>(m_WindowHandle), nullptr, &m_Surface),
              "Failed to create surface!");
 
-    Invalidate();
-
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
+#if PFR_WINDOWS
     m_SurfaceFullScreenExclusiveWin32Info.pNext = nullptr;
     m_SurfaceFullScreenExclusiveWin32Info.hmonitor =
         MonitorFromWindow(glfwGetWin32Window(static_cast<GLFWwindow*>(m_WindowHandle)), MONITOR_DEFAULTTONEAREST);
+#endif
 
     m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT;
     m_SurfaceFullScreenExclusiveInfo.pNext               = &m_SurfaceFullScreenExclusiveWin32Info;
-#endif
+
+    Invalidate();
 }
 
 NODISCARD const EImageFormat VulkanSwapchain::GetImageFormat() const
@@ -238,37 +238,28 @@ void VulkanSwapchain::SetWindowMode(const EWindowMode windowMode)
 {
     if (windowMode == m_WindowMode) return;
 
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     if (m_WindowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
     {
         VK_CHECK(vkReleaseFullScreenExclusiveModeEXT(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle),
-                 "Failed to release full screen exclusive mode!");
+                 "Failed to release fullscreen exclusive mode!");
     }
 
-    if (windowMode == EWindowMode::WINDOW_MODE_WINDOWED)
+    switch (windowMode)
     {
-        m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+        case EWindowMode::WINDOW_MODE_WINDOWED:
+            m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+            break;
+        case EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN:
+            m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT;
+            break;
+        case EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE:
+            m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
+            break;
     }
-    else if (windowMode == EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN)
-    {
-        m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT;
-    }
-    else if (windowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
-    {
-        m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
-    }
-#endif
 
+    m_LastWindowMode = m_WindowMode;
     m_WindowMode     = windowMode;
     m_bNeedsRecreate = true;
-
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
-    if (m_WindowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
-    {
-        VK_CHECK(vkAcquireFullScreenExclusiveModeEXT(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle),
-                 "Failed to acquire full screen exclusive mode!");
-    }
-#endif
 }
 
 void VulkanSwapchain::Invalidate()
@@ -365,11 +356,9 @@ void VulkanSwapchain::Invalidate()
                                                    Details.SurfaceCapabilities.maxImageCount);
     swapchainCreateInfo.minImageCount = imageCount;
 
-#if VK_EXCLUSIVE_FULL_SCREEN_TEST
     if (m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
         m_ImageExtent = Details.SurfaceCapabilities.maxImageExtent;
     else
-#endif
         m_ImageExtent = Details.ChooseBestExtent(static_cast<GLFWwindow*>(m_WindowHandle));
 
     swapchainCreateInfo.imageExtent = m_ImageExtent;
@@ -391,10 +380,16 @@ void VulkanSwapchain::Invalidate()
         swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     }
 
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
-    swapchainCreateInfo.pNext = &m_SurfaceFullScreenExclusiveInfo;
-#endif
+    // Literally will be called only when constructing swapchain.
+    if (!m_Handle)
+    {
+        glfwGetWindowPos((GLFWwindow*)m_WindowHandle, &m_LastPosX, &m_LastPosY);
 
+        m_LastWidth  = m_ImageExtent.width;
+        m_LastHeight = m_ImageExtent.height;
+    }
+
+    swapchainCreateInfo.pNext = &m_SurfaceFullScreenExclusiveInfo;
     VK_CHECK(vkCreateSwapchainKHR(logicalDevice, &swapchainCreateInfo, nullptr, &m_Handle), "Failed to create vulkan swapchain!");
     if (oldSwapchain) vkDestroySwapchainKHR(logicalDevice, oldSwapchain, nullptr);
 
@@ -417,6 +412,48 @@ void VulkanSwapchain::Invalidate()
     }
 
     m_ImageLayouts.assign(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
+
+    switch (m_WindowMode)
+    {
+        case EWindowMode::WINDOW_MODE_WINDOWED:
+        {
+            if (m_WindowMode != m_LastWindowMode)
+            {
+                glfwSetWindowMonitor((GLFWwindow*)m_WindowHandle, NULL, m_LastPosX, m_LastPosY, m_LastWidth, m_LastHeight, GLFW_DONT_CARE);
+            }
+            break;
+        }
+        case EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN:
+        {
+            if (m_LastWindowMode != EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
+            {
+                glfwGetWindowPos((GLFWwindow*)m_WindowHandle, &m_LastPosX, &m_LastPosY);
+                glfwGetWindowSize((GLFWwindow*)m_WindowHandle, &m_LastWidth, &m_LastHeight);
+            }
+            break;
+        }
+        case EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE:
+        {
+            if (m_WindowMode != m_LastWindowMode)
+            {
+                glfwGetWindowPos((GLFWwindow*)m_WindowHandle, &m_LastPosX, &m_LastPosY);
+                const GLFWvidmode* videoMode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+                PFR_ASSERT(videoMode, "Invalid video mode!");
+
+                glfwSetWindowMonitor((GLFWwindow*)m_WindowHandle, glfwGetPrimaryMonitor(), 0, 0, videoMode->width, videoMode->height,
+                                     videoMode->refreshRate);
+            }
+            break;
+        }
+    }
+
+    if (m_WindowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
+    {
+        VK_CHECK(vkAcquireFullScreenExclusiveModeEXT(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle),
+                 "Failed to acquire full screen exclusive mode!");
+    }
+
+    m_LastWindowMode = m_WindowMode;
 }
 
 bool VulkanSwapchain::AcquireImage()

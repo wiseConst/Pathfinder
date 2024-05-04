@@ -1,0 +1,98 @@
+{
+  "Scene": "SponzaSonne",
+  "Entities": {
+  "9986269116918782461": {
+      "TagComponent": "PointLight_218",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "PointLightComponent": {
+        "Position": {
+          "x": 8.947355270385742,
+          "y": 2.2769320011138916,
+          "z": -2.754840612411499
+        },
+        "Color": {
+          "x": 0.28247779607772827,
+          "y": 0.751829206943512,
+          "z": 0.3065040111541748
+        },
+        "Intensity": 2.910046100616455,
+        "Radius": 2.5,
+        "MinRadius": 1.6151747703552246,
+        "bCastShadows": 0
+      }
+    },
+    "11320190932899782829": {
+      "TagComponent": "sonne",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "DirectionalLightComponent": {
+        "Direction": {
+          "x": 0.10000000149011612,
+          "y": 5.0,
+          "z": 0.20000000298023224
+        },
+        "Color": {
+          "x": 0.800000011920929,
+          "y": 0.800000011920929,
+          "z": 0.20000000298023224
+        },
+        "Intensity": 1.5,
+        "bCastShadows": 0
+      }
+    },
+    "13184783760960274608": {
+      "TagComponent": "sponza",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "MeshComponent": {
+        "MeshSource": "sponza/scene.gltf"
+      }
+    }
+  }
+}

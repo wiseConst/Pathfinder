@@ -11,7 +11,7 @@ namespace Pathfinder
 // NOTE: Big refactor: create class Scene which holds array of renderobjects, then create tlas that contains blases(created of
 // renderobjects), and if instance count changes, recreate tlas. Easy as that.
 
-class Submesh;
+class Mesh;
 class RayTracingBuilder : private Uncopyable, private Unmovable
 {
   public:
@@ -20,10 +20,10 @@ class RayTracingBuilder : private Uncopyable, private Unmovable
     static void Init();
     static void Shutdown();
 
-    FORCEINLINE NODISCARD static std::vector<AccelerationStructure> BuildBLASes(const std::vector<Shared<Submesh>>& submeshes)
+    FORCEINLINE NODISCARD static std::vector<AccelerationStructure> BuildBLASes(const std::vector<Shared<Mesh>>& meshes)
     {
         PFR_ASSERT(s_Instance, "RayTracingBuilder instance is not valid!");
-        return s_Instance->BuildBLASesImpl(submeshes);
+        return s_Instance->BuildBLASesImpl(meshes);
     }
 
     FORCEINLINE NODISCARD static AccelerationStructure BuildTLAS(const std::vector<AccelerationStructure>& blases)
@@ -43,9 +43,9 @@ class RayTracingBuilder : private Uncopyable, private Unmovable
 
     RayTracingBuilder() = default;
 
-    virtual std::vector<AccelerationStructure> BuildBLASesImpl(const std::vector<Shared<Submesh>>& submeshes) = 0;
-    virtual AccelerationStructure BuildTLASImpl(const std::vector<AccelerationStructure>& blases)             = 0;
-    virtual void DestroyAccelerationStructureImpl(AccelerationStructure& as)                                  = 0;
+    virtual std::vector<AccelerationStructure> BuildBLASesImpl(const std::vector<Shared<Mesh>>& meshes) = 0;
+    virtual AccelerationStructure BuildTLASImpl(const std::vector<AccelerationStructure>& blases)       = 0;
+    virtual void DestroyAccelerationStructureImpl(AccelerationStructure& as)                            = 0;
 };
 
 }  // namespace Pathfinder

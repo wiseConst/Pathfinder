@@ -14,25 +14,20 @@
 #include "Include/PBRShading.glslh"
 #endif
 
+#ifdef PFR_RENDER_OPAQUE_EARLY_FRAGMENT_TESTS
+layout(early_fragment_tests) in;
+#endif
+
 layout(constant_id = 0) const bool bRenderViewNormalMap = false;
 /* NOTE: 
     From PushConstantBlock:
     uint32_t StorageImageIndex; - u_AO
     uint32_t AlbedoTextureIndex; - storing cascade debug image
 
-    vec4 pad0; x(far plane for point light shadow maps)
-    vec3 pad1;
+    vec2 pad0; x(far plane for point light shadow maps)
 */
 
-layout(set = LAST_BINDLESS_SET + 3, binding = 0, scalar) buffer readonly VisiblePointLightIndicesBuffer
-{
-    LIGHT_INDEX_TYPE indices[];
-} s_VisiblePointLightIndicesBuffer;
-layout(set = LAST_BINDLESS_SET + 3, binding = 1, scalar) buffer readonly VisibleSpotLightIndicesBuffer
-{
-    LIGHT_INDEX_TYPE indices[];
-} s_VisibleSpotLightIndicesBuffer;
-layout(set = LAST_BINDLESS_SET + 3, binding = 2) uniform sampler2DArray u_DirShadowmap[MAX_DIR_LIGHTS];
+layout(set = LAST_BINDLESS_SET + 3, binding = 0) uniform sampler2DArray u_DirShadowmap[MAX_DIR_LIGHTS];
 
 layout(location = 0) out vec4 outFragColor;
 layout(location = 1) out vec4 outBrightColor;
@@ -142,9 +137,9 @@ void main()
     // Point lights
     {
         const uint offset = linearTileIndex * MAX_POINT_LIGHTS;
-        for(uint i = 0; i < u_PC.LightDataBuffer.PointLightCount && s_VisiblePointLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i) 
+        for(uint i = 0; i < u_PC.LightDataBuffer.PointLightCount && VisiblePointLightIndicesBuffer(u_PC.VisiblePointLightIndicesDataBuffer).indices[offset + i] != INVALID_LIGHT_INDEX; ++i) 
         {
-            const uint lightIndex = s_VisiblePointLightIndicesBuffer.indices[offset + i];
+            const uint lightIndex = VisiblePointLightIndicesBuffer(u_PC.VisiblePointLightIndicesDataBuffer).indices[offset + i];
             if (lightIndex >= u_PC.LightDataBuffer.PointLightCount) continue;
 
             PointLight pl = u_PC.LightDataBuffer.PointLights[lightIndex];
@@ -162,9 +157,9 @@ void main()
     // Spot lights
     {
         const uint offset = linearTileIndex * MAX_SPOT_LIGHTS;
-        for(uint i = 0; i < u_PC.LightDataBuffer.SpotLightCount && s_VisibleSpotLightIndicesBuffer.indices[offset + i] != INVALID_LIGHT_INDEX; ++i)
+        for(uint i = 0; i < u_PC.LightDataBuffer.SpotLightCount && VisibleSpotLightIndicesBuffer(u_PC.VisibleSpotLightIndicesDataBuffer).indices[offset + i] != INVALID_LIGHT_INDEX; ++i)
         {
-           const uint lightIndex = s_VisibleSpotLightIndicesBuffer.indices[offset + i];
+           const uint lightIndex = VisibleSpotLightIndicesBuffer(u_PC.VisibleSpotLightIndicesDataBuffer).indices[offset + i];
            if (lightIndex >= u_PC.LightDataBuffer.SpotLightCount) continue;
 
            SpotLight spl = u_PC.LightDataBuffer.SpotLights[lightIndex];

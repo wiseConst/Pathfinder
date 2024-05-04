@@ -3,7 +3,7 @@
 
 #ifdef __cplusplus
 #include "Primitives.h"
-#else 
+#else
 #include "Include/Primitives.h"
 #endif
 
@@ -51,6 +51,11 @@ bool SphereIntersectsAABB(Sphere sphere, AABB aabb)
 bool PointInsidePlane(vec3 p, Plane plane)
 {
     return dot(plane.Normal, p) - plane.Distance < 0;
+}
+
+bool PointInsideSphere(Sphere sphere, vec3 p)
+{
+    return distance(sphere.Center, p) <= sphere.Radius;
 }
 
 bool ConeInsidePlane(Cone cone, Plane plane)

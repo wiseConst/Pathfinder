@@ -10,4 +10,6 @@ static std::uniform_int_distribution<uint64_t> s_Distribution;
 
 UUID::UUID() : m_UUID(s_Distribution(s_Engine)) {}
 
+UUID::UUID(const uint64_t uuid) : m_UUID(uuid) {}
+
 }  // namespace Pathfinder

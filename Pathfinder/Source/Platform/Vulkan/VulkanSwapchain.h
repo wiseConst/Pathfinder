@@ -60,11 +60,16 @@ class VulkanSwapchain final : public Swapchain
     std::vector<VkImage> m_Images;
     std::vector<VkImageView> m_ImageViews;
 
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
+#if PFR_WINDOWS
     VkSurfaceFullScreenExclusiveWin32InfoEXT m_SurfaceFullScreenExclusiveWin32Info = {
         VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT};
-    VkSurfaceFullScreenExclusiveInfoEXT m_SurfaceFullScreenExclusiveInfo = {VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT};
 #endif
+    EWindowMode m_LastWindowMode                                         = EWindowMode::WINDOW_MODE_WINDOWED;
+    int32_t m_LastPosX                                                   = 0;
+    int32_t m_LastPosY                                                   = 0;
+    int32_t m_LastWidth                                                  = 1280;
+    int32_t m_LastHeight                                                 = 720;
+    VkSurfaceFullScreenExclusiveInfoEXT m_SurfaceFullScreenExclusiveInfo = {VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT};
 
     VkSurfaceKHR m_Surface                = VK_NULL_HANDLE;
     VkSurfaceFormatKHR m_ImageFormat      = {VK_FORMAT_UNDEFINED, VK_COLORSPACE_SRGB_NONLINEAR_KHR};

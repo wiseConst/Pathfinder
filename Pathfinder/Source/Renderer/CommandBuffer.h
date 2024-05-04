@@ -103,6 +103,8 @@ class CommandBuffer : private Uncopyable, private Unmovable
                                                         const Shared<Buffer>& countBuffer, const uint64_t countBufferOffset,
                                                         const uint32_t maxDrawCount, const uint32_t stride) const = 0;
 
+    virtual void TraceRays(const ShaderBindingTable& sbt, uint32_t width, uint32_t height, uint32_t depth = 1) const = 0;
+
     virtual void BindVertexBuffers(const std::vector<Shared<Buffer>>& vertexBuffers, const uint32_t firstBinding = 0,
                                    const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const                   = 0;
     virtual void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const = 0;

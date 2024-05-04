@@ -110,6 +110,11 @@ class Renderer : private Uncopyable, private Unmovable
         Shared<Framebuffer> CompositeFramebuffer = nullptr;
         Shared<Pipeline> CompositePipeline       = nullptr;
 
+        Shared<Image> RTImage              = nullptr;
+        Shared<Pipeline> RTPipeline        = nullptr;
+        Shared<Pipeline> RTComputePipeline = nullptr;
+        ShaderBindingTable RTSBT           = {};
+
         // Forward+ renderer
         Shared<Framebuffer> GBuffer                     = nullptr;
         Shared<Pipeline> ForwardPlusOpaquePipeline      = nullptr;
@@ -141,18 +146,18 @@ class Renderer : private Uncopyable, private Unmovable
         Shared<Texture2D> WhiteTexture = nullptr;
 
         // Light-Culling
-        bool bNeedsFrustumsRecomputing                = true;
-        Shared<Pipeline> ComputeFrustumsPipeline      = nullptr;
-        Shared<Buffer> FrustumsSSBO                   = nullptr;
-        Shared<Image> FrustumDebugImage               = nullptr;
-        Shared<Image> LightHeatMapImage               = nullptr;
-        Shared<Pipeline> LightCullingPipeline         = nullptr;
-        Shared<Buffer> PointLightIndicesStorageBuffer = nullptr;
+        bool bNeedsFrustumsRecomputing           = true;
+        Shared<Pipeline> ComputeFrustumsPipeline = nullptr;
+        Shared<Buffer> FrustumsSSBO              = nullptr;
+        Shared<Image> FrustumDebugImage          = nullptr;
+        Shared<Image> LightHeatMapImage          = nullptr;
+        Shared<Pipeline> LightCullingPipeline    = nullptr;
+        Shared<Buffer> PointLightIndicesSSBO     = nullptr;
         // NOTE: Instead of creating this shit manually, shader can create you this
         // in e.g. you got writeonly buffer -> shader can create it,
         // in e.g. you got readonly  buffer -> shader gonna wait for you to give it him
         // unordored_map<string,BufferPerFrame>, string maps to set and binding
-        Shared<Buffer> SpotLightIndicesStorageBuffer = nullptr;
+        Shared<Buffer> SpotLightIndicesSSBO = nullptr;
 
         // AO
         // TODO: Add HBAO, GTAO, RTAO
@@ -192,6 +197,7 @@ class Renderer : private Uncopyable, private Unmovable
     struct RendererSettings
     {
         bool bVSync;
+        bool bDrawColliders;
 
         EBlurType BlurType = EBlurType::BLUR_TYPE_GAUSSIAN;
     };
@@ -202,7 +208,6 @@ class Renderer : private Uncopyable, private Unmovable
         uint32_t TriangleCount;
         uint32_t DescriptorSetCount;
         uint32_t DescriptorPoolCount;
-        uint32_t MeshletCount;
         uint32_t ObjectsDrawn;
         float GPUTime;
         float SwapchainPresentTime;
@@ -231,6 +236,7 @@ class Renderer : private Uncopyable, private Unmovable
     static void GeometryPass();
     static void BloomPass();
 
+    static void RayTracingPass();
     static void CompositePass();
 };
 

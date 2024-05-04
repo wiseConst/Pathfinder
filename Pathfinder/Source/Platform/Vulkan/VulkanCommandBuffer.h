@@ -159,14 +159,14 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     // RT
-    FORCEINLINE void TraceRays(const VkStridedDeviceAddressRegionKHR* raygenShaderBindingTable,
-                               const VkStridedDeviceAddressRegionKHR* missShaderBindingTable,
-                               const VkStridedDeviceAddressRegionKHR* hitShaderBindingTable,
-                               const VkStridedDeviceAddressRegionKHR* callableShaderBindingTable, uint32_t width, uint32_t height,
-                               uint32_t depth = 1) const
+    void TraceRays(const ShaderBindingTable& sbt, uint32_t width, uint32_t height, uint32_t depth = 1) const final override
     {
-        vkCmdTraceRaysKHR(m_Handle, raygenShaderBindingTable, missShaderBindingTable, hitShaderBindingTable, callableShaderBindingTable,
-                          width, height, depth);
+        const VkStridedDeviceAddressRegionKHR* rgenRegion     = (VkStridedDeviceAddressRegionKHR*)&sbt.RgenRegion;
+        const VkStridedDeviceAddressRegionKHR* missRegion     = (VkStridedDeviceAddressRegionKHR*)&sbt.MissRegion;
+        const VkStridedDeviceAddressRegionKHR* hitRegion      = (VkStridedDeviceAddressRegionKHR*)&sbt.HitRegion;
+        const VkStridedDeviceAddressRegionKHR* callableRegion = (VkStridedDeviceAddressRegionKHR*)&sbt.CallRegion;
+
+        vkCmdTraceRaysKHR(m_Handle, rgenRegion, missRegion, hitRegion, callableRegion, width, height, depth);
     }
 
     FORCEINLINE void BuildAccelerationStructure(uint32_t infoCount, const VkAccelerationStructureBuildGeometryInfoKHR* infos,

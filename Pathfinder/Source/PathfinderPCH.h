@@ -31,6 +31,7 @@
 #include <format>
 #include <chrono>
 #include <random>
+#include <omp.h>
 
 #include "Core/Log.h"
 #include "Core/Timer.h"

@@ -46,27 +46,19 @@ enum class EPipelineType : uint8_t
 };
 
 class Shader;
-struct PipelineSpecification
-{
-    std::string DebugName = s_DEFAULT_STRING;
 
-    EPipelineType PipelineType           = EPipelineType::PIPELINE_TYPE_GRAPHICS;
+// TODO: Refactor and maybe remove PipelineType since I have dedicated pipeline options.
+
+struct GraphicsPipelineOptions
+{
+    std::vector<BufferLayout> InputBufferBindings = {};
+    Shared<Framebuffer> TargetFramebuffer         = nullptr;
+
     ECullMode CullMode                   = ECullMode::CULL_MODE_NONE;
     EFrontFace FrontFace                 = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
     EPrimitiveTopology PrimitiveTopology = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
-
-    float LineWidth = 1.0f;
-
-    Shared<Framebuffer> TargetFramebuffer = nullptr;
-
-    Shared<Pathfinder::Shader> Shader = nullptr;
-    using ShaderConstantType          = std::variant<bool, int32_t, uint32_t, float>;  // NOTE: New types will grow with use.
-    std::unordered_map<EShaderStage, std::vector<ShaderConstantType>> ShaderConstantsMap;
-
-    std::vector<BufferLayout> InputBufferBindings = {};
-
-    bool bMeshShading        = false;
-    bool bBindlessCompatible = false;
+    bool bMeshShading                    = false;
+    float LineWidth                      = 1.0f;
 
     bool bBlendEnable    = false;
     EBlendMode BlendMode = EBlendMode::BLEND_MODE_ADDITIVE;
@@ -79,6 +71,30 @@ struct PipelineSpecification
     ECompareOp DepthCompareOp = ECompareOp::COMPARE_OP_NEVER;
 };
 
+struct ComputePipelineOptions
+{
+};
+
+struct RayTracingPipelineOptions
+{
+    uint32_t MaxPipelineRayRecursionDepth = 1;
+};
+
+struct PipelineSpecification
+{
+    std::string DebugName = s_DEFAULT_STRING;
+
+    using PipelineOptionsVariant = std::variant<GraphicsPipelineOptions, ComputePipelineOptions, RayTracingPipelineOptions>;
+    std::optional<PipelineOptionsVariant> PipelineOptions = std::nullopt;
+
+    using ShaderConstantType = std::variant<bool, int32_t, uint32_t, float>;  // NOTE: New types will grow with use.
+    std::unordered_map<EShaderStage, std::vector<ShaderConstantType>> ShaderConstantsMap;
+
+    Shared<Pathfinder::Shader> Shader = nullptr;
+    EPipelineType PipelineType        = EPipelineType::PIPELINE_TYPE_GRAPHICS;
+    bool bBindlessCompatible          = false;
+};
+
 class Pipeline : private Uncopyable, private Unmovable
 {
   public:
@@ -87,7 +103,34 @@ class Pipeline : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const PipelineSpecification& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual void* Get() const = 0;
 
-    FORCEINLINE void SetPolygonMode(const EPolygonMode polygonMode) { m_Specification.PolygonMode = polygonMode; }
+    template <typename TPipelineOption> NODISCARD FORCEINLINE const TPipelineOption* GetPipelineOptions() const
+    {
+        PFR_ASSERT(m_Specification.PipelineOptions.has_value(), "GraphicsPipelineOptions isn't valid!");
+
+        const bool bGraphicsPipelineOption   = std::is_same<TPipelineOption, GraphicsPipelineOptions>::value;
+        const bool bComputePipelineOption    = std::is_same<TPipelineOption, ComputePipelineOptions>::value;
+        const bool bRayTracingPipelineOption = std::is_same<TPipelineOption, RayTracingPipelineOptions>::value;
+        PFR_ASSERT(bGraphicsPipelineOption || bComputePipelineOption || bRayTracingPipelineOption,
+                   "Unknown TPipelineOption, supported: GraphicsPipelineOptions/ComputePipelineOptions/RayTracingPipelineOptions.");
+
+        const auto* pipelineOptions = std::get_if<TPipelineOption>(&m_Specification.PipelineOptions.value());
+        if (bGraphicsPipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_GRAPHICS ||  //
+            bComputePipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_COMPUTE ||    //
+            bRayTracingPipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_RAY_TRACING)
+            PFR_ASSERT(pipelineOptions, "TPipelineOption isn't valid!");
+
+        return pipelineOptions;
+    }
+
+    FORCEINLINE void SetPolygonMode(const EPolygonMode polygonMode)
+    {
+        if (!m_Specification.PipelineOptions.has_value()) return;
+
+        if (auto* graphicsPipelineOptions = std::get_if<GraphicsPipelineOptions>(&m_Specification.PipelineOptions.value()))
+        {
+            graphicsPipelineOptions->PolygonMode = polygonMode;
+        }
+    }
 
     NODISCARD static Shared<Pipeline> Create(const PipelineSpecification& pipelineSpec);
 

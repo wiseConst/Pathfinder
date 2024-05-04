@@ -20,7 +20,7 @@ void Renderer2D::Init()
     s_RendererData2D = MakeUnique<RendererData2D>();
     memset(&s_Renderer2DStats, 0, sizeof(s_Renderer2DStats));
 
-    ShaderLibrary::Load("Quad2D");
+    ShaderLibrary::Load({"Quad2D"});
 
     std::ranges::for_each(s_RendererData2D->QuadVertexBase,
                           [](auto& quadVertexBase)
@@ -66,17 +66,21 @@ void Renderer2D::Init()
         delete[] indices;
     }
 
-    PipelineSpecification quadPipelineSpec = {"Quad2D", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+    PipelineSpecification quadPipelineSpec = {"Quad2D"};
+    quadPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     quadPipelineSpec.Shader                = ShaderLibrary::Get("Quad2D");
     quadPipelineSpec.bBindlessCompatible   = true;
-    quadPipelineSpec.FrontFace             = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
-    quadPipelineSpec.TargetFramebuffer     = Renderer::GetRendererData()->GBuffer;
-    quadPipelineSpec.InputBufferBindings   = {{
+
+    GraphicsPipelineOptions quadPipelineOptions = {};
+    quadPipelineOptions.FrontFace               = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
+    quadPipelineOptions.TargetFramebuffer       = Renderer::GetRendererData()->GBuffer;
+    quadPipelineOptions.InputBufferBindings     = {{
         {"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
         {"inNormal", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
         {"inUV", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2},
         {"inColor", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4},
     }};
+    quadPipelineSpec.PipelineOptions            = std::make_optional<GraphicsPipelineOptions>(quadPipelineOptions);
     // quadPipelineSpec.bDepthTest            = true;
     // quadPipelineSpec.bDepthWrite           = true;  // Do I rly need this? since im using depth pre pass of my static meshes
     // quadPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;

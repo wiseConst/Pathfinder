@@ -19,7 +19,7 @@
 #include "Mesh/Mesh.h"
 #include "Mesh/Submesh.h"
 
-#include "RayTracingBuilder.h"
+#include "HWRT.h"
 #include "RenderGraph/RenderGraphBuilder.h"
 
 #include "Debug/DebugRenderer.h"
@@ -42,9 +42,22 @@ void Renderer::Init()
     s_RendererSettings.bVSync   = Application::Get().GetWindow()->IsVSync();
     s_RendererData->LightStruct = MakeUnique<LightData>();
 
-    ShaderLibrary::Load(std::vector<std::string>{"ForwardPlus", "DepthPrePass", "ObjectCulling", "LightCulling", "ComputeFrustums",
-                                                 "Composite", "AO/SSAO", "AO/HBAO", "Shadows/DirShadowMap", "AtmosphericScattering",
-                                                 "Post/GaussianBlur", "Post/MedianBlur", "Post/BoxBlur"});
+    ShaderLibrary::Load({{"ForwardPlus"},
+                         {"ForwardPlus", std::map<std::string, std::string>{std::make_pair<std::string, std::string>(
+                                             "PFR_RENDER_OPAQUE_EARLY_FRAGMENT_TESTS", "")}},
+                         {"DepthPrePass"},
+                         {"ObjectCulling"},
+                         {"LightCulling"},
+                         {"ComputeFrustums"},
+                         {"Composite"},
+                         {"AO/SSAO"},
+                         {"AO/HBAO"},
+                         {"Shadows/DirShadowMap"},
+                         {"AtmosphericScattering"},
+                         {"Post/GaussianBlur"},
+                         {"Post/MedianBlur"},
+                         {"Post/BoxBlur"},
+                         {"RayTrace"}});
 
     std::ranges::for_each(s_RendererData->UploadHeap,
                           [](auto& uploadHeap)
@@ -149,7 +162,9 @@ void Renderer::Init()
             s_RendererData->CulledMeshesBufferTransparent = Buffer::Create(bufferSpec);
         }
 
-        PipelineSpecification objectCullingPipelineSpec = {"ObjectCulling", EPipelineType::PIPELINE_TYPE_COMPUTE};
+        PipelineSpecification objectCullingPipelineSpec = {"ObjectCulling"};
+        objectCullingPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_COMPUTE;
+        objectCullingPipelineSpec.PipelineOptions       = std::make_optional<ComputePipelineOptions>();
         objectCullingPipelineSpec.Shader                = ShaderLibrary::Get("ObjectCulling");
         objectCullingPipelineSpec.bBindlessCompatible   = true;
         PipelineBuilder::Push(s_RendererData->ObjectCullingPipeline, objectCullingPipelineSpec);
@@ -175,16 +190,58 @@ void Renderer::Init()
                                                           { s_RendererData->DepthPrePassFramebuffer->Resize(width, height); });
     }
 
+    {
+
+        {
+            PipelineSpecification rtPipelineSpec = {"RayTracing"};
+            rtPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_RAY_TRACING;
+            rtPipelineSpec.bBindlessCompatible   = true;
+            rtPipelineSpec.Shader                = ShaderLibrary::Get("RayTrace");
+
+            RayTracingPipelineOptions rtPipelineOptions = {};
+            rtPipelineSpec.PipelineOptions              = std::make_optional<RayTracingPipelineOptions>(rtPipelineOptions);
+
+            s_RendererData->RTPipeline = Pipeline::Create(rtPipelineSpec);
+        }
+        s_RendererData->RTSBT = ShaderLibrary::Get("RayTrace")->CreateSBT(s_RendererData->RTPipeline);
+
+        {
+            PipelineSpecification rtComputePipelineSpec = {"RayTracingCompute"};
+            rtComputePipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_COMPUTE;
+            rtComputePipelineSpec.bBindlessCompatible   = true;
+            rtComputePipelineSpec.Shader                = ShaderLibrary::Get("RayTrace");
+
+            ComputePipelineOptions rtComputePipelineOptions = {};
+            rtComputePipelineSpec.PipelineOptions           = std::make_optional<ComputePipelineOptions>(rtComputePipelineOptions);
+
+            PipelineBuilder::Push(s_RendererData->RTComputePipeline, rtComputePipelineSpec);
+        }
+
+        ImageSpecification rtImageSpec = {};
+        rtImageSpec.bBindlessUsage     = true;
+        rtImageSpec.Format             = EImageFormat::FORMAT_RGBA8_UNORM;
+        rtImageSpec.UsageFlags =
+            EImageUsage::IMAGE_USAGE_STORAGE_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT;
+        s_RendererData->RTImage = Image::Create(rtImageSpec);
+
+        Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height)
+                                                          { s_RendererData->RTImage->Resize(width, height); });
+    }
+
     // NOTE: Reversed-Z, summary:https://ajweeks.com/blog/2019/04/06/ReverseZ/
-    PipelineSpecification depthPrePassPipelineSpec = {"DepthPrePass", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+    PipelineSpecification depthPrePassPipelineSpec = {"DepthPrePass"};
+    depthPrePassPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     depthPrePassPipelineSpec.Shader                = ShaderLibrary::Get("DepthPrePass");
     depthPrePassPipelineSpec.bBindlessCompatible   = true;
-    depthPrePassPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
-    depthPrePassPipelineSpec.TargetFramebuffer     = s_RendererData->DepthPrePassFramebuffer;
-    depthPrePassPipelineSpec.bMeshShading          = true;
-    depthPrePassPipelineSpec.bDepthTest            = true;
-    depthPrePassPipelineSpec.bDepthWrite           = true;
-    depthPrePassPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL;
+
+    GraphicsPipelineOptions depthGraphicsPipelineOptions = {};
+    depthGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+    depthGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->DepthPrePassFramebuffer;
+    depthGraphicsPipelineOptions.bMeshShading            = true;
+    depthGraphicsPipelineOptions.bDepthTest              = true;
+    depthGraphicsPipelineOptions.bDepthWrite             = true;
+    depthGraphicsPipelineOptions.DepthCompareOp          = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL;
+    depthPrePassPipelineSpec.PipelineOptions             = std::make_optional<GraphicsPipelineOptions>(depthGraphicsPipelineOptions);
     PipelineBuilder::Push(s_RendererData->DepthPrePassPipeline, depthPrePassPipelineSpec);
 
     {
@@ -250,22 +307,33 @@ void Renderer::Init()
     }
 
     {
-        PipelineSpecification forwardPipelineSpec = {"ForwardPlusOpaque", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-        forwardPipelineSpec.Shader                = ShaderLibrary::Get("ForwardPlus");
+        PipelineSpecification forwardPipelineSpec = {"ForwardPlusOpaque"};
+        forwardPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
+        forwardPipelineSpec.Shader                = ShaderLibrary::Get(
+            {"ForwardPlus",
+                            std::map<std::string, std::string>{std::make_pair<std::string, std::string>("PFR_RENDER_OPAQUE_EARLY_FRAGMENT_TESTS", "")}});
         // Rendering view normals useless for now.
         // forwardPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(true);
         forwardPipelineSpec.bBindlessCompatible = true;
-        forwardPipelineSpec.CullMode            = ECullMode::CULL_MODE_BACK;
-        forwardPipelineSpec.bDepthTest          = true;
-        forwardPipelineSpec.bDepthWrite         = false;
-        forwardPipelineSpec.DepthCompareOp      = ECompareOp::COMPARE_OP_EQUAL;
-        forwardPipelineSpec.TargetFramebuffer   = s_RendererData->GBuffer;
-        forwardPipelineSpec.bMeshShading        = true;
-        forwardPipelineSpec.bBlendEnable        = true;
-        forwardPipelineSpec.BlendMode           = EBlendMode::BLEND_MODE_ALPHA;
+
+        GraphicsPipelineOptions forwardGraphicsPipelineOptions = {};
+
+        forwardGraphicsPipelineOptions.CullMode          = ECullMode::CULL_MODE_BACK;
+        forwardGraphicsPipelineOptions.bDepthTest        = true;
+        forwardGraphicsPipelineOptions.bDepthWrite       = false;
+        forwardGraphicsPipelineOptions.DepthCompareOp    = ECompareOp::COMPARE_OP_EQUAL;
+        forwardGraphicsPipelineOptions.TargetFramebuffer = s_RendererData->GBuffer;
+        forwardGraphicsPipelineOptions.bMeshShading      = true;
+        forwardGraphicsPipelineOptions.bBlendEnable      = true;
+        forwardGraphicsPipelineOptions.BlendMode         = EBlendMode::BLEND_MODE_ALPHA;
+        forwardPipelineSpec.PipelineOptions              = std::make_optional<GraphicsPipelineOptions>(forwardGraphicsPipelineOptions);
+
         PipelineBuilder::Push(s_RendererData->ForwardPlusOpaquePipeline, forwardPipelineSpec);
-        forwardPipelineSpec.DebugName      = "ForwardPlusTransparent";
-        forwardPipelineSpec.DepthCompareOp = depthPrePassPipelineSpec.DepthCompareOp;
+
+        forwardPipelineSpec.Shader    = ShaderLibrary::Get("ForwardPlus");
+        forwardPipelineSpec.DebugName = "ForwardPlusTransparent";
+        std::get<GraphicsPipelineOptions>(forwardPipelineSpec.PipelineOptions.value()).DepthCompareOp =
+            std::get<GraphicsPipelineOptions>(depthPrePassPipelineSpec.PipelineOptions.value()).DepthCompareOp;
         PipelineBuilder::Push(s_RendererData->ForwardPlusTransparentPipeline, forwardPipelineSpec);
     }
 
@@ -286,11 +354,16 @@ void Renderer::Init()
         Application::Get().GetWindow()->AddResizeCallback([&](uint32_t width, uint32_t height)
                                                           { s_RendererData->CompositeFramebuffer->Resize(width, height); });
 
-        PipelineSpecification compositePipelineSpec = {"Composite", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-        compositePipelineSpec.TargetFramebuffer     = s_RendererData->CompositeFramebuffer;
+        PipelineSpecification compositePipelineSpec = {"Composite"};
+        compositePipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
         compositePipelineSpec.Shader                = ShaderLibrary::Get("Composite");
-        compositePipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
         compositePipelineSpec.bBindlessCompatible   = true;
+
+        GraphicsPipelineOptions compositeGraphicsPipelineOptions = {};
+        compositeGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+        compositeGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->CompositeFramebuffer;
+        compositePipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(compositeGraphicsPipelineOptions);
+
         PipelineBuilder::Push(s_RendererData->CompositePipeline, compositePipelineSpec);
     }
 
@@ -301,19 +374,23 @@ void Renderer::Init()
 
     // Light-Culling
     {
-        PipelineSpecification lightCullingPipelineSpec = {"LightCulling", EPipelineType::PIPELINE_TYPE_COMPUTE};
+        PipelineSpecification lightCullingPipelineSpec = {"LightCulling"};
+        lightCullingPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_COMPUTE;
         lightCullingPipelineSpec.Shader                = ShaderLibrary::Get("LightCulling");
         lightCullingPipelineSpec.bBindlessCompatible   = true;
+        lightCullingPipelineSpec.PipelineOptions       = std::make_optional<ComputePipelineOptions>();
         PipelineBuilder::Push(s_RendererData->LightCullingPipeline, lightCullingPipelineSpec);
 
-        PipelineSpecification computeFrustumsPipelineSpec = {"ComputeFrustums", EPipelineType::PIPELINE_TYPE_COMPUTE};
+        PipelineSpecification computeFrustumsPipelineSpec = {"ComputeFrustums"};
+        computeFrustumsPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_COMPUTE;
         computeFrustumsPipelineSpec.Shader                = ShaderLibrary::Get("ComputeFrustums");
         computeFrustumsPipelineSpec.bBindlessCompatible   = true;
+        computeFrustumsPipelineSpec.PipelineOptions       = std::make_optional<ComputePipelineOptions>();
         PipelineBuilder::Push(s_RendererData->ComputeFrustumsPipeline, computeFrustumsPipelineSpec);
     }
 
     {
-        BufferSpecification sbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE};
+        BufferSpecification sbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
 
         const uint32_t width =
             DivideToNextMultiple(s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width, LIGHT_CULLING_TILE_SIZE);
@@ -322,11 +399,11 @@ void Renderer::Init()
         const size_t sbSize   = MAX_POINT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * width * height;
         sbSpec.BufferCapacity = sbSize;
 
-        s_RendererData->PointLightIndicesStorageBuffer = Buffer::Create(sbSpec);
+        s_RendererData->PointLightIndicesSSBO = Buffer::Create(sbSpec);
     }
 
     {
-        BufferSpecification sbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE};
+        BufferSpecification sbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
 
         const uint32_t width =
             DivideToNextMultiple(s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width, LIGHT_CULLING_TILE_SIZE);
@@ -335,11 +412,11 @@ void Renderer::Init()
         const size_t sbSize   = MAX_SPOT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * width * height;
         sbSpec.BufferCapacity = sbSize;
 
-        s_RendererData->SpotLightIndicesStorageBuffer = Buffer::Create(sbSpec);
+        s_RendererData->SpotLightIndicesSSBO = Buffer::Create(sbSpec);
     }
 
     {
-        BufferSpecification frustumsSBSpec = {EBufferUsage::BUFFER_USAGE_STORAGE};
+        BufferSpecification frustumsSBSpec = {EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
 
         const uint32_t width =
             DivideToNextMultiple(s_RendererData->DepthPrePassFramebuffer->GetSpecification().Width, LIGHT_CULLING_TILE_SIZE);
@@ -389,13 +466,13 @@ void Renderer::Init()
             {
                 const size_t sbSize = MAX_POINT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * adjustedTiledWidth * adjustedTiledHeight;
 
-                s_RendererData->PointLightIndicesStorageBuffer->Resize(sbSize);
+                s_RendererData->PointLightIndicesSSBO->Resize(sbSize);
             }
 
             {
                 const size_t sbSize = MAX_SPOT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * adjustedTiledWidth * adjustedTiledHeight;
 
-                s_RendererData->SpotLightIndicesStorageBuffer->Resize(sbSize);
+                s_RendererData->SpotLightIndicesSSBO->Resize(sbSize);
             }
 
             {
@@ -403,25 +480,6 @@ void Renderer::Init()
 
                 s_RendererData->FrustumsSSBO->Resize(sbSize);
             }
-
-            s_RendererData->ComputeFrustumsPipeline->GetSpecification().Shader->Set("s_GridFrustumsBuffer", s_RendererData->FrustumsSSBO);
-            s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_GridFrustumsBuffer", s_RendererData->FrustumsSSBO);
-
-            s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
-                                                                                 s_RendererData->PointLightIndicesStorageBuffer);
-
-            s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
-                                                                                      s_RendererData->PointLightIndicesStorageBuffer);
-            s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
-                                                                                           s_RendererData->PointLightIndicesStorageBuffer);
-
-            s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
-                                                                                 s_RendererData->SpotLightIndicesStorageBuffer);
-
-            s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
-                                                                                      s_RendererData->SpotLightIndicesStorageBuffer);
-            s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
-                                                                                           s_RendererData->SpotLightIndicesStorageBuffer);
         });
 
     {
@@ -442,13 +500,18 @@ void Renderer::Init()
         Application::Get().GetWindow()->AddResizeCallback([](uint32_t width, uint32_t height)
                                                           { s_RendererData->SSAO.Framebuffer->Resize(width, height); });
 
-        PipelineSpecification ssaoPipelineSpec = {"SSAO", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+        PipelineSpecification ssaoPipelineSpec = {"SSAO"};
+        ssaoPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
         ssaoPipelineSpec.Shader                = ShaderLibrary::Get("AO/SSAO");
+        ssaoPipelineSpec.bBindlessCompatible   = true;
+
         // Gbuffer goes as last, so there's no way for SSAO to get it.
         // ssaoPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(true);
-        ssaoPipelineSpec.TargetFramebuffer   = s_RendererData->SSAO.Framebuffer;
-        ssaoPipelineSpec.CullMode            = ECullMode::CULL_MODE_BACK;
-        ssaoPipelineSpec.bBindlessCompatible = true;
+        GraphicsPipelineOptions ssaoGraphicsPipelineOptions = {};
+        ssaoGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+        ssaoGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->SSAO.Framebuffer;
+        ssaoPipelineSpec.PipelineOptions                    = std::make_optional<GraphicsPipelineOptions>(ssaoGraphicsPipelineOptions);
+
         PipelineBuilder::Push(s_RendererData->SSAO.Pipeline, ssaoPipelineSpec);
     }
 
@@ -489,11 +552,16 @@ void Renderer::Init()
         Application::Get().GetWindow()->AddResizeCallback([](uint32_t width, uint32_t height)
                                                           { s_RendererData->HBAO.Framebuffer->Resize(width, height); });
 
-        PipelineSpecification hbaoPipelineSpec = {"HBAO", EPipelineType::PIPELINE_TYPE_GRAPHICS};
-        hbaoPipelineSpec.TargetFramebuffer     = s_RendererData->HBAO.Framebuffer;
+        PipelineSpecification hbaoPipelineSpec = {"HBAO"};
+        hbaoPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
         hbaoPipelineSpec.Shader                = ShaderLibrary::Get("AO/HBAO");
-        hbaoPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
         hbaoPipelineSpec.bBindlessCompatible   = true;
+
+        GraphicsPipelineOptions hbaoGraphicsPipelineOptions = {};
+        hbaoGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+        hbaoGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->HBAO.Framebuffer;
+        hbaoPipelineSpec.PipelineOptions                    = std::make_optional<GraphicsPipelineOptions>(hbaoGraphicsPipelineOptions);
+
         PipelineBuilder::Push(s_RendererData->HBAO.Pipeline, hbaoPipelineSpec);
     }
 
@@ -508,12 +576,17 @@ void Renderer::Init()
                 glm::vec4(1.0f, glm::vec3(0.0f)), false, ESamplerWrap::SAMPLER_WRAP_REPEAT, ESamplerFilter::SAMPLER_FILTER_LINEAR, true);
             s_RendererData->BlurAOFramebuffer[i] = Framebuffer::Create(framebufferSpec);
 
-            PipelineSpecification blurAOPipelineSpec = {"BlurAO" + blurTypeStr, EPipelineType::PIPELINE_TYPE_GRAPHICS};
+            PipelineSpecification blurAOPipelineSpec = {"BlurAO" + blurTypeStr};
+            blurAOPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
             blurAOPipelineSpec.Shader                = ShaderLibrary::Get("Post/GaussianBlur");
             blurAOPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(i);
-            blurAOPipelineSpec.TargetFramebuffer   = s_RendererData->BlurAOFramebuffer[i];
             blurAOPipelineSpec.bBindlessCompatible = true;
-            blurAOPipelineSpec.CullMode            = ECullMode::CULL_MODE_BACK;
+
+            GraphicsPipelineOptions blurAOGraphicsPipelineOptions = {};
+            blurAOGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+            blurAOGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->BlurAOFramebuffer[i];
+            blurAOPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(blurAOGraphicsPipelineOptions);
+
             PipelineBuilder::Push(s_RendererData->BlurAOPipeline[i], blurAOPipelineSpec);
         }
 
@@ -524,20 +597,30 @@ void Renderer::Init()
             });
 
         {
-            PipelineSpecification blurAOPipelineSpec = {"MedianBlurAO", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+            PipelineSpecification blurAOPipelineSpec = {"MedianBlurAO"};
+            blurAOPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
             blurAOPipelineSpec.Shader                = ShaderLibrary::Get("Post/MedianBlur");
-            blurAOPipelineSpec.TargetFramebuffer     = s_RendererData->BlurAOFramebuffer[1];
             blurAOPipelineSpec.bBindlessCompatible   = true;
-            blurAOPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
+
+            GraphicsPipelineOptions blurAOGraphicsPipelineOptions = {};
+            blurAOGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+            blurAOGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->BlurAOFramebuffer[1];
+            blurAOPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(blurAOGraphicsPipelineOptions);
+
             PipelineBuilder::Push(s_RendererData->MedianBlurAOPipeline, blurAOPipelineSpec);
         }
 
         {
-            PipelineSpecification blurAOPipelineSpec = {"BoxBlurAO", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+            PipelineSpecification blurAOPipelineSpec = {"BoxBlurAO"};
+            blurAOPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
             blurAOPipelineSpec.Shader                = ShaderLibrary::Get("Post/BoxBlur");
-            blurAOPipelineSpec.TargetFramebuffer     = s_RendererData->BlurAOFramebuffer[1];
             blurAOPipelineSpec.bBindlessCompatible   = true;
-            blurAOPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
+
+            GraphicsPipelineOptions blurAOGraphicsPipelineOptions = {};
+            blurAOGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+            blurAOGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->BlurAOFramebuffer[1];
+            blurAOPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(blurAOGraphicsPipelineOptions);
+
             PipelineBuilder::Push(s_RendererData->BoxBlurAOPipeline, blurAOPipelineSpec);
         }
     }
@@ -568,24 +651,33 @@ void Renderer::Init()
             });
 
         PFR_ASSERT(!s_RendererData->DirShadowMaps.empty() && MAX_DIR_LIGHTS > 0, "Failed to create directional shadow map framebuffers!");
-        PipelineSpecification dirShadowMapPipelineSpec = {"DirShadowMap", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+        PipelineSpecification dirShadowMapPipelineSpec = {"DirShadowMap"};
+        dirShadowMapPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
         dirShadowMapPipelineSpec.Shader                = ShaderLibrary::Get("Shadows/DirShadowMap");
-        dirShadowMapPipelineSpec.TargetFramebuffer     = s_RendererData->DirShadowMaps[0];
         dirShadowMapPipelineSpec.bBindlessCompatible   = true;
-        dirShadowMapPipelineSpec.bMeshShading          = true;
-        dirShadowMapPipelineSpec.CullMode              = ECullMode::CULL_MODE_FRONT;
-        dirShadowMapPipelineSpec.bDepthTest            = true;
-        dirShadowMapPipelineSpec.bDepthWrite           = true;
-        dirShadowMapPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
+
+        GraphicsPipelineOptions dirShadowMapGraphicsPipelineOptions = {};
+        dirShadowMapGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->DirShadowMaps[0];
+        dirShadowMapGraphicsPipelineOptions.bMeshShading            = true;
+        dirShadowMapGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_FRONT;
+        dirShadowMapGraphicsPipelineOptions.bDepthTest              = true;
+        dirShadowMapGraphicsPipelineOptions.bDepthWrite             = true;
+        dirShadowMapGraphicsPipelineOptions.DepthCompareOp          = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
+        dirShadowMapPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(dirShadowMapGraphicsPipelineOptions);
+
         PipelineBuilder::Push(s_RendererData->DirShadowMapPipeline, dirShadowMapPipelineSpec);
     }
 
     {
-        PipelineSpecification asPipelineSpec = {"AtmosphericScattering", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+        PipelineSpecification asPipelineSpec = {"AtmosphericScattering"};
+        asPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
         asPipelineSpec.Shader                = ShaderLibrary::Get("AtmosphericScattering");
-        asPipelineSpec.TargetFramebuffer     = s_RendererData->GBuffer;
         asPipelineSpec.bBindlessCompatible   = true;
-        asPipelineSpec.CullMode              = ECullMode::CULL_MODE_BACK;
+
+        GraphicsPipelineOptions asGraphicsPipelineOptions = {};
+        asGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->GBuffer;
+        asGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+        asPipelineSpec.PipelineOptions                    = std::make_optional<GraphicsPipelineOptions>(asGraphicsPipelineOptions);
         PipelineBuilder::Push(s_RendererData->AtmospherePipeline, asPipelineSpec);
     }
 
@@ -600,12 +692,17 @@ void Renderer::Init()
                 glm::vec4(0.0f), false, ESamplerWrap::SAMPLER_WRAP_REPEAT, ESamplerFilter::SAMPLER_FILTER_LINEAR, true);
             s_RendererData->BloomFramebuffer[i] = Framebuffer::Create(framebufferSpec);
 
-            PipelineSpecification bloomPipelineSpec = {"Bloom" + blurTypeStr, EPipelineType::PIPELINE_TYPE_GRAPHICS};
+            PipelineSpecification bloomPipelineSpec = {"Bloom" + blurTypeStr};
+            bloomPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
             bloomPipelineSpec.Shader                = ShaderLibrary::Get("Post/GaussianBlur");
             bloomPipelineSpec.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(i);
-            bloomPipelineSpec.TargetFramebuffer   = s_RendererData->BloomFramebuffer[i];
             bloomPipelineSpec.bBindlessCompatible = true;
-            bloomPipelineSpec.CullMode            = ECullMode::CULL_MODE_BACK;
+
+            GraphicsPipelineOptions bloomGraphicsPipelineOptions = {};
+            bloomGraphicsPipelineOptions.TargetFramebuffer       = s_RendererData->BloomFramebuffer[i];
+            bloomGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
+            bloomPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(bloomGraphicsPipelineOptions);
+
             PipelineBuilder::Push(s_RendererData->BloomPipeline[i], bloomPipelineSpec);
         }
 
@@ -634,25 +731,6 @@ void Renderer::Init()
     s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferTransparent",
                                                                                    s_RendererData->CulledMeshesBufferTransparent);
     s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_DrawBufferTransparent", s_RendererData->DrawBufferTransparent);
-
-    s_RendererData->ComputeFrustumsPipeline->GetSpecification().Shader->Set("s_GridFrustumsBuffer", s_RendererData->FrustumsSSBO);
-    s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_GridFrustumsBuffer", s_RendererData->FrustumsSSBO);
-
-    s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
-                                                                         s_RendererData->PointLightIndicesStorageBuffer);
-
-    s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
-                                                                              s_RendererData->PointLightIndicesStorageBuffer);
-    s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisiblePointLightIndicesBuffer",
-                                                                                   s_RendererData->PointLightIndicesStorageBuffer);
-
-    s_RendererData->LightCullingPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
-                                                                         s_RendererData->SpotLightIndicesStorageBuffer);
-
-    s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
-                                                                              s_RendererData->SpotLightIndicesStorageBuffer);
-    s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_VisibleSpotLightIndicesBuffer",
-                                                                                   s_RendererData->SpotLightIndicesStorageBuffer);
 
     {
         std::vector<Shared<Image>> attachments(s_RendererData->DirShadowMaps.size());
@@ -727,14 +805,14 @@ void Renderer::Begin()
         s_RendererData->PassStats["ObjectCullingPass"]         = renderTimestamps[0];
         s_RendererData->PassStats["DepthPrePass"]              = renderTimestamps[1];
         s_RendererData->PassStats["DirShadowMapPass"]          = renderTimestamps[2];
-        s_RendererData->PassStats["PointLightShadowMapPass"]   = renderTimestamps[3];
-        s_RendererData->PassStats["AtmosphericScatteringPass"] = renderTimestamps[4];
-        s_RendererData->PassStats["SSAOPass"]                  = renderTimestamps[5];
-        s_RendererData->PassStats["HBAOPass"]                  = renderTimestamps[6];
-        s_RendererData->PassStats["BlurAOPass"]                = renderTimestamps[7];
-        s_RendererData->PassStats["ComputeFrustumsPass"]       = renderTimestamps[8];
-        s_RendererData->PassStats["LightCullingPass"]          = renderTimestamps[9];
-        s_RendererData->PassStats["GeometryPass"]              = renderTimestamps[10];
+        s_RendererData->PassStats["AtmosphericScatteringPass"] = renderTimestamps[3];
+        s_RendererData->PassStats["SSAOPass"]                  = renderTimestamps[4];
+        s_RendererData->PassStats["HBAOPass"]                  = renderTimestamps[5];
+        s_RendererData->PassStats["BlurAOPass"]                = renderTimestamps[6];
+        s_RendererData->PassStats["ComputeFrustumsPass"]       = renderTimestamps[7];
+        s_RendererData->PassStats["LightCullingPass"]          = renderTimestamps[8];
+        s_RendererData->PassStats["GeometryPass"]              = renderTimestamps[9];
+        s_RendererData->PassStats["RayTracingPass"]            = renderTimestamps[10];
         s_RendererData->PassStats["BloomPass"]                 = renderTimestamps[11];
         s_RendererData->PassStats["CompositePass"]             = renderTimestamps[12];
 
@@ -778,9 +856,17 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
 
     s_BindlessRenderer->UpdateDataIfNeeded();
 
+
     s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex],
                              EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     ObjectCullingPass();
+
+   /* s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex],
+                              EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT);*/
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ);
+ RayTracingPass();
 
     s_BindlessRenderer->Bind(s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]);
     s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
@@ -1029,6 +1115,7 @@ void Renderer::ObjectCullingPass()
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
         s_RendererData->DrawBufferOpaque, EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
         EAccessFlags::ACCESS_TRANSFER_WRITE, EAccessFlags::ACCESS_SHADER_WRITE);
+
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->FillBuffer(s_RendererData->CulledMeshesBufferOpaque, 0);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
         s_RendererData->CulledMeshesBufferOpaque, EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT,
@@ -1220,9 +1307,10 @@ void Renderer::ComputeFrustumsPass()
 
     if (s_RendererData->bNeedsFrustumsRecomputing)
     {
-        PushConstantBlock pc = {};
-        pc.StorageImageIndex = s_RendererData->FrustumsSSBO->GetBindlessIndex();
-        pc.CameraDataBuffer  = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+        PushConstantBlock pc             = {};
+        pc.StorageImageIndex             = s_RendererData->FrustumsSSBO->GetBindlessIndex();
+        pc.CameraDataBuffer              = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+        pc.LightCullingFrustumDataBuffer = s_RendererData->FrustumsSSBO->GetBDA();
 
         BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->ComputeFrustumsPipeline);
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ComputeFrustumsPipeline, 0, 0,
@@ -1255,12 +1343,15 @@ void Renderer::LightCullingPass()
 
     if (s_RendererData->LightStruct->PointLightCount != 0 || s_RendererData->LightStruct->SpotLightCount != 0)
     {
-        PushConstantBlock pc    = {};
-        pc.AlbedoTextureIndex   = s_RendererData->FrustumDebugImage->GetBindlessIndex();
-        pc.StorageImageIndex    = s_RendererData->LightHeatMapImage->GetBindlessIndex();
-        pc.MeshIndexBufferIndex = s_RendererData->DepthPrePassFramebuffer->GetAttachments()[0].m_Index;
-        pc.CameraDataBuffer     = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
-        pc.LightDataBuffer      = s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->GetBDA();
+        PushConstantBlock pc                  = {};
+        pc.AlbedoTextureIndex                 = s_RendererData->DepthPrePassFramebuffer->GetAttachments()[0].m_Index;
+        pc.StorageImageIndex                  = s_RendererData->LightHeatMapImage->GetBindlessIndex();
+        pc.MeshIndexBufferIndex               = s_RendererData->FrustumDebugImage->GetBindlessIndex();
+        pc.CameraDataBuffer                   = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+        pc.LightDataBuffer                    = s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->GetBDA();
+        pc.LightCullingFrustumDataBuffer      = s_RendererData->FrustumsSSBO->GetBDA();
+        pc.VisiblePointLightIndicesDataBuffer = s_RendererData->PointLightIndicesSSBO->GetBDA();
+        pc.VisibleSpotLightIndicesDataBuffer  = s_RendererData->SpotLightIndicesSSBO->GetBDA();
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
             EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
@@ -1319,13 +1410,15 @@ void Renderer::GeometryPass()
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("OPAQUE", glm::vec3(0.2f, 0.5f, 0.9f));
 
-    PushConstantBlock pc   = {};
-    pc.CameraDataBuffer    = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
-    pc.LightDataBuffer     = s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->GetBDA();
-    pc.MaterialBufferIndex = 0;
-    pc.pad0.x              = 25.0f;
-    pc.AlbedoTextureIndex  = s_RendererData->CascadeDebugImage->GetBindlessIndex();
-    pc.StorageImageIndex   = s_RendererData->BlurAOFramebuffer[1]->GetAttachments()[0].m_Index;
+    PushConstantBlock pc                  = {};
+    pc.CameraDataBuffer                   = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+    pc.LightDataBuffer                    = s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->GetBDA();
+    pc.VisiblePointLightIndicesDataBuffer = s_RendererData->PointLightIndicesSSBO->GetBDA();
+    pc.VisibleSpotLightIndicesDataBuffer  = s_RendererData->SpotLightIndicesSSBO->GetBDA();
+    pc.MaterialBufferIndex                = 0;
+    pc.pad0.x                             = 25.0f;
+    pc.AlbedoTextureIndex                 = s_RendererData->CascadeDebugImage->GetBindlessIndex();
+    pc.StorageImageIndex                  = s_RendererData->BlurAOFramebuffer[1]->GetAttachments()[0].m_Index;
     BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->ForwardPlusOpaquePipeline);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->ForwardPlusOpaquePipeline, 0, 0,
                                                                                        sizeof(pc), &pc);
@@ -1364,13 +1457,9 @@ void Renderer::DirShadowMapPass()
     {
         auto renderMeshFunc = [](const RenderObject& renderObject, const uint32_t directionalLightIndex)
         {
-            PushConstantBlock pc  = {renderObject.Transform};
-            pc.MeshletBufferIndex = renderObject.submesh->GetMeshletBuffer()->GetBindlessIndex();
-            //  pc.MeshletVerticesBufferIndex  = renderObject.submesh->GetMeshletVerticesBuffer()->GetBindlessIndex();
-            //  pc.MeshletTrianglesBufferIndex = renderObject.submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex();
-            pc.VertexPosBufferIndex = renderObject.submesh->GetVertexPositionBuffer()->GetBindlessIndex();
-            pc.StorageImageIndex    = directionalLightIndex;  // Index into matrices projection array
-            pc.CameraDataBuffer     = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+            PushConstantBlock pc = {renderObject.Transform};
+            pc.StorageImageIndex = directionalLightIndex;  // Index into matrices projection array
+            pc.CameraDataBuffer  = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
 
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->DirShadowMapPipeline, 0, 0,
                                                                                                sizeof(pc), &pc);
@@ -1379,7 +1468,6 @@ void Renderer::DirShadowMapPass()
             const uint32_t groupCountX  = DivideToNextMultiple(meshletCount, MESHLET_LOCAL_GROUP_SIZE);
             s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->DrawMeshTasks(groupCountX, 1, 1);
 
-            s_RendererStats.MeshletCount += meshletCount;
             s_RendererStats.TriangleCount +=
                 renderObject.submesh->GetIndexBuffer()->GetSpecification().BufferCapacity / sizeof(uint32_t) / 3;
         };
@@ -1433,6 +1521,34 @@ void Renderer::BloomPass()
 
         s_RendererData->BloomFramebuffer[i]->EndPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     }
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
+}
+
+void Renderer::RayTracingPass()
+{
+    if (IsWorldEmpty()) return;
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
+
+    PushConstantBlock pc    = {};
+    pc.CameraDataBuffer     = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
+    pc.StorageImageIndex    = s_RendererData->RTImage->GetBindlessIndex();
+    const auto& rtImageSpec = s_RendererData->RTImage->GetSpecification();
+#if 0
+    BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->RTPipeline);
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->RTPipeline, 0, 0, sizeof(pc), &pc);
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->TraceRays(s_RendererData->RTSBT, rtImageSpec.Width, rtImageSpec.Height,
+                                                                               1);
+#else
+    BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->RTComputePipeline);
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->RTComputePipeline, 0, 0, sizeof(pc),
+                                                                                       &pc);
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Dispatch(DivideToNextMultiple(rtImageSpec.Width, 16),
+                                                                              DivideToNextMultiple(rtImageSpec.Height, 16));
+
+#endif
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
 }
@@ -1627,6 +1743,7 @@ const std::map<std::string, Shared<Image>> Renderer::GetRenderTargetList()
     renderTargetList["BlurAO"]   = s_RendererData->BlurAOFramebuffer[1]->GetAttachments()[0].Attachment;
     renderTargetList["Heatmap"]  = s_RendererData->LightHeatMapImage;
     renderTargetList["Frustums"] = s_RendererData->FrustumDebugImage;
+    renderTargetList["RayTrace"] = s_RendererData->RTImage;
 
     return renderTargetList;
 }

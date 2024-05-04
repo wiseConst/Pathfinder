@@ -19,24 +19,11 @@ layout(local_size_x = LIGHT_CULLING_TILE_SIZE, local_size_y = LIGHT_CULLING_TILE
 // https://www.activision.com/cdn/research/2017_Sig_Improved_Culling_final.pdf
 // https://www.youtube.com/watch?v=Cqj7dBTJDRU&list=PLU2nPsAdxKWQYxkmQ3TdbLsyc1l2j25XM&ab_channel=GameEngineSeries
 
-layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) readonly buffer LightCullingFrustum
-{
-    TileFrustum frustums[];
-} s_GridFrustumsBuffer;
-layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) writeonly buffer VisiblePointLightIndicesBuffer
-{
-    LIGHT_INDEX_TYPE indices[];
-} s_VisiblePointLightIndicesBuffer;
-layout(set = LAST_BINDLESS_SET + 1, binding = 2, scalar) writeonly buffer VisibleSpotLightIndicesBuffer
-{
-    LIGHT_INDEX_TYPE indices[];
-} s_VisibleSpotLightIndicesBuffer;
-
 /* NOTE: 
     From PushConstantBlock:
       uint32_t StorageImageIndex    - HeatMapDebugImage
-      uint32_t AlbedoTextureIndex   - FrustumDebugImage
-      uint32_t MeshIndexBufferIndex - u_DepthTex
+      uint32_t AlbedoTextureIndex   -  u_DepthTex
+      uint32_t MeshIndexBufferIndex -  FrustumDebugImage
 */
 
 // 2.5D Culling
@@ -181,12 +168,12 @@ void main()
     uint i = 0; // reusable vars
 
     const vec2 UV = pixelCoords * u_PC.CameraDataBuffer.InvFullResolution;
-    const float fDepth = texelFetch(u_GlobalTextures[nonuniformEXT(u_PC.MeshIndexBufferIndex)], pixelCoords, 0).r; // try to read earlier since warps/threads can be swapped to reduce stalling
+    const float fDepth = texelFetch(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], pixelCoords, 0).r; // try to read earlier since warps/threads can be swapped to reduce stalling
 
     if(lti == 0)
     {
         const uint linearTileIndex = GetLinearGridIndex(pixelCoords, u_PC.CameraDataBuffer.FullResolution.x);
-        groupFrustum = s_GridFrustumsBuffer.frustums[linearTileIndex];
+        groupFrustum = LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex];
         visiblePointLightCount = 0;
         visibleSpotLightCount = 0;
         uMinDepth = 0x7f7fffff;
@@ -292,28 +279,28 @@ void main()
         // Handling point lights
         {   
             const uint offset = linearTileIndex * MAX_POINT_LIGHTS;
-            s_VisiblePointLightIndicesBuffer.indices[offset] = INVALID_LIGHT_INDEX;
+            VisiblePointLightIndicesBuffer(u_PC.VisiblePointLightIndicesDataBuffer).indices[offset] = INVALID_LIGHT_INDEX;
             for(i = 0; i < visiblePointLightCount; ++i)
-                s_VisiblePointLightIndicesBuffer.indices[offset + i] = visiblePointLightIndices[i];
+                VisiblePointLightIndicesBuffer(u_PC.VisiblePointLightIndicesDataBuffer).indices[offset + i] = visiblePointLightIndices[i];
 
             // NOTE: Mark end as invalid
             if(visiblePointLightCount < u_PC.LightDataBuffer.PointLightCount)
             {
-                s_VisiblePointLightIndicesBuffer.indices[offset + visiblePointLightCount] = INVALID_LIGHT_INDEX;
+                VisiblePointLightIndicesBuffer(u_PC.VisiblePointLightIndicesDataBuffer).indices[offset + visiblePointLightCount] = INVALID_LIGHT_INDEX;
             }
         }
 
         // Handling spot lights
         {
             const uint offset = linearTileIndex * MAX_SPOT_LIGHTS;
-            s_VisibleSpotLightIndicesBuffer.indices[offset] = INVALID_LIGHT_INDEX;
+            VisibleSpotLightIndicesBuffer(u_PC.VisibleSpotLightIndicesDataBuffer).indices[offset] = INVALID_LIGHT_INDEX;
             for(i = 0; i < visibleSpotLightCount; ++i)
-                s_VisibleSpotLightIndicesBuffer.indices[offset + i] = visibleSpotLightIndices[i];
+                VisibleSpotLightIndicesBuffer(u_PC.VisibleSpotLightIndicesDataBuffer).indices[offset + i] = visibleSpotLightIndices[i];
 
             // NOTE: Mark end as invalid
             if(visibleSpotLightCount < u_PC.LightDataBuffer.SpotLightCount)
             {
-                s_VisibleSpotLightIndicesBuffer.indices[offset + visibleSpotLightCount] = INVALID_LIGHT_INDEX;
+                VisibleSpotLightIndicesBuffer(u_PC.VisibleSpotLightIndicesDataBuffer).indices[offset + visibleSpotLightCount] = INVALID_LIGHT_INDEX;
             }
         }
     }
@@ -338,6 +325,6 @@ void main()
         frustumColor = abs(groupFrustum.Planes[3].Normal);
     }
 
-    imageStore(u_GlobalImages_RGBA8[u_PC.AlbedoTextureIndex], pixelCoords, vec4(frustumColor,1));
+    imageStore(u_GlobalImages_RGBA8[u_PC.MeshIndexBufferIndex], pixelCoords, vec4(frustumColor,1));
  #endif
 }

@@ -21,11 +21,7 @@ class SandboxLayer final : public Layer
 
   private:
     Shared<Camera> m_Camera = nullptr;
-
     Shared<Scene> m_ActiveScene = nullptr;
-
-    std::array<PointLight, MAX_POINT_LIGHTS> m_PointLights;
-    std::array<SpotLight, MAX_SPOT_LIGHTS> m_SpotLights;
 
     bool bRenderUI = false;
 };

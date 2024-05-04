@@ -1,33 +1,22 @@
 #version 460
 
-#extension GL_EXT_scalar_block_layout : require
+
+#define SHADER_DEBUG_PRINTF 0
+
+#extension GL_GOOGLE_include_directive : require
+#include "Include/Globals.h"
+
 #extension GL_EXT_ray_query : require
 
-// 128 invocations (threads) in parallel
-layout(local_size_x = 16, local_size_y = 8, local_size_z = 1) in;
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
 
-layout(set = 0, binding = 0, scalar) buffer storageBuffer
-{
-  vec3 imageData[];
-};
-
-layout(set = 0, binding = 1) uniform accelerationStructureEXT TLAS;
-
-layout(set = 0, binding = 2, scalar) buffer vertexBuffer
-{
-    vec3 vertices[];
-};
-
-layout(set = 0, binding = 3, scalar) buffer indexBuffer
-{
-    uint indices[];
-};
+layout(set = LAST_BINDLESS_SET + 1, binding = 0) uniform accelerationStructureEXT u_SceneTLAS;
 
 vec3 GetSkyColor(vec3 direction)
 {
     if(direction.y <= 0.0f) return vec3(0.03f);
 
-    return mix(vec3(1.0f), vec3(0.25f,0.5f,1.0f),direction.y);
+    return mix(vec3(1.0f), vec3(0.25f, 0.5f, 1.0f), direction.y);
 }
 
 struct HitResult
@@ -42,16 +31,46 @@ HitResult GetObjectHitResult(rayQueryEXT rq)
   HitResult hr;
   // Get the ID of the triangle
   const int primitiveID = rayQueryGetIntersectionPrimitiveIndexEXT(rq, true);
-    
+  const int meshID =  rayQueryGetIntersectionInstanceCustomIndexEXT(rq, true);
+
+  #if  SHADER_DEBUG_PRINTF
+  debugPrintfEXT("meshID: %d", meshID); 
+  #endif
+
+  if(meshID > s_GlobalMeshDataBufferOpaque.MeshesData.length()) return hr;
+  MeshData md = s_GlobalMeshDataBufferOpaque.MeshesData[meshID];
+
+  const vec3 localPos = vec3(s_GlobalVertexPosBuffers[meshID].Positions[primitiveID].Position);
+  
+  PBRData material = s_GlobalMaterialBuffers[meshID].mat;
+
+  hr.worldPos = RotateByQuat(localPos, md.orientation) * md.scale + md.translation;
+  
   // Get the indices of the vertices of the triangle
-  const uint i0 = indices[3 * primitiveID + 0];
-  const uint i1 = indices[3 * primitiveID + 1];
-  const uint i2 = indices[3 * primitiveID + 2];
+  const uint i0 = s_GlobalIndexBuffers[meshID].indices[3 * primitiveID + 0];
+  const uint i1 = s_GlobalIndexBuffers[meshID].indices[3 * primitiveID + 1];
+  const uint i2 = s_GlobalIndexBuffers[meshID].indices[3 * primitiveID + 2];
 
   // Get the vertices of the triangle
-  const vec3 v0 = vertices[i0];
-  const vec3 v1 = vertices[i1];
-  const vec3 v2 = vertices[i2];
+  const vec3 v0 = s_GlobalVertexPosBuffers[meshID].Positions[i0].Position;
+  const vec3 v1 = s_GlobalVertexPosBuffers[meshID].Positions[i1].Position;
+  const vec3 v2 = s_GlobalVertexPosBuffers[meshID].Positions[i2].Position;
+  
+  const vec3 objectNormal = normalize(cross(v1 - v0, v2 - v0));
+  hr.worldNormal = objectNormal;
+  hr.color = vec3(texture(u_GlobalTextures[nonuniformEXT(material.AlbedoTextureIndex)], gl_GlobalInvocationID.xy / u_PC.CameraDataBuffer.FullResolution));
+ // hr.color = vec3(0.5) + 0.5 * hr.worldNormal;
+ 
+  #if 0
+  // Get the indices of the vertices of the triangle
+  const uint i0 = s_GlobalIndexBuffers[meshID].indices[3 * primitiveID + 0];
+  const uint i1 = s_GlobalIndexBuffers[meshID].indices[3 * primitiveID + 1];
+  const uint i2 = s_GlobalIndexBuffers[meshID].indices[3 * primitiveID + 2];
+
+  // Get the vertices of the triangle
+  const vec3 v0 = s_GlobalVertexPosBuffers[meshID].Positions[i0].Position;
+  const vec3 v1 = s_GlobalVertexPosBuffers[meshID].Positions[i1].Position;
+  const vec3 v2 = s_GlobalVertexPosBuffers[meshID].Positions[i2].Position;
 
   // Get the barycentric coordinates of the intersection
   vec3 barycentrics = vec3(0.0, rayQueryGetIntersectionBarycentricsEXT(rq, true));
@@ -66,6 +85,7 @@ HitResult GetObjectHitResult(rayQueryEXT rq)
   // For the main tutorial, object space is the same as world space:
   hr.worldNormal = objectNormal;
   hr.color = vec3(0.5) + 0.5 * hr.worldNormal;
+  #endif
 
   /*
   const float dotX = dot(hr.worldNormal, vec3(1,0,0));
@@ -102,20 +122,19 @@ float stepAndOutputRNGFloat(inout uint rngState)
 
 void main()
 {
-  const uvec2 resolution = uvec2(800, 600);
   const uvec2 pixel = gl_GlobalInvocationID.xy;
+  if(any(greaterThan(pixel, uvec2(u_PC.CameraDataBuffer.FullResolution)))) return;
 
-  if((pixel.x >= resolution.x) || (pixel.y >= resolution.y)) return;
   // State of the random number generator.
-  uint rngState = resolution.x * pixel.y + pixel.x;  // Initial seed
+  uint rngState = uint(u_PC.CameraDataBuffer.FullResolution.x) * pixel.y + pixel.x;  // Initial seed
 
   // This scene uses a right-handed coordinate system like the OBJ file format, where the
   // +x axis points right, the +y axis points up, and the -z axis points into the screen.
-  const vec3 cameraPos = vec3(-0.0001, 1, 6);
+  const vec3 cameraPos = u_PC.CameraDataBuffer.Position;
 
   // Next, define the field of view by the vertical slope of the topmost rays,
   // and create a ray direction:
-  const float fovVerticalSlope = 1.0 / 5.0;
+  const float fovVerticalSlope = 1.0 / 5.0;//u_PC.CameraDataBuffer.FOV;
 
   // The sum of the colors of all of the samples.
   vec3 summedPixelColor = vec3(0.0);
@@ -140,12 +159,12 @@ void main()
       
       #if DENOISE
       const vec2 randomPixelCenter = vec2(pixel) + vec2(stepAndOutputRNGFloat(rngState), stepAndOutputRNGFloat(rngState));
-      const vec2 screenUV = vec2(2.0 * (float(randomPixelCenter.x) + 0.5 - 0.5 * resolution.x) / resolution.y,    //
-                                 -(2.0 * (float(randomPixelCenter.y) + 0.5 - 0.5 * resolution.y) / resolution.y)  // Flip the y axis
+      const vec2 screenUV = vec2(2.0 * (float(randomPixelCenter.x) + 0.5 - 0.5 * u_PC.CameraDataBuffer.FullResolution.x) / u_PC.CameraDataBuffer.FullResolution.y,    //
+                                 -(2.0 * (float(randomPixelCenter.y) + 0.5 - 0.5 * u_PC.CameraDataBuffer.FullResolution.y) / u_PC.CameraDataBuffer.FullResolution.y)  // Flip the y axis
       );
       #else
-        const vec2 screenUV = vec2(2.0 * (float(pixel.x) + 0.5 - 0.5 * resolution.x) / resolution.y,    //
-                                 -(2.0 * (float(pixel.y) + 0.5 - 0.5 * resolution.y) / resolution.y)  // Flip the y axis
+        const vec2 screenUV = vec2(2.0 * (float(pixel.x) + 0.5 - 0.5 * u_PC.CameraDataBuffer.FullResolution.x) / u_PC.CameraDataBuffer.FullResolution.y,    //
+                                 -(2.0 * (float(pixel.y) + 0.5 - 0.5 * u_PC.CameraDataBuffer.FullResolution.y) / u_PC.CameraDataBuffer.FullResolution.y)  // Flip the y axis
       );
       #endif
 
@@ -162,7 +181,7 @@ void main()
         // First, initialize a ray query object:
         rayQueryEXT rayQuery;
         rayQueryInitializeEXT(rayQuery,              // Ray query
-                              TLAS,                  // Top-level acceleration structure
+                              u_SceneTLAS,                  // Top-level acceleration structure
                               gl_RayFlagsOpaqueEXT,  // Ray flags, here saying "treat all geometry as opaque"
                               0xFF,                  // 8-bit instance mask, here saying "trace against all instances"
                               rayOrigin,             // Ray origin
@@ -228,11 +247,11 @@ void main()
   }
   #endif
 
-  const uint linearIndex = resolution.x * pixel.y + pixel.x;
+  
   #if DENOISE
-  imageData[linearIndex] = summedPixelColor / float(samplesNum);
+    imageStore(u_GlobalImages_RGBA8[nonuniformEXT(u_PC.StorageImageIndex)], ivec2(pixel), vec4(summedPixelColor / float(samplesNum), 1.0));
   #else
-  imageData[linearIndex] = pixelColor;
+    imageStore(u_GlobalImages_RGBA8[nonuniformEXT(u_PC.StorageImageIndex)], ivec2(pixel), vec4(pixelColor, 1.0));
   #endif
 
 

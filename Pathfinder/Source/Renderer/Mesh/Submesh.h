@@ -42,7 +42,7 @@ class Submesh final : private Uncopyable, private Unmovable
 
     Sphere m_BoundingSphere = {};
 
-    friend class Mesh;
+    friend class MeshManager;
 
     void Destroy();
 };

@@ -421,7 +421,7 @@ void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Share
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(shader);
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
 
-    const auto appendVecFunc = [&](auto& dst, const auto& src) { dst.insert(dst.end(), src.begin(), src.end()); };
+    constexpr auto appendVecFunc = [&](auto& dst, const auto& src) { dst.insert(dst.end(), src.begin(), src.end()); };
 
     std::vector<VkDescriptorSet> descriptorSets;
     VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -429,7 +429,7 @@ void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Share
     {
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
-            if (pipeline->GetSpecification().bMeshShading)
+            if (pipeline->GetPipelineOptions<GraphicsPipelineOptions>()->bMeshShading)
             {
                 appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_TASK));
                 appendVecFunc(descriptorSets, vulkanShader->GetDescriptorSetByShaderStage(EShaderStage::SHADER_STAGE_MESH));
@@ -532,9 +532,10 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
     viewport.maxDepth   = 1.0f;
 
     VkRect2D scissor = {{0, 0}, {window->GetSpecification().Width, window->GetSpecification().Height}};
-    if (const auto& targetFramebuffer = pipeline->GetSpecification().TargetFramebuffer)
+    if (const auto* graphicsPipelineOptions = pipeline->GetPipelineOptions<GraphicsPipelineOptions>())
     {
-        scissor.extent = VkExtent2D{targetFramebuffer->GetSpecification().Width, targetFramebuffer->GetSpecification().Height};
+        scissor.extent = VkExtent2D{graphicsPipelineOptions->TargetFramebuffer->GetSpecification().Width,
+                                    graphicsPipelineOptions->TargetFramebuffer->GetSpecification().Height};
 
         viewport.y      = static_cast<float>(scissor.extent.height);
         viewport.width  = static_cast<float>(scissor.extent.width);
@@ -550,8 +551,11 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
                     1.0f};
     }
 
-    if (pipeline->GetSpecification().bDynamicPolygonMode)
-        vkCmdSetPolygonModeEXT(m_Handle, VulkanUtility::PathfinderPolygonModeToVulkan(pipeline->GetSpecification().PolygonMode));
+    if (const auto* graphicsPipelineOptions = pipeline->GetPipelineOptions<GraphicsPipelineOptions>())
+    {
+        if (graphicsPipelineOptions->bDynamicPolygonMode)
+            vkCmdSetPolygonModeEXT(m_Handle, VulkanUtility::PathfinderPolygonModeToVulkan(graphicsPipelineOptions->PolygonMode));
+    }
 
     VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
     switch (pipeline->GetSpecification().PipelineType)
@@ -561,13 +565,13 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
         case EPipelineType::PIPELINE_TYPE_RAY_TRACING: pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
     }
 
-    if (pipelineBindPoint != VK_PIPELINE_BIND_POINT_COMPUTE)
+    if (const auto* graphicsPipelineOptions = pipeline->GetPipelineOptions<GraphicsPipelineOptions>())
     {
         vkCmdSetViewport(m_Handle, 0, 1, &viewport);
         vkCmdSetScissor(m_Handle, 0, 1, &scissor);
-    }
 
-    if (pipeline->GetSpecification().LineWidth != 1.f) vkCmdSetLineWidth(m_Handle, pipeline->GetSpecification().LineWidth);
+        if (graphicsPipelineOptions->LineWidth != 1.f) vkCmdSetLineWidth(m_Handle, graphicsPipelineOptions->LineWidth);
+    }
 
     vkCmdBindPipeline(m_Handle, pipelineBindPoint, (VkPipeline)pipeline->Get());
 }

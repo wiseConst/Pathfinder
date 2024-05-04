@@ -2,6 +2,8 @@
 #define COMPONENTS_H
 
 #include "Core/Core.h"
+#include "Renderer/Mesh/Mesh.h"
+#include "Lights.h"
 
 namespace Pathfinder
 {
@@ -26,6 +28,7 @@ struct TagComponent
     TagComponent(const std::string& tag) : Tag(tag) {}
 };
 
+// FIXME: On cpu im using matrices, but on gpu quaternions, move to quaternions everywhere.
 struct TransformComponent
 {
     glm::vec3 Translation{0.0f};
@@ -38,39 +41,74 @@ struct TransformComponent
         : Translation(translation), Rotation(rotation), Scale(scale)
     {
     }
+
+    glm::mat4 GetTransform() const
+    {
+        const glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), glm::radians(Rotation.x), glm::vec3(1, 0, 0)) *
+                                         glm::rotate(glm::mat4(1.0f), glm::radians(Rotation.y), glm::vec3(0, 1, 0)) *
+                                         glm::rotate(glm::mat4(1.0f), glm::radians(Rotation.z), glm::vec3(0, 0, 1));
+
+        return glm::translate(glm::mat4(1.0f), Translation) * rotationMatrix * glm::scale(glm::mat4(1.0f), Scale);
+    }
+
+    operator glm::mat4() const { return GetTransform(); }
 };
 
 struct DirectionalLightComponent
 {
-    glm::vec3 Direction{0.0f};
-    glm::vec3 Color{1.0f};
-    float Intensity{1.0f};
-    uint32_t bCastShadows{0};
+    DirectionalLight dl = {};
+
+    operator DirectionalLight() const { return dl; }
 
     DirectionalLightComponent()                                 = default;
     DirectionalLightComponent(const DirectionalLightComponent&) = default;
-    DirectionalLightComponent(const glm::vec3& direction, const glm::vec3& color, const float intensity, const uint32_t InbCastShadows)
-        : Direction(direction), Color(color), Intensity(intensity), bCastShadows(InbCastShadows)
+    DirectionalLightComponent(const DirectionalLight& that) { dl = that; }
+    DirectionalLightComponent(const glm::vec3& direction, const glm::vec3& color, const float intensity, const uint32_t bCastShadows)
+        : dl{direction, color, intensity, bCastShadows}
     {
     }
 };
 
 struct PointLightComponent
 {
-    glm::vec3 Position{0.0f};
-    glm::vec3 Color{1.0f};
-    float Intensity{1.0f};
-    float Radius{1.0f};
-    float MinRadius{0.0f};
-    uint32_t bCastShadows{0};
+    PointLight pl = {};
+
+    operator PointLight() const { return pl; }
 
     PointLightComponent()                           = default;
     PointLightComponent(const PointLightComponent&) = default;
+    PointLightComponent(const PointLight& that) { pl = that; }
     PointLightComponent(const glm::vec3& position, const glm::vec3& color, const float intensity, const float radius, const float minRadius,
-                        const uint32_t InbCastShadows)
-        : Position(position), Color(color), Intensity(intensity), Radius(radius), MinRadius(minRadius), bCastShadows(InbCastShadows)
+                        const uint32_t bCastShadows)
+        : pl{position, color, intensity, radius, minRadius, bCastShadows}
     {
     }
+};
+
+struct SpotLightComponent
+{
+    SpotLight sl = {};
+
+    operator SpotLight() const { return sl; }
+
+    SpotLightComponent()                          = default;
+    SpotLightComponent(const SpotLightComponent&) = default;
+    SpotLightComponent(const SpotLight& that) { sl = that; }
+    SpotLightComponent(const glm::vec3& position, const glm::vec3& direction, const glm::vec3& color, const float intensity,
+                       const float height, const float radius, const float innerCutOff, const float outerCutOff)
+        : sl{position, direction, color, intensity, height, radius, innerCutOff, outerCutOff}
+    {
+    }
+};
+
+struct MeshComponent
+{
+    Shared<Pathfinder::Mesh> Mesh = nullptr;
+    std::string MeshSource        = s_DEFAULT_STRING;
+
+    MeshComponent()                     = default;
+    MeshComponent(const MeshComponent&) = default;
+    MeshComponent(const std::string& meshSource) : MeshSource(meshSource) { Mesh = Mesh::Create(MeshSource); }
 };
 
 }  // namespace Pathfinder

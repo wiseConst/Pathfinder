@@ -17,8 +17,7 @@ namespace Pathfinder
 
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
-#define VK_EXCLUSIVE_FULL_SCREEN_TEST 0
-
+// NOTE: SHADER/PIPELINE CACHE WITH MACRO DEFINITIONS DOESN'T WORK
 #define VK_FORCE_VALIDATION 1
 #define VK_FORCE_SHADER_COMPILATION 1
 #define VK_FORCE_PIPELINE_COMPILATION 1
@@ -60,9 +59,7 @@ static const std::vector<const char*> s_DeviceExtensions = {
                                                          // the operating system, or consume device-local memory.
     VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME,               // Required by PAGEABLE_DEVICE_LOCAL_MEMORY
 
-#if VK_EXCLUSIVE_FULL_SCREEN_TEST
-    VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,  // Borderless fullscreen window
-#endif
+    VK_EXT_FULL_SCREEN_EXCLUSIVE_EXTENSION_NAME,  // Exclusive fullscreen window
 
     VK_EXT_MESH_SHADER_EXTENSION_NAME,  // Mesh shading
 

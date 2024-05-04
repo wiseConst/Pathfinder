@@ -25,10 +25,25 @@ class DebugRenderer
     static void Flush();
 
   private:
+    struct DebugSphereRenderInfo
+    {
+        glm::vec3 Translation;
+        glm::vec4 Orientation;
+        glm::vec3 Scale;
+        glm::vec3 Center;
+        float Radius;
+        glm::vec4 Color;
+    };
+
     struct DebugRendererData
     {
         BufferPerFrame LineVertexBuffer;
         Shared<Pipeline> LinePipeline = nullptr;
+
+        SurfaceMesh DebugSphereMesh        = {};
+        Shared<Pipeline> SpherePipeline    = nullptr;
+        Shared<Buffer> DebugSphereInfoSSBO = nullptr;
+        std::vector<DebugSphereRenderInfo> DebugSphereInfos;
 
         using LineVertexBasePerFrame = std::array<LineVertex*, s_FRAMES_IN_FLIGHT>;
         LineVertexBasePerFrame LineVertexBase;
@@ -42,7 +57,7 @@ class DebugRenderer
         static constexpr uint32_t s_MAX_VERTICES           = s_MAX_LINES * 4;
         static constexpr uint32_t s_MAX_VERTEX_BUFFER_SIZE = s_MAX_VERTICES * sizeof(LineVertex);
 
-        static constexpr std::array<glm::vec4, 4> QuadVertices = {
+        static inline std::array<glm::vec4, 4> QuadVertices = {
             glm::vec4(-0.5f, -0.5f, 0.0f, 1.0f),  // bottom left
             glm::vec4(0.5f, -0.5f, 0.0f, 1.0f),   // bottom right
             glm::vec4(0.5f, 0.5f, 0.0f, 1.0f),    // top right

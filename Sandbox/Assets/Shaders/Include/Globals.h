@@ -32,7 +32,7 @@ static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(16);
 #extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
 #extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
 
-// NOTE: Mark things as Global to make sure that basic shader reflection won't catch it!
+// NOTE: Mark things as Global/BDA to make sure that basic shader reflection won't catch it!
 
 #include "Include/Meshlets.h"
 #include "Include/Lights.h"
@@ -149,8 +149,7 @@ const uint32_t STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING = 10;
 // NOTE: I'll have to offset manually in other shaders from this set.
 const uint32_t LAST_BINDLESS_SET = BINDLESS_MEGA_SET;
 
-#ifdef __cplusplus
-#else
+#ifndef __cplusplus
 
 layout(set = BINDLESS_MEGA_SET, binding = TEXTURE_BINDING) uniform sampler2D u_GlobalTextures[];
 layout(set = BINDLESS_MEGA_SET, binding = TEXTURE_BINDING) uniform usampler2D u_GlobalTextures_uint[];
@@ -247,9 +246,9 @@ s_CameraDataBDA;  // Name unused, check u_PC
 const uint32_t MAX_SHADOW_CASCADES = 5;
 
 #ifdef __cplusplus
-struct alignas(8) LightData
+struct LightData
 #else
-layout(buffer_reference, buffer_reference_align = 8, scalar) buffer LightData
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer LightData
 #endif
 {
     PointLight PointLights[MAX_POINT_LIGHTS];
@@ -267,6 +266,28 @@ layout(buffer_reference, buffer_reference_align = 8, scalar) buffer LightData
 s_LightsBDA;  // Name unused, check u_PC
 #endif
 
+#ifndef __cplusplus
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer LightCullingFrustum
+{
+    TileFrustum frustums[];
+}
+s_GridFrustumsBufferBDA;  // Name unused, check u_PC
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer VisiblePointLightIndicesBuffer
+{
+    LIGHT_INDEX_TYPE indices[];
+}
+s_VisiblePointLightIndicesBufferBDA;  // Name unused, check u_PC
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer VisibleSpotLightIndicesBuffer
+{
+    LIGHT_INDEX_TYPE indices[];
+}
+s_VisibleSpotLightIndicesBufferBDA;  // Name unused, check u_PC
+
+#endif
+
 #ifdef __cplusplus
 struct PushConstantBlock
 {
@@ -279,11 +300,11 @@ layout(push_constant, scalar) uniform PushConstantBlock
     uint32_t AlbedoTextureIndex;
 
     uint32_t MeshIndexBufferIndex;
-    uint32_t VertexPosBufferIndex;
-    uint32_t VertexAttribBufferIndex;
-
-    uint32_t MeshletBufferIndex;
     uint32_t MaterialBufferIndex;
+
+    uint64_t LightCullingFrustumDataBuffer;
+    uint64_t VisiblePointLightIndicesDataBuffer;
+    uint64_t VisibleSpotLightIndicesDataBuffer;
 
 #ifdef __cplusplus
     uint64_t LightDataBuffer;
@@ -296,7 +317,7 @@ layout(push_constant, scalar) uniform PushConstantBlock
 #else
     CameraData CameraDataBuffer;
 #endif
-    vec4 pad0;
+    vec2 pad0;
 }
 #ifdef __cplusplus
 ;

@@ -29,7 +29,6 @@ static bool AVXSupported()
         bAVXSupported               = (xcrFeatureMask & 0x6) == 0x6;
     }
     return bAVXSupported;
-    // __builtin_cpu_init();
 }
 
 static bool AVX2Supported()
@@ -53,7 +52,6 @@ static bool AVX2Supported()
         bAVX2Supported              = (xcrFeatureMask & 0x6) == 0x6;
     }
     return bAVX2Supported;
-    // __builtin_cpu_init();
 }
 
 }  // namespace Pathfinder

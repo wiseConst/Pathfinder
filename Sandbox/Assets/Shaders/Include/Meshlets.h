@@ -16,10 +16,9 @@ uint32_t hash(uint32_t a)
     return a;
 }
 
-bool ConeCull(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxis, const float coneCutoff, const float radius)
+bool ConeCull(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxis, const float coneCutoff)
 {
-    const vec3 camDir = coneApex - cameraPosition;
-    return dot(normalize(camDir), normalize(coneAxis)) >= coneCutoff * length(camDir) + radius;
+    return dot(normalize(coneApex - cameraPosition), normalize(coneAxis)) >= coneCutoff;
 }
 
 #endif

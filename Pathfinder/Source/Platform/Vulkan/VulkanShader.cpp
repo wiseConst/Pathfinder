@@ -11,6 +11,7 @@
 #include "Core/Application.h"
 #include "Core/Window.h"
 
+#include "Renderer/Pipeline.h"
 #include "Renderer/Renderer.h"
 
 #include <shaderc/shaderc.hpp>
@@ -87,63 +88,6 @@ static VkFormat SpvReflectFormatToVulkan(const SpvReflectFormat format)
     return VK_FORMAT_UNDEFINED;
 }
 
-static void DetectShaderKind(shaderc_shader_kind& shaderKind, const std::string_view currentShaderExt)
-{
-    if (strcmp(currentShaderExt.data(), ".vert") == 0)
-        shaderKind = shaderc_vertex_shader;
-    else if (strcmp(currentShaderExt.data(), ".tesc") == 0)
-        shaderKind = shaderc_tess_control_shader;
-    else if (strcmp(currentShaderExt.data(), ".tese") == 0)
-        shaderKind = shaderc_tess_evaluation_shader;
-    else if (strcmp(currentShaderExt.data(), ".geom") == 0)
-        shaderKind = shaderc_geometry_shader;
-    else if (strcmp(currentShaderExt.data(), ".frag") == 0)
-        shaderKind = shaderc_fragment_shader;
-    else if (strcmp(currentShaderExt.data(), ".comp") == 0)
-        shaderKind = shaderc_compute_shader;
-    else if (strcmp(currentShaderExt.data(), ".rmiss") == 0)
-        shaderKind = shaderc_miss_shader;
-    else if (strcmp(currentShaderExt.data(), ".rgen") == 0)
-        shaderKind = shaderc_raygen_shader;
-    else if (strcmp(currentShaderExt.data(), ".rchit") == 0)
-        shaderKind = shaderc_closesthit_shader;
-    else if (strcmp(currentShaderExt.data(), ".rahit") == 0)
-        shaderKind = shaderc_anyhit_shader;
-    else if (strcmp(currentShaderExt.data(), ".rcall") == 0)
-        shaderKind = shaderc_callable_shader;
-    else if (strcmp(currentShaderExt.data(), ".rint") == 0)
-        shaderKind = shaderc_intersection_shader;
-    else if (strcmp(currentShaderExt.data(), ".mesh") == 0)
-        shaderKind = shaderc_mesh_shader;
-    else if (strcmp(currentShaderExt.data(), ".task") == 0)
-        shaderKind = shaderc_task_shader;
-    else
-        PFR_ASSERT(false, "Unknown shader extension!");
-}
-
-static EShaderStage ShadercShaderStageToPathfinder(const shaderc_shader_kind& shaderKind)
-{
-    switch (shaderKind)
-    {
-        case shaderc_vertex_shader: return EShaderStage::SHADER_STAGE_VERTEX;
-        case shaderc_tess_control_shader: return EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL;
-        case shaderc_tess_evaluation_shader: return EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION;
-        case shaderc_geometry_shader: return EShaderStage::SHADER_STAGE_GEOMETRY;
-        case shaderc_fragment_shader: return EShaderStage::SHADER_STAGE_FRAGMENT;
-        case shaderc_compute_shader: return EShaderStage::SHADER_STAGE_COMPUTE;
-        case shaderc_miss_shader: return EShaderStage::SHADER_STAGE_MISS;
-        case shaderc_raygen_shader: return EShaderStage::SHADER_STAGE_RAYGEN;
-        case shaderc_closesthit_shader: return EShaderStage::SHADER_STAGE_CLOSEST_HIT;
-        case shaderc_anyhit_shader: return EShaderStage::SHADER_STAGE_ANY_HIT;
-        case shaderc_callable_shader: return EShaderStage::SHADER_STAGE_CALLABLE;
-        case shaderc_intersection_shader: return EShaderStage::SHADER_STAGE_INTERSECTION;
-        case shaderc_mesh_shader: return EShaderStage::SHADER_STAGE_MESH;
-        case shaderc_task_shader: return EShaderStage::SHADER_STAGE_TASK;
-    }
-    PFR_ASSERT(false, "Unknown shaderc shader kind!");
-    return EShaderStage::SHADER_STAGE_ALL;
-}
-
 static void PrintPushConstants(const std::vector<SpvReflectBlockVariable*>& pushConstants)
 {
 #if LOG_SHADER_INFO
@@ -213,7 +157,7 @@ static void PrintDescriptorSets(const std::vector<SpvReflectDescriptorSet*>& des
 #endif
 }
 
-VulkanShader::VulkanShader(const std::string_view shaderName)
+VulkanShader::VulkanShader(const ShaderSpecification& shaderSpec) : Shader(shaderSpec)
 {
     const auto& appSpec           = Application::Get().GetSpecification();
     const auto& assetsDir         = appSpec.AssetsDir;
@@ -222,10 +166,10 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
     const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
 
     // In case shader specified through folders, handling cache.
-    if (const auto fsShader = std::filesystem::path(shaderName); fsShader.has_parent_path())
+    if (const auto fsShader = std::filesystem::path(m_Specification.Name); fsShader.has_parent_path())
         std::filesystem::create_directories(workingDirFilePath / assetsDir / cacheDir / shadersDir / fsShader.parent_path());
 
-    const std::string localShaderPathString = assetsDir + "/" + shadersDir + "/" + std::string(shaderName);
+    const std::string localShaderPathString = assetsDir + "/" + shadersDir + "/" + std::string(m_Specification.Name);
     for (const auto& shaderExt : s_SHADER_EXTENSIONS)
     {
         const std::filesystem::path localShaderPath = localShaderPathString + std::string(shaderExt);
@@ -238,7 +182,7 @@ VulkanShader::VulkanShader(const std::string_view shaderName)
         auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToPathfinder(shaderKind));
 
         // Compile or retrieve cache && load vulkan shader module
-        const std::string shaderNameExt = std::string(shaderName) + std::string(shaderExt);
+        const std::string shaderNameExt = std::string(m_Specification.Name) + std::string(shaderExt);
         const auto compiledShaderSrc    = CompileOrRetrieveCached(shaderNameExt, localShaderPath.string(), shaderKind);
         LoadShaderModule(currentShaderDescription.Module, compiledShaderSrc);
 
@@ -349,6 +293,91 @@ const std::vector<VkDescriptorSet> VulkanShader::GetDescriptorSetByShaderStage(c
     return descriptorSets;
 }
 
+ShaderBindingTable VulkanShader::CreateSBT(const Shared<Pipeline>& rtPipeline) const
+{
+    ShaderBindingTable sbt = {};
+    const auto& device     = VulkanContext::Get().GetDevice();
+
+    // Special Case: RayGen size and stride need to have the same value.
+
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR rtProperties = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+
+    VkPhysicalDeviceProperties2 props2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, &rtProperties};
+    vkGetPhysicalDeviceProperties2(device->GetPhysicalDevice(), &props2);
+
+    constexpr const auto align_up = [](uint64_t size, uint64_t alignment) { return (size + alignment - 1) & ~(alignment - 1); };
+
+    // There is always one and only one raygen, so we add the constant 1.
+    const uint32_t missCount{1};
+    const uint32_t hitCount{1};
+    const uint32_t handleSize = rtProperties.shaderGroupHandleSize;
+    auto handleCount          = 1 + missCount + hitCount;
+
+    // The SBT (buffer) need to have starting groups to be aligned and handles in the group to be aligned.
+    const uint32_t handleSizeAligned = align_up(handleSize, rtProperties.shaderGroupHandleAlignment);
+
+    sbt.RgenRegion.stride = align_up(handleSizeAligned, rtProperties.shaderGroupBaseAlignment);
+    sbt.RgenRegion.size   = sbt.RgenRegion.stride;  // The size member of pRayGenShaderBindingTable must be equal to its stride member
+    sbt.MissRegion.stride = handleSizeAligned;
+    sbt.MissRegion.size   = align_up(missCount * handleSizeAligned, rtProperties.shaderGroupBaseAlignment);
+    sbt.HitRegion.stride  = handleSizeAligned;
+    sbt.HitRegion.size    = align_up(hitCount * handleSizeAligned, rtProperties.shaderGroupBaseAlignment);
+
+    // Get the shader group handles
+    const uint32_t dataSize = handleCount * handleSize;
+    std::vector<uint8_t> handles(dataSize);
+
+    VK_CHECK(vkGetRayTracingShaderGroupHandlesKHR(device->GetLogicalDevice(), (VkPipeline)rtPipeline->Get(), 0, handleCount, dataSize,
+                                                  handles.data()),
+             "Failed vkGetRayTracingShaderGroupHandlesKHR()");
+
+    // Allocate a buffer for storing the SBT.
+    const VkDeviceSize sbtBufferSize  = sbt.RgenRegion.size + sbt.MissRegion.size + sbt.HitRegion.size + sbt.CallRegion.size;
+    BufferSpecification sbtBufferSpec = {EBufferUsage::BUFFER_USAGE_SHADER_BINDING_TABLE | EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE |
+                                         EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+    sbtBufferSpec.BufferCapacity      = sbtBufferSize;
+    sbtBufferSpec.bMapPersistent      = true;
+
+    auto sbtBuffer = Buffer::Create(sbtBufferSpec);
+
+    // Find the SBT addresses of each group
+    VkDeviceAddress sbtAddress   = sbtBuffer->GetBDA();
+    sbt.RgenRegion.deviceAddress = sbtAddress;
+    sbt.MissRegion.deviceAddress = sbtAddress + sbt.RgenRegion.size;
+    sbt.HitRegion.deviceAddress  = sbtAddress + sbt.RgenRegion.size + sbt.MissRegion.size;
+
+    // Helper to retrieve the handle data
+    auto getHandle = [&](int i) { return handles.data() + i * handleSize; };
+
+    // Map the SBT buffer and write in the handles.
+    auto* pSBTBuffer = reinterpret_cast<uint8_t*>(sbtBuffer->GetMapped());
+    uint8_t* pData{nullptr};
+    uint32_t handleIdx{0};
+
+    // Raygen
+    pData = pSBTBuffer;
+    memcpy(pData, getHandle(handleIdx++), handleSize);
+
+    // Miss
+    pData = pSBTBuffer + sbt.RgenRegion.size;
+    for (uint32_t c = 0; c < missCount; c++)
+    {
+        memcpy(pData, getHandle(handleIdx++), handleSize);
+        pData += sbt.RgenRegion.stride;
+    }
+
+    // Hit
+    pData = pSBTBuffer + sbt.RgenRegion.size + sbt.MissRegion.size;
+    for (uint32_t c = 0; c < hitCount; c++)
+    {
+        memcpy(pData, getHandle(handleIdx++), handleSize);
+        pData += sbt.HitRegion.stride;
+    }
+
+    sbt.SBTBuffer = sbtBuffer;
+    return sbt;
+}
+
 void VulkanShader::DestroyGarbageIfNeeded()
 {
     for (auto& shaderDescription : m_ShaderDescriptions)
@@ -440,71 +469,6 @@ void VulkanShader::Reflect(SpvReflectShaderModule& reflectModule, ShaderDescript
                    "Failed to retrieve push constant blocks!");
         PrintPushConstants(outPushConstants);
     }
-}
-
-std::vector<uint32_t> VulkanShader::CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
-                                                            shaderc_shader_kind shaderKind)
-{
-    const auto& appSpec           = Application::Get().GetSpecification();
-    const auto& assetsDir         = appSpec.AssetsDir;
-    const auto& shadersDir        = appSpec.ShadersDir;
-    const auto& cacheDir          = appSpec.CacheDir;
-    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
-
-    // Firstly check if cache exists and retrieve it
-    const std::filesystem::path cachedShaderPath = workingDirFilePath / assetsDir / cacheDir / shadersDir / (shaderName + ".spv");
-#if !VK_FORCE_SHADER_COMPILATION
-    // TODO: Add extra shader directories if don't exist, cuz loading fucked up
-    if (std::filesystem::exists(cachedShaderPath)) return LoadData<std::vector<uint32_t>>(cachedShaderPath.string());
-#endif
-
-    // Got no cache, let's compile then
-    thread_local shaderc::Compiler compiler;
-    thread_local shaderc::CompileOptions compileOptions;
-    compileOptions.SetSourceLanguage(shaderc_source_language_glsl);
-    compileOptions.SetTargetEnvironment(shaderc_target_env_vulkan, shaderc_env_version_vulkan_1_3);
-    compileOptions.SetTargetSpirv(shaderc_spirv_version_1_6);
-    compileOptions.SetWarningsAsErrors();
-    compileOptions.SetOptimizationLevel(shaderc_optimization_level_performance);
-    compileOptions.SetGenerateDebugInfo();
-    compileOptions.SetIncluder(MakeUnique<GLSLShaderIncluder>());
-
-    const auto shaderSrc = LoadData<std::string>(localShaderPath);
-    // Preprocess
-    const auto preprocessedResult =
-        compiler.PreprocessGlsl(shaderSrc.data(), shaderSrc.size() * sizeof(shaderSrc[0]), shaderKind, shaderName.data(), compileOptions);
-    if (preprocessedResult.GetCompilationStatus() != shaderc_compilation_status_success)
-    {
-        if (preprocessedResult.GetNumWarnings() > 0)
-            LOG_TAG_WARN(SHADERC, "Shader: \"%s\". Detected %zu warnings!", shaderName.data(), preprocessedResult.GetNumWarnings());
-        if (preprocessedResult.GetNumErrors() > 0)
-            LOG_TAG_ERROR(SHADERC, "Failed to preprocess \"%s\" shader! %s", shaderName.data(),
-                          preprocessedResult.GetErrorMessage().data());
-
-        const std::string shaderErrorMessage = std::string("Shader compilation failed! ") + std::string(shaderName);
-        PFR_ASSERT(false, shaderErrorMessage.data());
-    }
-
-    const std::string preprocessedShaderSrc(preprocessedResult.cbegin(), preprocessedResult.cend());
-    // Compile
-    const auto compiledShaderResult =
-        compiler.CompileGlslToSpv(preprocessedShaderSrc.data(), preprocessedShaderSrc.size() * sizeof(preprocessedShaderSrc[0]), shaderKind,
-                                  shaderName.data(), compileOptions);
-    if (compiledShaderResult.GetCompilationStatus() != shaderc_compilation_status_success)
-    {
-        if (compiledShaderResult.GetNumWarnings() > 0)
-            LOG_TAG_WARN(SHADERC, "Shader: \"%s\". Detected %zu warnings!", shaderName.data(), compiledShaderResult.GetNumWarnings());
-        if (compiledShaderResult.GetNumErrors() > 0)
-            LOG_TAG_ERROR(SHADERC, "Failed to compile \"%s\" shader! %s", shaderName.data(), compiledShaderResult.GetErrorMessage().data());
-
-        const std::string shaderErrorMessage = std::string("Shader compilation failed! ") + std::string(shaderName);
-        PFR_ASSERT(false, shaderErrorMessage.data());
-    }
-
-    const std::vector<uint32_t> compiledShaderSrc{compiledShaderResult.cbegin(), compiledShaderResult.cend()};
-    SaveData(cachedShaderPath.string(), compiledShaderSrc.data(), compiledShaderSrc.size() * sizeof(compiledShaderSrc[0]));
-
-    return compiledShaderSrc;
 }
 
 void VulkanShader::LoadShaderModule(VkShaderModule& module, const std::vector<uint32_t>& shaderSrcSpv) const
@@ -753,7 +717,7 @@ void VulkanShader::Set(const std::string_view name, const std::vector<Shared<Ima
 
 void VulkanShader::Set(const std::string_view name, const AccelerationStructure& tlas)
 {
-    // PFR_ASSERT(tlas.Handle, "TLAS is not valid!");
+    PFR_ASSERT(tlas.Handle, "TLAS is not valid!");
 
     VkWriteDescriptorSetAccelerationStructureKHR descriptorAS = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET_ACCELERATION_STRUCTURE_KHR};
     descriptorAS.accelerationStructureCount                   = 1;

@@ -1,6 +1,11 @@
 #ifndef MATH_H
 #define MATH_H
 
+#define GLM_FORCE_INTRINSICS
+#define GLM_FORCE_AVX
+#define GLM_FORCE_AVX2
+#define GLM_FORCE_AVX512
+
 #define GLM_FORCE_RADIANS
 #define GLM_FORCE_CTOR_INIT
 #define GLM_FORCE_DEPTH_ZERO_TO_ONE

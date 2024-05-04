@@ -1,11 +1,13 @@
-#ifndef VULKANRAYTRACINGBUILDER_H
-#define VULKANRAYTRACINGBUILDER_H
+#ifndef VULKANHWRT_H
+#define VULKANHWRT_H
 
-#include "Renderer/RayTracingBuilder.h"
+#include "Renderer/HWRT.h"
 #include "VulkanCore.h"
 
 namespace Pathfinder
 {
+
+// HWRT stands for Hardware RayTracing.
 
 class VulkanRayTracingBuilder final : public RayTracingBuilder
 {
@@ -20,7 +22,7 @@ class VulkanRayTracingBuilder final : public RayTracingBuilder
         std::vector<VkAccelerationStructureBuildRangeInfoKHR> OffsetInfo = {};
     };
 
-    std::vector<AccelerationStructure> BuildBLASesImpl(const std::vector<Shared<Submesh>>& submeshes) final override;
+    std::vector<AccelerationStructure> BuildBLASesImpl(const std::vector<Shared<Mesh>>& meshes) final override;
     AccelerationStructure BuildTLASImpl(const std::vector<AccelerationStructure>& blases) final override;
 
     void DestroyAccelerationStructureImpl(AccelerationStructure& as) final override;

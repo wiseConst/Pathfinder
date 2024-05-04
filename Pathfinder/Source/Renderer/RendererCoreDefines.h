@@ -183,6 +183,12 @@ struct LineVertex
     glm::vec4 Color    = glm::vec4(1.0f);
 };
 
+struct SurfaceMesh
+{
+    Shared<Buffer> VertexBuffer;
+    Shared<Buffer> IndexBuffer;
+};
+
 struct AccelerationStructure
 {
     Shared<Pathfinder::Buffer> Buffer = nullptr;
@@ -201,6 +207,23 @@ enum class EShadowSetting : uint8_t
     SHADOW_SETTING_LOW = 0,
     SHADOW_SETTING_MEDIUM,
     SHADOW_SETTING_HIGH,
+};
+
+// vulkan_core.h
+struct StridedDeviceAddressRegion
+{
+    uint64_t deviceAddress;
+    uint64_t stride;
+    uint64_t size;
+};
+
+struct ShaderBindingTable
+{
+    Shared<Buffer> SBTBuffer              = nullptr;
+    StridedDeviceAddressRegion RgenRegion = {};
+    StridedDeviceAddressRegion MissRegion = {};
+    StridedDeviceAddressRegion HitRegion  = {};
+    StridedDeviceAddressRegion CallRegion = {};
 };
 
 const static std::map<EShadowSetting, uint16_t> s_ShadowsSettings = {

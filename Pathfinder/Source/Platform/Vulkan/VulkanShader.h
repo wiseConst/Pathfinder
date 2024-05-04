@@ -14,8 +14,7 @@ namespace Pathfinder
 class VulkanShader final : public Shader
 {
   public:
-    VulkanShader() = delete;
-    explicit VulkanShader(const std::string_view shaderName);
+    explicit VulkanShader(const ShaderSpecification& shaderSpec);
     ~VulkanShader() override { Destroy(); }
 
     void Set(const std::string_view name, const Shared<Buffer> buffer) final override;
@@ -58,6 +57,8 @@ class VulkanShader final : public Shader
         return result;
     }
 
+   ShaderBindingTable CreateSBT(const Shared<Pipeline>& rtPipeline) const final override;
+
     void DestroyGarbageIfNeeded() final override;
 
   private:
@@ -86,14 +87,13 @@ class VulkanShader final : public Shader
     };
     std::vector<ShaderInputVar> m_InputVars;
 
-    // TODO: In case I'd like to add DX12, I'll have to make this function virtual in shader base class
-    std::vector<uint32_t> CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
-                                                  shaderc_shader_kind shaderKind);
     void Reflect(SpvReflectShaderModule& reflectModule, ShaderDescription& shaderDescription,
                  const std::vector<uint32_t>& compiledShaderSrc, std::vector<SpvReflectDescriptorSet*>& outSets,
                  std::vector<SpvReflectBlockVariable*>& outPushConstants);
     void LoadShaderModule(VkShaderModule& module, const std::vector<uint32_t>& shaderSrcSpv) const;
     void Destroy() final override;
+
+    VulkanShader() = delete;
 };
 
 }  // namespace Pathfinder

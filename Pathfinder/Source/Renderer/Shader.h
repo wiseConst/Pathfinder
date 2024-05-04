@@ -30,8 +30,15 @@ class GLSLShaderIncluder final : public shaderc::CompileOptions::IncluderInterfa
 
 class Buffer;
 class Image;
+class Pipeline;
 class Texture2D;
 class TextureCube;
+
+struct ShaderSpecification
+{
+    std::string Name = s_DEFAULT_STRING;
+    std::map<std::string, std::string> MacroDefinitions;
+};
 
 class Shader : private Uncopyable, private Unmovable
 {
@@ -49,13 +56,24 @@ class Shader : private Uncopyable, private Unmovable
     virtual void Set(const std::string_view name, const ImagePerFrame& attachments)              = 0;
     virtual void Set(const std::string_view name, const std::vector<Shared<Image>>& attachments) = 0;
 
-    NODISCARD static Shared<Shader> Create(const std::string_view shaderName);
+    const auto& GetSpecification() const { return m_Specification; }
+
+    NODISCARD static Shared<Shader> Create(const ShaderSpecification& shaderSpec);
     virtual void DestroyGarbageIfNeeded() = 0;
 
+    virtual ShaderBindingTable CreateSBT(const Shared<Pipeline>& rtPipeline) const = 0;
+
   protected:
-    explicit Shader();
+    ShaderSpecification m_Specification = {};
+
+    explicit Shader(const ShaderSpecification& shaderSpec);
 
     virtual void Destroy() = 0;
+
+    static EShaderStage ShadercShaderStageToPathfinder(const shaderc_shader_kind& shaderKind);
+    static void DetectShaderKind(shaderc_shader_kind& shaderKind, const std::string_view currentShaderExt);
+    std::vector<uint32_t> CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
+                                                  shaderc_shader_kind shaderKind);
 };
 
 class ShaderLibrary final : private Uncopyable, private Unmovable
@@ -67,9 +85,10 @@ class ShaderLibrary final : private Uncopyable, private Unmovable
     static void Init();
     static void Shutdown();
 
-    static void Load(const std::string& shaderName);
-    static void Load(const std::vector<std::string>& shaderNames);
+    static void Load(const ShaderSpecification& shaderSpec);
+    static void Load(const std::vector<ShaderSpecification>& shaderSpecs);
     NODISCARD static const Shared<Shader>& Get(const std::string& shaderName);
+    NODISCARD static const Shared<Shader> Get(const ShaderSpecification& shaderSpec);
 
     FORCEINLINE static void DestroyGarbageIfNeeded()
     {
@@ -82,7 +101,8 @@ class ShaderLibrary final : private Uncopyable, private Unmovable
     }
 
   private:
-    static inline std::map<std::string, Shared<Shader>> s_Shaders;
+    static inline std::multimap<std::string, Shared<Shader>> s_Shaders;
+    static inline std::mutex s_ShaderLibMutex;
 };
 
 }  // namespace Pathfinder

@@ -142,13 +142,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE glm)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/glm)
 set_target_properties(glm PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
-# simdjson (currently unused since fastgltf includes it)
-set(SIMDJSON_BUILD_STATIC_LIB ON)
-add_subdirectory(${VENDOR_DIR}/simdjson)
-target_link_libraries(${PROJECT_NAME} PRIVATE simdjson_static)
-target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/simdjson/include)
-set_target_properties(simdjson_static PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
-set_target_properties(simdjson PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
+# nlohmann/json
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(${VENDOR_DIR}/nlohmann)
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/nlohmann/single_include)
+set_target_properties(nlohmann_json PROPERTIES FOLDER "ThirdParty/nlohmann" POSITION_INDEPENDENT_CODE ON)
 
 # stb
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/stb)
@@ -194,7 +193,21 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/amd_compressonat
 
 # entt
 add_subdirectory(${VENDOR_DIR}/entt)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/entt/single_include)
 target_link_libraries(${PROJECT_NAME} PRIVATE EnTT::EnTT)
+
+# openmp
+find_package(OpenMP REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
+if(OpenMP_CXX_FOUND)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        set(OpenMP_CXX_FLAGS "/openmp")
+    else()
+        set(OpenMP_CXX_FLAGS "-fopenmp")
+    endif()
+
+    target_compile_options(${PROJECT_NAME} PRIVATE ${OpenMP_CXX_FLAGS})
+endif()
 
 # Renderer compile config.
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
