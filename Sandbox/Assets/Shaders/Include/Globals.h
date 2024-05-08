@@ -52,6 +52,8 @@ static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(16);
 
 #endif
 
+#define SSS_LOCAL_GROUP_SIZE 16u
+
 struct MeshPositionVertex
 {
     vec3 Position;
@@ -74,7 +76,7 @@ static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
 {
     Plane plane;
     plane.Normal   = glm::normalize(normal);
-    plane.Distance = glm::dot(plane.Normal, p0);  // signed distance to the origin using p0
+    plane.Distance = glm::dot(p0, plane.Normal);  // signed distance to the origin using p0
 
     return plane;
 }
@@ -94,9 +96,10 @@ vec4 UnpackU8Vec4ToVec4(u8vec4 packed)
 // From glm
 vec3 RotateByQuat(const vec3 position, const vec4 orientation)
 {
-    const vec3 uv  = cross(orientation.xyz, position);
-    const vec3 uuv = cross(orientation.xyz, uv);
-    return position + ((uv * orientation.w) + uuv) * 2.0;
+    const vec3 uv = cross(orientation.xyz, position);
+
+    // NOTE: That the center of rotation is always the origin, so we adding an offset(position).
+    return position + (uv * orientation.w + cross(orientation.xyz, uv)) * 2.0;
 }
 
 #endif
@@ -243,10 +246,9 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Cam
 s_CameraDataBDA;  // Name unused, check u_PC
 #endif
 
-const uint32_t MAX_SHADOW_CASCADES = 5;
-
 #ifdef __cplusplus
-struct LightData
+
+struct alignas(16) LightData
 #else
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer LightData
 #endif
@@ -254,8 +256,6 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Lig
     PointLight PointLights[MAX_POINT_LIGHTS];
     SpotLight SpotLights[MAX_SPOT_LIGHTS];
     DirectionalLight DirectionalLights[MAX_DIR_LIGHTS];
-    mat4 DirLightViewProjMatrices[MAX_DIR_LIGHTS * MAX_SHADOW_CASCADES];
-    float CascadePlaneDistances[MAX_SHADOW_CASCADES - 1];
     uint32_t PointLightCount;
     uint32_t SpotLightCount;
     uint32_t DirectionalLightCount;
@@ -274,13 +274,13 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) buffer LightCulling
 }
 s_GridFrustumsBufferBDA;  // Name unused, check u_PC
 
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer VisiblePointLightIndicesBuffer
+layout(buffer_reference, buffer_reference_align = 1, scalar) buffer VisiblePointLightIndicesBuffer
 {
     LIGHT_INDEX_TYPE indices[];
 }
 s_VisiblePointLightIndicesBufferBDA;  // Name unused, check u_PC
 
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer VisibleSpotLightIndicesBuffer
+layout(buffer_reference, buffer_reference_align = 1, scalar) buffer VisibleSpotLightIndicesBuffer
 {
     LIGHT_INDEX_TYPE indices[];
 }
@@ -356,6 +356,16 @@ vec4 ScreenSpaceToView(const vec4 screen, const vec2 inverseScreenDimensions)
     const vec4 clip = vec4(vec2(uv.x, 1.0 - uv.y) * 2.0 - 1.0, screen.z,  // doesn't affect vulkan
                            screen.w);  // convert from [0, 1] to NDC([-1, 1]), without touching depth since it's [0, 1] as I require.
     return ClipSpaceToView(clip);
+}
+
+vec4 ViewToScreenSpace(const vec4 viewPos)
+{
+    vec4 ss = u_PC.CameraDataBuffer.Projection * viewPos;
+    ss      = ss / ss.w;
+    ss.xy   = vec2(ss.x, 1.f - ss.y) * .5f + .5f;
+    ss      = vec4(ss.xy * u_PC.CameraDataBuffer.InvFullResolution, ss.z, ss.w);
+
+    return ss;
 }
 
 // NOTE: A bit faster than inverse matrix mul.

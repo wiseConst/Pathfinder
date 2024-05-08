@@ -664,64 +664,8 @@ AABB MeshManager::GenerateAABB(const std::vector<MeshPositionVertex>& points)
     return {center, max - center};
 }
 
-static bool PointInsideSphere(const Sphere& sphere, const glm::vec3& p)
-{
-    return glm::distance2(sphere.Center, p) <= sphere.Radius * sphere.Radius;
-}
-
-static Sphere WelzlSphere(const std::vector<MeshPositionVertex>& points, const uint32_t numPoints, std::vector<MeshPositionVertex>& sos,
-                          const uint32_t numSos)
-{
-    // if no input points, the recursion has bottomed out.
-    // Now compute an exact sphere based on points in set of support (zero through four points)
-    if (numPoints == 0)
-    {
-        Sphere sphere = {glm::vec3{0.0f}, 0.0f};
-        switch (numSos)
-        {
-            case 1:
-            {
-                sphere.Center = sos[0].Position;
-                break;
-            }
-            case 2:
-            {
-                sphere.Center = (sos[0].Position + sos[1].Position) * .5f;
-                sphere.Radius = glm::distance(sos[0].Position, sos[1].Position) * .5f;
-
-                break;
-            }
-            case 3:
-            {
-                sphere.Center = (sos[0].Position + sos[1].Position + sos[2].Position) / 3.0f;
-                sphere.Radius = glm::distance(sphere.Center, sos[0].Position);
-
-                break;
-            }
-        }
-
-        return sphere;
-    }
-
-    // Pick a point at "random"(here just the last point of the input set)
-    const uint32_t index  = numPoints - 1;  // Recursively compute the smallest bounding sphere of the remaining points
-    Sphere smallestSphere = WelzlSphere(points, numPoints - 1, sos, numSos);  // (*)
-    // If the selected point lies inside this sphere, it is indeed the smallest
-    if (PointInsideSphere(smallestSphere, points.at(index).Position))
-        return smallestSphere;  // Otherwise, update set of support to additionally contain the new point
-
-    sos.emplace_back();
-    sos[numSos] = points.at(index);  // Recursively compute the smallest sphere of remaining points with new s.o.s.
-    return WelzlSphere(points, numPoints - 1, sos, numSos + 1);
-}
-
 Sphere MeshManager::GenerateBoundingSphere(const std::vector<MeshPositionVertex>& points)
 {
-    Timer t = {};
-
-#define WELZL 0
-
-#if !WELZL
     glm::vec3 farthestVtx[2] = {points[0].Position, points[0].Position};
     glm::vec3 averagedVertexPos(0.0f);
 
@@ -792,14 +736,8 @@ Sphere MeshManager::GenerateBoundingSphere(const std::vector<MeshPositionVertex>
     Sphere sphere = {};
     sphere.Center = averagedVtxToFarthestDistance < aabbCentroidToFarthestDistance ? averagedVertexPos : aabb.Center;
     sphere.Radius = glm::min(averagedVtxToFarthestDistance, aabbCentroidToFarthestDistance);
-#endif
 
-#if WELZL
-    std::vector<MeshPositionVertex> sos;
-    Sphere sphere = WelzlSphere(points, points.size(), sos, sos.size());
-#endif
-
-   // LOG_INFO("Time taken to create sphere from %u points: %0.3f ms", points.size(), t.GetElapsedMilliseconds());
+    // LOG_INFO("Time taken to create sphere from %u points: %0.3f ms", points.size(), t.GetElapsedMilliseconds());
     return sphere;
 }
 
@@ -868,25 +806,24 @@ void MeshManager::BuildMeshlets(const std::vector<uint32_t>& indices, const std:
     }
 
     outMeshlets.resize(meshopt_meshlets.size());
-    for (size_t i = 0; i < actualMeshletCount; ++i)
+    for (size_t i{}; i < actualMeshletCount; ++i)
     {
-        const auto& meshopt_m       = meshopt_meshlets[i];
-        const meshopt_Bounds bounds = meshopt_computeMeshletBounds(
+        const auto& meshopt_m = meshopt_meshlets[i];
+        const auto bounds     = meshopt_computeMeshletBounds(
             &outMeshletVertices[meshopt_m.vertex_offset], &outMeshletTriangles[meshopt_m.triangle_offset], meshopt_m.triangle_count,
             &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(vertexPositions[0]));
 
-        auto& m          = outMeshlets[i];
-        m.vertexOffset   = meshopt_m.vertex_offset;
-        m.vertexCount    = meshopt_m.vertex_count;
-        m.triangleOffset = meshopt_m.triangle_offset;
-        m.triangleCount  = meshopt_m.triangle_count;
+        outMeshlets[i].vertexOffset   = meshopt_m.vertex_offset;
+        outMeshlets[i].vertexCount    = meshopt_m.vertex_count;
+        outMeshlets[i].triangleOffset = meshopt_m.triangle_offset;
+        outMeshlets[i].triangleCount  = meshopt_m.triangle_count;
 
-        m.center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
-        m.radius = bounds.radius;
+        outMeshlets[i].center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
+        outMeshlets[i].radius = bounds.radius;
 
-        m.coneApex   = glm::vec3(bounds.cone_apex[0], bounds.cone_apex[1], bounds.cone_apex[2]);
-        m.coneAxis   = glm::vec3(bounds.cone_axis[0], bounds.cone_axis[1], bounds.cone_axis[2]);
-        m.coneCutoff = bounds.cone_cutoff;
+        outMeshlets[i].coneApex   = glm::vec3(bounds.cone_apex[0], bounds.cone_apex[1], bounds.cone_apex[2]);
+        outMeshlets[i].coneAxis   = glm::vec3(bounds.cone_axis[0], bounds.cone_axis[1], bounds.cone_axis[2]);
+        outMeshlets[i].coneCutoff = bounds.cone_cutoff;
     }
 }
 

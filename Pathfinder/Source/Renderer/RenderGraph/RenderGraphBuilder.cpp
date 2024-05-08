@@ -4,7 +4,7 @@
 
 #include "Core/Application.h"
 
-#include <simdjson.h>
+#include <nlohmann/json.hpp>
 
 namespace Pathfinder
 {
@@ -43,6 +43,7 @@ Unique<RenderGraph> RenderGraphBuilder::Create(const std::filesystem::path& rend
     const std::filesystem::path renderGraphFilePath =
         std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / renderGraphSpecificationPath;
 
+#if 0
     using namespace simdjson;
     ondemand::parser parser;
     const auto parsedJson  = padded_string::load(renderGraphFilePath.string());
@@ -61,6 +62,7 @@ Unique<RenderGraph> RenderGraphBuilder::Create(const std::filesystem::path& rend
 
     auto passesArr = passesField.get_array();
     PFR_ASSERT(!passesArr.is_empty(), "Passes array is empty!");
+#endif
 
 #if 0
     const auto passCount = passesArr.count_elements().value();
@@ -114,7 +116,7 @@ Unique<RenderGraph> RenderGraphBuilder::Create(const std::filesystem::path& rend
     }
 #endif
 
-    return rg;
+    //return rg;
 }
 
 }  // namespace Pathfinder

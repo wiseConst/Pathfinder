@@ -202,13 +202,6 @@ struct DrawMeshTasksIndirectCommand
     uint32_t groupCountZ;
 };
 
-enum class EShadowSetting : uint8_t
-{
-    SHADOW_SETTING_LOW = 0,
-    SHADOW_SETTING_MEDIUM,
-    SHADOW_SETTING_HIGH,
-};
-
 // vulkan_core.h
 struct StridedDeviceAddressRegion
 {
@@ -224,12 +217,6 @@ struct ShaderBindingTable
     StridedDeviceAddressRegion MissRegion = {};
     StridedDeviceAddressRegion HitRegion  = {};
     StridedDeviceAddressRegion CallRegion = {};
-};
-
-const static std::map<EShadowSetting, uint16_t> s_ShadowsSettings = {
-    {EShadowSetting::SHADOW_SETTING_LOW, 1024},     //
-    {EShadowSetting::SHADOW_SETTING_MEDIUM, 2048},  //
-    {EShadowSetting::SHADOW_SETTING_HIGH, 4096}     //
 };
 
 // Same as VmaBudget

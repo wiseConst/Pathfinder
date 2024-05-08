@@ -140,7 +140,7 @@ void Renderer2D::FlushBatch()
     renderCommandBuffer->BindVertexBuffers({s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]}, 0, 1, &offset);
     renderCommandBuffer->BindIndexBuffer(s_RendererData2D->QuadIndexBuffer);
 
-    renderCommandBuffer->BindPipeline(s_RendererData2D->QuadPipeline);
+    Renderer::BindPipeline(renderCommandBuffer, s_RendererData2D->QuadPipeline);
     renderCommandBuffer->BindPushConstants(s_RendererData2D->QuadPipeline, 0, 0, sizeof(pc), &pc);
     renderCommandBuffer->DrawIndexed(s_Renderer2DStats.QuadCount * 6);
 

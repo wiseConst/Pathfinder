@@ -14,20 +14,12 @@
 #include "Include/PBRShading.glslh"
 #endif
 
-#ifdef PFR_RENDER_OPAQUE_EARLY_FRAGMENT_TESTS
-layout(early_fragment_tests) in;
-#endif
-
 layout(constant_id = 0) const bool bRenderViewNormalMap = false;
+
 /* NOTE: 
     From PushConstantBlock:
     uint32_t StorageImageIndex; - u_AO
-    uint32_t AlbedoTextureIndex; - storing cascade debug image
-
-    vec2 pad0; x(far plane for point light shadow maps)
 */
-
-layout(set = LAST_BINDLESS_SET + 3, binding = 0) uniform sampler2DArray u_DirShadowmap[MAX_DIR_LIGHTS];
 
 layout(location = 0) out vec4 outFragColor;
 layout(location = 1) out vec4 outBrightColor;
@@ -81,58 +73,19 @@ void main()
     const vec3 ambient = albedo.rgb * ao * .04f;
     irradiance += (u_PC.LightDataBuffer.DirectionalLightCount + u_PC.LightDataBuffer.PointLightCount + u_PC.LightDataBuffer.SpotLightCount) > 0 ? ambient : vec3(0);
     #endif
-    
+
     for(uint i = 0; i < u_PC.LightDataBuffer.DirectionalLightCount; ++i)
     {
         DirectionalLight dl = u_PC.LightDataBuffer.DirectionalLights[i];
 
-        float kShadow = 1.0f;
-        if (dl.bCastShadows > 0) {
-            const vec4 fragPosVS = u_PC.CameraDataBuffer.View * vec4(i_VertexInput.WorldPos, 1);
-            const float depthVS = abs(fragPosVS.z);
-
-            int layer = -1;
-            for(int cascadeIndex = 0; cascadeIndex < MAX_SHADOW_CASCADES - 1; ++cascadeIndex)
-            {
-                if(depthVS < u_PC.LightDataBuffer.CascadePlaneDistances[cascadeIndex])
-                {
-                    layer = cascadeIndex;
-                    break;
-                }
-            }
-
-            bool bLayerNeedsFix = layer == -1;
-            if(layer == -1) layer = int(MAX_SHADOW_CASCADES - 1);
-
-         #if 0
-            vec3 cascadeColor=vec3(0);
-            if(layer == 0) cascadeColor.r = 1;
-            else if(layer==1) cascadeColor.g = 1;
-            else if(layer==2) cascadeColor.b = 1;
-            else if(layer==3) cascadeColor=vec3(1,1,0);
-            
-            imageStore(u_GlobalImages_RGBA8[u_PC.AlbedoTextureIndex], ivec2(gl_FragCoord.xy), vec4(cascadeColor,1));
-         #endif
-
-            float biasMultiplier = 1.f;
-            if (layer == MAX_SHADOW_CASCADES - 1)
-            {
-                biasMultiplier = 1.f / (u_PC.CameraDataBuffer.zFar * .5f);
-            }
-            else
-            {
-                biasMultiplier = 1.f / (u_PC.LightDataBuffer.CascadePlaneDistances[layer] * .5f);
-            }
-            kShadow = 1.f - DirShadowCalculation(u_DirShadowmap[i], biasMultiplier, layer, u_PC.LightDataBuffer.DirLightViewProjMatrices[i * MAX_DIR_LIGHTS + layer + int(bLayerNeedsFix)] * vec4(i_VertexInput.WorldPos, 1), N, normalize(dl.Direction));
-        }
-
+        const float kShadow = 1.0f;
         #if PHONG
             irradiance += DirectionalLightContribution(kShadow, V, N, dl, albedo.rgb, ao);
         #elif PBR
             irradiance += DirectionalLightContribution(kShadow, F0, V, N, dl, albedo.rgb, roughness, metallic);
         #endif
     }
-    
+
     const uint linearTileIndex = GetLinearGridIndex(gl_FragCoord.xy, u_PC.CameraDataBuffer.FullResolution.x);
     // Point lights
     {
@@ -143,7 +96,7 @@ void main()
             if (lightIndex >= u_PC.LightDataBuffer.PointLightCount) continue;
 
             PointLight pl = u_PC.LightDataBuffer.PointLights[lightIndex];
-            float kShadow = 1.0f;
+         const float kShadow = 1.0f;
            // if(pl.bCastShadows > 0) kShadow = 1.f - PointShadowCalculation(u_PointShadowmap[lightIndex], i_VertexInput.WorldPos, u_PC.CameraDataBuffer.Position, pl, u_PC.pad0.x /* far plane for point light shadow maps */);
 
             #if PHONG

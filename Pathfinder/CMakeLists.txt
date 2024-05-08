@@ -3,64 +3,20 @@ set(PROJECT_NAME Pathfinder)
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 set(VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
 
-file(GLOB_RECURSE CORE_SOURCES ${CORE_DIR}/Core/*.h ${CORE_DIR}/Core/*.cpp)
-source_group("Source/Core" FILES ${CORE_SOURCES})
+# Automatically group all sources into folders for MVS.
+file(GLOB_RECURSE SRC_FILES "${CORE_DIR}/*.cpp" "${CORE_DIR}/*.h" "${CORE_DIR}/*.hpp")
+set(ALL_FILES ${SRC_FILES})
+foreach(FILE ${SRC_FILES})
+    file(RELATIVE_PATH REL_FILE ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
+    get_filename_component(DIR "${REL_FILE}" DIRECTORY)
+    string(REPLACE "/" "\\" GROUP "${DIR}")
 
-file(GLOB_RECURSE EVENTS_SOURCES ${CORE_DIR}/Events/*.h ${CORE_DIR}/Events/*.cpp)
-source_group("Source/Events" FILES ${EVENTS_SOURCES})
-
-file(GLOB_RECURSE LAYERS_SOURCES ${CORE_DIR}/Layers/*.h ${CORE_DIR}/Layers/*.cpp)
-source_group("Source/Layers" FILES ${LAYERS_SOURCES})
-
-file(GLOB_RECURSE MEMORY_SOURCES ${CORE_DIR}/Memory/*.h ${CORE_DIR}/Memory/*.cpp)
-source_group("Source/Memory" FILES ${MEMORY_SOURCES})
-
-file(GLOB_RECURSE PLATFORM_SOURCES ${CORE_DIR}/Platform ${CORE_DIR}/Platform)
-source_group("Source/Platform" FILES ${PLATFORM_SOURCES})
-
-file(GLOB_RECURSE PLATFORM_GLFW_SOURCES ${CORE_DIR}/Platform/GLFW/*.h ${CORE_DIR}/Platform/GLFW/*.cpp)
-source_group("Source/Platform/GLFW" FILES ${PLATFORM_GLFW_SOURCES})
-
-file(GLOB_RECURSE PLATFORM_VULKAN_SOURCES ${CORE_DIR}/Platform/Vulkan/*.h ${CORE_DIR}/Platform/Vulkan/*.cpp)
-source_group("Source/Platform/Vulkan" FILES ${PLATFORM_VULKAN_SOURCES})
-
-file(GLOB RENDERER_SOURCES ${CORE_DIR}/Renderer/*.h ${CORE_DIR}/Renderer/*.cpp)
-source_group("Source/Renderer" FILES ${RENDERER_SOURCES})
-
-file(GLOB RENDERER_RENDER_GRAPH_SOURCES ${CORE_DIR}/Renderer/RenderGraph/*.h ${CORE_DIR}/Renderer/RenderGraph/*.cpp)
-source_group("Source/Renderer/RenderGraph" FILES ${RENDERER_RENDER_GRAPH_SOURCES})
-
-file(GLOB RENDERER_MESH_SOURCES ${CORE_DIR}/Renderer/Mesh/*.h ${CORE_DIR}/Renderer/Mesh/*.cpp)
-source_group("Source/Renderer/Mesh" FILES ${RENDERER_MESH_SOURCES})
-
-file(GLOB RENDERER_CAMERA_SOURCES ${CORE_DIR}/Renderer/Camera/*.h ${CORE_DIR}/Renderer/Camera/*.cpp)
-source_group("Source/Renderer/Camera" FILES ${RENDERER_CAMERA_SOURCES})
-
-file(GLOB RENDERER_DEBUG_SOURCES ${CORE_DIR}/Renderer/Debug/*.h ${CORE_DIR}/Renderer/Debug/*.cpp)
-source_group("Source/Renderer/Debug" FILES ${RENDERER_DEBUG_SOURCES})
-
-file(GLOB_RECURSE SCENE_SOURCES ${CORE_DIR}/Scene/*.h ${CORE_DIR}/Scene/*.cpp)
-source_group("Source/Scene" FILES ${SCENE_SOURCES})
+    source_group("${GROUP}" FILES ${FILE})
+endforeach()
 
 message("Building pathfinder rendering engine...")
 set(VULKAN_SDK_DIR $ENV{VULKAN_SDK})
 message("VULKAN_SDK PATH: ${VULKAN_SDK_DIR}")
-
-set(ALL_FILES
-        ${CORE_SOURCES}
-        ${EVENTS_SOURCES}
-        ${LAYERS_SOURCES}
-        ${MEMORY_SOURCES}
-        ${PLATFORM_SOURCES}
-        ${PLATFORM_GLFW_SOURCES}
-        ${PLATFORM_VULKAN_SOURCES}
-        ${RENDERER_SOURCES}
-        ${RENDERER_RENDER_GRAPH_SOURCES}
-        ${RENDERER_MESH_SOURCES}
-        ${RENDERER_CAMERA_SOURCES}
-        ${RENDERER_DEBUG_SOURCES}
-        ${SCENE_SOURCES}
-)
 
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY PROJECT_OUTPUT_DIRECTORY)

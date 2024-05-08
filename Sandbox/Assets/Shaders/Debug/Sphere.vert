@@ -28,7 +28,7 @@ void main()
     DebugSphereRenderInfoBuffer infoBuffer = DebugSphereRenderInfoBuffer(u_PC.LightDataBuffer);
     DebugSphereRenderInfo sphereInfo =  infoBuffer.sphereInfos[u_PC.StorageImageIndex];
 
-    const vec3 worldPos = RotateByQuat(inPosition, sphereInfo.Orientation) * sphereInfo.Scale * sphereInfo.Radius + sphereInfo.Translation + sphereInfo.Center;
+    const vec3 worldPos = RotateByQuat((inPosition * sphereInfo.Radius + sphereInfo.Center) * sphereInfo.Scale, sphereInfo.Orientation) + sphereInfo.Translation;
     gl_Position = u_PC.CameraDataBuffer.ViewProjection * vec4(worldPos, 1.0);
     
     outColor = sphereInfo.Color;

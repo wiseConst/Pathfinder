@@ -107,11 +107,12 @@ static void SerializeEntity(nlohmann::ordered_json& out, const Entity entity)
         glm::to_json(node["SpotLightComponent"]["Position"], sl.Position);
         glm::to_json(node["SpotLightComponent"]["Direction"], sl.Direction);
         glm::to_json(node["SpotLightComponent"]["Color"], sl.Color);
-        node["SpotLightComponent"]["Intensity"]   = sl.Intensity;
-        node["SpotLightComponent"]["Height"]      = sl.Height;
-        node["SpotLightComponent"]["Radius"]      = sl.Radius;
-        node["SpotLightComponent"]["InnerCutOff"] = sl.InnerCutOff;
-        node["SpotLightComponent"]["OuterCutOff"] = sl.OuterCutOff;
+        node["SpotLightComponent"]["Intensity"]    = sl.Intensity;
+        node["SpotLightComponent"]["Height"]       = sl.Height;
+        node["SpotLightComponent"]["Radius"]       = sl.Radius;
+        node["SpotLightComponent"]["InnerCutOff"]  = sl.InnerCutOff;
+        node["SpotLightComponent"]["OuterCutOff"]  = sl.OuterCutOff;
+        node["SpotLightComponent"]["bCastShadows"] = sl.bCastShadows;
     }
 }
 
@@ -238,6 +239,8 @@ void SceneManager::Deserialize(Shared<Scene>& scene, const std::filesystem::path
             if (node["SpotLightComponent"].contains("Radius")) sl.Radius = node["SpotLightComponent"]["Radius"].get<float>();
             if (node["SpotLightComponent"].contains("InnerCutOff")) sl.InnerCutOff = node["SpotLightComponent"]["InnerCutOff"].get<float>();
             if (node["SpotLightComponent"].contains("OuterCutOff")) sl.OuterCutOff = node["SpotLightComponent"]["OuterCutOff"].get<float>();
+            if (node["SpotLightComponent"].contains("bCastShadows"))
+                sl.bCastShadows = node["SpotLightComponent"]["bCastShadows"].get<uint32_t>();
         }
     }
 

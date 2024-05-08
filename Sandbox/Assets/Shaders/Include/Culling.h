@@ -42,9 +42,8 @@ bool SphereInsideTileFrustum(Sphere sphere, TileFrustum frustum, float zNear, fl
 
 bool SphereIntersectsAABB(Sphere sphere, AABB aabb)
 {
-    vec3 vDelta   = max(vec3(0.0), abs(aabb.Center - sphere.Center) - aabb.Extents);
-    float fDistSq = dot(vDelta, vDelta);
-    return fDistSq <= sphere.Radius * sphere.Radius;
+    const vec3 vDelta = max(vec3(0.0), abs(aabb.Center - sphere.Center) - aabb.Extents);
+    return dot(vDelta, vDelta) <= sphere.Radius * sphere.Radius;
 }
 
 // Check to see if a point is fully behind (inside the negative halfspace of) a plane.
@@ -92,12 +91,12 @@ bool SphereInsideFrustum(Sphere sphere, Frustum frustum)
     // Better to just unroll:
     bool result = true;
 
-    result = (SphereInsidePlane(sphere, frustum.Planes[0]) ? false : result);
-    result = (SphereInsidePlane(sphere, frustum.Planes[1]) ? false : result);
-    result = (SphereInsidePlane(sphere, frustum.Planes[2]) ? false : result);
-    result = (SphereInsidePlane(sphere, frustum.Planes[3]) ? false : result);
-    result = (SphereInsidePlane(sphere, frustum.Planes[4]) ? false : result);
-    result = (SphereInsidePlane(sphere, frustum.Planes[5]) ? false : result);
+    result = SphereInsidePlane(sphere, frustum.Planes[0]) ? false : result;
+    result = SphereInsidePlane(sphere, frustum.Planes[1]) ? false : result;
+    result = SphereInsidePlane(sphere, frustum.Planes[2]) ? false : result;
+    result = SphereInsidePlane(sphere, frustum.Planes[3]) ? false : result;
+    result = SphereInsidePlane(sphere, frustum.Planes[4]) ? false : result;
+    result = SphereInsidePlane(sphere, frustum.Planes[5]) ? false : result;
 
     return result;
 }

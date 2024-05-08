@@ -17,10 +17,15 @@ class DebugRenderer
     static void Shutdown();
 
     static void DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm::vec4& color);
+    
     static void DrawAABB(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color);
+    static void DrawAABB(const glm::vec3& center, const glm::vec3& halfExtents, const glm::mat4& transform, const glm::vec4& color);
+
     static void DrawRect(const glm::mat4& transform, const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color);
     static void DrawRect(const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color);
+
     static void DrawSphere(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color);
+    static void DrawSphere(const glm::vec3& center, const float radius, const glm::mat4& transform, const glm::vec4& color);
 
     static void Flush();
 

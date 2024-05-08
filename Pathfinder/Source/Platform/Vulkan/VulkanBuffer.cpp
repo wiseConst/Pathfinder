@@ -221,7 +221,6 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         else
 #endif
         {
-
             const CommandBufferSpecification cbSpec = {
                 ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                 Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};

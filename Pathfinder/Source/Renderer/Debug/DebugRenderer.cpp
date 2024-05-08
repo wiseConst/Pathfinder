@@ -256,86 +256,67 @@ void DebugRenderer::DrawAABB(const Shared<Mesh>& mesh, const glm::mat4& transfor
     for (const auto& submesh : mesh->GetSubmeshes())
     {
         const auto& sphere = submesh->GetBoundingSphere();
-
-        const glm::vec3 center = sphere.Center;
-        glm::vec3 halfExtents  = glm::vec3(sphere.Radius);
-
-        // Top plane
-        glm::vec3 lineVertices[4] = {glm::vec3(center + halfExtents),
-                                     glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z + halfExtents.z),
-                                     glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z - halfExtents.z),
-                                     glm::vec3(center.x + halfExtents.x, center.y + halfExtents.y, center.z - halfExtents.z)};
-        for (size_t i{}; i < 4; ++i)
-            lineVertices[i] = transform * glm::vec4(lineVertices[i], 1.0f);
-
-        for (uint32_t i{}; i < 4; ++i)
-        {
-            const uint32_t nextLineVertexIndex = i + 1;
-            DrawLine(lineVertices[i], lineVertices[nextLineVertexIndex == 4 ? 0 : nextLineVertexIndex], color);
-        }
-
-        // Bottom plane
-        lineVertices[0] = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
-        lineVertices[1] = glm::vec3(center.x - halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
-        lineVertices[2] = glm::vec3(center - halfExtents);
-        lineVertices[3] = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z - halfExtents.z);
-        for (size_t i{}; i < 4; ++i)
-            lineVertices[i] = transform * glm::vec4(lineVertices[i], 1.0f);
-
-        for (uint32_t i{}; i < 4; ++i)
-        {
-            const uint32_t nextLineVertexIndex = i + 1;
-            DrawLine(lineVertices[i], lineVertices[nextLineVertexIndex == 4 ? 0 : nextLineVertexIndex], color);
-        }
-
-        // Forward right line
-        lineVertices[0] = glm::vec3(center + halfExtents);
-        lineVertices[1] = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
-        for (size_t i{}; i < 2; ++i)
-            lineVertices[i] = transform * glm::vec4(lineVertices[i], 1.0f);
-
-        for (uint32_t i{}; i < 2; ++i)
-        {
-            const uint32_t nextLineVertexIndex = i + 1;
-            DrawLine(lineVertices[i], lineVertices[nextLineVertexIndex == 2 ? 0 : nextLineVertexIndex], color);
-        }
-
-        // Forward left line
-        lineVertices[0] = glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z + halfExtents.z);
-        lineVertices[1] = glm::vec3(center.x - halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
-        for (size_t i{}; i < 2; ++i)
-            lineVertices[i] = transform * glm::vec4(lineVertices[i], 1.0f);
-
-        for (uint32_t i{}; i < 2; ++i)
-        {
-            const uint32_t nextLineVertexIndex = i + 1;
-            DrawLine(lineVertices[i], lineVertices[nextLineVertexIndex == 2 ? 0 : nextLineVertexIndex], color);
-        }
-
-        // Backward right line
-        lineVertices[0] = glm::vec3(center.x + halfExtents.x, center.y + halfExtents.y, center.z - halfExtents.z);
-        lineVertices[1] = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z - halfExtents.z);
-        for (size_t i{}; i < 2; ++i)
-            lineVertices[i] = transform * glm::vec4(lineVertices[i], 1.0f);
-
-        for (uint32_t i{}; i < 2; ++i)
-        {
-            const uint32_t nextLineVertexIndex = i + 1;
-            DrawLine(lineVertices[i], lineVertices[nextLineVertexIndex == 2 ? 0 : nextLineVertexIndex], color);
-        }
-
-        // Backward left line
-        lineVertices[0] = glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z - halfExtents.z);
-        lineVertices[1] = glm::vec3(center - halfExtents);
-        for (size_t i{}; i < 2; ++i)
-            lineVertices[i] = transform * glm::vec4(lineVertices[i], 1.0f);
-
-        for (uint32_t i{}; i < 2; ++i)
-        {
-            const uint32_t nextLineVertexIndex = i + 1;
-            DrawLine(lineVertices[i], lineVertices[nextLineVertexIndex == 2 ? 0 : nextLineVertexIndex], color);
-        }
+        DrawAABB(sphere.Center, glm::vec3{sphere.Radius}, transform, color);
     }
+}
+
+void DebugRenderer::DrawAABB(const glm::vec3& center, const glm::vec3& halfExtents, const glm::mat4& transform, const glm::vec4& color)
+{
+    // Top plane
+    glm::vec3 lineVertices[4] = {glm::vec3(center + halfExtents),
+                                 glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z + halfExtents.z),
+                                 glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z - halfExtents.z),
+                                 glm::vec3(center.x + halfExtents.x, center.y + halfExtents.y, center.z - halfExtents.z)};
+
+    const auto DrawLines = [&](const uint32_t lineVertexCount)
+    {
+        for (uint32_t i{}; i < lineVertexCount; ++i)
+        {
+            const uint32_t nextLineVertexIndex = i + 1;
+            DrawLine(lineVertices[i], lineVertices[nextLineVertexIndex == lineVertexCount ? 0 : nextLineVertexIndex], color);
+        }
+    };
+
+    const auto UpdateLineVertices = [&](const uint32_t lineVertexCount)
+    {
+        for (size_t i{}; i < lineVertexCount; ++i)
+            lineVertices[i] = transform * glm::vec4(lineVertices[i], 1.0f);
+    };
+
+    UpdateLineVertices(4);
+    DrawLines(4);
+
+    // Bottom plane
+    lineVertices[0] = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
+    lineVertices[1] = glm::vec3(center.x - halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
+    lineVertices[2] = glm::vec3(center - halfExtents);
+    lineVertices[3] = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z - halfExtents.z);
+    UpdateLineVertices(4);
+    DrawLines(4);
+
+    // Forward right line
+    lineVertices[0] = glm::vec3(center + halfExtents);
+    lineVertices[1] = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
+    UpdateLineVertices(2);
+    DrawLines(2);
+
+    // Forward left line
+    lineVertices[0] = glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z + halfExtents.z);
+    lineVertices[1] = glm::vec3(center.x - halfExtents.x, center.y - halfExtents.y, center.z + halfExtents.z);
+    UpdateLineVertices(2);
+    DrawLines(2);
+
+    // Backward right line
+    lineVertices[0] = glm::vec3(center.x + halfExtents.x, center.y + halfExtents.y, center.z - halfExtents.z);
+    lineVertices[1] = glm::vec3(center.x + halfExtents.x, center.y - halfExtents.y, center.z - halfExtents.z);
+    UpdateLineVertices(2);
+    DrawLines(2);
+
+    // Backward left line
+    lineVertices[0] = glm::vec3(center.x - halfExtents.x, center.y + halfExtents.y, center.z - halfExtents.z);
+    lineVertices[1] = glm::vec3(center - halfExtents);
+    UpdateLineVertices(2);
+    DrawLines(2);
 }
 
 void DebugRenderer::DrawSphere(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color)
@@ -344,16 +325,21 @@ void DebugRenderer::DrawSphere(const Shared<Mesh>& mesh, const glm::mat4& transf
 
     for (const auto& submesh : mesh->GetSubmeshes())
     {
-        glm::vec3 translation;
-        glm::quat rotation;
-        glm::vec3 scale;
-        glm::vec3 skew;
-        glm::vec4 perspective;
-        glm::decompose(transform, scale, rotation, translation, skew, perspective);
-        auto& debugSphereRenderInfo = s_DebugRendererData->DebugSphereInfos.emplace_back(
-            translation, glm::vec4{rotation.x, rotation.y, rotation.z, rotation.w}, scale, submesh->GetBoundingSphere().Center,
-            submesh->GetBoundingSphere().Radius, color);
+        const auto& sphere = submesh->GetBoundingSphere();
+        DrawSphere(sphere.Center, sphere.Radius, transform, color);
     }
+}
+
+void DebugRenderer::DrawSphere(const glm::vec3& center, const float radius, const glm::mat4& transform, const glm::vec4& color)
+{
+    glm::vec3 translation;
+    glm::quat rotation;
+    glm::vec3 scale;
+    glm::vec3 skew;
+    glm::vec4 perspective;
+    glm::decompose(transform, scale, rotation, translation, skew, perspective);
+    s_DebugRendererData->DebugSphereInfos.emplace_back(translation, glm::vec4{rotation.x, rotation.y, rotation.z, rotation.w}, scale,
+                                                       center, radius, color);
 }
 
 }  // namespace Pathfinder

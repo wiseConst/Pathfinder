@@ -1,9 +1,19 @@
 set(PROJECT_NAME Sandbox)
 
-file(GLOB_RECURSE CORE_SOURCES "Source/*.h" "Source/*.cpp")
-source_group("Source" FILES ${CORE_SOURCES})
+set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 
-add_executable(${PROJECT_NAME} ${CORE_SOURCES})
+# Automatically group all sources into folders for MVS.
+file(GLOB_RECURSE SRC_FILES "${CORE_DIR}/*.cpp" "${CORE_DIR}/*.h" "${CORE_DIR}/*.hpp")
+set(ALL_FILES ${SRC_FILES})
+foreach(FILE ${SRC_FILES})
+    file(RELATIVE_PATH REL_FILE ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
+    get_filename_component(DIR "${REL_FILE}" DIRECTORY)
+    string(REPLACE "/" "\\" GROUP "${DIR}")
+
+    source_group("${GROUP}" FILES ${FILE})
+endforeach()
+
+add_executable(${PROJECT_NAME} ${ALL_FILES})
 
 if(MSVC)
     target_link_options(${PROJECT_NAME} PRIVATE "$<$<CONFIG:RELEASE>:/SUBSYSTEM:WINDOWS>")

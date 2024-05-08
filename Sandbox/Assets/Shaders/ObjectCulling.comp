@@ -56,7 +56,7 @@ void main()
     }
 
     Sphere sphere;
-    sphere.Center = RotateByQuat(md.sphere.Center, md.orientation) * md.scale + md.translation;
+    sphere.Center = RotateByQuat(md.sphere.Center * md.scale, md.orientation) + md.translation;
     sphere.Radius = md.sphere.Radius * max(max(md.scale.x, md.scale.y), md.scale.z);
     if(SphereInsideFrustum(sphere, u_PC.CameraDataBuffer.ViewFrustum))
     {

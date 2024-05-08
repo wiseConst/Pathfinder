@@ -21,12 +21,12 @@ Scene::~Scene()
 
     m_EntityCount = 0;
 
-    RayTracingBuilder::DestroyAccelerationStructure(m_TLAS);
+    // RayTracingBuilder::DestroyAccelerationStructure(m_TLAS);
 }
 
 void Scene::OnUpdate(const float deltaTime)
 {
-    //RebuildTLAS();
+    // RebuildTLAS();
 
     for (const auto entityID : m_Registry.view<IDComponent>())
     {

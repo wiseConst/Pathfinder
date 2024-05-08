@@ -493,7 +493,7 @@ void VulkanCommandBuffer::Destroy()
     if (!m_Handle) return;
 
     auto& context = VulkanContext::Get();
-    context.GetDevice()->WaitDeviceOnFinish();
+    // context.GetDevice()->WaitDeviceOnFinish();
     context.GetDevice()->FreeCommandBuffer(m_Handle, m_Specification);
 
     const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();

@@ -1,0 +1,57 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#include "Include/Globals.h"
+
+layout(local_size_x = SSS_LOCAL_GROUP_SIZE, local_size_y = SSS_LOCAL_GROUP_SIZE, local_size_z = 1) in;
+
+layout(constant_id = 0) const uint32_t RayStepCount = 5;
+
+void main()
+{
+	const uvec2 gID = uvec2(gl_GlobalInvocationID);
+	if ( any( greaterThan(gID, u_PC.CameraDataBuffer.FullResolution) ) ) return;
+
+	const vec2 uv = gID * u_PC.CameraDataBuffer.InvFullResolution;
+	const vec3 pixelViewPosition = vec3(ScreenSpaceToView(vec4(vec2(gID), texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], uv).x, 1), u_PC.CameraDataBuffer.InvFullResolution));
+	uint i = 0;
+	uint k = 0;
+	float shadow = 0.f;
+	
+	#if 0
+	for(i = 0; i < u_PC.LightDataBuffer.DirectionalLightCount; ++i)
+	{
+		if(u_PC.LightDataBuffer.DirectionalLights[i].bCastShadows == 0) continue;
+		
+		const vec3 viewLightDir= vec3(u_PC.CameraDataBuffer.View * vec4(u_PC.LightDataBuffer.DirectionalLights[i].Direction, 0));
+
+	//	const float lightDistance = distance(u_PC.LightDataBuffer.DirectionalLights[i].Position - u_PC.LightDataBuffer.Position);
+	//	const vec3 rayDir = normalize(u_PC.LightDataBuffer.DirectionalLights[i].Position - u_PC.LightDataBuffer.Position);
+	}
+	#endif
+
+	for(i = 0; i < u_PC.LightDataBuffer.PointLightCount; ++i)
+	{
+		if(u_PC.LightDataBuffer.PointLights[i].bCastShadows == 0) continue;
+		
+		const vec3 viewLightPosition = vec3(u_PC.CameraDataBuffer.View * vec4(u_PC.LightDataBuffer.PointLights[i].Position, 1));
+
+		const vec3 rayDir = viewLightPosition - pixelViewPosition;
+		const vec3 rayStep = rayDir / RayStepCount;
+
+		vec3 viewPosition = pixelViewPosition;
+		float localShadow = 0.f;
+		for(k = 0; k < RayStepCount; ++k)
+		{
+			viewPosition += rayStep;
+			const vec3 ssPosition = vec3(ViewToScreenSpace( vec4(viewPosition, 1) ));
+			const float marchedDepth = ScreenSpaceDepthToView(texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], ssPosition.xy).x);
+		
+			// ReversedZ:
+			if(marchedDepth > ssPosition.z) localShadow += 1.f;
+		}
+		shadow += localShadow / RayStepCount;
+	}
+
+	imageStore(u_GlobalImages_R32F[nonuniformEXT(u_PC.StorageImageIndex)], ivec2(gID), vec4(/*1.0f -*/ shadow, 0, 0, 1));
+}

@@ -130,16 +130,11 @@ class Renderer : private Uncopyable, private Unmovable
         std::array<Shared<Pipeline>, 2> BloomPipeline;
         std::array<Shared<Framebuffer>, 2> BloomFramebuffer;
 
-        /*              SHADOWS                */
-        EShadowSetting CurrentShadowSetting = EShadowSetting::SHADOW_SETTING_MEDIUM;
-
-        Shared<Image> CascadeDebugImage = nullptr;
-
-        // DirShadowMaps
-        std::vector<Shared<Framebuffer>> DirShadowMaps;
-        Shared<Pipeline> DirShadowMapPipeline = nullptr;
-
-        /*              SHADOWS                */
+        /*             SCREEN-SPACE SHADOWS                */
+        bool bAnybodyCastsShadows          = false;
+        Shared<Image> SSShadowsImage       = nullptr;
+        Shared<Pipeline> SSShadowsPipeline = nullptr;
+        /*             SCREEN-SPACE SHADOWS                */
 
         std::vector<RenderObject> OpaqueObjects;
         std::vector<RenderObject> TransparentObjects;
@@ -223,7 +218,7 @@ class Renderer : private Uncopyable, private Unmovable
     static void ObjectCullingPass();
 
     static void DepthPrePass();
-    static void DirShadowMapPass();
+    static void ScreenSpaceShadowsPass();
 
     static void ComputeFrustumsPass();
     static void LightCullingPass();

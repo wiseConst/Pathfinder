@@ -33,11 +33,9 @@ const float sampleRadius = .873f;
 const float sampleBias = .025f;
 
 vec3 GetViewPositionFromDepth(vec2 coords) {
-    const float fragmentDepth = texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], coords).r;
-    
     // UV space -> ndc
     // NOTE: For OpenGL should be (fragmentDepth * 2.f - .1f)
-    const vec4 ndc = vec4(coords * 2.f - 1.f, fragmentDepth, 1.f);
+    const vec4 ndc = vec4(coords * 2.f - 1.f, texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], coords).r, 1.f);
     
     // ndc -> view space
     vec4 posVS = u_PC.CameraDataBuffer.InverseProjection * ndc;
@@ -102,5 +100,5 @@ void main()
     }
 
     const float visibility = 1.0 - occlusion * INV_MAX_KERNEL_SIZE_F; // From [0, MAX_KERNEL_SIZE] -> [0, 1]
-    outFragColor =  pow(visibility, 10);
+    outFragColor =  pow(visibility, 14);
 }

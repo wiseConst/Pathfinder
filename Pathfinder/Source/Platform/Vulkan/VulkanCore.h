@@ -17,7 +17,7 @@ namespace Pathfinder
 
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
-// NOTE: SHADER/PIPELINE CACHE WITH MACRO DEFINITIONS DOESN'T WORK
+// NOTE: SHADER CACHE WITH MACRO DEFINITIONS DOESN'T WORK
 #define VK_FORCE_VALIDATION 1
 #define VK_FORCE_SHADER_COMPILATION 1
 #define VK_FORCE_PIPELINE_COMPILATION 1
@@ -65,10 +65,10 @@ static const std::vector<const char*> s_DeviceExtensions = {
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
 
+    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,  // To build acceleration structures
 #if !RENDERDOC_DEBUG
 
-    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,  // To build acceleration structures
-    VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,    // To use vkCmdTraceRaysKHR
+    VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,  // To use vkCmdTraceRaysKHR
 
     VK_KHR_DEFERRED_HOST_OPERATIONS_EXTENSION_NAME,  // Required by acceleration structure,
     // allows the driver to run some expensive CPU-based Vulkan API calls asynchronously(such as a Vulkan API call that builds an

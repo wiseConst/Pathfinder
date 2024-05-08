@@ -16,9 +16,9 @@ uint32_t hash(uint32_t a)
     return a;
 }
 
-bool ConeCull(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxis, const float coneCutoff)
+bool IsConeBackfacing(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxis, const float coneCutoff, const float radius)
 {
-    return dot(normalize(coneApex - cameraPosition), normalize(coneAxis)) >= coneCutoff;
+    return dot(coneApex - cameraPosition, coneAxis) >= coneCutoff * length(coneApex - cameraPosition) + radius;
 }
 
 #endif
@@ -39,6 +39,7 @@ using u8vec4  = glm::u8vec4;
 using vec3    = glm::vec3;
 using vec4    = glm::vec4;
 using mat4    = glm::mat4;
+using i8vec3  = glm::i8vec3;
 
 #endif
 

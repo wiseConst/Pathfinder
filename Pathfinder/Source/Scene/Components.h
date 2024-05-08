@@ -64,7 +64,7 @@ struct DirectionalLightComponent
     DirectionalLightComponent(const DirectionalLightComponent&) = default;
     DirectionalLightComponent(const DirectionalLight& that) { dl = that; }
     DirectionalLightComponent(const glm::vec3& direction, const glm::vec3& color, const float intensity, const uint32_t bCastShadows)
-        : dl{direction, color, intensity, bCastShadows}
+        : dl{direction, intensity, color, bCastShadows}
     {
     }
 };
@@ -80,7 +80,7 @@ struct PointLightComponent
     PointLightComponent(const PointLight& that) { pl = that; }
     PointLightComponent(const glm::vec3& position, const glm::vec3& color, const float intensity, const float radius, const float minRadius,
                         const uint32_t bCastShadows)
-        : pl{position, color, intensity, radius, minRadius, bCastShadows}
+        : pl{position, intensity, color, radius, glm::vec2{0, 0}, minRadius, bCastShadows}
     {
     }
 };
@@ -95,8 +95,9 @@ struct SpotLightComponent
     SpotLightComponent(const SpotLightComponent&) = default;
     SpotLightComponent(const SpotLight& that) { sl = that; }
     SpotLightComponent(const glm::vec3& position, const glm::vec3& direction, const glm::vec3& color, const float intensity,
-                       const float height, const float radius, const float innerCutOff, const float outerCutOff)
-        : sl{position, direction, color, intensity, height, radius, innerCutOff, outerCutOff}
+                       const float height, const float radius, const float innerCutOff, const float outerCutOff,
+                       const uint32_t bCastShadows)
+        : sl{position, intensity, direction, height, color, radius, innerCutOff, outerCutOff, bCastShadows, 0.0f}
     {
     }
 };

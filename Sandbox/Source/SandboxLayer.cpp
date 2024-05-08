@@ -2,7 +2,7 @@
 
 namespace Pathfinder
 {
-static const std::string sceneFilePath = "Scenes/TestBedLights";
+static const std::string sceneFilePath = "Scenes/SponzaSonne";
 
 void SandboxLayer::Init()
 {
@@ -34,6 +34,7 @@ void SandboxLayer::OnEvent(Event& e)
             if (event.GetModKey() == EModKey::MOD_KEY_ALT && bF3WasPressed && Input::IsKeyReleased(EKey::KEY_F3))
             {
                 bRenderUI = !bRenderUI;
+                return true;
             }
 
             const auto key = event.GetKey();
@@ -83,23 +84,6 @@ void SandboxLayer::OnUpdate(const float deltaTime)
         });
 
     m_ActiveScene->OnUpdate(deltaTime);
-
-#if 0
-    {
-        static double iTime = 0.0;
-        iTime += (double)deltaTime;
-        DirectionalLight dl = {};
-        dl.Color            = glm::vec3(.9f, .65f, .1f);
-        dl.Direction        = glm::vec3(-5.f, 2.f, 0.f);
-        dl.Intensity        = 1.5f;
-        //      dl.bCastShadows     = true;
-
-        //    dl.Direction = glm::vec3(.5, .4 * (1. + glm::sin(.5 * iTime)), -1.);
-
-        Renderer::AddDirectionalLight(dl);
-    }
-
-#endif
 
     Renderer::EndScene();
 
@@ -225,7 +209,11 @@ void SandboxLayer::OnUIRender()
         for (const auto& [name, image] : Renderer::GetRenderTargetList())
         {
             ImGui::Text("%s", name.data());
-            UILayer::DrawImage(image, {image->GetSpecification().Width / 2, image->GetSpecification().Height / 2}, {0, 0}, {1, 1});
+            const uint32_t imageWidth =
+                image->GetSpecification().Width > 10 ? image->GetSpecification().Width / 2 : image->GetSpecification().Width * 100;
+            const uint32_t imageHeight =
+                image->GetSpecification().Height > 10 ? image->GetSpecification().Height / 2 : image->GetSpecification().Height * 100;
+            UILayer::DrawImage(image, {imageWidth, imageHeight}, {0, 0}, {1, 1});
             ImGui::Separator();
         }
 

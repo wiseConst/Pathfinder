@@ -6,10 +6,11 @@ using vec4 = glm::vec4;
 
 #endif
 
+#define MAX_DIR_LIGHTS 4
+
 #define LIGHT_INDEX_TYPE uint16_t
 #define MAX_POINT_LIGHTS 1024
 #define MAX_SPOT_LIGHTS 512
-#define MAX_DIR_LIGHTS 4
 
 #define LIGHT_CULLING_TILE_SIZE 8u
 
@@ -25,46 +26,37 @@ const LIGHT_INDEX_TYPE INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS 
 
 #endif
 
-struct
-#ifdef __cplusplus
-    alignas(4)
-#endif
-        DirectionalLight
+struct DirectionalLight
 {
     vec3 Direction;
-    vec3 Color;
     float Intensity;
+    vec3 Color;
     uint32_t bCastShadows;
 };
 
-struct
-#ifdef __cplusplus
-    alignas(4)
-#endif
-        PointLight
+struct PointLight
 {
     vec3 Position;
-    vec3 Color;
     float Intensity;
+    vec3 Color;
     float Radius;
+    vec2 pad0;
     float MinRadius;
     uint32_t bCastShadows;
 };
 
-struct
-#ifdef __cplusplus
-    alignas(4)
-#endif
-        SpotLight
+struct SpotLight
 {
     vec3 Position;
-    vec3 Direction;
-    vec3 Color;
     float Intensity;
+    vec3 Direction;
     float Height;
+    vec3 Color;
     float Radius;
     float InnerCutOff;
     float OuterCutOff;
+    uint32_t bCastShadows;
+    float pad0;
 };
 
 #ifndef __cplusplus
