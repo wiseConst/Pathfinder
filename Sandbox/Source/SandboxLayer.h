@@ -21,15 +21,9 @@ class SandboxLayer final : public Layer
 
   private:
     Shared<Camera> m_Camera = nullptr;
+    Shared<Scene> m_ActiveScene = nullptr;
 
-    Shared<Mesh> m_Sponza = nullptr;
-    Shared<Mesh> m_Dummy  = nullptr;
-    Shared<Mesh> m_Helmet = nullptr;
-    Shared<Mesh> m_Gun    = nullptr;
-    std::array<PointLight, MAX_POINT_LIGHTS> m_PointLights;
-    std::array<SpotLight, MAX_SPOT_LIGHTS> m_SpotLights;
-
-    PointLight m_PointShadowCaster;
+    bool bRenderUI = false;
 };
 
 }  // namespace Pathfinder

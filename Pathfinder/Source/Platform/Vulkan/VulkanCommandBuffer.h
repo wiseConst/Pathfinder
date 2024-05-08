@@ -12,12 +12,10 @@ class Pipeline;
 class VulkanCommandBuffer final : public CommandBuffer
 {
   public:
-    explicit VulkanCommandBuffer(ECommandBufferType type, ECommandBufferLevel level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY);
+    explicit VulkanCommandBuffer(const CommandBufferSpecification& commandBufferSpec);
     VulkanCommandBuffer() = delete;
     ~VulkanCommandBuffer() override { Destroy(); }
 
-    NODISCARD FORCEINLINE ECommandBufferType GetType() const final override { return m_Type; }
-    NODISCARD FORCEINLINE ECommandBufferLevel GetLevel() const final override { return m_Level; }
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE void* GetWaitSemaphore() const final override { return m_SignalSemaphore; }
     NODISCARD FORCEINLINE void* GetTimelineSemaphore(bool bIncrementCounter = true) final override
@@ -65,6 +63,7 @@ class VulkanCommandBuffer final : public CommandBuffer
 
     FORCEINLINE void Reset() final override { VK_CHECK(vkResetCommandBuffer(m_Handle, 0), "Failed to reset command buffer!"); }
 
+    void FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const final override;
     FORCEINLINE void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EAccessFlags srcAccessFlags,
                                             const EPipelineStage dstPipelineStage, const EAccessFlags dstAccessFlags) const final override;
 
@@ -118,6 +117,7 @@ class VulkanCommandBuffer final : public CommandBuffer
 
         vkCmdDrawIndexedIndirect(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
     }
+
     FORCEINLINE void Draw(const uint32_t vertexCount, const uint32_t instanceCount = 1, const uint32_t firstVertex = 0,
                           const uint32_t firstInstance = 0) const final override
     {
@@ -135,6 +135,22 @@ class VulkanCommandBuffer final : public CommandBuffer
         vkCmdDrawMeshTasksEXT(m_Handle, groupCountX, groupCountY, groupCountZ);
     }
 
+    FORCEINLINE void DrawMeshTasksIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
+                                           const uint32_t stride) const final override
+    {
+        PFR_ASSERT(drawBuffer && drawBuffer->Get(), "Invalid draw buffer!");
+        vkCmdDrawMeshTasksIndirectEXT(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
+    }
+
+    FORCEINLINE void DrawMeshTasksMultiIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const Shared<Buffer>& countBuffer,
+                                                const uint64_t countBufferOffset, const uint32_t maxDrawCount,
+                                                const uint32_t stride) const final override
+    {
+        PFR_ASSERT(drawBuffer && drawBuffer->Get() && countBuffer && countBuffer->Get(), "Invalid draw/count buffer!");
+        vkCmdDrawMeshTasksIndirectCountEXT(m_Handle, (VkBuffer)drawBuffer->Get(), offset, (VkBuffer)countBuffer->Get(), countBufferOffset,
+                                           maxDrawCount, stride);
+    }
+
     // COMPUTE
 
     FORCEINLINE void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) final override
@@ -143,14 +159,14 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     // RT
-    FORCEINLINE void TraceRays(const VkStridedDeviceAddressRegionKHR* raygenShaderBindingTable,
-                               const VkStridedDeviceAddressRegionKHR* missShaderBindingTable,
-                               const VkStridedDeviceAddressRegionKHR* hitShaderBindingTable,
-                               const VkStridedDeviceAddressRegionKHR* callableShaderBindingTable, uint32_t width, uint32_t height,
-                               uint32_t depth = 1) const
+    void TraceRays(const ShaderBindingTable& sbt, uint32_t width, uint32_t height, uint32_t depth = 1) const final override
     {
-        vkCmdTraceRaysKHR(m_Handle, raygenShaderBindingTable, missShaderBindingTable, hitShaderBindingTable, callableShaderBindingTable,
-                          width, height, depth);
+        const VkStridedDeviceAddressRegionKHR* rgenRegion     = (VkStridedDeviceAddressRegionKHR*)&sbt.RgenRegion;
+        const VkStridedDeviceAddressRegionKHR* missRegion     = (VkStridedDeviceAddressRegionKHR*)&sbt.MissRegion;
+        const VkStridedDeviceAddressRegionKHR* hitRegion      = (VkStridedDeviceAddressRegionKHR*)&sbt.HitRegion;
+        const VkStridedDeviceAddressRegionKHR* callableRegion = (VkStridedDeviceAddressRegionKHR*)&sbt.CallRegion;
+
+        vkCmdTraceRaysKHR(m_Handle, rgenRegion, missRegion, hitRegion, callableRegion, width, height, depth);
     }
 
     FORCEINLINE void BuildAccelerationStructure(uint32_t infoCount, const VkAccelerationStructureBuildGeometryInfoKHR* infos,
@@ -194,9 +210,6 @@ class VulkanCommandBuffer final : public CommandBuffer
 
     VkQueryPool m_TimestampQuery     = VK_NULL_HANDLE;
     uint32_t m_CurrentTimestampIndex = 0;
-
-    ECommandBufferLevel m_Level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY;
-    ECommandBufferType m_Type   = ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS;
 
     void Destroy() final override;
 };

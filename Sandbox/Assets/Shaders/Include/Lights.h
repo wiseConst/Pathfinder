@@ -6,54 +6,57 @@ using vec4 = glm::vec4;
 
 #endif
 
+#define MAX_DIR_LIGHTS 4
+
 #define LIGHT_INDEX_TYPE uint16_t
 #define MAX_POINT_LIGHTS 1024
 #define MAX_SPOT_LIGHTS 512
-#define MAX_DIR_LIGHTS 4
 
 #define LIGHT_CULLING_TILE_SIZE 8u
 
 #ifdef __cplusplus
 
 static const LIGHT_INDEX_TYPE INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? LIGHT_INDEX_TYPE(MAX_POINT_LIGHTS)
-                                                                               : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
+                                                                                       : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
 
 #else
 
 const LIGHT_INDEX_TYPE INVALID_LIGHT_INDEX = MAX_POINT_LIGHTS > MAX_SPOT_LIGHTS ? LIGHT_INDEX_TYPE(MAX_POINT_LIGHTS)
-                                                                        : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
-
+                                                                                : LIGHT_INDEX_TYPE(MAX_SPOT_LIGHTS);
 
 #endif
-
-struct PointLight
-{
-    vec3 Position;
-    vec3 Color;
-    float Intensity;
-    float Radius;
-    float MinRadius;
-    bool bCastShadows;
-};
 
 struct DirectionalLight
 {
     vec3 Direction;
-    vec3 Color;
     float Intensity;
-    bool bCastShadows;
+    vec3 Color;
+    uint32_t bCastShadows;
+};
+
+struct PointLight
+{
+    vec3 Position;
+    float Intensity;
+    vec3 Color;
+    float Radius;
+    vec2 pad0;
+    float MinRadius;
+    uint32_t bCastShadows;
 };
 
 struct SpotLight
 {
     vec3 Position;
-    vec3 Direction;
-    vec3 Color;
     float Intensity;
+    vec3 Direction;
     float Height;
+    vec3 Color;
     float Radius;
     float InnerCutOff;
     float OuterCutOff;
+    uint32_t bCastShadows;
+    float pad0;
 };
 
 #ifndef __cplusplus
@@ -97,6 +100,8 @@ float DirShadowCalculation(sampler2DArray dirShadowMap, const float biasMultipli
     return shadow;
 }
 
+// TODO: SSHVSM from ExileCon
+#if 0 
 float PointShadowCalculation(samplerCube pointShadowMap, const vec3 worldPos, const vec3 cameraPos, const PointLight pl,
                              const float farPlane)
 {
@@ -132,5 +137,6 @@ float PointShadowCalculation(samplerCube pointShadowMap, const vec3 worldPos, co
 
     return shadow;
 }
+#endif
 
 #endif

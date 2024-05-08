@@ -6,12 +6,15 @@
 namespace Pathfinder
 {
 
+// TODO: 128 bit handles
+
 class UUID
 {
   public:
     UUID();
     UUID(const UUID&) = default;
     ~UUID()           = default;
+    UUID(const uint64_t uuid);
 
     operator uint64_t() const { return m_UUID; }
 

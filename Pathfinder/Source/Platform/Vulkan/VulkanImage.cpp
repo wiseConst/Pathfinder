@@ -7,6 +7,7 @@
 #include "VulkanBuffer.h"
 
 #include "Core/Application.h"
+#include "Core/Threading.h"
 #include "Core/Window.h"
 
 #include "Renderer/Renderer.h"
@@ -189,7 +190,10 @@ VulkanImage::VulkanImage(const ImageSpecification& imageSpec) : Image(imageSpec)
 
 void VulkanImage::SetLayout(const EImageLayout newLayout)
 {
-    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                               ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, Renderer::GetRendererData()->FrameIndex,
+                                               JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+    auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
     vulkanCommandBuffer->BeginRecording(true);
 
     VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
@@ -243,7 +247,10 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
     else
 #endif
     {
-        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER);
+        const CommandBufferSpecification cbSpec = {
+            ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+            Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
         vulkanCommandBuffer->CopyBufferToImage((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle,

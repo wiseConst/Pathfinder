@@ -27,12 +27,17 @@ class VulkanAllocator final : private Uncopyable, private Unmovable
 
     bool IsMappable(const VmaAllocation& allocation);
 
-    NODISCARD void* GetMapped(VmaAllocation& allocation);
+    void SetCurrentFrameIndex(const uint32_t frameIndex);
+
+    NODISCARD void* GetMapped(const VmaAllocation& allocation) const;
     NODISCARD void* Map(VmaAllocation& allocation);
     void Unmap(VmaAllocation& allocation);
 
+    void FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudgets) const;
+
   private:
     VmaAllocator m_Handle = VK_NULL_HANDLE;
+    std::array<VmaBudget, VK_MAX_MEMORY_HEAPS> m_MemoryBudgets;
 };
 
 }  // namespace Pathfinder

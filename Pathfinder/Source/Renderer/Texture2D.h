@@ -28,6 +28,7 @@ class Texture2D : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const { return m_Index; }
+    NODISCARD FORCEINLINE const auto& GetImage() const { return m_Image; }
 
     NODISCARD static Shared<Texture2D> Create(const TextureSpecification& textureSpec, const void* data = nullptr,
                                               const size_t dataSize = 0);

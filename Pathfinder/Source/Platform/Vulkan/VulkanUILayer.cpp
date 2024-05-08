@@ -38,9 +38,6 @@ void VulkanUILayer::Init()
     const auto& context = VulkanContext::Get();
     const auto& device  = context.GetDevice();
 
-    // 1: create descriptor pool for IMGUI
-    //  the size of the pool is very oversize, but it's copied from imgui demo
-    //  itself.
     constexpr VkDescriptorPoolSize poolSizes[] = {{VK_DESCRIPTOR_TYPE_SAMPLER, 1000},
                                                   {VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, 1000},
                                                   {VK_DESCRIPTOR_TYPE_SAMPLED_IMAGE, 1000},
@@ -60,9 +57,6 @@ void VulkanUILayer::Init()
     poolInfo.pPoolSizes                 = poolSizes;
     VK_CHECK(vkCreateDescriptorPool(device->GetLogicalDevice(), &poolInfo, nullptr, &m_ImGuiPool), "Failed to create ImGui Pool!");
 
-    // 2: initialize imgui library
-
-    // this initializes the core structures of imgui
     ImGui::CreateContext();
 
     auto& io = ImGui::GetIO();
@@ -70,6 +64,9 @@ void VulkanUILayer::Init()
                       ImGuiConfigFlags_DpiEnableScaleFonts | ImGuiConfigFlags_DpiEnableScaleViewports;
     io.BackendFlags |= ImGuiBackendFlags_RendererHasVtxOffset;
     io.BackendFlags |= ImGuiBackendFlags_RendererHasViewports;
+    io.WantCaptureKeyboard = true;
+    io.WantCaptureMouse    = true;
+    io.WantTextInput       = true;
 
     PFR_ASSERT(
         ImGui_ImplVulkan_LoadFunctions([](const char* functionName, void* vulkanInstance)
@@ -135,12 +132,13 @@ void VulkanUILayer::Destroy()
 
 void VulkanUILayer::OnEvent(Event& e)
 {
-    if (!m_bBlockEvents) return;
+    //   if (!m_bBlockEvents) return;
+
     EventDispatcher dispatcher(e);
-    dispatcher.Dispatch<MouseMovedEvent>([](const MouseMovedEvent& e) -> bool { return ImGui::IsAnyItemHovered(); });
-    dispatcher.Dispatch<MouseScrolledEvent>([](const MouseScrolledEvent& e) -> bool { return ImGui::IsAnyItemHovered(); });
-    dispatcher.Dispatch<MouseButtonPressedEvent>([](const MouseButtonPressedEvent& e) -> bool { return ImGui::IsAnyItemHovered(); });
-    dispatcher.Dispatch<MouseButtonReleasedEvent>([](const MouseButtonReleasedEvent& e) -> bool { return ImGui::IsAnyItemHovered(); });
+    dispatcher.Dispatch<MouseMovedEvent>([](const MouseMovedEvent& e) -> bool { return m_bBlockEvents; });
+    dispatcher.Dispatch<MouseScrolledEvent>([](const MouseScrolledEvent& e) -> bool { return m_bBlockEvents; });
+    dispatcher.Dispatch<MouseButtonPressedEvent>([](const MouseButtonPressedEvent& e) -> bool { return m_bBlockEvents; });
+    dispatcher.Dispatch<MouseButtonReleasedEvent>([](const MouseButtonReleasedEvent& e) -> bool { return m_bBlockEvents; });
 }
 
 void VulkanUILayer::BeginRender()

@@ -19,7 +19,9 @@ class GLFWWindow final : public Window
 
     void SetClearColor(const glm::vec3& clearColor) final override;
     void SetWindowMode(const EWindowMode windowMode) final override;
-    void SetWindowTitle(const char* title) final override;
+    void SetWindowTitle(const std::string_view& title) final override;
+    void SetIconImage(const std::string_view& iconFilePath) final override;
+
     void AddResizeCallback(ResizeCallback&& resizeCallback) final override;
 
   private:

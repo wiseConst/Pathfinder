@@ -41,6 +41,8 @@ class Renderer : private Uncopyable, private Unmovable
     static void AddPointLight(const PointLight& pl);
     static void AddSpotLight(const SpotLight& sl);
 
+    static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline>& pipeline);
+
     static const std::map<std::string, Shared<Image>> GetRenderTargetList();
     static const std::map<std::string, float>& GetPassStatistics()
     {
@@ -70,22 +72,27 @@ class Renderer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE static auto& GetStats() { return s_RendererStats; }
 
   private:
+    struct RenderObject
+    {
+        Shared<Submesh> submesh = nullptr;
+        glm::mat4 Transform     = glm::mat4(1.0f);
+    };
+
     struct RendererData
     {
         // MISC
-        Unique<LightsData> LightStruct = nullptr;
+        Unique<LightData> LightStruct = nullptr;
         CameraData CameraStruct;
-        Frustum CullFrustum;
         std::map<std::string, float> PassStats;
         std::map<std::string, uint64_t> PipelineStats;
 
         // NOTE: PerFramed should be objects that are used by host and device.
         BufferPerFrame LightsSSBO;
-        BufferPerFrame CameraUB;
+        BufferPerFrame CameraSSBO;
         BufferPerFrame UploadHeap;
 
         static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB
-        uint32_t FrameIndex                                = 0;
+        uint8_t FrameIndex                                 = 0;
 
         Weak<Pipeline> LastBoundPipeline;
 
@@ -100,11 +107,13 @@ class Renderer : private Uncopyable, private Unmovable
 
         Unique<Pathfinder::RenderGraph> RenderGraph = nullptr;
 
-        Shared<Image> PathtracedImage        = nullptr;
-        Shared<Pipeline> PathtracingPipeline = nullptr;
-
         Shared<Framebuffer> CompositeFramebuffer = nullptr;
         Shared<Pipeline> CompositePipeline       = nullptr;
+
+        Shared<Image> RTImage              = nullptr;
+        Shared<Pipeline> RTPipeline        = nullptr;
+        Shared<Pipeline> RTComputePipeline = nullptr;
+        ShaderBindingTable RTSBT           = {};
 
         // Forward+ renderer
         Shared<Framebuffer> GBuffer                     = nullptr;
@@ -121,43 +130,29 @@ class Renderer : private Uncopyable, private Unmovable
         std::array<Shared<Pipeline>, 2> BloomPipeline;
         std::array<Shared<Framebuffer>, 2> BloomFramebuffer;
 
-        /*              SHADOWS                */
-        EShadowSetting CurrentShadowSetting = EShadowSetting::SHADOW_SETTING_MEDIUM;
-
-        Shared<Image> CascadeDebugImage = nullptr;
-
-        // DirShadowMaps
-        std::vector<Shared<Framebuffer>> DirShadowMaps;
-        Shared<Pipeline> DirShadowMapPipeline = nullptr;
-
-        // TODO: How do I handle them properly?
-        // PointLightShadowMaps
-        struct PointLightShadowMapInfo
-        {
-            Shared<Framebuffer> PointLightShadowMap = nullptr;
-            uint32_t LightAndMatrixIndex            = INVALID_LIGHT_INDEX;  // PointLight array index, index into viewproj
-        };
-        std::vector<PointLightShadowMapInfo> PointLightShadowMapInfos;
-        Shared<Pipeline> PointLightShadowMapPipeline = nullptr;
-        /*              SHADOWS                */
+        /*             SCREEN-SPACE SHADOWS                */
+        bool bAnybodyCastsShadows          = false;
+        Shared<Image> SSShadowsImage       = nullptr;
+        Shared<Pipeline> SSShadowsPipeline = nullptr;
+        /*             SCREEN-SPACE SHADOWS                */
 
         std::vector<RenderObject> OpaqueObjects;
         std::vector<RenderObject> TransparentObjects;
         Shared<Texture2D> WhiteTexture = nullptr;
 
         // Light-Culling
-        bool bNeedsFrustumsRecomputing                = true;
-        Shared<Pipeline> ComputeFrustumsPipeline      = nullptr;
-        Shared<Buffer> FrustumsSSBO                   = nullptr;
-        Shared<Image> FrustumDebugImage               = nullptr;
-        Shared<Image> LightHeatMapImage               = nullptr;
-        Shared<Pipeline> LightCullingPipeline         = nullptr;
-        Shared<Buffer> PointLightIndicesStorageBuffer = nullptr;
+        bool bNeedsFrustumsRecomputing           = true;
+        Shared<Pipeline> ComputeFrustumsPipeline = nullptr;
+        Shared<Buffer> FrustumsSSBO              = nullptr;
+        Shared<Image> FrustumDebugImage          = nullptr;
+        Shared<Image> LightHeatMapImage          = nullptr;
+        Shared<Pipeline> LightCullingPipeline    = nullptr;
+        Shared<Buffer> PointLightIndicesSSBO     = nullptr;
         // NOTE: Instead of creating this shit manually, shader can create you this
         // in e.g. you got writeonly buffer -> shader can create it,
         // in e.g. you got readonly  buffer -> shader gonna wait for you to give it him
         // unordored_map<string,BufferPerFrame>, string maps to set and binding
-        Shared<Buffer> SpotLightIndicesStorageBuffer = nullptr;
+        Shared<Buffer> SpotLightIndicesSSBO = nullptr;
 
         // AO
         // TODO: Add HBAO, GTAO, RTAO
@@ -167,10 +162,29 @@ class Renderer : private Uncopyable, private Unmovable
             Shared<Pathfinder::Pipeline> Pipeline       = nullptr;
             Shared<Pathfinder::Framebuffer> Framebuffer = nullptr;
         };
-        AO SSAO = {};
-        AO HBAO = {};
-        std::array<Shared<Pipeline>, 2> BlurAOPipeline;
+        AO SSAO                               = {};
+        AO HBAO                               = {};
+        Shared<Pipeline> MedianBlurAOPipeline = nullptr;
+        Shared<Pipeline> BoxBlurAOPipeline    = nullptr;
+        std::array<Shared<Pipeline>, 2> BlurAOPipeline;  // gaussian
         std::array<Shared<Framebuffer>, 2> BlurAOFramebuffer;
+
+        // Indirect Rendering
+        struct ObjectCullStatistics
+        {
+            uint32_t DrawCountOpaque;
+            uint32_t DrawCountTransparent;
+        } ObjectCullStats;
+
+        Shared<Buffer> DrawBufferOpaque         = nullptr;
+        Shared<Buffer> MeshesDataOpaque         = nullptr;
+        Shared<Buffer> CulledMeshesBufferOpaque = nullptr;
+
+        Shared<Buffer> DrawBufferTransparent         = nullptr;
+        Shared<Buffer> MeshesDataTransparent         = nullptr;
+        Shared<Buffer> CulledMeshesBufferTransparent = nullptr;
+
+        Shared<Pipeline> ObjectCullingPipeline = nullptr;
     };
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
@@ -178,11 +192,9 @@ class Renderer : private Uncopyable, private Unmovable
     struct RendererSettings
     {
         bool bVSync;
+        bool bDrawColliders;
 
-        bool bMeshShadingSupport;
-        bool bRTXSupport;
-        bool bBDASupport;
-        bool bMultiDrawIndirectSupport;
+        EBlurType BlurType = EBlurType::BLUR_TYPE_GAUSSIAN;
     };
     static inline RendererSettings s_RendererSettings = {};
 
@@ -191,10 +203,11 @@ class Renderer : private Uncopyable, private Unmovable
         uint32_t TriangleCount;
         uint32_t DescriptorSetCount;
         uint32_t DescriptorPoolCount;
-        uint32_t MeshletCount;
+        uint32_t ObjectsDrawn;
         float GPUTime;
         float SwapchainPresentTime;
         float RHITime;
+        std::vector<MemoryBudget> MemoryBudgets;
     };
     static inline RendererStats s_RendererStats = {};
 
@@ -202,14 +215,10 @@ class Renderer : private Uncopyable, private Unmovable
     {
         return s_RendererData && s_RendererData->TransparentObjects.empty() && s_RendererData->OpaqueObjects.empty();
     }
-    static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline>& pipeline);
-
-    // TODO: GPU-side frustum culling
-    static bool IsInsideFrustum(const auto& renderObject);
+    static void ObjectCullingPass();
 
     static void DepthPrePass();
-    static void DirShadowMapPass();
-    static void PointLightShadowMapPass();
+    static void ScreenSpaceShadowsPass();
 
     static void ComputeFrustumsPass();
     static void LightCullingPass();
@@ -222,6 +231,7 @@ class Renderer : private Uncopyable, private Unmovable
     static void GeometryPass();
     static void BloomPass();
 
+    static void RayTracingPass();
     static void CompositePass();
 };
 

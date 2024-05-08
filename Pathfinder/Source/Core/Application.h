@@ -60,6 +60,7 @@ class Application : private Unmovable, private Uncopyable
         return *s_Instance;
     }
 
+
   private:
     static inline Application* s_Instance = nullptr;
     ApplicationSpecification m_Specification;

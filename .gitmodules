@@ -22,10 +22,13 @@
 [submodule "Pathfinder/vendor/spirv-reflect"]
 	path = Pathfinder/vendor/spirv-reflect
 	url = https://github.com/KhronosGroup/SPIRV-Reflect.git
-[submodule "Pathfinder/vendor/simdjson"]
-	path = Pathfinder/vendor/simdjson
-	url = https://github.com/simdjson/simdjson
 [submodule "Pathfinder/vendor/imgui"]
 	path = Pathfinder/vendor/imgui
 	url = https://github.com/ocornut/imgui.git
 	branch = docking
+[submodule "Pathfinder/vendor/entt"]
+	path = Pathfinder/vendor/entt
+	url = https://github.com/skypjack/entt.git
+[submodule "Pathfinder/vendor/nlohmann"]
+	path = Pathfinder/vendor/nlohmann
+	url = https://github.com/nlohmann/json.git

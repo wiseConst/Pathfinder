@@ -33,9 +33,6 @@ class BindlessRenderer : private Uncopyable, private Unmovable
     virtual void FreeBuffer(uint32_t& bufferIndex, const uint32_t bufferBinding) = 0;
     virtual void FreeTexture(uint32_t& textureIndex)                             = 0;
 
-    virtual void UpdateCameraData(const Shared<Buffer>& cameraUniformBuffer)   = 0;
-    virtual void UpdateLightData(const Shared<Buffer>& lightDataUniformBuffer) = 0;
-
     NODISCARD static Shared<BindlessRenderer> Create();
 
   protected:

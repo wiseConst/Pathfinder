@@ -228,12 +228,12 @@ class PerspectiveCamera final : public Camera
     void RecalculateProjectionMatrix() final override
     {
         // NOTE: reversed-z requires swapping far and near.
-        m_Projection = glm::perspective(glm::radians(m_FOV), m_AR, s_MAX_ZFAR, s_MIN_ZNEAR);
+        m_Projection = glm::perspective(glm::radians(m_FOV), m_AR, GetFarPlaneDepth(), GetNearPlaneDepth());
     }
 
     void RecalculateCullFrustum()
     {
-        const float halfVSide = GetFarPlaneDepth() * glm::tan(glm::radians(m_FOV) * .5f);
+        const float halfVSide = GetFarPlaneDepth() * glm::tan(glm::radians(m_FOV * .5f));
         const float halfHSide = halfVSide * m_AR;
         const auto forwardFar = m_Forward * GetFarPlaneDepth();
 

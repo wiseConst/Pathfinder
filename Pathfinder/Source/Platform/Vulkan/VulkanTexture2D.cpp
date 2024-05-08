@@ -9,6 +9,8 @@
 #include "Renderer/Renderer.h"
 #include "VulkanBindlessRenderer.h"
 
+#include "Core/Threading.h"
+
 namespace Pathfinder
 {
 
@@ -73,8 +75,11 @@ void VulkanTexture2D::GenerateMipMaps()
     auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Image);
     PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
 
-    auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(
-        ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);  // Blit is a graphics command, so dedicated transfer queue doesn't support them.
+    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                               ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, Renderer::GetRendererData()->FrameIndex,
+                                               JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+    auto vulkanCommandBuffer =
+        MakeShared<VulkanCommandBuffer>(cbSpec);  // Blit is a graphics command, so dedicated transfer queue doesn't support them.
     vulkanCommandBuffer->BeginRecording(true);
 
     const auto& imageSpec             = m_Image->GetSpecification();

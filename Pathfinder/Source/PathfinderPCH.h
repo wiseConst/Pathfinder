@@ -14,6 +14,7 @@
 
 #include <memory>
 #include <algorithm>
+#include <execution>  // for std::execution::par
 
 #include <concepts>
 #include <ranges>
@@ -30,6 +31,7 @@
 #include <format>
 #include <chrono>
 #include <random>
+#include <omp.h>
 
 #include "Core/Log.h"
 #include "Core/Timer.h"

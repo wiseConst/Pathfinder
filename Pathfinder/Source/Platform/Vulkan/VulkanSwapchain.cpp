@@ -7,18 +7,77 @@
 #include "VulkanImage.h"
 
 #include "Core/Application.h"
+#include "Core/Threading.h"
 #include "Core/Window.h"
 
 #include "Renderer/Renderer.h"
 
 #include <GLFW/glfw3.h>
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
+#if PFR_WINDOWS
 #define GLFW_EXPOSE_NATIVE_WIN32
 #include <GLFW/glfw3native.h>
 #endif
 
 namespace Pathfinder
 {
+
+static VkPresentModeKHR PathfinderPresentModeToVulkan(const EPresentMode presentMode)
+{
+    switch (presentMode)
+    {
+        case EPresentMode::PRESENT_MODE_FIFO: return VK_PRESENT_MODE_FIFO_KHR;
+        case EPresentMode::PRESENT_MODE_IMMEDIATE: return VK_PRESENT_MODE_IMMEDIATE_KHR;
+        case EPresentMode::PRESENT_MODE_MAILBOX: return VK_PRESENT_MODE_MAILBOX_KHR;
+    }
+
+    return VK_PRESENT_MODE_FIFO_KHR;
+}
+
+static EPresentMode VulkanPresentModeToPathfinder(const VkPresentModeKHR presentMode)
+{
+    switch (presentMode)
+    {
+        case VK_PRESENT_MODE_FIFO_KHR: return EPresentMode::PRESENT_MODE_FIFO;
+        case VK_PRESENT_MODE_IMMEDIATE_KHR: return EPresentMode::PRESENT_MODE_IMMEDIATE;
+        case VK_PRESENT_MODE_MAILBOX_KHR: return EPresentMode::PRESENT_MODE_MAILBOX;
+    }
+
+    return EPresentMode::PRESENT_MODE_FIFO;
+}
+
+static EImageFormat VulkanImageFormatToPathfinder(const VkFormat imageFormat)
+{
+    switch (imageFormat)
+    {
+        case VK_FORMAT_UNDEFINED: return EImageFormat::FORMAT_UNDEFINED;
+        case VK_FORMAT_R8G8B8_UNORM: return EImageFormat::FORMAT_RGB8_UNORM;
+        case VK_FORMAT_R8G8B8A8_UNORM: return EImageFormat::FORMAT_RGBA8_UNORM;
+        case VK_FORMAT_B8G8R8A8_UNORM: return EImageFormat::FORMAT_BGRA8_UNORM;
+        case VK_FORMAT_A2R10G10B10_UNORM_PACK32: return EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32;
+        case VK_FORMAT_R8_UNORM: return EImageFormat::FORMAT_R8_UNORM;
+        case VK_FORMAT_R16_UNORM: return EImageFormat::FORMAT_R16_UNORM;
+        case VK_FORMAT_R16_SFLOAT: return EImageFormat::FORMAT_R16F;
+        case VK_FORMAT_R32_SFLOAT: return EImageFormat::FORMAT_R32F;
+        case VK_FORMAT_R64_SFLOAT: return EImageFormat::FORMAT_R64F;
+        case VK_FORMAT_R16G16B16_UNORM: return EImageFormat::FORMAT_RGB16_UNORM;
+        case VK_FORMAT_R16G16B16_SFLOAT: return EImageFormat::FORMAT_RGB16F;
+        case VK_FORMAT_R16G16B16A16_UNORM: return EImageFormat::FORMAT_RGBA16_UNORM;
+        case VK_FORMAT_R16G16B16A16_SFLOAT: return EImageFormat::FORMAT_RGBA16F;
+        case VK_FORMAT_R32G32B32_SFLOAT: return EImageFormat::FORMAT_RGB32F;
+        case VK_FORMAT_R32G32B32A32_SFLOAT: return EImageFormat::FORMAT_RGBA32F;
+        case VK_FORMAT_R64G64B64_SFLOAT: return EImageFormat::FORMAT_RGB64F;
+        case VK_FORMAT_R64G64B64A64_SFLOAT: return EImageFormat::FORMAT_RGBA64F;
+
+        case VK_FORMAT_D16_UNORM: return EImageFormat::FORMAT_D16_UNORM;
+        case VK_FORMAT_D32_SFLOAT: return EImageFormat::FORMAT_D32F;
+        case VK_FORMAT_S8_UINT: return EImageFormat::FORMAT_S8_UINT;
+        case VK_FORMAT_D16_UNORM_S8_UINT: return EImageFormat::FORMAT_D16_UNORM_S8_UINT;
+        case VK_FORMAT_D24_UNORM_S8_UINT: return EImageFormat::FORMAT_D24_UNORM_S8_UINT;
+    }
+
+    PFR_ASSERT(false, "Unknown image format!");
+    return EImageFormat::FORMAT_UNDEFINED;
+}
 
 struct SwapchainSupportDetails final
 {
@@ -76,12 +135,12 @@ struct SwapchainSupportDetails final
         return ImageFormats[0];
     }
 
-    VkPresentModeKHR ChooseBestPresentMode(bool bIsVSync) const
+    VkPresentModeKHR ChooseBestPresentMode(const VkPresentModeKHR requestedPresentMode) const
     {
-        if (bIsVSync) return VK_PRESENT_MODE_FIFO_KHR;
+        if (requestedPresentMode == VK_PRESENT_MODE_FIFO_KHR) return VK_PRESENT_MODE_FIFO_KHR;
 
         for (const auto& presentMode : PresentModes)
-            if (presentMode == VK_PRESENT_MODE_MAILBOX_KHR) return presentMode;  // Battery-drain mode on mobile devices
+            if (presentMode == requestedPresentMode) return presentMode;
 
         return VK_PRESENT_MODE_FIFO_KHR;
     }
@@ -108,55 +167,21 @@ struct SwapchainSupportDetails final
     std::vector<VkSurfaceFormatKHR> ImageFormats;
 };
 
-static EImageFormat VulkanImageFormatToPathfinder(const VkFormat imageFormat)
-{
-    switch (imageFormat)
-    {
-        case VK_FORMAT_UNDEFINED: return EImageFormat::FORMAT_UNDEFINED;
-        case VK_FORMAT_R8G8B8_UNORM: return EImageFormat::FORMAT_RGB8_UNORM;
-        case VK_FORMAT_R8G8B8A8_UNORM: return EImageFormat::FORMAT_RGBA8_UNORM;
-        case VK_FORMAT_B8G8R8A8_UNORM: return EImageFormat::FORMAT_BGRA8_UNORM;
-        case VK_FORMAT_A2R10G10B10_UNORM_PACK32: return EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32;
-        case VK_FORMAT_R8_UNORM: return EImageFormat::FORMAT_R8_UNORM;
-        case VK_FORMAT_R16_UNORM: return EImageFormat::FORMAT_R16_UNORM;
-        case VK_FORMAT_R16_SFLOAT: return EImageFormat::FORMAT_R16F;
-        case VK_FORMAT_R32_SFLOAT: return EImageFormat::FORMAT_R32F;
-        case VK_FORMAT_R64_SFLOAT: return EImageFormat::FORMAT_R64F;
-        case VK_FORMAT_R16G16B16_UNORM: return EImageFormat::FORMAT_RGB16_UNORM;
-        case VK_FORMAT_R16G16B16_SFLOAT: return EImageFormat::FORMAT_RGB16F;
-        case VK_FORMAT_R16G16B16A16_UNORM: return EImageFormat::FORMAT_RGBA16_UNORM;
-        case VK_FORMAT_R16G16B16A16_SFLOAT: return EImageFormat::FORMAT_RGBA16F;
-        case VK_FORMAT_R32G32B32_SFLOAT: return EImageFormat::FORMAT_RGB32F;
-        case VK_FORMAT_R32G32B32A32_SFLOAT: return EImageFormat::FORMAT_RGBA32F;
-        case VK_FORMAT_R64G64B64_SFLOAT: return EImageFormat::FORMAT_RGB64F;
-        case VK_FORMAT_R64G64B64A64_SFLOAT: return EImageFormat::FORMAT_RGBA64F;
-
-        case VK_FORMAT_D16_UNORM: return EImageFormat::FORMAT_D16_UNORM;
-        case VK_FORMAT_D32_SFLOAT: return EImageFormat::FORMAT_D32F;
-        case VK_FORMAT_S8_UINT: return EImageFormat::FORMAT_S8_UINT;
-        case VK_FORMAT_D16_UNORM_S8_UINT: return EImageFormat::FORMAT_D16_UNORM_S8_UINT;
-        case VK_FORMAT_D24_UNORM_S8_UINT: return EImageFormat::FORMAT_D24_UNORM_S8_UINT;
-    }
-
-    PFR_ASSERT(false, "Unknown image format!");
-    return EImageFormat::FORMAT_UNDEFINED;
-}
-
 VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(windowHandle)
 {
     VK_CHECK(glfwCreateWindowSurface(VulkanContext::Get().GetInstance(), static_cast<GLFWwindow*>(m_WindowHandle), nullptr, &m_Surface),
              "Failed to create surface!");
 
-    Invalidate();
-
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
+#if PFR_WINDOWS
     m_SurfaceFullScreenExclusiveWin32Info.pNext = nullptr;
     m_SurfaceFullScreenExclusiveWin32Info.hmonitor =
         MonitorFromWindow(glfwGetWin32Window(static_cast<GLFWwindow*>(m_WindowHandle)), MONITOR_DEFAULTTONEAREST);
+#endif
 
     m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DEFAULT_EXT;
     m_SurfaceFullScreenExclusiveInfo.pNext               = &m_SurfaceFullScreenExclusiveWin32Info;
-#endif
+
+    Invalidate();
 }
 
 NODISCARD const EImageFormat VulkanSwapchain::GetImageFormat() const
@@ -184,7 +209,7 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
                                                      VK_IMAGE_LAYOUT_GENERAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
             m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_GENERAL;
 
-            vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+            vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
                                                VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
         }
 
@@ -201,7 +226,8 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
                                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_TRANSFER_WRITE_BIT, 0, 1, 0, 1, 0);
         m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                           VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
     }
 
@@ -212,37 +238,28 @@ void VulkanSwapchain::SetWindowMode(const EWindowMode windowMode)
 {
     if (windowMode == m_WindowMode) return;
 
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
     if (m_WindowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
     {
         VK_CHECK(vkReleaseFullScreenExclusiveModeEXT(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle),
-                 "Failed to release full screen exclusive mode!");
+                 "Failed to release fullscreen exclusive mode!");
     }
 
-    if (windowMode == EWindowMode::WINDOW_MODE_WINDOWED)
+    switch (windowMode)
     {
-        m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+        case EWindowMode::WINDOW_MODE_WINDOWED:
+            m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_DISALLOWED_EXT;
+            break;
+        case EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN:
+            m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT;
+            break;
+        case EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE:
+            m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
+            break;
     }
-    else if (windowMode == EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN)
-    {
-        m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_ALLOWED_EXT;
-    }
-    else if (windowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
-    {
-        m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive = VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT;
-    }
-#endif
 
-    m_WindowMode = windowMode;
-    Invalidate();
-
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
-    if (m_WindowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
-    {
-        VK_CHECK(vkAcquireFullScreenExclusiveModeEXT(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle),
-                 "Failed to acquire full screen exclusive mode!");
-    }
-#endif
+    m_LastWindowMode = m_WindowMode;
+    m_WindowMode     = windowMode;
+    m_bNeedsRecreate = true;
 }
 
 void VulkanSwapchain::Invalidate()
@@ -251,7 +268,9 @@ void VulkanSwapchain::Invalidate()
     const auto& logicalDevice  = context.GetDevice()->GetLogicalDevice();
     const auto& physicalDevice = context.GetDevice()->GetPhysicalDevice();
 
-    const auto oldSwapchain = m_Handle;
+    m_bNeedsRecreate = false;
+
+    auto oldSwapchain = m_Handle;
     if (oldSwapchain)
     {
         std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
@@ -278,7 +297,7 @@ void VulkanSwapchain::Invalidate()
                               VK_CHECK(vkCreateSemaphore(logicalDevice, &semaphoreCreateInfo, nullptr, &semaphore),
                                        "Failed to create semaphore!");
 
-                              const std::string semaphoreName = "VK_RENDER_FINISHED_SEMAPHORE]";
+                              const std::string semaphoreName = "VK_RENDER_FINISHED_SEMAPHORE";
                               VK_SetDebugName(logicalDevice, semaphore, VK_OBJECT_TYPE_SEMAPHORE, semaphoreName.data());
                           });
 
@@ -301,7 +320,17 @@ void VulkanSwapchain::Invalidate()
     swapchainCreateInfo.clipped                  = VK_TRUE;
     swapchainCreateInfo.imageArrayLayers         = 1;
     swapchainCreateInfo.surface                  = m_Surface;
-    swapchainCreateInfo.oldSwapchain             = oldSwapchain;
+
+    if (m_CurrentPresentMode == VK_PRESENT_MODE_FIFO_KHR &&
+        m_PresentMode != EPresentMode::PRESENT_MODE_FIFO)  // Current present mode is not fifo, but we want to make it fifo.
+    {
+        vkDestroySwapchainKHR(logicalDevice, m_Handle, nullptr);
+        oldSwapchain = nullptr;
+    }
+    else
+    {
+        swapchainCreateInfo.oldSwapchain = oldSwapchain;
+    }
 
     const auto Details               = SwapchainSupportDetails::QuerySwapchainSupportDetails(physicalDevice, m_Surface);
     swapchainCreateInfo.preTransform = Details.SurfaceCapabilities.currentTransform;
@@ -310,19 +339,26 @@ void VulkanSwapchain::Invalidate()
     swapchainCreateInfo.imageColorSpace = m_ImageFormat.colorSpace;
     swapchainCreateInfo.imageFormat     = m_ImageFormat.format;
 
-    m_CurrentPresentMode            = Details.ChooseBestPresentMode(m_bVSync);
+    m_CurrentPresentMode            = Details.ChooseBestPresentMode(PathfinderPresentModeToVulkan(m_PresentMode));
     swapchainCreateInfo.presentMode = m_CurrentPresentMode;
+    m_PresentMode                   = VulkanPresentModeToPathfinder(m_CurrentPresentMode);
+
+#if PFR_DEBUG
+    const char* presentModeStr = m_PresentMode == EPresentMode::PRESENT_MODE_FIFO        ? "FIFO"
+                                 : m_PresentMode == EPresentMode::PRESENT_MODE_IMMEDIATE ? "IMMEDIATE"
+                                 : m_PresentMode == EPresentMode::PRESENT_MODE_MAILBOX   ? "MAILBOX"
+                                                                                         : "UNKNOWN";
+    LOG_DEBUG("PresentMode: %s.", presentModeStr);
+#endif
 
     PFR_ASSERT(Details.SurfaceCapabilities.maxImageCount > 0, "Swapchain max image count less than zero!");
     uint32_t imageCount               = std::clamp(Details.SurfaceCapabilities.minImageCount + 1, Details.SurfaceCapabilities.minImageCount,
                                                    Details.SurfaceCapabilities.maxImageCount);
     swapchainCreateInfo.minImageCount = imageCount;
 
-#if VK_EXCLUSIVE_FULL_SCREEN_TEST
     if (m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
         m_ImageExtent = Details.SurfaceCapabilities.maxImageExtent;
     else
-#endif
         m_ImageExtent = Details.ChooseBestExtent(static_cast<GLFWwindow*>(m_WindowHandle));
 
     swapchainCreateInfo.imageExtent = m_ImageExtent;
@@ -331,11 +367,10 @@ void VulkanSwapchain::Invalidate()
     if (Details.SurfaceCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
         swapchainCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
-    if (context.GetDevice()->GetQueueFamilyIndices().GraphicsFamily != context.GetDevice()->GetQueueFamilyIndices().PresentFamily)
+    if (context.GetDevice()->GetGraphicsFamily() != context.GetDevice()->GetPresentFamily())
     {
         PFR_ASSERT(false, "This shouldn't happen: GraphicsFamily != PresentFamily!");
-        const uint32_t indices[]                  = {context.GetDevice()->GetQueueFamilyIndices().GraphicsFamily,
-                                                     context.GetDevice()->GetQueueFamilyIndices().PresentFamily};
+        const uint32_t indices[]                  = {context.GetDevice()->GetGraphicsFamily(), context.GetDevice()->GetPresentFamily()};
         swapchainCreateInfo.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
         swapchainCreateInfo.queueFamilyIndexCount = 2;
         swapchainCreateInfo.pQueueFamilyIndices   = indices;
@@ -345,10 +380,16 @@ void VulkanSwapchain::Invalidate()
         swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     }
 
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
-    swapchainCreateInfo.pNext = &m_SurfaceFullScreenExclusiveInfo;
-#endif
+    // Literally will be called only when constructing swapchain.
+    if (!m_Handle)
+    {
+        glfwGetWindowPos((GLFWwindow*)m_WindowHandle, &m_LastPosX, &m_LastPosY);
 
+        m_LastWidth  = m_ImageExtent.width;
+        m_LastHeight = m_ImageExtent.height;
+    }
+
+    swapchainCreateInfo.pNext = &m_SurfaceFullScreenExclusiveInfo;
     VK_CHECK(vkCreateSwapchainKHR(logicalDevice, &swapchainCreateInfo, nullptr, &m_Handle), "Failed to create vulkan swapchain!");
     if (oldSwapchain) vkDestroySwapchainKHR(logicalDevice, oldSwapchain, nullptr);
 
@@ -361,7 +402,7 @@ void VulkanSwapchain::Invalidate()
     m_ImageViews.resize(m_Images.size());
     for (uint32_t i = 0; i < m_ImageViews.size(); ++i)
     {
-        ImageUtils::CreateImageView(m_Images[i], m_ImageViews[i], m_ImageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D,
+        ImageUtils::CreateImageView(m_Images[i], m_ImageViews[i], m_ImageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, 1,
                                     1);
 
         std::string debugName = "Swapchain image[" + std::to_string(i) + "]";
@@ -371,25 +412,66 @@ void VulkanSwapchain::Invalidate()
     }
 
     m_ImageLayouts.assign(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
-    m_bWasInvalidated = true;
+
+    switch (m_WindowMode)
+    {
+        case EWindowMode::WINDOW_MODE_WINDOWED:
+        {
+            if (m_WindowMode != m_LastWindowMode)
+            {
+                glfwSetWindowMonitor((GLFWwindow*)m_WindowHandle, NULL, m_LastPosX, m_LastPosY, m_LastWidth, m_LastHeight, GLFW_DONT_CARE);
+            }
+            break;
+        }
+        case EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN:
+        {
+            if (m_LastWindowMode != EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
+            {
+                glfwGetWindowPos((GLFWwindow*)m_WindowHandle, &m_LastPosX, &m_LastPosY);
+                glfwGetWindowSize((GLFWwindow*)m_WindowHandle, &m_LastWidth, &m_LastHeight);
+            }
+            break;
+        }
+        case EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE:
+        {
+            if (m_WindowMode != m_LastWindowMode)
+            {
+                glfwGetWindowPos((GLFWwindow*)m_WindowHandle, &m_LastPosX, &m_LastPosY);
+                const GLFWvidmode* videoMode = glfwGetVideoMode(glfwGetPrimaryMonitor());
+                PFR_ASSERT(videoMode, "Invalid video mode!");
+
+                glfwSetWindowMonitor((GLFWwindow*)m_WindowHandle, glfwGetPrimaryMonitor(), 0, 0, videoMode->width, videoMode->height,
+                                     videoMode->refreshRate);
+            }
+            break;
+        }
+    }
+
+    if (m_WindowMode == EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE)
+    {
+        VK_CHECK(vkAcquireFullScreenExclusiveModeEXT(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle),
+                 "Failed to acquire full screen exclusive mode!");
+    }
+
+    m_LastWindowMode = m_WindowMode;
 }
 
 bool VulkanSwapchain::AcquireImage()
 {
-    m_bWasInvalidated         = false;
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
 
     VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_RenderFence[m_FrameIndex], VK_TRUE, UINT64_MAX),
              "Failed to wait on swapchain-render submit fence!");
 
-    VK_CHECK(vkResetFences(logicalDevice, 1, &m_RenderFence[m_FrameIndex]), "Failed to reset swapchain-render submit fence!");
-
     const auto result =
         vkAcquireNextImageKHR(logicalDevice, m_Handle, UINT64_MAX, m_ImageAcquiredSemaphore[m_FrameIndex], VK_NULL_HANDLE, &m_ImageIndex);
-
     m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_UNDEFINED;
 
-    if (result == VK_SUCCESS) return true;
+    if (result == VK_SUCCESS)
+    {
+        VK_CHECK(vkResetFences(logicalDevice, 1, &m_RenderFence[m_FrameIndex]), "Failed to reset swapchain-render submit fence!");
+        return true;
+    }
 
     if (result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR)
     {
@@ -397,17 +479,19 @@ bool VulkanSwapchain::AcquireImage()
         PFR_ASSERT(false, ResultMessage.data());
     }
 
-    Recreate();
+    m_bNeedsRecreate = true;
     return false;
 }
 
 void VulkanSwapchain::PresentImage()
 {
-    m_bWasInvalidated = false;
     bool bWasEverUsed = true;  // In case Renderer didn't use it, we should set waitSemaphore to imageAvaliable, otherwise renderSemaphore.
     if (m_ImageLayouts[m_ImageIndex] != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
     {
-        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+        const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                                   ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
+                                                   JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+        auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
         const auto imageBarrier =
@@ -438,10 +522,11 @@ void VulkanSwapchain::PresentImage()
     if (result == VK_SUCCESS)
     {
         m_FrameIndex = (m_FrameIndex + 1) % s_FRAMES_IN_FLIGHT;
-        return;
     }
+    else
+        m_bNeedsRecreate = true;
 
-    Recreate();
+    if (m_bNeedsRecreate) Recreate();
 }
 
 void VulkanSwapchain::BeginPass(const Shared<CommandBuffer>& commandBuffer, const bool bPreserveContents)
@@ -485,9 +570,9 @@ void VulkanSwapchain::EndPass(const Shared<CommandBuffer>& commandBuffer)
     vulkanCommandBuffer->EndRendering();
 
     {
-        const auto imageBarrier =
-            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
-                                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, 0, 0, 1, 0, 1, 0);
+        const auto imageBarrier = VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT,
+                                                                       m_ImageLayouts[m_ImageIndex], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
+                                                                       VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT, VK_ACCESS_NONE, 1, 0, 1, 0);
 
         vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
@@ -550,26 +635,29 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
     }
     else
     {
-        vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+        const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                                   ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
+                                                   JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+        vulkanCommandBuffer                     = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
     }
 
     vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain", glm::vec3(0.9f, 0.1f, 0.1f));
 
-    // NOTE: Best practices says here's RAR barrier?? wtf
     {
-        const auto srcImageBarrier =
-            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
-                                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
-        const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+        const auto srcImageBarrier = VulkanUtility::GetImageMemoryBarrier(
             (VkImage)image->Get(),
             ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
             ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, 0,
             VK_ACCESS_TRANSFER_READ_BIT, 1, 0, 1, 0);
+        const auto dstImageBarrier =
+            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED,
+                                                 VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 0, VK_ACCESS_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
 
         const std::vector<VkImageMemoryBarrier> imageBarriers = {srcImageBarrier, dstImageBarrier};
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT, VK_DEPENDENCY_BY_REGION_BIT,
-                                           0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()), imageBarriers.data());
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_TRANSFER_BIT,
+                                           VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()),
+                                           imageBarriers.data());
     }
 
     VkImageBlit region               = {};
@@ -587,19 +675,19 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
 
     {
-        const auto srcImageBarrier =
+        const auto dstImageBarrier =
             VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
                                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_ACCESS_TRANSFER_WRITE_BIT, 0, 1, 0, 1, 0);
         m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+        const auto srcImageBarrier = VulkanUtility::GetImageMemoryBarrier(
             (VkImage)image->Get(),
             ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout),
             VK_ACCESS_TRANSFER_READ_BIT, 0, 1, 0, 1, 0);
 
         const std::vector<VkImageMemoryBarrier> imageBarriers = {srcImageBarrier, dstImageBarrier};
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TRANSFER_BIT, VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, static_cast<uint32_t>(imageBarriers.size()),
                                            imageBarriers.data());
     }

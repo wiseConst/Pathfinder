@@ -3,6 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include "Renderer/Swapchain.h"
+#include "Renderer/Image.h"
 
 #include "Core/Application.h"
 #include "Events/WindowEvent.h"
@@ -30,6 +31,11 @@ Window::Window(const WindowSpecification& windowSpec) noexcept : m_Specification
 
 Window::~Window() = default;
 
+bool Window::IsVSync() const
+{
+    return m_Swapchain && m_Swapchain->IsVSync();
+}
+
 Unique<Window> Window::Create(const WindowSpecification& windowSpec)
 {
     return MakeUnique<GLFWWindow>(windowSpec);
@@ -37,13 +43,18 @@ Unique<Window> Window::Create(const WindowSpecification& windowSpec)
 
 void Window::SetVSync(const bool bVSync)
 {
-    if (m_Specification.bVSync == bVSync) return;
-
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    m_Specification.bVSync = bVSync;
+    if (m_Swapchain->IsVSync() == bVSync) return;
 
     // Update VSync state.
-    m_Swapchain->SetVSync(m_Specification.bVSync);
+    m_Swapchain->SetVSync(bVSync);
+}
+
+void Window::SetPresentMode(const EPresentMode presentMode)
+{
+    PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
+
+    m_Swapchain->SetPresentMode(presentMode);
 }
 
 std::vector<const char*> Window::GetWSIExtensions()
@@ -112,17 +123,37 @@ void GLFWWindow::SetWindowMode(const EWindowMode windowMode)
     m_Swapchain->SetWindowMode(windowMode);
 }
 
-void GLFWWindow::SetWindowTitle(const char* title)
+void GLFWWindow::SetIconImage(const std::string_view& iconFilePath)
 {
-    if (!title) return;
-    glfwSetWindowTitle(m_Handle, title);
+    const auto& appSpec = Application::Get().GetSpecification();
+
+    const std::filesystem::path iconFSPath = std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / iconFilePath;
+    if (!std::filesystem::exists(iconFSPath))
+    {
+        LOG_WARN("SetIconImage(): Path <%s> doesn't exist!", iconFSPath.string().data());
+        return;
+    }
+
+    GLFWimage image  = {};
+    int32_t channels = 4;
+    image.pixels     = (uint8_t*)ImageUtils::LoadRawImage(iconFSPath, false, &image.width, &image.height, &channels);
+
+    glfwSetWindowIcon(m_Handle, 1, &image);
+
+    ImageUtils::UnloadRawImage(image.pixels);
+}
+
+void GLFWWindow::SetWindowTitle(const std::string_view& title)
+{
+    if (!title.data()) return;
+    glfwSetWindowTitle(m_Handle, title.data());
 }
 
 void GLFWWindow::SwapBuffers()
 {
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
 
-    if (!m_Swapchain->WasInvalidatedDuringCurrentFrame()) m_Swapchain->PresentImage();
+    m_Swapchain->PresentImage();
 }
 
 void GLFWWindow::PollEvents()
@@ -196,11 +227,22 @@ void GLFWWindow::SetEventCallbacks() const
                                    const auto userWindow = static_cast<GLFWWindow*>(data);
                                    PFR_ASSERT(userWindow, "Failed to retrieve window data from window user pointer!");
 
+                                   EModKey modKey = EModKey::MOD_KEY_UNKNOWN;
+                                   switch (mods)
+                                   {
+                                       case GLFW_MOD_SHIFT: modKey = EModKey::MOD_KEY_SHIFT; break;
+                                       case GLFW_MOD_CONTROL: modKey = EModKey::MOD_KEY_CONTROL; break;
+                                       case GLFW_MOD_ALT: modKey = EModKey::MOD_KEY_ALT; break;
+                                       case GLFW_MOD_SUPER: modKey = EModKey::MOD_KEY_SUPER; break;
+                                       case GLFW_MOD_CAPS_LOCK: modKey = EModKey::MOD_KEY_CAPS_LOCK; break;
+                                       case GLFW_MOD_NUM_LOCK: modKey = EModKey::MOD_KEY_NUM_LOCK; break;
+                                   }
+
                                    switch (action)
                                    {
                                        case GLFW_PRESS:
                                        {
-                                           MouseButtonPressedEvent e(button);
+                                           MouseButtonPressedEvent e(button, modKey);
                                            userWindow->m_Specification.EventCallback(e);
                                            break;
                                        }
@@ -210,7 +252,7 @@ void GLFWWindow::SetEventCallbacks() const
                                        }
                                        case GLFW_RELEASE:
                                        {
-                                           MouseButtonReleasedEvent e(button);
+                                           MouseButtonReleasedEvent e(button, modKey);
                                            userWindow->m_Specification.EventCallback(e);
                                            break;
                                        }
@@ -226,23 +268,34 @@ void GLFWWindow::SetEventCallbacks() const
                            const auto userWindow = static_cast<GLFWWindow*>(data);
                            PFR_ASSERT(userWindow, "Failed to retrieve window data from window user pointer!");
 
+                           EModKey modKey = EModKey::MOD_KEY_UNKNOWN;
+                           switch (mods)
+                           {
+                               case GLFW_MOD_SHIFT: modKey = EModKey::MOD_KEY_SHIFT; break;
+                               case GLFW_MOD_CONTROL: modKey = EModKey::MOD_KEY_CONTROL; break;
+                               case GLFW_MOD_ALT: modKey = EModKey::MOD_KEY_ALT; break;
+                               case GLFW_MOD_SUPER: modKey = EModKey::MOD_KEY_SUPER; break;
+                               case GLFW_MOD_CAPS_LOCK: modKey = EModKey::MOD_KEY_CAPS_LOCK; break;
+                               case GLFW_MOD_NUM_LOCK: modKey = EModKey::MOD_KEY_NUM_LOCK; break;
+                           }
+
                            switch (action)
                            {
                                case GLFW_PRESS:
                                {
-                                   KeyButtonPressedEvent e(key, scancode);
+                                   KeyButtonPressedEvent e(key, scancode, modKey);
                                    userWindow->m_Specification.EventCallback(e);
                                    break;
                                }
                                case GLFW_REPEAT:
                                {
-                                   KeyButtonRepeatedEvent e(key, scancode);
+                                   KeyButtonRepeatedEvent e(key, scancode, modKey);
                                    userWindow->m_Specification.EventCallback(e);
                                    break;
                                }
                                case GLFW_RELEASE:
                                {
-                                   KeyButtonReleasedEvent e(key, scancode);
+                                   KeyButtonReleasedEvent e(key, scancode, modKey);
                                    userWindow->m_Specification.EventCallback(e);
                                    break;
                                }

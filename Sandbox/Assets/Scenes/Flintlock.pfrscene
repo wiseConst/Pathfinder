@@ -1,0 +1,62 @@
+{
+  "Scene": "Flintlock",
+  "Entities": {
+    "14459279328272821255": {
+      "TagComponent": "gun",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 0.09000000357627869,
+          "y": 0.09000000357627869,
+          "z": 0.09000000357627869
+        }
+      },
+      "MeshComponent": {
+        "MeshSource": "flintlock_pistol/scene.gltf"
+      }
+    },
+    "11320190932899782829": {
+      "TagComponent": "sonne",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "DirectionalLightComponent": {
+        "Direction": {
+          "x": 0.10000000149011612,
+          "y": 5.0,
+          "z": 0.20000000298023224
+        },
+        "Color": {
+          "x": 0.800000011920929,
+          "y": 0.800000011920929,
+          "z": 0.20000000298023224
+        },
+        "Intensity": 1.5,
+        "bCastShadows": 1
+      }
+    }
+  }
+}

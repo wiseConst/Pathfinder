@@ -1,7 +1,7 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Globals.h"
 
 layout(location = 0) out float outFragColor;
 layout(location = 0) in vec2 inUV;
@@ -33,14 +33,12 @@ const float sampleRadius = .873f;
 const float sampleBias = .025f;
 
 vec3 GetViewPositionFromDepth(vec2 coords) {
-    const float fragmentDepth = texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], coords).r;
-    
     // UV space -> ndc
     // NOTE: For OpenGL should be (fragmentDepth * 2.f - .1f)
-    const vec4 ndc = vec4(coords * 2.f - 1.f, fragmentDepth, 1.f);
+    const vec4 ndc = vec4(coords * 2.f - 1.f, texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], coords).r, 1.f);
     
     // ndc -> view space
-    vec4 posVS = u_GlobalCameraData.InverseProjection * ndc;
+    vec4 posVS = u_PC.CameraDataBuffer.InverseProjection * ndc;
     
     // Since we used a projection transformation (even if it was in inverse)
     // we need to convert our homogeneous coordinates using the perspective divide.
@@ -91,7 +89,7 @@ void main()
 		if(NdotS < 0.15) continue; // also if sampleDir is almost orthogonal it sucks
 
         vec4 offsetUV = vec4(samplePos, 1.0f);
-        offsetUV = u_GlobalCameraData.Projection * offsetUV; // view -> clip ([-w, w])
+        offsetUV = u_PC.CameraDataBuffer.Projection * offsetUV; // view -> clip ([-w, w])
         offsetUV.xy = (offsetUV.xy / offsetUV.w) * .5f + .5f; // clip -> ndc [-1 ,1] -> UV space x, y:[0, 1]
         
         const float sampledGeometryDepth = GetViewPositionFromDepth(offsetUV.xy).z;
@@ -102,5 +100,5 @@ void main()
     }
 
     const float visibility = 1.0 - occlusion * INV_MAX_KERNEL_SIZE_F; // From [0, MAX_KERNEL_SIZE] -> [0, 1]
-    outFragColor =  pow(visibility, 10);
+    outFragColor =  pow(visibility, 14);
 }

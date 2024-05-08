@@ -3,42 +3,20 @@ set(PROJECT_NAME Pathfinder)
 set(CORE_DIR ${CMAKE_CURRENT_SOURCE_DIR}/Source)
 set(VENDOR_DIR ${CMAKE_CURRENT_SOURCE_DIR}/vendor)
 
-file(GLOB_RECURSE CORE_SOURCES ${CORE_DIR}/Core/*.h ${CORE_DIR}/Core/*.cpp)
-source_group("Source/Core" FILES ${CORE_SOURCES})
+# Automatically group all sources into folders for MVS.
+file(GLOB_RECURSE SRC_FILES "${CORE_DIR}/*.cpp" "${CORE_DIR}/*.h" "${CORE_DIR}/*.hpp")
+set(ALL_FILES ${SRC_FILES})
+foreach(FILE ${SRC_FILES})
+    file(RELATIVE_PATH REL_FILE ${CMAKE_CURRENT_SOURCE_DIR} ${FILE})
+    get_filename_component(DIR "${REL_FILE}" DIRECTORY)
+    string(REPLACE "/" "\\" GROUP "${DIR}")
 
-file(GLOB_RECURSE EVENTS_SOURCES ${CORE_DIR}/Events/*.h ${CORE_DIR}/Events/*.cpp)
-source_group("Source/Events" FILES ${EVENTS_SOURCES})
-
-file(GLOB_RECURSE PLATFORM_SOURCES ${CORE_DIR}/Platform ${CORE_DIR}/Platform)
-source_group("Source/Platform" FILES ${PLATFORM_SOURCES})
-
-file(GLOB_RECURSE PLATFORM_GLFW_SOURCES ${CORE_DIR}/Platform/GLFW/*.h ${CORE_DIR}/Platform/GLFW/*.cpp)
-source_group("Source/Platform/GLFW" FILES ${PLATFORM_GLFW_SOURCES})
-
-file(GLOB_RECURSE PLATFORM_VULKAN_SOURCES ${CORE_DIR}/Platform/Vulkan/*.h ${CORE_DIR}/Platform/Vulkan/*.cpp)
-source_group("Source/Platform/Vulkan" FILES ${PLATFORM_VULKAN_SOURCES})
-
-file(GLOB_RECURSE RENDERER_SOURCES ${CORE_DIR}/Renderer/*.h ${CORE_DIR}/Renderer/*.cpp)
-source_group("Source/Renderer" FILES ${RENDERER_SOURCES})
-
-file(GLOB_RECURSE LAYERS_SOURCES ${CORE_DIR}/Layers/*.h ${CORE_DIR}/Layers/*.cpp)
-source_group("Source/Layers" FILES ${LAYERS_SOURCES})
-
-#TODO: Add memory includes
+    source_group("${GROUP}" FILES ${FILE})
+endforeach()
 
 message("Building pathfinder rendering engine...")
 set(VULKAN_SDK_DIR $ENV{VULKAN_SDK})
 message("VULKAN_SDK PATH: ${VULKAN_SDK_DIR}")
-
-set(ALL_FILES
-        ${CORE_SOURCES}
-        ${EVENTS_SOURCES}
-        ${LAYERS_SOURCES}
-        ${PLATFORM_SOURCES}
-        ${PLATFORM_GLFW_SOURCES}
-        ${PLATFORM_VULKAN_SOURCES}
-        ${RENDERER_SOURCES}
-)
 
 add_library(${PROJECT_NAME} STATIC ${ALL_FILES})
 set_target_properties(${PROJECT_NAME} PROPERTIES RUNTIME_OUTPUT_DIRECTORY PROJECT_OUTPUT_DIRECTORY)
@@ -120,13 +98,12 @@ target_link_libraries(${PROJECT_NAME} PRIVATE glm)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/glm)
 set_target_properties(glm PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
-# simdjson (currently unused since fastgltf includes it)
-#set(SIMDJSON_BUILD_STATIC_LIB ON)
-#add_subdirectory(${VENDOR_DIR}/simdjson)
-#target_link_libraries(${PROJECT_NAME} PRIVATE simdjson_static)
-target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/simdjson/include)
-#set_target_properties(simdjson_static PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
-#set_target_properties(simdjson PROPERTIES FOLDER "ThirdParty/simdjson" POSITION_INDEPENDENT_CODE ON)
+# nlohmann/json
+set(JSON_BuildTests OFF CACHE INTERNAL "")
+add_subdirectory(${VENDOR_DIR}/nlohmann)
+target_link_libraries(${PROJECT_NAME} PRIVATE nlohmann_json::nlohmann_json)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/nlohmann/single_include)
+set_target_properties(nlohmann_json PROPERTIES FOLDER "ThirdParty/nlohmann" POSITION_INDEPENDENT_CODE ON)
 
 # stb
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/stb)
@@ -136,7 +113,6 @@ add_subdirectory(${VENDOR_DIR}/fastgltf)
 target_link_libraries(${PROJECT_NAME} PRIVATE fastgltf)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/fastgltf/include)
 set_target_properties(fastgltf PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
-set_target_properties(fastgltf_simdjson PROPERTIES FOLDER "ThirdParty/fastgltf" POSITION_INDEPENDENT_CODE ON)
 
 # imgui
 add_library(imgui STATIC)
@@ -171,12 +147,30 @@ else()
 endif()
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/amd_compressonator/include)
 
+# entt
+add_subdirectory(${VENDOR_DIR}/entt)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/entt/single_include)
+target_link_libraries(${PROJECT_NAME} PRIVATE EnTT::EnTT)
+
+# openmp
+find_package(OpenMP REQUIRED)
+target_link_libraries(${PROJECT_NAME} PRIVATE OpenMP::OpenMP_CXX)
+if(OpenMP_CXX_FOUND)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "MSVC")
+        set(OpenMP_CXX_FLAGS "/openmp")
+    else()
+        set(OpenMP_CXX_FLAGS "-fopenmp")
+    endif()
+
+    target_compile_options(${PROJECT_NAME} PRIVATE ${OpenMP_CXX_FLAGS})
+endif()
+
 # Renderer compile config.
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
 add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 
 add_compile_options($<$<CONFIG:Debug>:-Og>) # -lto
-add_compile_options($<$<CONFIG:Release>:-Ofast -lto>)
+add_compile_options($<$<CONFIG:Release>:-O3 -lto>)
 
 # Dynamic MSVC runtime library linking
 if(MSVC)

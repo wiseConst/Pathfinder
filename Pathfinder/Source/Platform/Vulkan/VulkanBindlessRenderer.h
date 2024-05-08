@@ -7,7 +7,6 @@
 
 namespace Pathfinder
 {
-// CORE: https://registry.khronos.org/vulkan/specs/1.2-extensions/html/vkspec.html#descriptorsets-compatibility
 
 class VulkanBindlessRenderer final : public BindlessRenderer
 {
@@ -19,9 +18,6 @@ class VulkanBindlessRenderer final : public BindlessRenderer
               const EPipelineStage overrideBindPoint = EPipelineStage::PIPELINE_STAGE_NONE) final override;
     void UpdateDataIfNeeded() final override;
 
-    void UpdateCameraData(const Shared<Buffer>& cameraUniformBuffer) final override;
-    void UpdateLightData(const Shared<Buffer>& lightDataUniformBuffer) final override;
-
     void LoadImage(const void* pImageInfo, uint32_t& outIndex) final override;
     void LoadTexture(const void* pTextureInfo, uint32_t& outIndex) final override;
 
@@ -31,11 +27,12 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     void FreeBuffer(uint32_t& bufferIndex, const uint32_t bufferBinding) final override;
     void FreeTexture(uint32_t& textureIndex) final override;
 
-    NODISCARD FORCEINLINE const auto& GetTextureStorageImageSetLayout() const { return m_TextureStorageImageSetLayout; }
-    NODISCARD FORCEINLINE const auto& GetStorageBufferSetLayout() const { return m_StorageBufferSetLayout; }
-    NODISCARD FORCEINLINE const auto& GetFrameDataSetLayout() const { return m_FrameDataSetLayout; }
-    NODISCARD FORCEINLINE const VkPushConstantRange& GetPushConstantBlock() const { return m_PCBlock; }
-    NODISCARD FORCEINLINE const auto& GetPipelineLayout() const { return m_Layout; }
+    NODISCARD FORCEINLINE const auto GetDescriptorSetLayouts() const
+    {
+        return std::vector<VkDescriptorSetLayout>{m_MegaDescriptorSetLayout};
+    }
+    NODISCARD FORCEINLINE const auto& GetPushConstantBlock() const { return m_PCBlock; }
+    NODISCARD FORCEINLINE const auto& GetPipelineLayout() const { return m_MegaPipelineLayout; }
 
   private:
     std::vector<VkWriteDescriptorSet> m_Writes;
@@ -53,22 +50,13 @@ class VulkanBindlessRenderer final : public BindlessRenderer
     // NOTE: key - binding, value - pool
     std::unordered_map<uint32_t, IndicesPool> m_StorageBufferIndicesPool;
 
-    VulkanDescriptorPoolPerFrame m_TextureStorageImagePool;
-    VulkanDescriptorSetPerFrame m_TextureStorageImageSet;
-
-    VulkanDescriptorPoolPerFrame m_StorageBufferPool;
-    VulkanDescriptorSetPerFrame m_StorageBufferSet;
-
-    VulkanDescriptorPoolPerFrame m_FrameDataPool;
-    VulkanDescriptorSetPerFrame m_FrameDataSet;
+    VulkanDescriptorPoolPerFrame m_MegaDescriptorPool;
+    VulkanDescriptorSetPerFrame m_MegaSet;
 
     VkPushConstantRange m_PCBlock = {};
 
-    VkDescriptorSetLayout m_TextureStorageImageSetLayout = VK_NULL_HANDLE;
-    VkDescriptorSetLayout m_StorageBufferSetLayout       = VK_NULL_HANDLE;
-    VkDescriptorSetLayout m_FrameDataSetLayout           = VK_NULL_HANDLE;
-
-    VkPipelineLayout m_Layout = VK_NULL_HANDLE;
+    VkDescriptorSetLayout m_MegaDescriptorSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout m_MegaPipelineLayout           = VK_NULL_HANDLE;
 
     void CreateDescriptorPools();
     void Destroy() final override;

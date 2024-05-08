@@ -20,6 +20,13 @@ enum class EWindowMode : uint8_t
     WINDOW_MODE_FULLSCREEN_EXCLUSIVE
 };
 
+enum class EPresentMode : uint8_t
+{
+    PRESENT_MODE_FIFO = 0,   // VSync on.
+    PRESENT_MODE_IMMEDIATE,  // VSync off.
+    PRESENT_MODE_MAILBOX,    // Triple-buffered.
+};
+
 struct WindowSpecification final
 {
     using EventFn = std::function<void(Event&)>;
@@ -28,7 +35,6 @@ struct WindowSpecification final
     uint32_t Width         = 1280;
     uint32_t Height        = 720;
     EWindowMode WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
-    bool bVSync            = false;
 };
 
 using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
@@ -44,15 +50,17 @@ class Window : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetSwapchain() const { return m_Swapchain; }
     NODISCARD FORCEINLINE const WindowSpecification& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual const uint32_t GetCurrentFrameIndex() const = 0;
+    bool IsVSync() const;
 
-    NODISCARD FORCEINLINE bool IsVSync() const { return m_Specification.bVSync; }
     NODISCARD FORCEINLINE bool IsRunning() const { return m_bIsRunning; }
     NODISCARD FORCEINLINE bool IsMinimized() const { return m_Specification.Height == 0 || m_Specification.Width == 0; }
 
     virtual void SetClearColor(const glm::vec3& clearColor = glm::vec3(1.0f)) = 0;
     void SetVSync(const bool bVSync);
-    virtual void SetWindowMode(const EWindowMode windowMode) = 0;
-    virtual void SetWindowTitle(const char* title)           = 0;
+    void SetPresentMode(const EPresentMode presentMode);
+    virtual void SetWindowMode(const EWindowMode windowMode)        = 0;
+    virtual void SetWindowTitle(const std::string_view& title)      = 0;
+    virtual void SetIconImage(const std::string_view& iconFilePath) = 0;
 
     static std::vector<const char*> GetWSIExtensions();  // implemented in derived classes only
 
@@ -70,7 +78,7 @@ class Window : private Uncopyable, private Unmovable
     WindowSpecification m_Specification;
     bool m_bIsRunning = true;
 
-    explicit Window(const WindowSpecification& windowSpec) noexcept; 
+    explicit Window(const WindowSpecification& windowSpec) noexcept;
     virtual void Destroy() = 0;
 };
 

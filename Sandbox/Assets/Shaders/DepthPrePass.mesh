@@ -2,36 +2,77 @@
 
 #extension GL_EXT_mesh_shader : require
 
+// NOTE: 
+// This line guarantees that gl_Position is computed by the exact expression that was given in the shader without 
+// any optimization as this would change the operations and therefore quite likely change the result in some minor way.
+// Since I'm using DepthPrePass, I have to manually assure that gl_Position will be the same, 
+// in both Forward+ and PrePassZ mesh shaders.
+out invariant uvec3 gl_PrimitiveTriangleIndicesEXT[];
+
+out gl_MeshPerVertexEXT {
+  invariant vec4  gl_Position;
+  invariant float gl_PointSize;
+  invariant float gl_ClipDistance[];
+  invariant float gl_CullDistance[];
+} gl_MeshVerticesEXT[];
+
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Globals.h"
+#include "Include/MeshletTaskPayload.glslh"
 
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
-layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out; // 126 optimal nvidia
+layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out;
+
+layout(set = LAST_BINDLESS_SET + 2, binding = 0, scalar) readonly buffer CulledMeshIDBufferOpaque
+{
+    uint32_t CulledMeshIDs[];
+} s_CulledMeshIDBufferOpaque;
+
+layout(set = LAST_BINDLESS_SET + 2, binding = 1, scalar) readonly buffer CulledMeshIDBufferTransparent
+{
+    uint32_t CulledMeshIDs[];
+} s_CulledMeshIDBufferTransparent;
 
 void main()
 {
-    const uint mi = gl_WorkGroupID.x; // current work group
-    const uint ti = gl_LocalInvocationID.x; // invocation of current work group
+    uint32_t i = 0; // reusable var
+    const uint32_t mi = tp_TaskData.baseMeshletID + uint32_t(tp_TaskData.meshlets[gl_WorkGroupID.x]);
+    const uint32_t ti = gl_LocalInvocationID.x;
 
-    const uint primitiveCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleCount;
-    const uint vertexCount = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexCount;
-    if(ti == 0) SetMeshOutputsEXT(vertexCount, primitiveCount);
-
-    const uint32_t vertexOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].vertexOffset;
-    const mat4 mvp = u_GlobalCameraData.ViewProjection * u_PC.Transform;
-    for(uint i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
-    {
-        const uint vi = s_GlobalMeshletVerticesBuffers[u_PC.MeshletVerticesBufferIndex].vertices[vertexOffset + i];
-
-        gl_MeshVerticesEXT[i].gl_Position = mvp * vec4(s_GlobalVertexPosBuffers[u_PC.VertexPosBufferIndex].Positions[vi].Position, 1.0);
+    MeshData md;
+    if(u_PC.MaterialBufferIndex == 0) {
+        if(s_CulledMeshIDBufferOpaque.CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+        md = s_GlobalMeshDataBufferOpaque.MeshesData[s_CulledMeshIDBufferOpaque.CulledMeshIDs[gl_DrawID]];
+    }
+    else {
+        if(s_CulledMeshIDBufferTransparent.CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+        md = s_GlobalMeshDataBufferTransparent.MeshesData[s_CulledMeshIDBufferTransparent.CulledMeshIDs[gl_DrawID]];
     }
 
-    const uint32_t triangleOffset = s_GlobalMeshletBuffers[u_PC.MeshletBufferIndex].meshlets[mi].triangleOffset;
-    for(uint i = ti; i < primitiveCount; i += MESHLET_LOCAL_GROUP_SIZE)
+    const uint32_t primitiveCount = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].triangleCount;
+    const uint32_t vertexCount = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].vertexCount;
+    // This call will reserve output memory for storing vertex and primitive attributes (other than the vertex position). 
+    // Requesting memory early helps hiding the latency required for memory allocation in the geometry engine.
+    if (ti == 0) 
+    {
+        SetMeshOutputsEXT(vertexCount, primitiveCount);
+    }
+
+    const uint32_t vertexOffset = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].vertexOffset;
+    for(i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
+    {
+        const uint32_t vi = s_GlobalMeshletVerticesBuffers[md.meshletVerticesBufferIndex].vertices[vertexOffset + i];
+        const vec3 worldPos = RotateByQuat(s_GlobalVertexPosBuffers[md.vertexPosBufferIndex].Positions[vi].Position * md.scale, md.orientation) + md.translation;
+
+        gl_MeshVerticesEXT[i].gl_Position = u_PC.CameraDataBuffer.ViewProjection * vec4(worldPos, 1.0);
+    }
+
+    const uint32_t triangleOffset = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].triangleOffset;
+    for(i = ti; i < primitiveCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3*i + 0], 
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3*i + 1], 
-            s_GlobalMeshletTrianglesBuffers[u_PC.MeshletTrianglesBufferIndex].triangles[triangleOffset + 3*i + 2]);
+            s_GlobalMeshletTrianglesBuffers[md.meshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 0], 
+            s_GlobalMeshletTrianglesBuffers[md.meshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 1], 
+            s_GlobalMeshletTrianglesBuffers[md.meshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 2]);
     }
 }

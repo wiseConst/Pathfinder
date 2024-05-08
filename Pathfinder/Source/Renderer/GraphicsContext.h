@@ -3,6 +3,7 @@
 
 #include "RendererAPI.h"
 #include "Core/Core.h"
+#include "RendererCoreDefines.h"
 
 namespace Pathfinder
 {
@@ -24,6 +25,11 @@ class GraphicsContext : private Uncopyable, private Unmovable
     }
 
     static Unique<GraphicsContext> Create(const ERendererAPI rendererApi);
+
+    virtual void FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudgets) = 0;
+
+    virtual void Begin() = 0;
+    virtual void End()   = 0;
 
   protected:
     static inline GraphicsContext* s_Instance = nullptr;

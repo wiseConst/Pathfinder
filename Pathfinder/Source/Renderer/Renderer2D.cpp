@@ -1,6 +1,7 @@
 #include "PathfinderPCH.h"
 #include "Renderer2D.h"
 
+#include "Core/Threading.h"
 #include "Renderer.h"
 #include "Pipeline.h"
 #include "Shader.h"
@@ -19,7 +20,7 @@ void Renderer2D::Init()
     s_RendererData2D = MakeUnique<RendererData2D>();
     memset(&s_Renderer2DStats, 0, sizeof(s_Renderer2DStats));
 
-    ShaderLibrary::Load("Quad2D");
+    ShaderLibrary::Load({"Quad2D"});
 
     std::ranges::for_each(s_RendererData2D->QuadVertexBase,
                           [](auto& quadVertexBase)
@@ -65,17 +66,21 @@ void Renderer2D::Init()
         delete[] indices;
     }
 
-    PipelineSpecification quadPipelineSpec = {"Quad2D", EPipelineType::PIPELINE_TYPE_GRAPHICS};
+    PipelineSpecification quadPipelineSpec = {"Quad2D"};
+    quadPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     quadPipelineSpec.Shader                = ShaderLibrary::Get("Quad2D");
     quadPipelineSpec.bBindlessCompatible   = true;
-    quadPipelineSpec.FrontFace             = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
-    quadPipelineSpec.TargetFramebuffer     = Renderer::GetRendererData()->GBuffer;
-    quadPipelineSpec.InputBufferBindings   = {{
+
+    GraphicsPipelineOptions quadPipelineOptions = {};
+    quadPipelineOptions.FrontFace               = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
+    quadPipelineOptions.TargetFramebuffer       = Renderer::GetRendererData()->GBuffer;
+    quadPipelineOptions.InputBufferBindings     = {{
         {"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
         {"inNormal", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
         {"inUV", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2},
         {"inColor", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4},
     }};
+    quadPipelineSpec.PipelineOptions            = std::make_optional<GraphicsPipelineOptions>(quadPipelineOptions);
     // quadPipelineSpec.bDepthTest            = true;
     // quadPipelineSpec.bDepthWrite           = true;  // Do I rly need this? since im using depth pre pass of my static meshes
     // quadPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
@@ -102,8 +107,8 @@ void Renderer2D::Begin()
 {
     s_Renderer2DStats = {};
 
-    auto& rd = Renderer::GetRendererData();
-
+    auto& rd                                                          = Renderer::GetRendererData();
+    s_RendererData2D->FrameIndex                                      = rd->FrameIndex;
     s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex] = s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex];
     s_RendererData2D->Sprites.clear();
 }
@@ -113,7 +118,10 @@ void Renderer2D::FlushBatch()
     const uint32_t dataSize = s_Renderer2DStats.QuadCount * sizeof(QuadVertex) * 4;
     if (dataSize == 0) return;
 
-    auto renderCommandBuffer = CommandBuffer::Create(ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS);
+    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                               ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, s_RendererData2D->FrameIndex,
+                                               JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+    auto renderCommandBuffer                = CommandBuffer::Create(cbSpec);
     renderCommandBuffer->BeginRecording(true);
 
     auto& rd = Renderer::GetRendererData();
@@ -126,19 +134,20 @@ void Renderer2D::FlushBatch()
         s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], dataSize);
 
     PushConstantBlock pc = {};
-    renderCommandBuffer->BindPipeline(s_RendererData2D->QuadPipeline);
-    renderCommandBuffer->BindPushConstants(s_RendererData2D->QuadPipeline, 0, 0, sizeof(pc), &pc);
+    pc.CameraDataBuffer  = rd->CameraSSBO[rd->FrameIndex]->GetBDA();
 
     constexpr uint64_t offset = 0;
     renderCommandBuffer->BindVertexBuffers({s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]}, 0, 1, &offset);
     renderCommandBuffer->BindIndexBuffer(s_RendererData2D->QuadIndexBuffer);
 
+    Renderer::BindPipeline(renderCommandBuffer, s_RendererData2D->QuadPipeline);
+    renderCommandBuffer->BindPushConstants(s_RendererData2D->QuadPipeline, 0, 0, sizeof(pc), &pc);
     renderCommandBuffer->DrawIndexed(s_Renderer2DStats.QuadCount * 6);
 
     rd->GBuffer->EndPass(renderCommandBuffer);
 
     renderCommandBuffer->EndRecording();
-    renderCommandBuffer->Submit();
+    renderCommandBuffer->Submit(true, false);
 
     memset(s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], 0, dataSize);
     s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex] = s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex];

@@ -61,10 +61,10 @@ struct RenderGraphSpecification
 class RenderGraph final : private Uncopyable, private Unmovable
 {
   public:
-    RenderGraph(const std::string& debugName) : m_DebugName(debugName) {}
+    RenderGraph(const std::string_view& debugName) : m_DebugName(debugName) {}
     ~RenderGraph() override = default;
 
-    void Render(const std::vector<RenderObject>& opaqueObjects, const std::vector<RenderObject>& transparentObjects);
+    // void Render(const std::vector<RenderObject>& opaqueObjects, const std::vector<RenderObject>& transparentObjects);
 
     void AddNode(const RenderGraphNode& node)
     {

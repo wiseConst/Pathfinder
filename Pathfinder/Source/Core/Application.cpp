@@ -17,6 +17,11 @@
 namespace Pathfinder
 {
 
+void PathfinderShutdown()
+{
+    Application::Close();
+}
+
 #define PFR_BIND_FN(fn) [this](auto&&... args) -> decltype(auto) { return this->fn(std::forward<decltype(args)>(args)...); }
 
 Application::Application(const ApplicationSpecification& appSpec) noexcept : m_Specification(appSpec)
@@ -60,6 +65,8 @@ void Application::Run()
         Timer t = {};
         if (!m_Window->IsMinimized() && m_Window->BeginFrame())
         {
+            m_GraphicsContext->Begin();
+
             Renderer::Begin();
             m_Window->SetClearColor(glm::vec3(0.15f));
 
@@ -74,6 +81,8 @@ void Application::Run()
 
             Renderer::Flush(m_UILayer);
             m_Window->SwapBuffers();
+
+            m_GraphicsContext->End();
         }
 
         m_Window->PollEvents();
@@ -86,13 +95,12 @@ void Application::Run()
             std::stringstream ss;
             ss << std::fixed << std::setprecision(4);  // Set the float format
             ss << m_Window->GetSpecification().Title << " x64 / " << frameCount << " FPS ";
-            ss << "[mesh-shaders]: " << (Renderer::GetRendererSettings().bMeshShadingSupport ? "on " : "off ");
             ss << "[cpu]: " << t.GetElapsedMilliseconds() << "ms ";
             ss << "[gpu]: " << Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime << "ms ";
             ss << "[present]: " << Renderer::GetStats().SwapchainPresentTime << "ms ";
             ss << "[rhi]: " << Renderer::GetStats().RHITime << "ms ";
+            ss << "[objects]: " << Renderer::GetStats().ObjectsDrawn;
             ss << " [tris]: " << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
-            ss << " [meshlets]: " << Renderer::GetStats().MeshletCount;
             ss << " [2D batches]: " << Renderer2D::GetStats().BatchCount;
             ss << " [descriptor pools]: " << Renderer::GetStats().DescriptorPoolCount;
             ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
@@ -109,35 +117,6 @@ void Application::OnEvent(Event& e)
 {
     if (m_Specification.bEnableImGui) m_UILayer->OnEvent(e);
     m_LayerQueue->OnEvent(e);
-
-    EventDispatcher dispatcher(e);
-    dispatcher.Dispatch<KeyButtonPressedEvent>(
-        [this](const auto& event)
-        {
-            const auto key = event.GetKey();
-
-            /* if (key == EKey::KEY_F1)
-              {
-                  m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_WINDOWED);
-                  return true;
-              }
-
-              if (key == EKey::KEY_F2)
-              {
-                  m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_BORDERLESS_FULLSCREEN);
-
-                  return true;
-              }
-
-              if (key == EKey::KEY_F3)
-              {
-                  m_Window->SetWindowMode(EWindowMode::WINDOW_MODE_FULLSCREEN_EXCLUSIVE);
-
-                  return true;
-              }*/
-
-            return false;
-        });
 }
 
 Application::~Application()

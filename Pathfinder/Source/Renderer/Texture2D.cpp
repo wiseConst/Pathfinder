@@ -29,8 +29,7 @@ void Texture2D::Invalidate(const void* data = nullptr, const size_t dataSize = 0
     imageSpec.Layers             = m_Specification.Layers;
     if (m_Specification.bGenerateMips)
     {
-        imageSpec.Mips = static_cast<uint32_t>(std::floor(std::log2(std::max(m_Specification.Width, m_Specification.Height))) +
-                                               1);                          // +1 for base mip level.
+        imageSpec.Mips = ImageUtils::CalculateMipCount(m_Specification.Width, m_Specification.Height);
         imageSpec.UsageFlags |= EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT;  // For downsampling the source.
     }
 

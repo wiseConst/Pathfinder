@@ -21,18 +21,25 @@ class VulkanSwapchain final : public Swapchain
     NODISCARD FORCEINLINE void* GetImageAvailableSemaphore() const final override { return m_ImageAcquiredSemaphore[m_FrameIndex]; }
     NODISCARD FORCEINLINE void* GetRenderFence() const final override { return m_RenderFence[m_FrameIndex]; }
     NODISCARD FORCEINLINE void* GetRenderSemaphore() const final override { return m_RenderSemaphore[m_FrameIndex]; }
-    NODISCARD FORCEINLINE bool IsVSync() const final override { return m_bVSync; }
 
     void SetClearColor(const glm::vec3& clearColor) final override;
     void SetVSync(bool bVSync) final override
     {
-        if (m_bVSync == bVSync) return;
+        if (bVSync && m_PresentMode == EPresentMode::PRESENT_MODE_FIFO || !bVSync && m_PresentMode == EPresentMode::PRESENT_MODE_MAILBOX)
+            return;
 
-        m_bVSync = bVSync;
-        Recreate();
-        LOG_DEBUG("VSync: %s.", m_bVSync ? "ON" : "OFF");
+        m_PresentMode    = bVSync ? EPresentMode::PRESENT_MODE_FIFO : EPresentMode::PRESENT_MODE_MAILBOX;
+        m_bNeedsRecreate = true;
     }
     void SetWindowMode(const EWindowMode windowMode) final override;
+
+    void SetPresentMode(const EPresentMode presentMode) final override
+    {
+        if (m_PresentMode == presentMode) return;
+
+        m_PresentMode    = presentMode;
+        m_bNeedsRecreate = true;
+    }
 
     void Invalidate() final override;
 
@@ -53,25 +60,28 @@ class VulkanSwapchain final : public Swapchain
     std::vector<VkImage> m_Images;
     std::vector<VkImageView> m_ImageViews;
 
-#if PFR_WINDOWS && VK_EXCLUSIVE_FULL_SCREEN_TEST
+#if PFR_WINDOWS
     VkSurfaceFullScreenExclusiveWin32InfoEXT m_SurfaceFullScreenExclusiveWin32Info = {
         VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT};
-    VkSurfaceFullScreenExclusiveInfoEXT m_SurfaceFullScreenExclusiveInfo = {VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT};
 #endif
+    EWindowMode m_LastWindowMode                                         = EWindowMode::WINDOW_MODE_WINDOWED;
+    int32_t m_LastPosX                                                   = 0;
+    int32_t m_LastPosY                                                   = 0;
+    int32_t m_LastWidth                                                  = 1280;
+    int32_t m_LastHeight                                                 = 720;
+    VkSurfaceFullScreenExclusiveInfoEXT m_SurfaceFullScreenExclusiveInfo = {VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT};
 
-    VkSurfaceKHR m_Surface           = VK_NULL_HANDLE;
-    VkSurfaceFormatKHR m_ImageFormat = {VK_FORMAT_UNDEFINED, VK_COLORSPACE_SRGB_NONLINEAR_KHR};
-
+    VkSurfaceKHR m_Surface                = VK_NULL_HANDLE;
+    VkSurfaceFormatKHR m_ImageFormat      = {VK_FORMAT_UNDEFINED, VK_COLORSPACE_SRGB_NONLINEAR_KHR};
     VkPresentModeKHR m_CurrentPresentMode = VK_PRESENT_MODE_FIFO_KHR;
-    VkExtent2D m_ImageExtent              = {1280, 720};
+
+    VkExtent2D m_ImageExtent = {1280, 720};
 
     uint32_t m_ImageIndex{0};
     uint32_t m_FrameIndex{0};
 
     EWindowMode m_WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
-    bool m_bWasInvalidated   = false;
-
-    NODISCARD FORCEINLINE bool WasInvalidatedDuringCurrentFrame() const final override { return m_bWasInvalidated; }
+    bool m_bNeedsRecreate    = false;
 
     void Recreate();
     void Destroy() final override;

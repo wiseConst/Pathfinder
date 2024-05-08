@@ -107,68 +107,60 @@ void VulkanPipeline::CreateLayout()
 
     std::vector<VkPushConstantRange> pushConstants;
     std::vector<VkDescriptorSetLayout> setLayouts;
+    const auto& vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
+    PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
     if (m_Specification.bBindlessCompatible)
     {
-        const auto& vulkanBR = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
-        PFR_ASSERT(vulkanBR, "Failed to cast BindlessRenderer to VulkanBindlessRenderer!");
-
-        setLayouts.push_back(vulkanBR->GetTextureStorageImageSetLayout());
-        setLayouts.push_back(vulkanBR->GetStorageBufferSetLayout());
-        setLayouts.push_back(vulkanBR->GetFrameDataSetLayout());
-
-        pushConstants.push_back(vulkanBR->GetPushConstantBlock());
+        const auto brDescriptorSets = vulkanBR->GetDescriptorSetLayouts();
+        setLayouts.insert(setLayouts.end(), brDescriptorSets.begin(), brDescriptorSets.end());
+        pushConstants.emplace_back(vulkanBR->GetPushConstantBlock());
     }
+    const auto descriptorSetLayoutsSizeAfterBindlessCheck = static_cast<uint16_t>(setLayouts.size());
+    const auto pushConstantsSizeAfterBindlessCheck        = static_cast<uint16_t>(pushConstants.size());
 
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(m_Specification.Shader);
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
 
-    const auto appendVecFunc = [&](auto& src, const auto& additionalVec)
-    {
-        for (auto& elem : additionalVec)
-            src.emplace_back(elem);
-    };
+    constexpr auto appendVecFunc = [&](auto& dst, const auto& src) { dst.insert(dst.end(), src.begin(), src.end()); };
     switch (m_Specification.PipelineType)
     {
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
+            PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                           std::holds_alternative<GraphicsPipelineOptions>(m_Specification.PipelineOptions.value()),
+                       "PipelineSpecification doesn't contain GraphicsPipelineOptions!");
+
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
+
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
+            appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
+            appendVecFunc(setLayouts,
+                          vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
+
             appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_FRAGMENT));
 
             // For bindless compatibility, push constants should be identical.
-            if (m_Specification.bMeshShading)
+            if (!m_Specification.bBindlessCompatible)
             {
-                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
-                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
 
-                if (!m_Specification.bBindlessCompatible)
-                {
-                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TASK));
-                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_MESH));
-                }
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
+                appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
+                appendVecFunc(pushConstants,
+                              vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
             }
-            else
-            {
-                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
-                appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
-                appendVecFunc(setLayouts,
-                              vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
-                appendVecFunc(setLayouts,
-                              vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
 
-                if (!m_Specification.bBindlessCompatible)
-                {
-                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_VERTEX));
-                    appendVecFunc(pushConstants, vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_GEOMETRY));
-                    appendVecFunc(pushConstants,
-                                  vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL));
-                    appendVecFunc(pushConstants,
-                                  vulkanShader->GetPushConstantsByShaderStage(EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION));
-                }
-            }
             break;
         }
         case EPipelineType::PIPELINE_TYPE_COMPUTE:
         {
-            PFR_ASSERT(!m_Specification.bMeshShading, "Non-graphics pipelines can't have mesh shaders!");
+            PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                           std::holds_alternative<ComputePipelineOptions>(m_Specification.PipelineOptions.value()),
+                       "PipelineSpecification doesn't contain ComputePipelineOptions!");
 
             appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_COMPUTE));
 
@@ -180,7 +172,9 @@ void VulkanPipeline::CreateLayout()
         }
         case EPipelineType::PIPELINE_TYPE_RAY_TRACING:
         {
-            PFR_ASSERT(!m_Specification.bMeshShading, "Non-graphics pipelines can't have mesh shaders!");
+            PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                           std::holds_alternative<RayTracingPipelineOptions>(m_Specification.PipelineOptions.value()),
+                       "PipelineSpecification doesn't contain RayTracingPipelineOptions!");
 
             appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_ANY_HIT));
             appendVecFunc(setLayouts, vulkanShader->GetDescriptorSetLayoutsByShaderStage(EShaderStage::SHADER_STAGE_CLOSEST_HIT));
@@ -205,14 +199,28 @@ void VulkanPipeline::CreateLayout()
 
     appendVecFunc(m_PushConstants, pushConstants);
 
+    // In case nothing was append(we received 0 extra push constants or descriptor sets from shader), we can reuse bindless renderer
+    // pipeline layout.
+    const auto descriptorSetLayoutsSizeAfterShaderAppend = static_cast<uint16_t>(setLayouts.size());
+    const auto pushConstantsSizeAfterShaderAppend        = static_cast<uint16_t>(pushConstants.size());
+    if (m_Specification.bBindlessCompatible && pushConstantsSizeAfterBindlessCheck == pushConstantsSizeAfterShaderAppend &&
+        descriptorSetLayoutsSizeAfterBindlessCheck == descriptorSetLayoutsSizeAfterShaderAppend)
+    {
+        m_Layout = vulkanBR->GetPipelineLayout();
+        return;
+    }
+
     layoutCI.pSetLayouts    = setLayouts.data();
     layoutCI.setLayoutCount = static_cast<uint32_t>(setLayouts.size());
 
     layoutCI.pPushConstantRanges    = pushConstants.data();
     layoutCI.pushConstantRangeCount = static_cast<uint32_t>(pushConstants.size());
 
-    VK_CHECK(vkCreatePipelineLayout(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &layoutCI, nullptr, &m_Layout),
-             "Failed to create pipeline layout!");
+    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+    VK_CHECK(vkCreatePipelineLayout(logicalDevice, &layoutCI, nullptr, &m_Layout), "Failed to create pipeline layout!");
+
+    const std::string pipelineLayoutName = "VK_PIPELINE_LAYOUT_" + m_Specification.DebugName;
+    VK_SetDebugName(logicalDevice, m_Layout, VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayoutName.data());
 }
 
 void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName) const
@@ -239,14 +247,14 @@ void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& o
     {
         bool bSamePipelineUUID = true;
         for (uint16_t i = 0; i < VK_UUID_SIZE; ++i)
-            if (context.GetDevice()->GetGPUProperties().pipelineCacheUUID[i] != cacheData[16 + i]) bSamePipelineUUID = false;
+            if (context.GetDevice()->GetPipelineCacheUUID()[i] != cacheData[16 + i]) bSamePipelineUUID = false;
 
         bool bSameVendorID = true;
         bool bSameDeviceID = true;
         for (uint16_t i = 0; i < 4; ++i)
         {
-            if (cacheData[8 + i] != ((context.GetDevice()->GetGPUProperties().vendorID >> (8 * i)) & 0xff)) bSameVendorID = false;
-            if (cacheData[12 + i] != ((context.GetDevice()->GetGPUProperties().deviceID >> (8 * i)) & 0xff)) bSameDeviceID = false;
+            if (cacheData[8 + i] != ((context.GetDevice()->GetVendorID() >> (8 * i)) & 0xff)) bSameVendorID = false;
+            if (cacheData[12 + i] != ((context.GetDevice()->GetDeviceID() >> (8 * i)) & 0xff)) bSameDeviceID = false;
 
             if (!bSameDeviceID || !bSameVendorID || !bSamePipelineUUID) break;
         }
@@ -292,6 +300,13 @@ void VulkanPipeline::Invalidate()
         {
             case EPipelineType::PIPELINE_TYPE_GRAPHICS:
             {
+                PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                               std::holds_alternative<GraphicsPipelineOptions>(m_Specification.PipelineOptions.value()),
+                           "PipelineSpecification doesn't contain GraphicsPipelineOptions!");
+
+                const auto* graphicsPipelineOptions = std::get_if<GraphicsPipelineOptions>(&m_Specification.PipelineOptions.value());
+                PFR_ASSERT(graphicsPipelineOptions, "GraphicsPipelineOptions isn't valid!");
+
                 if (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_VERTEX ||
                     shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_FRAGMENT ||
                     shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_GEOMETRY ||
@@ -300,15 +315,16 @@ void VulkanPipeline::Invalidate()
                     shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL ||
                     shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION)
                 {
-                    if (m_Specification.bMeshShading && (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_VERTEX ||
-                                                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_GEOMETRY ||
-                                                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL ||
-                                                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION))
+                    if (graphicsPipelineOptions->bMeshShading &&
+                        (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_VERTEX ||
+                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_GEOMETRY ||
+                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL ||
+                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION))
                     {
                         continue;
                     }
-                    else if (!m_Specification.bMeshShading && (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_MESH ||
-                                                               shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TASK))
+                    else if (!graphicsPipelineOptions->bMeshShading && (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_MESH ||
+                                                                        shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TASK))
                     {
                         continue;
                     }
@@ -333,6 +349,13 @@ void VulkanPipeline::Invalidate()
             }
             case EPipelineType::PIPELINE_TYPE_COMPUTE:
             {
+                PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                               std::holds_alternative<ComputePipelineOptions>(m_Specification.PipelineOptions.value()),
+                           "PipelineSpecification doesn't contain ComputePipelineOptions!");
+
+                const auto* computePipelineOptions = std::get_if<ComputePipelineOptions>(&m_Specification.PipelineOptions.value());
+                PFR_ASSERT(computePipelineOptions, "ComputePipelineOptions isn't valid!");
+
                 if (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_COMPUTE)
                 {
                     auto& shaderStage = shaderStages.emplace_back();
@@ -355,6 +378,13 @@ void VulkanPipeline::Invalidate()
             }
             case EPipelineType::PIPELINE_TYPE_RAY_TRACING:
             {
+                PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                               std::holds_alternative<RayTracingPipelineOptions>(m_Specification.PipelineOptions.value()),
+                           "PipelineSpecification doesn't contain RayTracingPipelineOptions!");
+
+                const auto* rayTracingPipelineOptions = std::get_if<RayTracingPipelineOptions>(&m_Specification.PipelineOptions.value());
+                PFR_ASSERT(rayTracingPipelineOptions, "RayTracingPipelineOptions isn't valid!");
+
                 if (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_ANY_HIT ||
                     shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_CLOSEST_HIT ||
                     shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_RAYGEN ||
@@ -391,17 +421,24 @@ void VulkanPipeline::Invalidate()
     {
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
+            PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                           std::holds_alternative<GraphicsPipelineOptions>(m_Specification.PipelineOptions.value()),
+                       "PipelineSpecification doesn't contain GraphicsPipelineOptions!");
+
+            const auto* graphicsPO = std::get_if<GraphicsPipelineOptions>(&m_Specification.PipelineOptions.value());
+            PFR_ASSERT(graphicsPO, "GraphicsPipelineOptions isn't valid!");
+
             // Contains the configuration for what kind of topology will be drawn.
             const VkPipelineInputAssemblyStateCreateInfo IAState = {
                 VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO, nullptr, 0,
-                PipelineUtils::PathfinderPrimitiveTopologyToVulkan(m_Specification.PrimitiveTopology), VK_FALSE};
+                PipelineUtils::PathfinderPrimitiveTopologyToVulkan(graphicsPO->PrimitiveTopology), VK_FALSE};
 
             VkPipelineVertexInputStateCreateInfo vertexInputState = {VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
 
             const auto& inputVars = vulkanShader->GetInputVars();  // Input vars of all buffer bindings.
             std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
-            std::vector<VkVertexInputBindingDescription> inputBindings(m_Specification.InputBufferBindings.size());
-            if (!m_Specification.bMeshShading)
+            std::vector<VkVertexInputBindingDescription> inputBindings(graphicsPO->InputBufferBindings.size());
+            if (!graphicsPO->bMeshShading)
             {
                 uint32_t inputVarOffset = 0;
                 for (uint32_t inputBindingIndex = 0; inputBindingIndex < inputBindings.size(); ++inputBindingIndex)
@@ -409,7 +446,7 @@ void VulkanPipeline::Invalidate()
                     inputBindings[inputBindingIndex].binding   = inputBindingIndex;
                     inputBindings[inputBindingIndex].inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
 
-                    const auto& currentInputBufferBinding = m_Specification.InputBufferBindings[inputBindingIndex];
+                    const auto& currentInputBufferBinding = graphicsPO->InputBufferBindings[inputBindingIndex];
                     for (uint32_t inputVarIndex = 0; inputVarIndex < currentInputBufferBinding.GetElements().size(); ++inputVarIndex)
                     {
                         PFR_ASSERT(currentInputBufferBinding.GetElements()[inputVarIndex].Name ==
@@ -430,7 +467,7 @@ void VulkanPipeline::Invalidate()
                     }
                     inputVarOffset += currentInputBufferBinding.GetElements().size();
 
-                    inputBindings[inputBindingIndex].stride = m_Specification.InputBufferBindings[inputBindingIndex].GetStride();
+                    inputBindings[inputBindingIndex].stride = graphicsPO->InputBufferBindings[inputBindingIndex].GetStride();
                 }
 
                 vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributeDescriptions.size());
@@ -446,41 +483,41 @@ void VulkanPipeline::Invalidate()
             // TessellationState
             constexpr VkPipelineTessellationStateCreateInfo tessellationState = {VK_STRUCTURE_TYPE_PIPELINE_TESSELLATION_STATE_CREATE_INFO};
 
-            VkPipelineRasterizationStateCreateInfo RasterizationState = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
-            RasterizationState.cullMode                               = PipelineUtils::PathfinderCullModeToVulkan(m_Specification.CullMode);
-            RasterizationState.lineWidth                              = m_Specification.LineWidth;
-            RasterizationState.polygonMode             = VulkanUtility::PathfinderPolygonModeToVulkan(m_Specification.PolygonMode);
-            RasterizationState.frontFace               = PipelineUtils::PathfinderFrontFaceToVulkan(m_Specification.FrontFace);
-            RasterizationState.rasterizerDiscardEnable = VK_FALSE;
+            VkPipelineRasterizationStateCreateInfo rasterizationState = {VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO};
+            rasterizationState.cullMode                               = PipelineUtils::PathfinderCullModeToVulkan(graphicsPO->CullMode);
+            rasterizationState.lineWidth                              = graphicsPO->LineWidth;
+            rasterizationState.polygonMode             = VulkanUtility::PathfinderPolygonModeToVulkan(graphicsPO->PolygonMode);
+            rasterizationState.frontFace               = PipelineUtils::PathfinderFrontFaceToVulkan(graphicsPO->FrontFace);
+            rasterizationState.rasterizerDiscardEnable = VK_FALSE;
 
             // TODO: Make it configurable?
-            RasterizationState.depthClampEnable        = VK_FALSE;
-            RasterizationState.depthBiasEnable         = VK_FALSE;
-            RasterizationState.depthBiasConstantFactor = 0.0f;
-            RasterizationState.depthBiasClamp          = 0.0f;
-            RasterizationState.depthBiasSlopeFactor    = 0.0f;
+            rasterizationState.depthClampEnable        = VK_FALSE;
+            rasterizationState.depthBiasEnable         = VK_FALSE;
+            rasterizationState.depthBiasConstantFactor = 0.0f;
+            rasterizationState.depthBiasClamp          = 0.0f;
+            rasterizationState.depthBiasSlopeFactor    = 0.0f;
 
             // TODO: Make it configurable
-            VkPipelineMultisampleStateCreateInfo MultisampleState = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
-            MultisampleState.sampleShadingEnable                  = VK_FALSE;
-            MultisampleState.rasterizationSamples                 = VK_SAMPLE_COUNT_1_BIT;
-            MultisampleState.minSampleShading                     = 1.0f;
-            MultisampleState.alphaToCoverageEnable                = VK_FALSE;
-            MultisampleState.alphaToOneEnable                     = VK_FALSE;
+            VkPipelineMultisampleStateCreateInfo multisampleState = {VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO};
+            multisampleState.sampleShadingEnable                  = VK_FALSE;
+            multisampleState.rasterizationSamples                 = VK_SAMPLE_COUNT_1_BIT;
+            multisampleState.minSampleShading                     = 1.0f;
+            multisampleState.alphaToCoverageEnable                = VK_FALSE;
+            multisampleState.alphaToOneEnable                     = VK_FALSE;
 
             std::vector<VkPipelineColorBlendAttachmentState> colorBlendAttachmentStates;
-            if (m_Specification.TargetFramebuffer)
+            if (graphicsPO->TargetFramebuffer)
             {
-                uint32_t attachmentCount = static_cast<uint32_t>(m_Specification.TargetFramebuffer->GetAttachments().size());
-                if (m_Specification.TargetFramebuffer->GetDepthAttachment()) --attachmentCount;
+                uint32_t attachmentCount = static_cast<uint32_t>(graphicsPO->TargetFramebuffer->GetAttachments().size());
+                if (graphicsPO->TargetFramebuffer->GetDepthAttachment()) --attachmentCount;
 
                 for (uint32_t i = 0; i < attachmentCount; ++i)
                 {
-                    auto& blendState = colorBlendAttachmentStates.emplace_back(m_Specification.bBlendEnable, VK_BLEND_FACTOR_ONE,
+                    auto& blendState = colorBlendAttachmentStates.emplace_back(graphicsPO->bBlendEnable, VK_BLEND_FACTOR_ONE,
                                                                                VK_BLEND_FACTOR_ONE, VK_BLEND_OP_ADD, VK_BLEND_FACTOR_ONE,
                                                                                VK_BLEND_FACTOR_ZERO, VK_BLEND_OP_ADD, 0xf);
 
-                    switch (m_Specification.BlendMode)
+                    switch (graphicsPO->BlendMode)
                     {
                         case EBlendMode::BLEND_MODE_ALPHA:
                         {
@@ -501,14 +538,14 @@ void VulkanPipeline::Invalidate()
                 }
             }
 
-            VkPipelineColorBlendStateCreateInfo ColorBlendState = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
-            ColorBlendState.attachmentCount                     = static_cast<uint32_t>(colorBlendAttachmentStates.size());
-            ColorBlendState.pAttachments                        = colorBlendAttachmentStates.data();
-            ColorBlendState.logicOpEnable                       = VK_FALSE;
-            ColorBlendState.logicOp                             = VK_LOGIC_OP_COPY;
+            VkPipelineColorBlendStateCreateInfo colorBlendState = {VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO};
+            colorBlendState.attachmentCount                     = static_cast<uint32_t>(colorBlendAttachmentStates.size());
+            colorBlendState.pAttachments                        = colorBlendAttachmentStates.data();
+            colorBlendState.logicOpEnable                       = VK_FALSE;
+            colorBlendState.logicOp                             = VK_LOGIC_OP_COPY;
 
-            const auto windowWidth  = m_Specification.TargetFramebuffer->GetSpecification().Width;
-            const auto windowHeight = m_Specification.TargetFramebuffer->GetSpecification().Height;
+            const auto windowWidth  = graphicsPO->TargetFramebuffer->GetSpecification().Width;
+            const auto windowHeight = graphicsPO->TargetFramebuffer->GetSpecification().Height;
 
             // Unlike OpenGL, Vulkan has Y pointing down, so to solve we flip up the viewport
             const VkViewport viewport = {
@@ -519,49 +556,48 @@ void VulkanPipeline::Invalidate()
             const VkPipelineViewportStateCreateInfo viewportState = {
                 VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO, nullptr, 0, 1, &viewport, 1, &scissor};
 
-            VkPipelineDepthStencilStateCreateInfo DepthStencilState = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
-            DepthStencilState.depthTestEnable                       = m_Specification.bDepthTest ? VK_TRUE : VK_FALSE;
-            DepthStencilState.depthWriteEnable                      = m_Specification.bDepthWrite ? VK_TRUE : VK_FALSE;
-            DepthStencilState.depthCompareOp                        = m_Specification.bDepthTest
-                                                                          ? VulkanUtility::PathfinderCompareOpToVulkan(m_Specification.DepthCompareOp)
-                                                                          : VK_COMPARE_OP_ALWAYS;
-            DepthStencilState.depthBoundsTestEnable                 = VK_FALSE;
-            DepthStencilState.stencilTestEnable                     = VK_FALSE;
+            VkPipelineDepthStencilStateCreateInfo depthStencilState = {VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO};
+            depthStencilState.depthTestEnable                       = graphicsPO->bDepthTest ? VK_TRUE : VK_FALSE;
+            depthStencilState.depthWriteEnable                      = graphicsPO->bDepthWrite ? VK_TRUE : VK_FALSE;
+            depthStencilState.depthCompareOp =
+                graphicsPO->bDepthTest ? VulkanUtility::PathfinderCompareOpToVulkan(graphicsPO->DepthCompareOp) : VK_COMPARE_OP_ALWAYS;
+            depthStencilState.depthBoundsTestEnable = VK_FALSE;
+            depthStencilState.stencilTestEnable     = VK_FALSE;
 
-            DepthStencilState.minDepthBounds = 0.0f;
-            DepthStencilState.maxDepthBounds = 1.0f;
+            depthStencilState.minDepthBounds = 0.0f;
+            depthStencilState.maxDepthBounds = 1.0f;
 
             std::vector<VkDynamicState> dynamicStates = {VK_DYNAMIC_STATE_VIEWPORT, VK_DYNAMIC_STATE_SCISSOR};
-            if (m_Specification.bDynamicPolygonMode) dynamicStates.emplace_back(VK_DYNAMIC_STATE_POLYGON_MODE_EXT);
-            if (m_Specification.LineWidth != 1.0F) dynamicStates.emplace_back(VK_DYNAMIC_STATE_LINE_WIDTH);
+            if (graphicsPO->bDynamicPolygonMode) dynamicStates.emplace_back(VK_DYNAMIC_STATE_POLYGON_MODE_EXT);
+            if (graphicsPO->LineWidth != 1.0F) dynamicStates.emplace_back(VK_DYNAMIC_STATE_LINE_WIDTH);
 
             VkPipelineDynamicStateCreateInfo dynamicState = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
             dynamicState.dynamicStateCount                = static_cast<uint32_t>(dynamicStates.size());
             dynamicState.pDynamicStates                   = dynamicStates.data();
 
-            VkGraphicsPipelineCreateInfo pipelineCreateInfo = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
-            pipelineCreateInfo.layout                       = m_Layout;
-            if (!m_Specification.bMeshShading)
+            VkGraphicsPipelineCreateInfo graphicsPCI = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
+            graphicsPCI.layout                       = m_Layout;
+            if (!graphicsPO->bMeshShading)
             {
-                pipelineCreateInfo.pInputAssemblyState = &IAState;
-                pipelineCreateInfo.pVertexInputState   = &vertexInputState;
-                pipelineCreateInfo.pTessellationState  = &tessellationState;
+                graphicsPCI.pInputAssemblyState = &IAState;
+                graphicsPCI.pVertexInputState   = &vertexInputState;
+                graphicsPCI.pTessellationState  = &tessellationState;
             }
-            pipelineCreateInfo.pRasterizationState = &RasterizationState;
-            pipelineCreateInfo.stageCount          = static_cast<uint32_t>(shaderStages.size());
-            pipelineCreateInfo.pStages             = shaderStages.data();
-            pipelineCreateInfo.pViewportState      = &viewportState;
-            pipelineCreateInfo.pMultisampleState   = &MultisampleState;
-            pipelineCreateInfo.pDepthStencilState  = &DepthStencilState;
-            pipelineCreateInfo.pColorBlendState    = &ColorBlendState;
-            pipelineCreateInfo.pDynamicState       = &dynamicState;
+            graphicsPCI.pRasterizationState = &rasterizationState;
+            graphicsPCI.stageCount          = static_cast<uint32_t>(shaderStages.size());
+            graphicsPCI.pStages             = shaderStages.data();
+            graphicsPCI.pViewportState      = &viewportState;
+            graphicsPCI.pMultisampleState   = &multisampleState;
+            graphicsPCI.pDepthStencilState  = &depthStencilState;
+            graphicsPCI.pColorBlendState    = &colorBlendState;
+            graphicsPCI.pDynamicState       = &dynamicState;
 
             VkPipelineRenderingCreateInfo pipelineRenderingCreateInfo = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
             std::vector<VkFormat> colorAttachmentFormats;
             VkFormat depthAttachmentFormat   = VK_FORMAT_UNDEFINED;
             VkFormat stencilAttachmentFormat = VK_FORMAT_UNDEFINED;
 
-            for (const auto& attachment : m_Specification.TargetFramebuffer->GetAttachments())
+            for (const auto& attachment : graphicsPO->TargetFramebuffer->GetAttachments())
             {
                 if (ImageUtils::IsDepthFormat(attachment.Attachment->GetSpecification().Format))
                 {
@@ -591,31 +627,73 @@ void VulkanPipeline::Invalidate()
             pipelineRenderingCreateInfo.depthAttachmentFormat   = depthAttachmentFormat;
             pipelineRenderingCreateInfo.stencilAttachmentFormat = stencilAttachmentFormat;
 
-            pipelineCreateInfo.pNext = &pipelineRenderingCreateInfo;
-            VK_CHECK(vkCreateGraphicsPipelines(logicalDevice, pipelineCache, 1, &pipelineCreateInfo, VK_NULL_HANDLE, &m_Handle),
+            graphicsPCI.pNext = &pipelineRenderingCreateInfo;
+            VK_CHECK(vkCreateGraphicsPipelines(logicalDevice, pipelineCache, 1, &graphicsPCI, VK_NULL_HANDLE, &m_Handle),
                      "Failed to create GRAPHICS pipeline!");
             break;
         }
         case EPipelineType::PIPELINE_TYPE_COMPUTE:
         {
-            VkComputePipelineCreateInfo pipelineCreateInfo = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-            pipelineCreateInfo.layout                      = m_Layout;
+            PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                           std::holds_alternative<ComputePipelineOptions>(m_Specification.PipelineOptions.value()),
+                       "PipelineSpecification doesn't contain ComputePipelineOptions!");
+
+            const auto* computePO = std::get_if<ComputePipelineOptions>(&m_Specification.PipelineOptions.value());
+            PFR_ASSERT(computePO, "ComputePipelineOptions isn't valid!");
+
+            VkComputePipelineCreateInfo computePCI = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
+            computePCI.layout                      = m_Layout;
 
             if (shaderStages.size() > 1) LOG_WARN("Compute pipeline has more than 1 compute shader??");
-            pipelineCreateInfo.stage = shaderStages[0];
+            computePCI.stage = shaderStages[0];
 
-            VK_CHECK(vkCreateComputePipelines(logicalDevice, pipelineCache, 1, &pipelineCreateInfo, VK_NULL_HANDLE, &m_Handle),
+            VK_CHECK(vkCreateComputePipelines(logicalDevice, pipelineCache, 1, &computePCI, VK_NULL_HANDLE, &m_Handle),
                      "Failed to create COMPUTE pipeline!");
             break;
         }
         case EPipelineType::PIPELINE_TYPE_RAY_TRACING:
         {
-            VkRayTracingPipelineCreateInfoKHR pipelineCreateInfo = {VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
-            pipelineCreateInfo.layout                            = m_Layout;
-            pipelineCreateInfo.stageCount                        = static_cast<uint32_t>(shaderStages.size());
+            PFR_ASSERT(m_Specification.PipelineOptions.has_value() &&
+                           std::holds_alternative<RayTracingPipelineOptions>(m_Specification.PipelineOptions.value()),
+                       "PipelineSpecification doesn't contain RayTracingPipelineOptions!");
 
-            VK_CHECK(vkCreateRayTracingPipelinesKHR(logicalDevice, VK_NULL_HANDLE, pipelineCache, 1, &pipelineCreateInfo, VK_NULL_HANDLE,
-                                                    &m_Handle),
+            const auto* rayTracingPO = std::get_if<RayTracingPipelineOptions>(&m_Specification.PipelineOptions.value());
+            PFR_ASSERT(rayTracingPO, "RayTracingPipelineOptions isn't valid!");
+
+            std::vector<VkRayTracingShaderGroupCreateInfoKHR> rtShaderGroups;
+            for (auto shaderStageIdx{0}; shaderStageIdx < shaderStages.size(); ++shaderStageIdx)
+            {
+                if (shaderStages[shaderStageIdx].stage < VK_SHADER_STAGE_RAYGEN_BIT_KHR ||
+                    shaderStages[shaderStageIdx].stage > VK_SHADER_STAGE_CALLABLE_BIT_KHR)
+                    continue;
+                auto& shaderGroup = rtShaderGroups.emplace_back(VK_STRUCTURE_TYPE_RAY_TRACING_SHADER_GROUP_CREATE_INFO_KHR);
+
+                shaderGroup.generalShader = shaderGroup.closestHitShader = shaderGroup.anyHitShader = shaderGroup.intersectionShader =
+                    VK_SHADER_UNUSED_KHR;
+
+                // RGEN and MISS shaders are called 'general' shaders
+                if (shaderStages[shaderStageIdx].stage & VK_SHADER_STAGE_RAYGEN_BIT_KHR ||
+                    shaderStages[shaderStageIdx].stage & VK_SHADER_STAGE_MISS_BIT_KHR)
+                {
+                    shaderGroup.type          = VK_RAY_TRACING_SHADER_GROUP_TYPE_GENERAL_KHR;
+                    shaderGroup.generalShader = shaderStageIdx;
+                }
+                else if (shaderStages[shaderStageIdx].stage & VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR)
+                {
+                    shaderGroup.type = VK_RAY_TRACING_SHADER_GROUP_TYPE_TRIANGLES_HIT_GROUP_KHR;  // for now only triangles interesctions
+                    shaderGroup.closestHitShader = shaderStageIdx;
+                }
+            }
+
+            VkRayTracingPipelineCreateInfoKHR rtPCI = {VK_STRUCTURE_TYPE_RAY_TRACING_PIPELINE_CREATE_INFO_KHR};
+            rtPCI.layout                            = m_Layout;
+            rtPCI.stageCount                        = static_cast<uint32_t>(shaderStages.size());
+            rtPCI.pStages                           = shaderStages.data();
+            rtPCI.groupCount                        = static_cast<uint32_t>(rtShaderGroups.size());
+            rtPCI.pGroups                           = rtShaderGroups.data();
+            rtPCI.maxPipelineRayRecursionDepth      = rayTracingPO->MaxPipelineRayRecursionDepth;
+
+            VK_CHECK(vkCreateRayTracingPipelinesKHR(logicalDevice, VK_NULL_HANDLE, pipelineCache, 1, &rtPCI, VK_NULL_HANDLE, &m_Handle),
                      "Failed to create RAY_TRACING pipeline!");
             break;
         }
@@ -624,10 +702,6 @@ void VulkanPipeline::Invalidate()
 
     VK_SetDebugName(logicalDevice, m_Handle, VK_OBJECT_TYPE_PIPELINE, m_Specification.DebugName.data());
     SavePipelineCache(pipelineCache, m_Specification.DebugName);
-
-    // NOTE: In future, with pipeline recreation lines below will be removed.
-    m_Specification.ShaderConstantsMap.clear();
-    m_Specification.InputBufferBindings.clear();
 }
 
 void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string& pipelineName) const
@@ -665,10 +739,17 @@ void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string
 
 void VulkanPipeline::Destroy()
 {
-    auto& context             = VulkanContext::Get();
-    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
+    const auto& vulkanDevice = VulkanContext::Get().GetDevice();
+    vulkanDevice->WaitDeviceOnFinish();
 
-    vkDestroyPipelineLayout(logicalDevice, m_Layout, nullptr);
+    const auto& logicalDevice = vulkanDevice->GetLogicalDevice();
+    const auto& vulkanBR      = std::static_pointer_cast<VulkanBindlessRenderer>(Renderer::GetBindlessRenderer());
+    if (vulkanBR->GetPipelineLayout() !=
+        m_Layout)  // Since I don't create useless pipeline layouts because of empty descriptor sets excluding bindless.
+    {
+        vkDestroyPipelineLayout(logicalDevice, m_Layout, nullptr);
+    }
+
     vkDestroyPipeline(logicalDevice, m_Handle, nullptr);
     m_Handle = VK_NULL_HANDLE;
 }

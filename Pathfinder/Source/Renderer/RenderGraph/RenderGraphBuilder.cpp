@@ -2,7 +2,9 @@
 #include "RenderGraphBuilder.h"
 #include "RenderGraph.h"
 
-#include <simdjson.h>
+#include "Core/Application.h"
+
+#include <nlohmann/json.hpp>
 
 namespace Pathfinder
 {
@@ -33,11 +35,18 @@ static ERenderGraphResourceType StringToResourceType(const std::string& type)
 
 Unique<RenderGraph> RenderGraphBuilder::Create(const std::filesystem::path& renderGraphSpecificationPath)
 {
+    return nullptr;
+
     PFR_ASSERT(!renderGraphSpecificationPath.empty(), "Invalid render graph specification path!");
 
+    const auto& appSpec = Application::Get().GetSpecification();
+    const std::filesystem::path renderGraphFilePath =
+        std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / renderGraphSpecificationPath;
+
+#if 0
     using namespace simdjson;
     ondemand::parser parser;
-    const auto parsedJson  = padded_string::load(renderGraphSpecificationPath.string());
+    const auto parsedJson  = padded_string::load(renderGraphFilePath.string());
     ondemand::document doc = parser.iterate(parsedJson);
 
     std::string debugName = s_DEFAULT_STRING;
@@ -53,6 +62,7 @@ Unique<RenderGraph> RenderGraphBuilder::Create(const std::filesystem::path& rend
 
     auto passesArr = passesField.get_array();
     PFR_ASSERT(!passesArr.is_empty(), "Passes array is empty!");
+#endif
 
 #if 0
     const auto passCount = passesArr.count_elements().value();
@@ -106,7 +116,7 @@ Unique<RenderGraph> RenderGraphBuilder::Create(const std::filesystem::path& rend
     }
 #endif
 
-    return rg;
+    //return rg;
 }
 
 }  // namespace Pathfinder

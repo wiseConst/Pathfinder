@@ -6,13 +6,13 @@
 
 namespace Pathfinder
 {
-Shared<CommandBuffer> CommandBuffer::Create(ECommandBufferType type, ECommandBufferLevel level)
+Shared<CommandBuffer> CommandBuffer::Create(const CommandBufferSpecification& commandBufferSpec)
 {
     switch (RendererAPI::Get())
     {
         case ERendererAPI::RENDERER_API_VULKAN:
         {
-            return MakeShared<VulkanCommandBuffer>(type, level);
+            return MakeShared<VulkanCommandBuffer>(commandBufferSpec);
         }
     }
 

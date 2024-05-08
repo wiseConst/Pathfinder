@@ -22,13 +22,21 @@
 #include "Events/MouseEvent.h"
 
 // RENDERING
+#include "Renderer/Swapchain.h"
 #include "Renderer/RendererAPI.h"
 #include "Renderer/Renderer2D.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/Image.h"
 #include "Renderer/Camera/Camera.h"
 #include "Renderer/Camera/OrthographicCamera.h"
-#include "Renderer/Mesh.h"
+#include "Renderer/Mesh/Mesh.h"
+#include "Renderer/Debug/DebugRenderer.h"
+
+// ECS
+#include "Scene/Components.h"
+#include "Scene/SceneManager.h"
+#include "Scene/Scene.h"
+#include "Scene/Entity.h"
 
 // IMGUI
 #include <imgui.h>

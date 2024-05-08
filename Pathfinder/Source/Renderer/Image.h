@@ -297,6 +297,8 @@ void* ConvertRgbToRgba(const uint8_t* rgb, const uint32_t width, const uint32_t 
 
 void UnloadRawImage(void* data);
 
+uint32_t CalculateMipCount(const uint32_t width, const uint32_t height);
+
 }  // namespace ImageUtils
 
 }  // namespace Pathfinder

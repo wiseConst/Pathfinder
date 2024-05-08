@@ -11,7 +11,7 @@ namespace Pathfinder
 {
 
 #define LOG_SHADER_INFO 0
-#define LOG_TEXTURE_COMPRESSION_INFO 1
+#define LOG_TEXTURE_COMPRESSION_INFO 0
 
 static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
 
@@ -162,6 +162,13 @@ enum class ESamplerWrap : uint8_t
     SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE,
 };
 
+enum class EBlurType : uint8_t
+{
+    BLUR_TYPE_GAUSSIAN = 0,
+    BLUR_TYPE_MEDIAN,
+    BLUR_TYPE_BOX,
+};
+
 struct QuadVertex
 {
     glm::vec3 Position = glm::vec3(0.0f);
@@ -170,11 +177,16 @@ struct QuadVertex
     glm::vec4 Color    = glm::vec4(1.0f);
 };
 
-class Submesh;
-struct RenderObject
+struct LineVertex
 {
-    Shared<Submesh> submesh = nullptr;
-    glm::mat4 Transform     = glm::mat4(1.0f);
+    glm::vec3 Position = glm::vec3(0.0f);
+    glm::vec4 Color    = glm::vec4(1.0f);
+};
+
+struct SurfaceMesh
+{
+    Shared<Buffer> VertexBuffer;
+    Shared<Buffer> IndexBuffer;
 };
 
 struct AccelerationStructure
@@ -183,17 +195,39 @@ struct AccelerationStructure
     void* Handle                      = nullptr;  // RHI handle
 };
 
-enum class EShadowSetting : uint8_t
+struct DrawMeshTasksIndirectCommand
 {
-    SHADOW_SETTING_LOW = 0,
-    SHADOW_SETTING_MEDIUM,
-    SHADOW_SETTING_HIGH,
+    uint32_t groupCountX;
+    uint32_t groupCountY;
+    uint32_t groupCountZ;
 };
 
-const static std::map<EShadowSetting, uint16_t> s_ShadowsSettings = {
-    {EShadowSetting::SHADOW_SETTING_LOW, 1024},     //
-    {EShadowSetting::SHADOW_SETTING_MEDIUM, 2048},  //
-    {EShadowSetting::SHADOW_SETTING_HIGH, 4096}     //
+// vulkan_core.h
+struct StridedDeviceAddressRegion
+{
+    uint64_t deviceAddress;
+    uint64_t stride;
+    uint64_t size;
+};
+
+struct ShaderBindingTable
+{
+    Shared<Buffer> SBTBuffer              = nullptr;
+    StridedDeviceAddressRegion RgenRegion = {};
+    StridedDeviceAddressRegion MissRegion = {};
+    StridedDeviceAddressRegion HitRegion  = {};
+    StridedDeviceAddressRegion CallRegion = {};
+};
+
+// Same as VmaBudget
+struct MemoryBudget
+{
+    uint32_t BlockCount      = 0;  // number of device memory objects
+    uint32_t AllocationCount = 0;  // number of dedicated (sub-)allocations
+    uint64_t BlockBytes      = 0;  // bytes allocated in dedicated allocations
+    uint64_t AllocationBytes = 0;  // bytes occupied by all (sub-)allocations
+    uint64_t UsageBytes      = 0;  // Estimated current memory usage of the program
+    uint64_t BudgetBytes     = 0;  // Estimated amount of memory available to the program
 };
 
 }  // namespace Pathfinder

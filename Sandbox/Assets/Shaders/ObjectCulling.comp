@@ -1,11 +1,95 @@
 #version 460
 
 #extension GL_GOOGLE_include_directive : require
-#include "Assets/Shaders/Include/Globals.h"
+#include "Include/Globals.h"
+#include "Include/Culling.h"
 
-layout(local_size_x = 32, local_size_y = 1, local_size_z = 1) in;
+layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+struct DrawMeshTasksIndirectCommand
+{
+    uint32_t groupCountX;
+    uint32_t groupCountY;
+    uint32_t groupCountZ;
+};
+
+layout(set = LAST_BINDLESS_SET + 1, binding = 0, scalar) buffer DrawBufferOpaque
+{
+    uint32_t Count;
+    DrawMeshTasksIndirectCommand Commands[];
+} s_DrawBufferOpaque;
+
+layout(set = LAST_BINDLESS_SET + 1, binding = 1, scalar) buffer DrawBufferTransparent
+{
+    uint32_t Count;
+    DrawMeshTasksIndirectCommand Commands[];
+} s_DrawBufferTransparent;
+
+layout(set = LAST_BINDLESS_SET + 1, binding = 2, scalar) writeonly buffer CulledMeshIDBufferOpaque
+{
+    uint32_t CulledMeshIDs[];
+} s_CulledMeshIDBufferOpaque;
+
+layout(set = LAST_BINDLESS_SET + 1, binding = 3, scalar) writeonly buffer CulledMeshIDBufferTransparent
+{
+    uint32_t CulledMeshIDs[];
+} s_CulledMeshIDBufferTransparent;
+
+uint32_t DivideToNextMultiple(const uint32_t dividend, const uint32_t divisor)
+{
+    if(divisor == 0) return 0;
+
+    return (dividend + divisor - 1) / divisor;
+}
 
 void main()
-{       
+{
+	const uint gID = gl_GlobalInvocationID.x;
+	if (gID >= u_PC.StorageImageIndex) return; // StorageImageIndex contains Opaque/Transparent object count.
 
+    MeshData md;
+    if(u_PC.MaterialBufferIndex == 0)
+    {
+        md = s_GlobalMeshDataBufferOpaque.MeshesData[gID];
+    }else{
+        md = s_GlobalMeshDataBufferTransparent.MeshesData[gID];
+    }
+
+    Sphere sphere;
+    sphere.Center = RotateByQuat(md.sphere.Center * md.scale, md.orientation) + md.translation;
+    sphere.Radius = md.sphere.Radius * max(max(md.scale.x, md.scale.y), md.scale.z);
+    if(SphereInsideFrustum(sphere, u_PC.CameraDataBuffer.ViewFrustum))
+    {
+            if(u_PC.MaterialBufferIndex == 0)
+            {
+                 s_DrawBufferOpaque.Commands[gID].groupCountX = DivideToNextMultiple(s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets.length(), MESHLET_LOCAL_GROUP_SIZE);
+                 s_DrawBufferOpaque.Commands[gID].groupCountY = 1;
+                 s_DrawBufferOpaque.Commands[gID].groupCountZ = 1;
+                 const uint32_t index = atomicAdd(s_DrawBufferOpaque.Count, 1);
+
+                 s_CulledMeshIDBufferOpaque.CulledMeshIDs[index] = gID;
+            } else {
+                 s_DrawBufferTransparent.Commands[gID].groupCountX = DivideToNextMultiple(s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets.length(), MESHLET_LOCAL_GROUP_SIZE);
+                 s_DrawBufferTransparent.Commands[gID].groupCountY = 1;
+                 s_DrawBufferTransparent.Commands[gID].groupCountZ = 1;
+                 const uint32_t index = atomicAdd(s_DrawBufferTransparent.Count, 1);
+                
+                 s_CulledMeshIDBufferTransparent.CulledMeshIDs[index] = gID;
+            }
+    }
+
+    barrier();
+
+    if(gl_LocalInvocationID.x == 0)
+    {
+        if(s_DrawBufferOpaque.Count < s_CulledMeshIDBufferOpaque.CulledMeshIDs.length())
+        {
+             s_CulledMeshIDBufferOpaque.CulledMeshIDs[s_DrawBufferOpaque.Count] = s_INVALID_CULLED_OBJECT_INDEX;
+        }
+
+        if(s_DrawBufferTransparent.Count < s_CulledMeshIDBufferTransparent.CulledMeshIDs.length())
+        {
+             s_CulledMeshIDBufferTransparent.CulledMeshIDs[s_DrawBufferTransparent.Count] = s_INVALID_CULLED_OBJECT_INDEX;
+        }
+    }
 }

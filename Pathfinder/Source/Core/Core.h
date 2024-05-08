@@ -3,6 +3,7 @@
 
 #include "PlatformDetection.h"
 #include "Inheritance.h"
+#include "Intrinsics.h"
 #include "CoreDefines.h"
 #include "UUID.h"
 
@@ -10,35 +11,13 @@
 #include "Log.h"
 #include "Math.h"
 
-#if PFR_WINDOWS
-#define DEBUGBREAK() __debugbreak()
-#elif PFR_LINUX
-#define DEBUGBREAK() __builtin_trap()
-#elif PFR_MACOS
-#define DEBUGBREAK() __builtin_trap()
-#endif
-
-// TODO: Add VERIFY for release mode since assert is descended
-
-#if PFR_RELEASE
-#define PFR_ASSERT(x, msg) (x)
-#elif PFR_DEBUG
-#define PFR_ASSERT(x, msg)                                                                                                                 \
-    {                                                                                                                                      \
-        if (!(x))                                                                                                                          \
-        {                                                                                                                                  \
-            LOG_ERROR(msg);                                                                                                                \
-            DEBUGBREAK();                                                                                                                  \
-        }                                                                                                                                  \
-    }
-#endif
-
 namespace Pathfinder
 {
 
 static constexpr const char* s_DEFAULT_STRING = "NONE";
+static constexpr std::string_view s_ENGINE_NAME = "PATHFINDER";
 
-static constexpr uint16_t s_WORKER_THREAD_COUNT = 12;
+static constexpr uint16_t s_WORKER_THREAD_COUNT = 16;
 
 template <typename T> using Weak = std::weak_ptr<T>;
 

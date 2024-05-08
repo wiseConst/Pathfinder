@@ -1,0 +1,17 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#include "Include/Globals.h"
+
+layout(local_size_x = 16, local_size_y = 16, local_size_z = 1) in;
+
+void main()
+{
+	const vec2 pixelPos = gl_GlobalInvocationID.xy;
+
+	// NOTE: MAX depth since I have reversed Z.
+	// Sampler is set up to do MAX reduction, so this computes the MAX depth of a 2x2 texel quad
+	const vec2 uv =  (pixelPos + vec2(0.5)) / imageSize(u_GlobalImages_R32F[nonuniformEXT(u_PC.StorageImageIndex)];
+	const float depth = texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], uv).x;
+	imageStore(u_GlobalImages_R32F[nonuniformEXT(u_PC.StorageImageIndex)], ivec2(pixelPos), vec4(depth));
+}

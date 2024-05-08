@@ -1,0 +1,62 @@
+{
+  "Scene": "BistroExteriorTest",
+  "Entities": {
+    "822638002123518401": {
+      "TagComponent": "die sonne",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "DirectionalLightComponent": {
+        "Direction": {
+          "x": -1.0,
+          "y": 1.0,
+          "z": 0.20000000298023224
+        },
+        "Color": {
+          "x": 0.800000011920929,
+          "y": 0.800000011920929,
+          "z": 0.10000000149011612
+        },
+        "Intensity": 1.2999999523162842,
+        "bCastShadows": 0
+      }
+    },
+    "2115115325718338288": {
+      "TagComponent": "BistroExterior",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "MeshComponent": {
+        "MeshSource": "bistro_exterior/scene.gltf"
+      }
+    }
+  }
+}

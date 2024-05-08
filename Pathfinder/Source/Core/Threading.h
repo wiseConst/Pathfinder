@@ -39,13 +39,27 @@ class JobSystem final : private Uncopyable, private Unmovable
     static void Init();
     static void Shutdown();
 
-    FORCEINLINE static uint32_t GetNumThreads()
+    NODISCARD FORCEINLINE static uint32_t GetNumThreads()
     {
         return std::clamp(std::thread::hardware_concurrency() - 1u, 1u, (uint32_t)s_WORKER_THREAD_COUNT);
     }
 
+    // NOTE: Returns index into array of workers.
+    NODISCARD FORCEINLINE static uint8_t MapThreadID(const std::thread::id& threadID)
+    {
+        if (threadID == s_MainThreadID) return 0;
+
+        for (uint8_t i{}; i < s_Workers.size(); ++i)
+            if (s_Workers[i].get_id() == threadID) return i;
+
+        return 0;
+    }
+
+    NODISCARD FORCEINLINE static const auto& GetMainThreadID() { return s_MainThreadID; }
+
   private:
-    static inline bool s_bShutdownRequested = false;
+    static inline std::thread::id s_MainThreadID = std::this_thread::get_id();
+    static inline bool s_bShutdownRequested      = false;
     static inline std::vector<std::jthread> s_Workers;
     static inline std::condition_variable_any s_Cv;
     static inline std::mutex s_QueueMutex;

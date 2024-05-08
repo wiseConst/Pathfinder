@@ -14,6 +14,11 @@ namespace Pathfinder
 namespace ImageUtils
 {
 
+uint32_t CalculateMipCount(const uint32_t width, const uint32_t height)
+{
+    return static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;  // +1 for base mip level.
+}
+
 void* LoadRawImage(const std::filesystem::path& imagePath, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels)
 {
     PFR_ASSERT(!imagePath.empty() && x && y && nChannels, "Invalid data passed into LoadRawImage()!");
@@ -50,12 +55,75 @@ void* ConvertRgbToRgba(const uint8_t* rgb, const uint32_t width, const uint32_t 
     uint8_t* rgba         = new uint8_t[dataSize * 4];
     PFR_ASSERT(rgba, "Failed to allocate rgba buffer for ConvertRgbToRgba().");
 
-    // TODO: AVX256ify it.
-    for (size_t i{}; i < dataSize; ++i)
+#if TODO
+    if (AVX2Supported())
     {
-        for (size_t k{}; k < 3; ++k)
-            rgba[4 * i + k] = rgb[3 * i + k];
-        rgba[4 * i + 3] = 255;
+        // Process 8 pixels at a time
+        size_t i                     = 0;
+        const size_t alignedDataSize = (dataSize & ~7);
+
+        const __m256i alpha = _mm256_set1_epi32(255);    // Set all elements of alpha to 255
+        for (size_t i = 0; i < alignedDataSize; i += 8)  // Process 8 elements at a time
+        {
+            // Load 24 bytes (8 RGB pixels) from rgb into two 256-bit registers
+            const __m256i rgb1 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&rgb[3 * i]));
+            const __m256i rgb2 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(&rgb[3 * i + 24]));
+
+            // Interleave the RGB values with alpha and store in rgba
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(&rgba[4 * i]), _mm256_unpacklo_epi8(rgb1, alpha));
+            _mm256_storeu_si256(reinterpret_cast<__m256i*>(&rgba[4 * i + 32]), _mm256_unpacklo_epi8(rgb2, alpha));
+        }
+
+        // Handle the remaining pixels if the total number of pixels is not a multiple of 8
+        for (i = alignedDataSize; i < dataSize; ++i)
+        {
+            for (size_t k{}; k < 3; ++k)
+            {
+                rgba[4 * i + k] = rgb[3 * i + k];
+            }
+            rgba[4 * i + 3] = 255;
+        }
+    }
+    else if (AVXSupported())
+    {
+        // Process 4 pixels at a time
+        size_t i                     = 0;
+        const size_t alignedDataSize = (dataSize & ~3);
+        for (i = 0; i < alignedDataSize; i += 4)
+        {
+            // Load 4 RGB values into a 128-bit vector
+            __m128i rgbVec = _mm_loadu_si128(reinterpret_cast<const __m128i*>(rgb + 3 * i));
+
+            // Set the alpha channel to 255 for all pixels
+            __m128i alphaVec = _mm_set1_epi8(255);
+
+            // Interleave the RGB values with the alpha channel
+            __m128i rgbaVec = _mm_unpacklo_epi8(rgbVec, alphaVec);
+            rgbaVec         = _mm_unpacklo_epi8(rgbaVec, _mm_setzero_si128());
+
+            // Store the result back into the rgba buffer
+            _mm_storeu_si128(reinterpret_cast<__m128i*>(rgba + 4 * i), rgbaVec);
+        }
+
+        // Handle the remaining pixels if the total number of pixels is not a multiple of 4
+        for (i = alignedDataSize; i < dataSize; ++i)
+        {
+            for (size_t k{}; k < 3; ++k)
+            {
+                rgba[4 * i + k] = rgb[3 * i + k];
+            }
+            rgba[4 * i + 3] = 255;
+        }
+    }
+    else
+#endif
+    {
+        for (size_t i{}; i < dataSize; ++i)
+        {
+            for (size_t k{}; k < 3; ++k)
+                rgba[4 * i + k] = rgb[3 * i + k];
+            rgba[4 * i + 3] = 255;
+        }
     }
 
     return rgba;

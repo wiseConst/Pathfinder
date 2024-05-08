@@ -49,7 +49,7 @@ class Renderer2D final : private Uncopyable, private Unmovable
 
         std::vector<Sprite> Sprites;
 
-        uint32_t FrameIndex = 0;
+        uint8_t FrameIndex = 0;
 
         static constexpr uint32_t s_MAX_QUADS              = 2500;
         static constexpr uint32_t s_MAX_VERTICES           = s_MAX_QUADS * 4;
@@ -58,7 +58,7 @@ class Renderer2D final : private Uncopyable, private Unmovable
 
         Shared<Buffer> QuadIndexBuffer = nullptr;
 
-        static constexpr glm::vec3 QuadVertices[4] = {
+        static inline glm::vec3 QuadVertices[4] = {
             glm::vec3(-0.5f, -0.5f, 0.0f),  // bottom left
             glm::vec3(0.5f, -0.5f, 0.0f),   // bottom right
             glm::vec3(0.5f, 0.5f, 0.0f),    // top right
@@ -66,14 +66,14 @@ class Renderer2D final : private Uncopyable, private Unmovable
         };
 
         // FIXME: Currently wrong defined
-        static constexpr glm::vec3 QuadNormals[4] = {
+        static inline glm::vec3 QuadNormals[4] = {
             glm::vec3(1.0f, 0.0f, 0.0f),   //  top right
             glm::vec3(0.0f, -1.0f, 0.0f),  // bottom right
             glm::vec3(-1.0f, 0.0f, 0.0f),  // bottom left
             glm::vec3(0.0f, 1.0f, 0.0f),   // top left
         };
 
-        static constexpr glm::vec2 QuadUVs[4] = {
+        static inline glm::vec2 QuadUVs[4] = {
             glm::vec2(0.0f, 0.0f),  // bottom left
             glm::vec2(1.0f, 0.0f),  // bottom right
             glm::vec2(1.0f, 1.0f),  // top right

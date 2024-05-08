@@ -2,6 +2,8 @@
 #include "VulkanContext.h"
 
 #include "VulkanDevice.h"
+#include "VulkanDeviceManager.h"
+#include "VulkanAllocator.h"
 
 #include "Core/Application.h"
 #include "Core/Window.h"
@@ -16,7 +18,7 @@ VulkanContext::VulkanContext() noexcept
     CreateInstance();
     CreateDebugMessenger();
 
-    m_Device = MakeUnique<VulkanDevice>(m_VulkanInstance);
+    m_Device = VulkanDeviceManager::ChooseBestFitDevice(m_VulkanInstance);
 }
 
 VulkanContext::~VulkanContext()
@@ -33,24 +35,21 @@ void VulkanContext::CreateInstance()
         PFR_ASSERT(CheckVulkanValidationSupport(), "Validation layers aren't supported!");
 
     uint32_t supportedApiVersionFromDLL = 0;
-    {
-        VK_CHECK(vkEnumerateInstanceVersion(&supportedApiVersionFromDLL), "Failed to retrieve supported vulkan version!");
+    VK_CHECK(vkEnumerateInstanceVersion(&supportedApiVersionFromDLL), "Failed to retrieve supported vulkan version!");
 
-#if PFR_DEBUG && VK_LOG_INFO
-        LOG_INFO("Your system supports vulkan version up to: %u.%u.%u.%u", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
-                 VK_API_VERSION_MAJOR(supportedApiVersionFromDLL), VK_API_VERSION_MINOR(supportedApiVersionFromDLL),
-                 VK_API_VERSION_PATCH(supportedApiVersionFromDLL));
+#if VK_LOG_INFO
+    LOG_INFO("System supports vulkan version up to: %u.%u.%u.%u", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
+             VK_API_VERSION_MAJOR(supportedApiVersionFromDLL), VK_API_VERSION_MINOR(supportedApiVersionFromDLL),
+             VK_API_VERSION_PATCH(supportedApiVersionFromDLL));
 #endif
-    }
     PFR_ASSERT(PFR_VK_API_VERSION <= supportedApiVersionFromDLL, "Desired VK version >= available VK version.");
-    supportedApiVersionFromDLL = PFR_VK_API_VERSION;
 
     VkApplicationInfo applicationInfo  = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
     applicationInfo.apiVersion         = supportedApiVersionFromDLL;
     applicationInfo.pApplicationName   = Application::Get().GetSpecification().Title.data();
-    applicationInfo.pEngineName        = "Pathfinder";
-    applicationInfo.engineVersion      = VK_MAKE_API_VERSION(0, 1, 0, 0);
-    applicationInfo.applicationVersion = VK_MAKE_API_VERSION(0, 1, 0, 0);
+    applicationInfo.pEngineName        = s_ENGINE_NAME.data();
+    applicationInfo.engineVersion      = VK_MAKE_API_VERSION(0, 1, 1, 0);
+    applicationInfo.applicationVersion = VK_MAKE_API_VERSION(0, 1, 1, 0);
 
     VkInstanceCreateInfo instanceCI = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
     instanceCI.pApplicationInfo     = &applicationInfo;
@@ -199,6 +198,18 @@ std::vector<const char*> VulkanContext::GetRequiredExtensions() const
 
     if constexpr (s_bEnableValidationLayers || VK_FORCE_VALIDATION) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     return extensions;
+}
+
+void VulkanContext::Begin()
+{
+    m_Device->ResetCommandPools();
+}
+
+void VulkanContext::End() {}
+
+void VulkanContext::FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudgets)
+{
+    m_Device->GetAllocator()->FillMemoryBudgetStats(memoryBudgets);
 }
 
 void VulkanContext::Destroy()
