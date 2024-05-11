@@ -1,8 +1,12 @@
 #include "SandboxLayer.h"
+#include "Panels/SceneHierarchyPanel.h"
 
 namespace Pathfinder
 {
-static const std::string sceneFilePath = "Scenes/SponzaSonne";
+static const std::string sceneFilePath = "Scenes/TestBedLights";
+
+SandboxLayer::SandboxLayer() : Layer("SandboxLayer") {}
+SandboxLayer::~SandboxLayer() = default;
 
 void SandboxLayer::Init()
 {
@@ -12,6 +16,7 @@ void SandboxLayer::Init()
 
     m_ActiveScene = MakeShared<Scene>(s_DEFAULT_STRING);
     SceneManager::Deserialize(m_ActiveScene, sceneFilePath);
+    m_WorldOutlinerPanel = MakeUnique<SceneHierarchyPanel>(m_ActiveScene);
 
     UILayer::SetDefaultFont("Fonts/Manrope/static/Manrope-Bold.ttf", 18.0f);
 }
@@ -73,13 +78,13 @@ void SandboxLayer::OnUpdate(const float deltaTime)
     const glm::vec3 minLightPos{-15, -5, -5};
     const glm::vec3 maxLightPos{15, 20, 5};
 
-    m_ActiveScene->ForEach<PointLightComponent>(
-        [&](const auto entityID, PointLightComponent& plc)
+    m_ActiveScene->ForEach<TransformComponent, PointLightComponent>(
+        [&](TransformComponent& tc, PointLightComponent& plc)
         {
-            plc.pl.Position += glm::vec3(0, 3.0f, 0) * deltaTime;
-            if (plc.pl.Position.y > maxLightPos.y)
+            tc.Translation += glm::vec3(0, 3.0f, 0) * deltaTime;
+            if (tc.Translation.y > maxLightPos.y)
             {
-                plc.pl.Position.y -= (maxLightPos.y - minLightPos.y);
+                tc.Translation.y -= (maxLightPos.y - minLightPos.y);
             }
         });
 
@@ -223,6 +228,35 @@ void SandboxLayer::OnUIRender()
         ImGui::End();
     }
 
+    static bool bShowPipelineMap = true;
+    if (bShowPipelineMap)
+    {
+        ImGui::Begin("Pipeline Map", &bShowPipelineMap);
+
+        // TODO: Make ui better: kind of ALIGNED Table?
+        // NAME|ACTION
+        // DepthPrePass | RELOAD
+        // SSAO         | RELOAD
+        for (const auto& [spec, pipeline] : PipelineLibrary::GetStorage())
+        {
+            ImGui::PushID(spec.DebugName.data());
+            ImGui::Text("%s", spec.DebugName.data());
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 100.0f);
+            if (ImGui::Button("Hot-Reload"))
+            {
+                LOG_WARN("Hot-reloading pipeline: %s", spec.DebugName.data());
+                pipeline->Invalidate();
+            }
+            ImGui::Separator();
+            ImGui::PopID();
+        }
+
+        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
+        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
+
+        ImGui::End();
+    }
+
     static bool bShowRendererStats = true;
     if (bShowRendererStats)
     {
@@ -255,29 +289,7 @@ void SandboxLayer::OnUIRender()
     }
 
     static bool bShowWorldOutliner = true;
-    if (bShowWorldOutliner)
-    {
-        const std::string worldOutlinerString = "World Outliner: " + std::to_string(m_ActiveScene->GetEntityCount()) + " entities.";
-        ImGui::Begin(worldOutlinerString.c_str(), &bShowWorldOutliner);
-
-        m_ActiveScene->ForEach<TagComponent>([&](const auto entityID, TagComponent& tagComponent)
-                                             { ImGui::Text("%s", tagComponent.Tag.c_str()); });
-
-        if (ImGui::BeginPopupContextWindow(0, ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
-        {
-            if (ImGui::MenuItem("Create Empty Entity"))
-            {
-                m_ActiveScene->CreateEntity();
-            }
-
-            ImGui::EndPopup();
-        }
-
-        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
-        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
-
-        ImGui::End();
-    }
+    if (bShowWorldOutliner) m_WorldOutlinerPanel->OnImGuiRender();
 
     UILayer::SetBlockEvents(bAnythingHovered || bAnythingFocused);
 }

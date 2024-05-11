@@ -15,10 +15,17 @@ class Material final : private Uncopyable, private Unmovable
     Material(const PBRData& pbrData);
     ~Material() override { m_MaterialBuffer.reset(); }
 
-    NODISCARD FORCEINLINE const auto& GetPBRData() const { return m_MaterialData; }
+    NODISCARD FORCEINLINE auto& GetPBRData() { return m_MaterialData; }
     NODISCARD FORCEINLINE const auto IsOpaque() const { return m_MaterialData.bIsOpaque; }
+    void Update();
 
     const uint32_t GetBufferIndex() const;
+
+    NODISCARD FORCEINLINE const auto& GetAlbedo() const { return m_Albedo; }
+    NODISCARD FORCEINLINE const auto& GetNormalMap() const { return m_NormalMap; }
+    NODISCARD FORCEINLINE const auto& GetMetallicRoughness() const { return m_MetallicRoughness; }
+    NODISCARD FORCEINLINE const auto& GetEmissiveMap() const { return m_EmissiveMap; }
+    NODISCARD FORCEINLINE const auto& GetAOMap() const { return m_AO; }
 
     void SetAlbedo(const Shared<Texture2D>& albedo) { m_Albedo = albedo; }
     void SetNormalMap(const Shared<Texture2D>& normalMap) { m_NormalMap = normalMap; }

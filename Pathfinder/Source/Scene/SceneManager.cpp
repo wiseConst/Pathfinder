@@ -79,40 +79,39 @@ static void SerializeEntity(nlohmann::ordered_json& out, const Entity entity)
     {
         const auto& mc = entity.GetComponent<MeshComponent>();
         node["MeshComponent"].emplace("MeshSource", mc.MeshSource);
+        node["MeshComponent"].emplace("bDrawBoundingSphere", mc.bDrawBoundingSphere);
     }
 
     if (entity.HasComponent<PointLightComponent>())
     {
-        const auto& pl = entity.GetComponent<PointLightComponent>().pl;
-        glm::to_json(node["PointLightComponent"]["Position"], pl.Position);
-        glm::to_json(node["PointLightComponent"]["Color"], pl.Color);
-        node["PointLightComponent"]["Intensity"]    = pl.Intensity;
-        node["PointLightComponent"]["Radius"]       = pl.Radius;
-        node["PointLightComponent"]["MinRadius"]    = pl.MinRadius;
-        node["PointLightComponent"]["bCastShadows"] = pl.bCastShadows;
+        const auto& plc = entity.GetComponent<PointLightComponent>();
+        glm::to_json(node["PointLightComponent"]["Color"], plc.Color);
+        node["PointLightComponent"]["Intensity"]           = plc.Intensity;
+        node["PointLightComponent"]["Radius"]              = plc.Radius;
+        node["PointLightComponent"]["MinRadius"]           = plc.MinRadius;
+        node["PointLightComponent"]["bCastShadows"]        = plc.bCastShadows;
+        node["PointLightComponent"]["bDrawBoundingSphere"] = plc.bDrawBoundingSphere;
     }
 
     if (entity.HasComponent<DirectionalLightComponent>())
     {
-        const auto& dl = entity.GetComponent<DirectionalLightComponent>().dl;
-        glm::to_json(node["DirectionalLightComponent"]["Direction"], dl.Direction);
-        glm::to_json(node["DirectionalLightComponent"]["Color"], dl.Color);
-        node["DirectionalLightComponent"]["Intensity"]    = dl.Intensity;
-        node["DirectionalLightComponent"]["bCastShadows"] = dl.bCastShadows;
+        const auto& dlc = entity.GetComponent<DirectionalLightComponent>();
+        glm::to_json(node["DirectionalLightComponent"]["Color"], dlc.Color);
+        node["DirectionalLightComponent"]["Intensity"]    = dlc.Intensity;
+        node["DirectionalLightComponent"]["bCastShadows"] = dlc.bCastShadows;
     }
 
     if (entity.HasComponent<SpotLightComponent>())
     {
-        const auto& sl = entity.GetComponent<SpotLightComponent>().sl;
-        glm::to_json(node["SpotLightComponent"]["Position"], sl.Position);
-        glm::to_json(node["SpotLightComponent"]["Direction"], sl.Direction);
-        glm::to_json(node["SpotLightComponent"]["Color"], sl.Color);
-        node["SpotLightComponent"]["Intensity"]    = sl.Intensity;
-        node["SpotLightComponent"]["Height"]       = sl.Height;
-        node["SpotLightComponent"]["Radius"]       = sl.Radius;
-        node["SpotLightComponent"]["InnerCutOff"]  = sl.InnerCutOff;
-        node["SpotLightComponent"]["OuterCutOff"]  = sl.OuterCutOff;
-        node["SpotLightComponent"]["bCastShadows"] = sl.bCastShadows;
+        const auto& slc = entity.GetComponent<SpotLightComponent>();
+        glm::to_json(node["SpotLightComponent"]["Direction"], slc.Direction);
+        glm::to_json(node["SpotLightComponent"]["Color"], slc.Color);
+        node["SpotLightComponent"]["Intensity"]    = slc.Intensity;
+        node["SpotLightComponent"]["Height"]       = slc.Height;
+        node["SpotLightComponent"]["Radius"]       = slc.Radius;
+        node["SpotLightComponent"]["InnerCutOff"]  = slc.InnerCutOff;
+        node["SpotLightComponent"]["OuterCutOff"]  = slc.OuterCutOff;
+        node["SpotLightComponent"]["bCastShadows"] = slc.bCastShadows;
     }
 }
 
@@ -195,52 +194,54 @@ void SceneManager::Deserialize(Shared<Scene>& scene, const std::filesystem::path
         if (node.contains("MeshComponent"))
         {
             const auto meshSource = node["MeshComponent"]["MeshSource"].get<std::string>();
-            entity.AddComponent<MeshComponent>(meshSource);
+            auto& mc              = entity.AddComponent<MeshComponent>(meshSource);
+
+            if (node["MeshComponent"].contains("bDrawBoundingSphere"))
+                mc.bDrawBoundingSphere = node["MeshComponent"]["bDrawBoundingSphere"].get<bool>();
         }
 
         if (node.contains("PointLightComponent"))
         {
-            auto& pl = entity.AddComponent<PointLightComponent>().pl;
+            auto& plc = entity.AddComponent<PointLightComponent>();
 
-            if (node["PointLightComponent"].contains("Position")) glm::from_json(node["PointLightComponent"]["Position"], pl.Position);
-            if (node["PointLightComponent"].contains("Color")) glm::from_json(node["PointLightComponent"]["Color"], pl.Color);
-            if (node["PointLightComponent"].contains("Intensity")) pl.Intensity = node["PointLightComponent"]["Intensity"].get<float>();
-            if (node["PointLightComponent"].contains("Radius")) pl.Radius = node["PointLightComponent"]["Radius"].get<float>();
-            if (node["PointLightComponent"].contains("MinRadius")) pl.MinRadius = node["PointLightComponent"]["MinRadius"].get<float>();
+            if (node["PointLightComponent"].contains("Color")) glm::from_json(node["PointLightComponent"]["Color"], plc.Color);
+            if (node["PointLightComponent"].contains("Intensity")) plc.Intensity = node["PointLightComponent"]["Intensity"].get<float>();
+            if (node["PointLightComponent"].contains("Radius")) plc.Radius = node["PointLightComponent"]["Radius"].get<float>();
+            if (node["PointLightComponent"].contains("MinRadius")) plc.MinRadius = node["PointLightComponent"]["MinRadius"].get<float>();
             if (node["PointLightComponent"].contains("bCastShadows"))
-                pl.bCastShadows = node["PointLightComponent"]["bCastShadows"].get<uint32_t>();
+                plc.bCastShadows = node["PointLightComponent"]["bCastShadows"].get<uint32_t>();
+            if (node["PointLightComponent"].contains("bDrawBoundingSphere"))
+                plc.bDrawBoundingSphere = node["PointLightComponent"]["bDrawBoundingSphere"].get<bool>();
         }
 
         if (node.contains("DirectionalLightComponent"))
         {
-            auto& dl = entity.AddComponent<DirectionalLightComponent>().dl;
+            auto& dlc = entity.AddComponent<DirectionalLightComponent>();
 
-            if (node["DirectionalLightComponent"].contains("Direction"))
-                glm::from_json(node["DirectionalLightComponent"]["Direction"], dl.Direction);
-
-            if (node["DirectionalLightComponent"].contains("Color")) glm::from_json(node["DirectionalLightComponent"]["Color"], dl.Color);
+            if (node["DirectionalLightComponent"].contains("Color")) glm::from_json(node["DirectionalLightComponent"]["Color"], dlc.Color);
 
             if (node["DirectionalLightComponent"].contains("Intensity"))
-                dl.Intensity = node["DirectionalLightComponent"]["Intensity"].get<float>();
+                dlc.Intensity = node["DirectionalLightComponent"]["Intensity"].get<float>();
             if (node["DirectionalLightComponent"].contains("bCastShadows"))
-                dl.bCastShadows = node["DirectionalLightComponent"]["bCastShadows"].get<uint32_t>();
+                dlc.bCastShadows = node["DirectionalLightComponent"]["bCastShadows"].get<uint32_t>();
         }
 
         if (node.contains("SpotLightComponent"))
         {
-            auto& sl = entity.AddComponent<SpotLightComponent>().sl;
+            auto& slc = entity.AddComponent<SpotLightComponent>();
 
-            if (node["SpotLightComponent"].contains("Position")) glm::from_json(node["SpotLightComponent"]["Position"], sl.Position);
-            if (node["SpotLightComponent"].contains("Direction")) glm::from_json(node["SpotLightComponent"]["Direction"], sl.Direction);
-            if (node["SpotLightComponent"].contains("Color")) glm::from_json(node["SpotLightComponent"]["Color"], sl.Color);
+            if (node["SpotLightComponent"].contains("Direction")) glm::from_json(node["SpotLightComponent"]["Direction"], slc.Direction);
+            if (node["SpotLightComponent"].contains("Color")) glm::from_json(node["SpotLightComponent"]["Color"], slc.Color);
 
-            if (node["SpotLightComponent"].contains("Intensity")) sl.Intensity = node["SpotLightComponent"]["Intensity"].get<float>();
-            if (node["SpotLightComponent"].contains("Height")) sl.Height = node["SpotLightComponent"]["Height"].get<float>();
-            if (node["SpotLightComponent"].contains("Radius")) sl.Radius = node["SpotLightComponent"]["Radius"].get<float>();
-            if (node["SpotLightComponent"].contains("InnerCutOff")) sl.InnerCutOff = node["SpotLightComponent"]["InnerCutOff"].get<float>();
-            if (node["SpotLightComponent"].contains("OuterCutOff")) sl.OuterCutOff = node["SpotLightComponent"]["OuterCutOff"].get<float>();
+            if (node["SpotLightComponent"].contains("Intensity")) slc.Intensity = node["SpotLightComponent"]["Intensity"].get<float>();
+            if (node["SpotLightComponent"].contains("Height")) slc.Height = node["SpotLightComponent"]["Height"].get<float>();
+            if (node["SpotLightComponent"].contains("Radius")) slc.Radius = node["SpotLightComponent"]["Radius"].get<float>();
+            if (node["SpotLightComponent"].contains("InnerCutOff"))
+                slc.InnerCutOff = node["SpotLightComponent"]["InnerCutOff"].get<float>();
+            if (node["SpotLightComponent"].contains("OuterCutOff"))
+                slc.OuterCutOff = node["SpotLightComponent"]["OuterCutOff"].get<float>();
             if (node["SpotLightComponent"].contains("bCastShadows"))
-                sl.bCastShadows = node["SpotLightComponent"]["bCastShadows"].get<uint32_t>();
+                slc.bCastShadows = node["SpotLightComponent"]["bCastShadows"].get<uint32_t>();
         }
     }
 

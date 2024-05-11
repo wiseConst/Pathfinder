@@ -171,11 +171,12 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
 
                     // Since the scratch buffer is reused across builds, we need a barrier to ensure one build
                     // is finished before starting the next one.
-                    VkMemoryBarrier barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER};
-                    barrier.srcAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
-                    barrier.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
-                    vkCmdBuf->InsertBarrier(VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
-                                            VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+                    VkMemoryBarrier2 barrier{VK_STRUCTURE_TYPE_MEMORY_BARRIER_2};
+                    barrier.srcAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+                    barrier.dstAccessMask = VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+                    vkCmdBuf->InsertBarrier(VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR,
+                                            VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, 1, &barrier, 0, nullptr, 0,
+                                            nullptr);
 
                     if (queryPool)
                     {
@@ -188,7 +189,7 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
             }
 
             vkCmdBuf->EndRecording();
-            vkCmdBuf->Submit(true, false);
+            vkCmdBuf->Submit()->Wait();
 
             // Actual BLAS compaction
             if (queryPool)
@@ -237,7 +238,7 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
                 }
 
                 vkCmdBuf->EndRecording();
-                vkCmdBuf->Submit(true, false);
+                vkCmdBuf->Submit()->Wait();
             }
 
             // Destroy the non-compacted version
@@ -328,6 +329,7 @@ AccelerationStructure VulkanRayTracingBuilder::BuildTLASImpl(const std::vector<A
         barrier.dstAccessMask = VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
         vkCmdPipelineBarrier((VkCommandBuffer)vkCmdBuf->Get(), VK_PIPELINE_STAGE_TRANSFER_BIT,
                              VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR, 0, 1, &barrier, 0, nullptr, 0, nullptr);
+        ++Renderer::GetStats().BarrierCount;
 
         // Creating the TLAS
 
@@ -390,7 +392,7 @@ AccelerationStructure VulkanRayTracingBuilder::BuildTLASImpl(const std::vector<A
 
         // Finalizing and destroying temporary data
         vkCmdBuf->EndRecording();
-        vkCmdBuf->Submit(true, false);
+        vkCmdBuf->Submit()->Wait();
     }
 
     return builtTLAS;

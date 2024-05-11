@@ -12,9 +12,11 @@ class Entity final
 {
   public:
     Entity(entt::entity entity, Scene* scenePtr);
+    Entity()  = default;
     ~Entity() = default;
 
     operator entt::entity() const { return m_Handle; }
+    operator uint64_t() const { return (uint64_t)m_Handle; }
 
     template <typename T> NODISCARD FORCEINLINE bool HasComponent() const
     {
@@ -60,8 +62,6 @@ class Entity final
   private:
     entt::entity m_Handle = {entt::null};
     Scene* m_ScenePtr     = nullptr;
-
-    Entity() = delete;
 };
 
 }  // namespace Pathfinder

@@ -12,6 +12,21 @@
 
 namespace Pathfinder
 {
+static DirectionalLight DirectionalLightFromDirectionalLightComponent(const glm::vec3& direction, const DirectionalLightComponent& dlc)
+{
+    return {direction, dlc.Intensity, dlc.Color, dlc.bCastShadows};
+}
+
+static PointLight PointLightFromPointLightComponent(const glm::vec3& position, const PointLightComponent& plc)
+{
+    return {position, plc.Intensity, plc.Color, plc.Radius, plc.MinRadius, plc.bCastShadows};
+}
+
+static SpotLight SpotLightFromSpotLightComponent(const glm::vec3& position, const SpotLightComponent& slc)
+{
+    return {position, slc.Intensity, slc.Direction, slc.Height, slc.Color, slc.Radius, slc.InnerCutOff, slc.OuterCutOff, slc.bCastShadows};
+}
+
 Scene::Scene(const std::string& sceneName) : m_Name(sceneName) {}
 
 Scene::~Scene()
@@ -31,17 +46,16 @@ void Scene::OnUpdate(const float deltaTime)
     for (const auto entityID : m_Registry.view<IDComponent>())
     {
         Entity entity{entityID, this};
-
-        const auto& tc = entity.GetComponent<TransformComponent>();
+        auto& tc = entity.GetComponent<TransformComponent>();
 
         if (entity.HasComponent<MeshComponent>())
         {
             const auto& mc = entity.GetComponent<MeshComponent>();
             Renderer::SubmitMesh(mc.Mesh, tc);
 
-            if (Renderer::GetRendererSettings().bDrawColliders)
+            if (Renderer::GetRendererSettings().bDrawColliders || mc.bDrawBoundingSphere)
             {
-                DebugRenderer::DrawAABB(mc.Mesh, tc, glm::vec4(1, 1, 0, 1));
+                //  DebugRenderer::DrawAABB(mc.Mesh, tc, glm::vec4(1, 1, 0, 1));
                 DebugRenderer::DrawSphere(mc.Mesh, tc, glm::vec4(0, 0, 1, 1));
             }
         }
@@ -49,20 +63,32 @@ void Scene::OnUpdate(const float deltaTime)
         if (entity.HasComponent<DirectionalLightComponent>())
         {
             const auto& dlc = entity.GetComponent<DirectionalLightComponent>();
-            Renderer::AddDirectionalLight(dlc);
+            Renderer::AddDirectionalLight(DirectionalLightFromDirectionalLightComponent(tc.Translation, dlc));
         }
 
-        // TODO: Render debug spheres, cones, maybe add special DebugComponent
         if (entity.HasComponent<PointLightComponent>())
         {
             const auto& plc = entity.GetComponent<PointLightComponent>();
-            Renderer::AddPointLight(plc);
+            Renderer::AddPointLight(PointLightFromPointLightComponent(tc.Translation, plc));
+
+            // NOTE: Since I'm using Translation as a position, and retreiving TRS matrix, Translation already there, so I remove it and put
+            // it back after rendering.
+            if (plc.bDrawBoundingSphere)
+            {
+                tc.Translation           = glm::vec3(0.0f);
+                const glm::vec3 position = tc.Translation;
+
+                //  DebugRenderer::DrawAABB(mc.Mesh, tc, glm::vec4(1, 1, 0, 1));
+                DebugRenderer::DrawSphere(position, plc.Radius, tc, glm::vec4(0, 0, 1, 1));
+
+                tc.Translation = position;
+            }
         }
 
         if (entity.HasComponent<SpotLightComponent>())
         {
             const auto& slc = entity.GetComponent<SpotLightComponent>();
-            Renderer::AddSpotLight(slc);
+            Renderer::AddSpotLight(SpotLightFromSpotLightComponent(tc.Translation, slc));
         }
     }
 }

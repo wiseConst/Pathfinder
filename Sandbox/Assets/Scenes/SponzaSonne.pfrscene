@@ -6,7 +6,7 @@
       "TransformComponent": {
         "Translation": {
           "x": 0.0,
-          "y": 0.0,
+          "y": 16.445388793945313,
           "z": 0.0
         },
         "Rotation": {
@@ -21,40 +21,16 @@
         }
       },
       "PointLightComponent": {
-        "Position": {
-          "x": 1.9473552703857422,
-          "y": -0.7476644515991211,
-          "z": 0.754840612411499
-        },
         "Color": {
-          "x": 0.3824777901172638,
-          "y": 0.25182920694351196,
-          "z": 0.7065039873123169
-        },
-        "Intensity": 2.910046100616455,
-        "Radius": 2.5,
-        "MinRadius": 1.6151747703552246,
-        "bCastShadows": 1
-      }
-    },
-    "15422536181663771009": {
-      "TagComponent": "NONE",
-      "TransformComponent": {
-        "Translation": {
-          "x": 0.0,
+          "x": 0.24344460666179657,
           "y": 0.0,
-          "z": 0.0
+          "z": 0.8472222089767456
         },
-        "Rotation": {
-          "x": 0.0,
-          "y": 0.0,
-          "z": 0.0
-        },
-        "Scale": {
-          "x": 1.0,
-          "y": 1.0,
-          "z": 1.0
-        }
+        "Intensity": 6.929999828338623,
+        "Radius": 2.640000104904175,
+        "MinRadius": 0.9599999785423279,
+        "bCastShadows": 1,
+        "bDrawBoundingSphere": false
       }
     },
     "14459279328272821255": {
@@ -77,7 +53,32 @@
         }
       },
       "MeshComponent": {
-        "MeshSource": "flintlock_pistol/scene.gltf"
+        "MeshSource": "flintlock_pistol/scene.gltf",
+        "bDrawBoundingSphere": false
+      }
+    },
+    "13884783760960104608": {
+      "TagComponent": "icarus",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.699999988079071,
+          "y": 0.3499999940395355,
+          "z": -0.10000000149011612
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 71.4000015258789,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "MeshComponent": {
+        "MeshSource": "icarus/scene.gltf",
+        "bDrawBoundingSphere": false
       }
     },
     "13184783760960274608": {
@@ -100,16 +101,17 @@
         }
       },
       "MeshComponent": {
-        "MeshSource": "sponza/scene.gltf"
+        "MeshSource": "sponza/scene.gltf",
+        "bDrawBoundingSphere": false
       }
     },
     "11320190932899782829": {
       "TagComponent": "sonne",
       "TransformComponent": {
         "Translation": {
-          "x": 0.0,
-          "y": 0.0,
-          "z": 0.0
+          "x": -6.849999904632568,
+          "y": 0.6499999761581421,
+          "z": 6.900000095367432
         },
         "Rotation": {
           "x": 0.0,
@@ -123,14 +125,9 @@
         }
       },
       "DirectionalLightComponent": {
-        "Direction": {
-          "x": 0.10000000149011612,
-          "y": 5.0,
-          "z": 0.20000000298023224
-        },
         "Color": {
           "x": 0.800000011920929,
-          "y": 0.800000011920929,
+          "y": 0.375,
           "z": 0.20000000298023224
         },
         "Intensity": 1.5,

@@ -6,6 +6,19 @@
 
 namespace Pathfinder
 {
+
+class VulkanSyncPoint final : public SyncPoint
+{
+  public:
+    VulkanSyncPoint( void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages);
+    ~VulkanSyncPoint() override = default;
+
+    void Wait() final override;
+
+  private:
+    VulkanSyncPoint() = delete;
+};
+
 class VulkanPipeline;
 class Pipeline;
 
@@ -13,22 +26,9 @@ class VulkanCommandBuffer final : public CommandBuffer
 {
   public:
     explicit VulkanCommandBuffer(const CommandBufferSpecification& commandBufferSpec);
-    VulkanCommandBuffer() = delete;
     ~VulkanCommandBuffer() override { Destroy(); }
 
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
-    NODISCARD FORCEINLINE void* GetWaitSemaphore() const final override { return m_SignalSemaphore; }
-    NODISCARD FORCEINLINE void* GetTimelineSemaphore(bool bIncrementCounter = true) final override
-    {
-        if (bIncrementCounter) ++m_TimelineSemaphore.Counter;
-
-        return m_TimelineSemaphore.Handle;
-    }
-
-    NODISCARD FORCEINLINE uint64_t GetTimelineValue() const final override { return m_TimelineSemaphore.Counter; }
-
-    NODISCARD FORCEINLINE void* GetSubmitFence() const final override { return m_SubmitFence; }
-
     const std::vector<float> GetTimestampsResults() final override;
 
     void BeginPipelineStatisticsQuery() final override;
@@ -64,20 +64,19 @@ class VulkanCommandBuffer final : public CommandBuffer
     FORCEINLINE void Reset() final override { VK_CHECK(vkResetCommandBuffer(m_Handle, 0), "Failed to reset command buffer!"); }
 
     void FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const final override;
-    FORCEINLINE void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EAccessFlags srcAccessFlags,
-                                            const EPipelineStage dstPipelineStage, const EAccessFlags dstAccessFlags) const final override;
+    FORCEINLINE void InsertExecutionBarrier(const RendererTypeFlags srcPipelineStages, const RendererTypeFlags srcAccessFlags,
+                                            const RendererTypeFlags dstPipelineStages,
+                                            const RendererTypeFlags dstAccessFlags) const final override;
 
-    void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
-                                   const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
-                                   const EAccessFlags dstAccessFlags) const final override;
+    void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const RendererTypeFlags srcPipelineStages,
+                                   const RendererTypeFlags dstPipelineStages, const RendererTypeFlags srcAccessFlags,
+                                   const RendererTypeFlags dstAccessFlags) const final override;
 
     void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = VK_NULL_HANDLE) final override;
     FORCEINLINE void EndRecording() final override { VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer"); }
 
-    virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, uint64_t timelineSignalValue = UINT64_MAX,
-                        const std::vector<PipelineStageFlags> pipelineStages = {}, const std::vector<void*>& waitSemaphores = {},
-                        const std::vector<uint64_t>& waitSemaphoreValues = {}, const std::vector<void*>& signalSemaphores = {},
-                        const std::vector<uint64_t>& signalSemaphoreValues = {}, const void* submitFence = nullptr) final override;
+    Shared<SyncPoint> Submit(const std::vector<Shared<SyncPoint>>& waitPoints = {}, const std::vector<Shared<SyncPoint>>& signalPoints = {},
+                             const void* signalFence = nullptr) final override;
     void TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
                                const VkImageAspectFlags aspectMask, const uint32_t layerCount, const uint32_t baseLayer,
                                const uint32_t mipLevels, const uint32_t baseMipLevel) const;
@@ -85,15 +84,10 @@ class VulkanCommandBuffer final : public CommandBuffer
     FORCEINLINE void BeginRendering(const VkRenderingInfo* renderingInfo) const { vkCmdBeginRendering(m_Handle, renderingInfo); }
     FORCEINLINE void EndRendering() const { vkCmdEndRendering(m_Handle); }
 
-    FORCEINLINE void InsertBarrier(const VkPipelineStageFlags srcStageMask, const VkPipelineStageFlags dstStageMask,
-                                   const VkDependencyFlags dependencyFlags, const uint32_t memoryBarrierCount,
-                                   const VkMemoryBarrier* pMemoryBarriers, const uint32_t bufferMemoryBarrierCount,
-                                   const VkBufferMemoryBarrier* pBufferMemoryBarriers, const uint32_t imageMemoryBarrierCount,
-                                   const VkImageMemoryBarrier* pImageMemoryBarriers) const
-    {
-        vkCmdPipelineBarrier(m_Handle, srcStageMask, dstStageMask, dependencyFlags, memoryBarrierCount, pMemoryBarriers,
-                             bufferMemoryBarrierCount, pBufferMemoryBarriers, imageMemoryBarrierCount, pImageMemoryBarriers);
-    }
+    void InsertBarrier(const VkPipelineStageFlags2 srcStageMask, const VkPipelineStageFlags2 dstStageMask,
+                       const VkDependencyFlags dependencyFlags, const uint32_t memoryBarrierCount, const VkMemoryBarrier2* pMemoryBarriers,
+                       const uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier2* pBufferMemoryBarriers,
+                       const uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier2* pImageMemoryBarriers) const;
 
     void BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const final override;
     void BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
@@ -152,7 +146,6 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     // COMPUTE
-
     FORCEINLINE void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) final override
     {
         vkCmdDispatch(m_Handle, groupCountX, groupCountY, groupCountZ);
@@ -197,9 +190,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
   private:
-    VkCommandBuffer m_Handle      = VK_NULL_HANDLE;
-    VkFence m_SubmitFence         = VK_NULL_HANDLE;
-    VkSemaphore m_SignalSemaphore = VK_NULL_HANDLE;
+    VkCommandBuffer m_Handle = VK_NULL_HANDLE;
     struct
     {
         VkSemaphore Handle = VK_NULL_HANDLE;
@@ -212,6 +203,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     uint32_t m_CurrentTimestampIndex = 0;
 
     void Destroy() final override;
+    VulkanCommandBuffer() = delete;
 };
 
 }  // namespace Pathfinder

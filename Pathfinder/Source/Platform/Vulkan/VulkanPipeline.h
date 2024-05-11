@@ -32,7 +32,7 @@ class VulkanPipeline final : public Pipeline
     void Invalidate() final override;
     void Destroy() final override;
 
-    void CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName) const;
+    void CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName, const bool bHotReload) const;
     void SavePipelineCache(VkPipelineCache& cache, const std::string& pipelineName) const;
 };
 

@@ -22,14 +22,19 @@
 #include "Events/MouseEvent.h"
 
 // RENDERING
+#include "Renderer/Pipeline.h"
 #include "Renderer/Swapchain.h"
 #include "Renderer/RendererAPI.h"
 #include "Renderer/Renderer2D.h"
-#include "Renderer/Renderer.h"
+#include "Renderer/Texture2D.h"
 #include "Renderer/Image.h"
+#include "Renderer/Renderer.h"
 #include "Renderer/Camera/Camera.h"
 #include "Renderer/Camera/OrthographicCamera.h"
+#include "Renderer/Camera/PerspectiveCamera.h"
 #include "Renderer/Mesh/Mesh.h"
+#include "Renderer/Mesh/Submesh.h"
+#include "Renderer/Material.h"
 #include "Renderer/Debug/DebugRenderer.h"
 
 // ECS

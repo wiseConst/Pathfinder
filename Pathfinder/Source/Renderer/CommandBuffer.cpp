@@ -19,4 +19,18 @@ Shared<CommandBuffer> CommandBuffer::Create(const CommandBufferSpecification& co
     PFR_ASSERT(false, "Unknown RendererAPI!");
     return nullptr;
 }
+
+Shared<SyncPoint> SyncPoint::Create(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages)
+{
+    switch (RendererAPI::Get())
+    {
+        case ERendererAPI::RENDERER_API_VULKAN:
+        {
+            return MakeShared<VulkanSyncPoint>(timelineSemaphoreHandle, value, pipelineStages);
+        }
+    }
+
+    PFR_ASSERT(false, "Unknown RendererAPI!");
+    return nullptr;
+}
 }  // namespace Pathfinder

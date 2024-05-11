@@ -204,6 +204,7 @@ class Renderer : private Uncopyable, private Unmovable
         uint32_t DescriptorSetCount;
         uint32_t DescriptorPoolCount;
         uint32_t ObjectsDrawn;
+        uint32_t BarrierCount;
         float GPUTime;
         float SwapchainPresentTime;
         float RHITime;

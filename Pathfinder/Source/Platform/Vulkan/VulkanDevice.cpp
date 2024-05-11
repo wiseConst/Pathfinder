@@ -152,6 +152,7 @@ void VulkanDevice::CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalD
     VkPhysicalDeviceVulkan13Features vulkan13Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     vulkan13Features.dynamicRendering                 = VK_TRUE;
     vulkan13Features.maintenance4                     = VK_TRUE;
+    vulkan13Features.synchronization2                 = VK_TRUE;
 
     deviceCI.pNext = &vulkan13Features;
     void** ppNext  = &vulkan13Features.pNext;
@@ -272,20 +273,24 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, co
     commandBufferAllocateInfo.level                       = PathfinderCommandBufferLevelToVulkan(commandBufferSpec.Level);
     commandBufferAllocateInfo.commandBufferCount          = 1;
 
+    std::string commandBufferTypeStr = s_DEFAULT_STRING;
     switch (commandBufferSpec.Type)
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
         {
+            commandBufferTypeStr                  = "GRAPHICS";
             commandBufferAllocateInfo.commandPool = m_GraphicsCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
         {
+            commandBufferTypeStr                  = "COMPUTE";
             commandBufferAllocateInfo.commandPool = m_ComputeCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
         {
+            commandBufferTypeStr                  = "TRANSFER";
             commandBufferAllocateInfo.commandPool = m_TransferCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
             break;
         }
@@ -294,6 +299,11 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, co
 
     VK_CHECK(vkAllocateCommandBuffers(m_LogicalDevice, &commandBufferAllocateInfo, &inOutCommandBuffer),
              "Failed to allocate command buffer!");
+
+    const auto commandBufferNameStr = std::string("COMMAND_BUFFER_") + commandBufferTypeStr + "_FRAME_" +
+                                      std::to_string(commandBufferSpec.FrameIndex) + "_THREAD_" +
+                                      std::to_string(commandBufferSpec.ThreadID);
+    VK_SetDebugName(m_LogicalDevice, inOutCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER, commandBufferNameStr.data())
 }
 
 void VulkanDevice::FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const CommandBufferSpecification& commandBufferSpec) const

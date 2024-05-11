@@ -73,7 +73,7 @@ void DebugRenderer::Init()
         sphereGraphicsPipelineOptions.TargetFramebuffer       = Renderer::GetRendererData()->GBuffer;
         sphereGraphicsPipelineOptions.InputBufferBindings = {{{"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3}}};
         spherePipelineSpec.PipelineOptions                = std::make_optional<GraphicsPipelineOptions>(sphereGraphicsPipelineOptions);
-        PipelineBuilder::Push(s_DebugRendererData->SpherePipeline, spherePipelineSpec);
+        PipelineLibrary::Push(s_DebugRendererData->SpherePipeline, spherePipelineSpec);
     }
 
     {
@@ -96,11 +96,10 @@ void DebugRenderer::Init()
         lineGraphicsPipelineOptions.InputBufferBindings     = {{{"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
                                                                 {"inColor", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4}}};
         linePipelineSpec.PipelineOptions                    = std::make_optional<GraphicsPipelineOptions>(lineGraphicsPipelineOptions);
-        PipelineBuilder::Push(s_DebugRendererData->LinePipeline, linePipelineSpec);
+        PipelineLibrary::Push(s_DebugRendererData->LinePipeline, linePipelineSpec);
     }
 
-    PipelineBuilder::Build();
-
+    PipelineLibrary::Compile();
     LOG_TAG_TRACE(DEBUG_RENDERER, "DebugRenderer created!");
     s_bDebugRendererInit = true;
 }

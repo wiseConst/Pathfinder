@@ -9,10 +9,15 @@ namespace Pathfinder
 Material::Material(const PBRData& pbrData) : m_MaterialData(pbrData)
 {
     BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESH_MATERIAL_BINDING, true, false};
-    mbSpec.Data     = &m_MaterialData;
-    mbSpec.DataSize = sizeof(pbrData);
+    mbSpec.Data                = &m_MaterialData;
+    mbSpec.DataSize            = sizeof(pbrData);
 
     m_MaterialBuffer = Buffer::Create(mbSpec);
+}
+
+void Material::Update()
+{
+    m_MaterialBuffer->SetData(&m_MaterialData, sizeof(m_MaterialData));
 }
 
 const uint32_t Material::GetBufferIndex() const

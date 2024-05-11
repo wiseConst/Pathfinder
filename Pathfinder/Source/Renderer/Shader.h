@@ -37,7 +37,7 @@ class TextureCube;
 struct ShaderSpecification
 {
     std::string Name = s_DEFAULT_STRING;
-    std::map<std::string, std::string> MacroDefinitions;
+    std::unordered_map<std::string, std::string> MacroDefinitions;
 };
 
 class Shader : private Uncopyable, private Unmovable
@@ -58,22 +58,24 @@ class Shader : private Uncopyable, private Unmovable
 
     const auto& GetSpecification() const { return m_Specification; }
 
-    NODISCARD static Shared<Shader> Create(const ShaderSpecification& shaderSpec);
-    virtual void DestroyGarbageIfNeeded() = 0;
+    virtual bool DestroyGarbageIfNeeded() = 0;  // Returns true if any garbage is destroyed.
+    virtual void Invalidate()             = 0;
 
     virtual ShaderBindingTable CreateSBT(const Shared<Pipeline>& rtPipeline) const = 0;
 
   protected:
     ShaderSpecification m_Specification = {};
 
-    explicit Shader(const ShaderSpecification& shaderSpec);
+    friend class ShaderLibrary;
 
+    explicit Shader(const ShaderSpecification& shaderSpec);
     virtual void Destroy() = 0;
+    NODISCARD static Shared<Shader> Create(const ShaderSpecification& shaderSpec);
 
     static EShaderStage ShadercShaderStageToPathfinder(const shaderc_shader_kind& shaderKind);
     static void DetectShaderKind(shaderc_shader_kind& shaderKind, const std::string_view currentShaderExt);
     std::vector<uint32_t> CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
-                                                  shaderc_shader_kind shaderKind);
+                                                  shaderc_shader_kind shaderKind, const bool bHotReload);
 };
 
 class ShaderLibrary final : private Uncopyable, private Unmovable
@@ -88,16 +90,17 @@ class ShaderLibrary final : private Uncopyable, private Unmovable
     static void Load(const ShaderSpecification& shaderSpec);
     static void Load(const std::vector<ShaderSpecification>& shaderSpecs);
     NODISCARD static const Shared<Shader>& Get(const std::string& shaderName);
-    NODISCARD static const Shared<Shader> Get(const ShaderSpecification& shaderSpec);
+    NODISCARD static const Shared<Shader>& Get(const ShaderSpecification& shaderSpec);
 
     FORCEINLINE static void DestroyGarbageIfNeeded()
     {
+        size_t shaderGargbageCount = 0;
         std::ranges::for_each(s_Shaders,
-                              [](const std::pair<std::string, Shared<Shader>>& shaderData)
+                              [&](const std::pair<std::string, Shared<Shader>>& shaderData)
                               {
-                                  if (shaderData.second) shaderData.second->DestroyGarbageIfNeeded();
+                                  if (shaderData.second && shaderData.second->DestroyGarbageIfNeeded()) ++shaderGargbageCount;
                               });
-        LOG_TAG_TRACE(SHADER_LIBRARY, "Destroyed (%zu) shader garbages!", s_Shaders.size());
+        if (shaderGargbageCount != 0) LOG_TAG_TRACE(SHADER_LIBRARY, "Destroyed (%zu) shader garbages!", shaderGargbageCount);
     }
 
   private:

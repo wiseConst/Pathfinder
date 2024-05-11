@@ -57,9 +57,9 @@ class VulkanShader final : public Shader
         return result;
     }
 
-   ShaderBindingTable CreateSBT(const Shared<Pipeline>& rtPipeline) const final override;
+    ShaderBindingTable CreateSBT(const Shared<Pipeline>& rtPipeline) const final override;
 
-    void DestroyGarbageIfNeeded() final override;
+    bool DestroyGarbageIfNeeded() final override;
 
   private:
     struct ShaderDescription
@@ -92,6 +92,7 @@ class VulkanShader final : public Shader
                  std::vector<SpvReflectBlockVariable*>& outPushConstants);
     void LoadShaderModule(VkShaderModule& module, const std::vector<uint32_t>& shaderSrcSpv) const;
     void Destroy() final override;
+    void Invalidate() final override;
 
     VulkanShader() = delete;
 };

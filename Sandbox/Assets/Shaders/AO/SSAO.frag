@@ -100,5 +100,5 @@ void main()
     }
 
     const float visibility = 1.0 - occlusion * INV_MAX_KERNEL_SIZE_F; // From [0, MAX_KERNEL_SIZE] -> [0, 1]
-    outFragColor =  pow(visibility, 14);
+    outFragColor =  pow(visibility, 10);
 }

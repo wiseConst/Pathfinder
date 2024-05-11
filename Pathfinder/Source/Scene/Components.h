@@ -54,50 +54,59 @@ struct TransformComponent
     operator glm::mat4() const { return GetTransform(); }
 };
 
+// Direction is stored in TransformComponent as Translation.
 struct DirectionalLightComponent
 {
-    DirectionalLight dl = {};
-
-    operator DirectionalLight() const { return dl; }
+    float Intensity       = 1.f;
+    vec3 Color            = glm::vec3(1.f);
+    uint32_t bCastShadows = 0;
 
     DirectionalLightComponent()                                 = default;
     DirectionalLightComponent(const DirectionalLightComponent&) = default;
-    DirectionalLightComponent(const DirectionalLight& that) { dl = that; }
-    DirectionalLightComponent(const glm::vec3& direction, const glm::vec3& color, const float intensity, const uint32_t bCastShadows)
-        : dl{direction, intensity, color, bCastShadows}
+    DirectionalLightComponent(const glm::vec3& color, const float intensity, const uint32_t InbCastShadows)
+        : Color(color), Intensity(intensity), bCastShadows(InbCastShadows)
     {
     }
 };
 
+// Position is stored in TransformComponent as Translation.
 struct PointLightComponent
 {
-    PointLight pl = {};
-
-    operator PointLight() const { return pl; }
+    float Intensity;
+    vec3 Color;
+    float Radius;
+    float MinRadius;
+    uint32_t bCastShadows;
+    bool bDrawBoundingSphere = false;
 
     PointLightComponent()                           = default;
     PointLightComponent(const PointLightComponent&) = default;
-    PointLightComponent(const PointLight& that) { pl = that; }
-    PointLightComponent(const glm::vec3& position, const glm::vec3& color, const float intensity, const float radius, const float minRadius,
-                        const uint32_t bCastShadows)
-        : pl{position, intensity, color, radius, glm::vec2{0, 0}, minRadius, bCastShadows}
+    PointLightComponent(const glm::vec3& color, const float intensity, const float radius, const float minRadius,
+                        const uint32_t InbCastShadows)
+        : Color(color), Intensity(intensity), Radius(radius), MinRadius(minRadius), bCastShadows(InbCastShadows)
     {
     }
 };
 
+// TODO: Add   bool bDrawBoundingCone = false;
+// Position is stored in TransformComponent as Translation.
 struct SpotLightComponent
 {
-    SpotLight sl = {};
-
-    operator SpotLight() const { return sl; }
+    float Intensity;
+    vec3 Direction;
+    float Height;
+    vec3 Color;
+    float Radius;
+    float InnerCutOff;
+    float OuterCutOff;
+    uint32_t bCastShadows;
 
     SpotLightComponent()                          = default;
     SpotLightComponent(const SpotLightComponent&) = default;
-    SpotLightComponent(const SpotLight& that) { sl = that; }
-    SpotLightComponent(const glm::vec3& position, const glm::vec3& direction, const glm::vec3& color, const float intensity,
-                       const float height, const float radius, const float innerCutOff, const float outerCutOff,
-                       const uint32_t bCastShadows)
-        : sl{position, intensity, direction, height, color, radius, innerCutOff, outerCutOff, bCastShadows, 0.0f}
+    SpotLightComponent(const glm::vec3& direction, const glm::vec3& color, const float intensity, const float height, const float radius,
+                       const float innerCutOff, const float outerCutOff, const uint32_t InbCastShadows)
+        : Direction(direction), Color(color), Intensity(intensity), Height(height), Radius(radius), InnerCutOff(innerCutOff),
+          OuterCutOff(outerCutOff), bCastShadows(InbCastShadows)
     {
     }
 };
@@ -106,6 +115,7 @@ struct MeshComponent
 {
     Shared<Pathfinder::Mesh> Mesh = nullptr;
     std::string MeshSource        = s_DEFAULT_STRING;
+    bool bDrawBoundingSphere      = false;
 
     MeshComponent()                     = default;
     MeshComponent(const MeshComponent&) = default;

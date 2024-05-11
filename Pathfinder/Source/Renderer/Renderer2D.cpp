@@ -84,9 +84,9 @@ void Renderer2D::Init()
     // quadPipelineSpec.bDepthTest            = true;
     // quadPipelineSpec.bDepthWrite           = true;  // Do I rly need this? since im using depth pre pass of my static meshes
     // quadPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
-    PipelineBuilder::Push(s_RendererData2D->QuadPipeline, quadPipelineSpec);
+    PipelineLibrary::Push(s_RendererData2D->QuadPipeline, quadPipelineSpec);
 
-    PipelineBuilder::Build();
+    PipelineLibrary::Compile();
     LOG_TAG_TRACE(RENDERER_2D, "Renderer2D created!");
 }
 
@@ -147,7 +147,7 @@ void Renderer2D::FlushBatch()
     rd->GBuffer->EndPass(renderCommandBuffer);
 
     renderCommandBuffer->EndRecording();
-    renderCommandBuffer->Submit(true, false);
+    renderCommandBuffer->Submit()->Wait();
 
     memset(s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], 0, dataSize);
     s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex] = s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex];

@@ -93,13 +93,13 @@ vec4 UnpackU8Vec4ToVec4(u8vec4 packed)
     return vec4(r, g, b, a);
 }
 
-// From glm
+// From glm && https://people.csail.mit.edu/bkph/articles/Quaternions.pdf
 vec3 RotateByQuat(const vec3 position, const vec4 orientation)
 {
-    const vec3 uv = cross(orientation.xyz, position);
+    const vec3 uv = 2.0f * cross(orientation.xyz, position);
 
     // NOTE: That the center of rotation is always the origin, so we adding an offset(position).
-    return position + (uv * orientation.w + cross(orientation.xyz, uv)) * 2.0;
+    return position + uv * orientation.w + cross(orientation.xyz, uv);
 }
 
 #endif

@@ -173,7 +173,7 @@ Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Share
                         default: PFR_ASSERT(false, "Unsupported number of image channels!");
                     }
 
-                    void* whatToCompress      = nullptr;
+                    uint8_t* whatToCompress   = nullptr;
                     size_t whatToCompressSize = 0;
 
                     // From: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
@@ -183,9 +183,9 @@ Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Share
                     // Convert to RG format by shifting GB to the left.
                     if (bMetallicRoughness)
                     {
-                        const size_t dataSize   = static_cast<size_t>(x) * static_cast<size_t>(y);
-                        whatToCompressSize      = rgbToRgbaBuffer ? dataSize * 4 : uncompressedDataSize;
-                        uint8_t* whatToCompress = static_cast<uint8_t*>(rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData);
+                        const size_t dataSize = static_cast<size_t>(x) * static_cast<size_t>(y);
+                        whatToCompressSize    = rgbToRgbaBuffer ? dataSize * 4 : uncompressedDataSize;
+                        whatToCompress        = static_cast<uint8_t*>(rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData);
                         for (size_t i{}; i < dataSize; ++i)
                         {
                             whatToCompress[i * 4 + 0] = whatToCompress[i * 4 + 1];
@@ -194,7 +194,7 @@ Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Share
                     }
                     else
                     {
-                        whatToCompress     = rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData;
+                        whatToCompress     = reinterpret_cast<uint8_t*>(rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData);
                         whatToCompressSize = rgbToRgbaBuffer ? static_cast<size_t>(x) * static_cast<size_t>(y) * 4 : uncompressedDataSize;
                     }
 

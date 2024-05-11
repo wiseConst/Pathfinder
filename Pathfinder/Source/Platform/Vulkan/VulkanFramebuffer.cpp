@@ -67,8 +67,8 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
     PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer");
 
     // To batch pipeline barriers submits
-    std::vector<VkImageMemoryBarrier> colorImageBarriers;
-    VkImageMemoryBarrier depthImageBarrier = {};
+    std::vector<VkImageMemoryBarrier2> colorImageBarriers;
+    VkImageMemoryBarrier2 depthImageBarrier = {};
 
     uint32_t layerCount                           = 0;
     VkRenderingAttachmentInfo depthAttachmentInfo = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
@@ -77,7 +77,7 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
         const auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Attachments[i].Attachment);
         PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage");
 
-        VkImageMemoryBarrier imageBarrier            = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
+        VkImageMemoryBarrier2 imageBarrier           = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
         imageBarrier.image                           = (VkImage)vulkanImage->Get();
         imageBarrier.srcQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;  // No resource migration for the queue
         imageBarrier.dstQueueFamilyIndex             = VK_QUEUE_FAMILY_IGNORED;
@@ -96,7 +96,7 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
             imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
 
         imageBarrier.oldLayout     = ImageUtils::PathfinderImageLayoutToVulkan(vulkanImage->GetSpecification().Layout);
-        imageBarrier.srcAccessMask = 0;
+        imageBarrier.srcAccessMask = VK_ACCESS_2_NONE;
         if (ImageUtils::IsDepthFormat(vulkanImage->GetSpecification().Format))
         {
             PFR_ASSERT(i + 1 == m_AttachmentInfos.size(), "I assume that the last one is depth attachment!");
@@ -107,7 +107,17 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
             vulkanImage->m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
             imageBarrier.subresourceRange.aspectMask = imageAspectMask;
-            imageBarrier.dstAccessMask               = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            imageBarrier.dstAccessMask               = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+            imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+            imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+
+            // NOTE: In case we previously cleared/upscaled/rendered somewhere current attachment, we should assure this op's completed.
+            if (m_AttachmentInfos[i].loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+            {
+                imageBarrier.dstAccessMask |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+                imageBarrier.srcStageMask |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            }
 
             depthImageBarrier = imageBarrier;
         }
@@ -117,21 +127,33 @@ void VulkanFramebuffer::BeginPass(const Shared<CommandBuffer>& commandBuffer)
             vulkanImage->m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
             imageBarrier.subresourceRange.aspectMask = imageAspectMask;
-            imageBarrier.dstAccessMask               = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            imageBarrier.dstAccessMask               = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+
+            imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+            imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+
+            // NOTE: In case we previously cleared/upscaled/rendered somewhere current attachment, we should assure this op's completed.
+            if (m_AttachmentInfos[i].loadOp == VK_ATTACHMENT_LOAD_OP_LOAD)
+            {
+                imageBarrier.dstAccessMask |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+                imageBarrier.srcStageMask |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT |
+                                             VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+            }
+
             colorImageBarriers.emplace_back(imageBarrier);
         }
     }
 
     if (depthImageBarrier.image)
     {
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                                           VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                                           VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &depthImageBarrier);
     }
 
     if (!colorImageBarriers.empty())
     {
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr,
                                            static_cast<uint32_t>(colorImageBarriers.size()), colorImageBarriers.data());
     }
@@ -163,17 +185,17 @@ void VulkanFramebuffer::EndPass(const Shared<CommandBuffer>& commandBuffer)
     vulkanCommandBuffer->EndRendering();
     vulkanCommandBuffer->EndDebugLabel();
 
-    std::vector<VkImageMemoryBarrier> colorImageBarriers;
-    VkImageMemoryBarrier depthImageBarrier = {};
+    std::vector<VkImageMemoryBarrier2> colorImageBarriers;
+    VkImageMemoryBarrier2 depthImageBarrier = {};
     for (size_t i = 0; i < m_AttachmentInfos.size(); ++i)
     {
         auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Attachments[i].Attachment);
         PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage");
 
-        VkImageMemoryBarrier imageBarrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-        imageBarrier.image                = (VkImage)vulkanImage->Get();
-        imageBarrier.srcQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
-        imageBarrier.dstQueueFamilyIndex  = VK_QUEUE_FAMILY_IGNORED;
+        VkImageMemoryBarrier2 imageBarrier = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2};
+        imageBarrier.image                 = (VkImage)vulkanImage->Get();
+        imageBarrier.srcQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
+        imageBarrier.dstQueueFamilyIndex   = VK_QUEUE_FAMILY_IGNORED;
 
         imageBarrier.oldLayout              = ImageUtils::PathfinderImageLayoutToVulkan(vulkanImage->GetSpecification().Layout);
         imageBarrier.newLayout              = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -190,21 +212,27 @@ void VulkanFramebuffer::EndPass(const Shared<CommandBuffer>& commandBuffer)
         imageBarrier.subresourceRange.baseMipLevel   = 0;
         imageBarrier.subresourceRange.levelCount     = vulkanImage->GetSpecification().Mips;
         imageBarrier.subresourceRange.layerCount     = vulkanImage->GetSpecification().Layers;
-        imageBarrier.dstAccessMask                   = VK_ACCESS_SHADER_READ_BIT;
+        imageBarrier.dstAccessMask                   = VK_ACCESS_2_SHADER_READ_BIT;
         if (ImageUtils::IsDepthFormat(vulkanImage->GetSpecification().Format))
         {
             PFR_ASSERT(i + 1 == m_AttachmentInfos.size(), "I assume that the last one is depth attachment!");
             PFR_ASSERT(!depthImageBarrier.image, "Depth attachment already setup!");
 
             imageBarrier.subresourceRange.aspectMask = imageAspectMask;
-            imageBarrier.srcAccessMask               = VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+            imageBarrier.srcAccessMask               = VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+
+            imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+            imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
 
             depthImageBarrier = imageBarrier;
         }
         else
         {
             imageBarrier.subresourceRange.aspectMask = imageAspectMask;
-            imageBarrier.srcAccessMask               = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+            imageBarrier.srcAccessMask               = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+
+            imageBarrier.srcStageMask = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+            imageBarrier.dstStageMask = VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
 
             colorImageBarriers.emplace_back(imageBarrier);
         }
@@ -212,14 +240,14 @@ void VulkanFramebuffer::EndPass(const Shared<CommandBuffer>& commandBuffer)
 
     if (depthImageBarrier.image)
     {
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT,
-                                           VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT | VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT,
+                                           VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1,
                                            &depthImageBarrier);
     }
 
     if (!colorImageBarriers.empty())
     {
-        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT,
+        vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr,
                                            static_cast<uint32_t>(colorImageBarriers.size()), colorImageBarriers.data());
     }
@@ -239,6 +267,12 @@ void VulkanFramebuffer::Invalidate()
         if (fbAttachment.Attachment->GetSpecification().Width != m_Specification.Width ||
             fbAttachment.Attachment->GetSpecification().Height != m_Specification.Height)
             fbAttachment.Attachment->Resize(m_Specification.Width, m_Specification.Height);
+
+#if PFR_DEBUG
+        const std::string framebufferAttachmentStr = m_Specification.Name + "_Attachment_" + std::to_string(attachmentIndex);
+        VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Attachments[attachmentIndex].Attachment->Get(),
+                        VK_OBJECT_TYPE_IMAGE, framebufferAttachmentStr.data());
+#endif
 
         if (fbAttachment.Specification.bBindlessUsage && fbAttachment.m_Index != UINT32_MAX)
         {
@@ -285,6 +319,12 @@ void VulkanFramebuffer::Invalidate()
                     imageSpec.UsageFlags |= EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
 
                 m_Attachments[attachmentIndex].Attachment = Image::Create(imageSpec);
+
+#if PFR_DEBUG
+                const std::string framebufferAttachmentStr = m_Specification.Name + "_Attachment_" + std::to_string(attachmentIndex);
+                VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Attachments[attachmentIndex].Attachment->Get(),
+                                VK_OBJECT_TYPE_IMAGE, framebufferAttachmentStr.data());
+#endif
 
                 if (fbAttachmentSpec.bBindlessUsage && m_Attachments[attachmentIndex].m_Index == UINT32_MAX)
                 {

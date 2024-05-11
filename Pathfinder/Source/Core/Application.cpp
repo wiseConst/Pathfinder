@@ -105,6 +105,7 @@ void Application::Run()
             ss << " [descriptor pools]: " << Renderer::GetStats().DescriptorPoolCount;
             ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
             ss << " [samplers]: " << SamplerStorage::GetSamplerCount();
+            ss << " [barriers]: " << Renderer::GetStats().BarrierCount;
             m_Window->SetWindowTitle(ss.str().data());
 
             accumulatedDelta = 0.0;

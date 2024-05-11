@@ -208,7 +208,7 @@ void VulkanImage::SetLayout(const EImageLayout newLayout)
                                                m_Specification.Layers, 0, m_Specification.Mips, 0);
 
     vulkanCommandBuffer->EndRecording();
-    vulkanCommandBuffer->Submit(true);
+    vulkanCommandBuffer->Submit()->Wait();
 
     m_Specification.Layout       = newLayout;
     m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
@@ -247,17 +247,18 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
     else
 #endif
     {
-        const CommandBufferSpecification cbSpec = {
-            ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
-            Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
-        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(cbSpec);
+        const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS /*COMMAND_BUFFER_TYPE_TRANSFER*/,
+                                                   ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                   Renderer::GetRendererData()->FrameIndex,
+                                                   JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+        auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
         vulkanCommandBuffer->CopyBufferToImage((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle,
                                                ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), 1, &copyRegion);
 
         vulkanCommandBuffer->EndRecording();
-        vulkanCommandBuffer->Submit(true, false);
+        vulkanCommandBuffer->Submit()->Wait();
     }
 }
 

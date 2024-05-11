@@ -126,7 +126,7 @@ void Shader::DetectShaderKind(shaderc_shader_kind& shaderKind, const std::string
 }
 
 std::vector<uint32_t> Shader::CompileOrRetrieveCached(const std::string& shaderName, const std::string& localShaderPath,
-                                                      shaderc_shader_kind shaderKind)
+                                                      shaderc_shader_kind shaderKind, const bool bHotReload)
 {
     const auto& appSpec           = Application::Get().GetSpecification();
     const auto& assetsDir         = appSpec.AssetsDir;
@@ -138,7 +138,7 @@ std::vector<uint32_t> Shader::CompileOrRetrieveCached(const std::string& shaderN
     const std::filesystem::path cachedShaderPath = workingDirFilePath / assetsDir / cacheDir / shadersDir / (shaderName + ".spv");
 #if !VK_FORCE_SHADER_COMPILATION
     // TODO: Add extra shader directories if don't exist, cuz loading fucked up
-    if (std::filesystem::exists(cachedShaderPath)) return LoadData<std::vector<uint32_t>>(cachedShaderPath.string());
+    if (!bHotReload && std::filesystem::exists(cachedShaderPath)) return LoadData<std::vector<uint32_t>>(cachedShaderPath.string());
 #endif
 
     // Got no cache, let's compile then
@@ -274,7 +274,7 @@ const Shared<Shader>& ShaderLibrary::Get(const std::string& shaderName)
     return range.first->second;
 }
 
-const Shared<Shader> ShaderLibrary::Get(const ShaderSpecification& shaderSpec)
+const Shared<Shader>& ShaderLibrary::Get(const ShaderSpecification& shaderSpec)
 {
     if (!s_Shaders.contains(shaderSpec.Name))
     {
@@ -307,6 +307,7 @@ const Shared<Shader> ShaderLibrary::Get(const ShaderSpecification& shaderSpec)
         if (bAllMacrosFound) return it->second;
     }
 
+    PFR_ASSERT(false, "Unknown shader specification!");
     return nullptr;
 }
 

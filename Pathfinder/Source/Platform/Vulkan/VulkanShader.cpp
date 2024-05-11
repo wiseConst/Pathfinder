@@ -159,118 +159,7 @@ static void PrintDescriptorSets(const std::vector<SpvReflectDescriptorSet*>& des
 
 VulkanShader::VulkanShader(const ShaderSpecification& shaderSpec) : Shader(shaderSpec)
 {
-    const auto& appSpec           = Application::Get().GetSpecification();
-    const auto& assetsDir         = appSpec.AssetsDir;
-    const auto& shadersDir        = appSpec.ShadersDir;
-    const auto& cacheDir          = appSpec.CacheDir;
-    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
-
-    // In case shader specified through folders, handling cache.
-    if (const auto fsShader = std::filesystem::path(m_Specification.Name); fsShader.has_parent_path())
-        std::filesystem::create_directories(workingDirFilePath / assetsDir / cacheDir / shadersDir / fsShader.parent_path());
-
-    const std::string localShaderPathString = assetsDir + "/" + shadersDir + "/" + std::string(m_Specification.Name);
-    for (const auto& shaderExt : s_SHADER_EXTENSIONS)
-    {
-        const std::filesystem::path localShaderPath = localShaderPathString + std::string(shaderExt);
-        if (!std::filesystem::exists(localShaderPath)) continue;
-
-        // Detect shader type
-        shaderc_shader_kind shaderKind = shaderc_vertex_shader;
-        DetectShaderKind(shaderKind, shaderExt);
-
-        auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToPathfinder(shaderKind));
-
-        // Compile or retrieve cache && load vulkan shader module
-        const std::string shaderNameExt = std::string(m_Specification.Name) + std::string(shaderExt);
-        const auto compiledShaderSrc    = CompileOrRetrieveCached(shaderNameExt, localShaderPath.string(), shaderKind);
-        LoadShaderModule(currentShaderDescription.Module, compiledShaderSrc);
-
-        const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-        VK_SetDebugName(logicalDevice, currentShaderDescription.Module, VK_OBJECT_TYPE_SHADER_MODULE, shaderNameExt.data());
-
-        // Collect reflection data
-        SpvReflectShaderModule reflectModule = {};
-        std::vector<SpvReflectDescriptorSet*> reflectedDescriptorSets;
-        std::vector<SpvReflectBlockVariable*> reflectedPushConstants;
-        LOG_TAG_TRACE(VULKAN, "SHADER_REFLECTION:\"%s\"...", shaderNameExt.data());
-        Reflect(reflectModule, currentShaderDescription, compiledShaderSrc, reflectedDescriptorSets, reflectedPushConstants);
-
-        // Merge reflection data
-        for (const auto& pc : reflectedPushConstants)
-        {
-            currentShaderDescription.PushConstants[pc->name] = VulkanUtility::GetPushConstantRange(
-                VulkanUtility::PathfinderShaderStageToVulkan(currentShaderDescription.Stage), pc->offset, pc->size);
-        }
-        reflectedPushConstants.clear();
-
-        for (const auto& ds : reflectedDescriptorSets)
-        {
-            auto& descriptorSetInfo = currentShaderDescription.DescriptorSetBindings.emplace_back();
-            std::vector<VkDescriptorSetLayoutBinding> bindings;
-            bindings.reserve(ds->binding_count);
-
-            // NOTE: This is for bindless, where I store 4 descriptors in 1 set (inappropriate but who the fuck cares in vulkan huh?)
-            uint32_t prevBinding = UINT32_MAX;
-
-            for (uint32_t i = 0; i < ds->binding_count; ++i)
-            {
-                if (prevBinding == ds->bindings[i]->binding) continue;
-
-                auto& bindingInfo = ds->bindings[i];
-                descriptorSetInfo.emplace(bindingInfo->name, VkDescriptorSetLayoutBinding{});
-
-                auto& dsBinding              = descriptorSetInfo.at(bindingInfo->name);
-                dsBinding.binding            = bindingInfo->binding;
-                dsBinding.descriptorCount    = bindingInfo->count;
-                dsBinding.descriptorType     = static_cast<VkDescriptorType>(bindingInfo->descriptor_type);
-                dsBinding.stageFlags         = VulkanUtility::PathfinderShaderStageToVulkan(currentShaderDescription.Stage);
-                dsBinding.pImmutableSamplers = 0;  // TODO: Do I need these?
-
-                bindings.emplace_back(dsBinding);
-                prevBinding = dsBinding.binding;
-            }
-
-            auto& setLayout = currentShaderDescription.SetLayouts.emplace_back();
-
-            // BINDLESS FLAGS
-            const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
-                                                                                          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
-            const VkDescriptorSetLayoutBindingFlagsCreateInfo shaderBindingsExtendedInfo = {
-                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, static_cast<uint32_t>(bindingFlags.size()),
-                bindingFlags.data()};
-
-            const VkDescriptorSetLayoutCreateInfo dslci = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &shaderBindingsExtendedInfo,
-                                                           VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
-                                                           static_cast<uint32_t>(bindings.size()), bindings.data()};
-            VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &dslci, nullptr, &setLayout),
-                     "Failed to create descriptor layout for shader needs!");
-
-            const std::string descriptorSetLayoutName = "VK_DESCRIPTOR_SET_LAYOUT_" + shaderNameExt;
-            VK_SetDebugName(logicalDevice, setLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, descriptorSetLayoutName.data());
-        }
-        reflectedDescriptorSets.clear();
-
-        // Cleanup only after descriptor sets && push constants assembled into my structures.
-        spvReflectDestroyShaderModule(&reflectModule);
-
-        currentShaderDescription.Sets.resize(currentShaderDescription.SetLayouts.size());
-        for (const auto& setLayout : currentShaderDescription.SetLayouts)
-        {
-            for (auto& dsPerFrame : currentShaderDescription.Sets)
-            {
-                for (uint32_t frameIndex{}; frameIndex < dsPerFrame.size(); ++frameIndex)
-                {
-                    PFR_ASSERT(VulkanContext::Get().GetDevice()->GetDescriptorAllocator()->Allocate(dsPerFrame.at(frameIndex), setLayout),
-                               "Failed to allocate descriptor set!");
-
-                    const std::string descriptorSetName = "VK_DESCRIPTOR_SET_" + shaderNameExt + "_FRAME_" + std::to_string(frameIndex);
-                    VK_SetDebugName(logicalDevice, dsPerFrame.at(frameIndex).second, VK_OBJECT_TYPE_DESCRIPTOR_SET,
-                                    descriptorSetName.data());
-                }
-            }
-        }
-    }
+    Invalidate();
 }
 
 const std::vector<VkDescriptorSet> VulkanShader::GetDescriptorSetByShaderStage(const EShaderStage shaderStage)
@@ -378,15 +267,19 @@ ShaderBindingTable VulkanShader::CreateSBT(const Shared<Pipeline>& rtPipeline) c
     return sbt;
 }
 
-void VulkanShader::DestroyGarbageIfNeeded()
+bool VulkanShader::DestroyGarbageIfNeeded()
 {
+    bool bAnythingDestroyed = false;
     for (auto& shaderDescription : m_ShaderDescriptions)
     {
         if (shaderDescription.Module == VK_NULL_HANDLE) continue;
 
         vkDestroyShaderModule(VulkanContext::Get().GetDevice()->GetLogicalDevice(), shaderDescription.Module, nullptr);
         shaderDescription.Module = VK_NULL_HANDLE;
+        bAnythingDestroyed       = true;
     }
+
+    return bAnythingDestroyed;
 }
 
 void VulkanShader::Reflect(SpvReflectShaderModule& reflectModule, ShaderDescription& shaderDescription,
@@ -489,6 +382,126 @@ void VulkanShader::Destroy()
     {
         for (auto& setLayout : shaderDescription.SetLayouts)
             vkDestroyDescriptorSetLayout(logicalDevice, setLayout, nullptr);
+    }
+    m_ShaderDescriptions.clear();
+}
+
+void VulkanShader::Invalidate()
+{
+    const bool bHotReload = !m_ShaderDescriptions.empty();
+    Destroy();
+
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& shadersDir        = appSpec.ShadersDir;
+    const auto& cacheDir          = appSpec.CacheDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
+
+    // In case shader specified through folders, handling cache.
+    if (const auto fsShader = std::filesystem::path(m_Specification.Name); fsShader.has_parent_path())
+        std::filesystem::create_directories(workingDirFilePath / assetsDir / cacheDir / shadersDir / fsShader.parent_path());
+
+    const std::string localShaderPathString = assetsDir + "/" + shadersDir + "/" + std::string(m_Specification.Name);
+    for (const auto& shaderExt : s_SHADER_EXTENSIONS)
+    {
+        const std::filesystem::path localShaderPath = localShaderPathString + std::string(shaderExt);
+        if (!std::filesystem::exists(localShaderPath)) continue;
+
+        // Detect shader type
+        shaderc_shader_kind shaderKind = shaderc_vertex_shader;
+        DetectShaderKind(shaderKind, shaderExt);
+
+        auto& currentShaderDescription = m_ShaderDescriptions.emplace_back(ShadercShaderStageToPathfinder(shaderKind));
+
+        // Compile or retrieve cache && load vulkan shader module
+        const std::string shaderNameExt = std::string(m_Specification.Name) + std::string(shaderExt);
+        const auto compiledShaderSrc    = CompileOrRetrieveCached(shaderNameExt, localShaderPath.string(), shaderKind, bHotReload);
+        LoadShaderModule(currentShaderDescription.Module, compiledShaderSrc);
+
+        const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+        VK_SetDebugName(logicalDevice, currentShaderDescription.Module, VK_OBJECT_TYPE_SHADER_MODULE, shaderNameExt.data());
+
+        // Collect reflection data
+        SpvReflectShaderModule reflectModule = {};
+        std::vector<SpvReflectDescriptorSet*> reflectedDescriptorSets;
+        std::vector<SpvReflectBlockVariable*> reflectedPushConstants;
+        LOG_TAG_TRACE(VULKAN, "SHADER_REFLECTION:\"%s\"...", shaderNameExt.data());
+        Reflect(reflectModule, currentShaderDescription, compiledShaderSrc, reflectedDescriptorSets, reflectedPushConstants);
+
+        // Merge reflection data
+        for (const auto& pc : reflectedPushConstants)
+        {
+            currentShaderDescription.PushConstants[pc->name] = VulkanUtility::GetPushConstantRange(
+                VulkanUtility::PathfinderShaderStageToVulkan(currentShaderDescription.Stage), pc->offset, pc->size);
+        }
+        reflectedPushConstants.clear();
+
+        for (const auto& ds : reflectedDescriptorSets)
+        {
+            auto& descriptorSetInfo = currentShaderDescription.DescriptorSetBindings.emplace_back();
+            std::vector<VkDescriptorSetLayoutBinding> bindings;
+            bindings.reserve(ds->binding_count);
+
+            // NOTE: This is for bindless, where I store 4 descriptors in 1 set (inappropriate but who the fuck cares in vulkan huh?)
+            uint32_t prevBinding = UINT32_MAX;
+
+            for (uint32_t i = 0; i < ds->binding_count; ++i)
+            {
+                if (prevBinding == ds->bindings[i]->binding) continue;
+
+                auto& bindingInfo = ds->bindings[i];
+                descriptorSetInfo.emplace(bindingInfo->name, VkDescriptorSetLayoutBinding{});
+
+                auto& dsBinding              = descriptorSetInfo.at(bindingInfo->name);
+                dsBinding.binding            = bindingInfo->binding;
+                dsBinding.descriptorCount    = bindingInfo->count;
+                dsBinding.descriptorType     = static_cast<VkDescriptorType>(bindingInfo->descriptor_type);
+                dsBinding.stageFlags         = VulkanUtility::PathfinderShaderStageToVulkan(currentShaderDescription.Stage);
+                dsBinding.pImmutableSamplers = 0;  // TODO: Do I need these?
+
+                bindings.emplace_back(dsBinding);
+                prevBinding = dsBinding.binding;
+            }
+
+            auto& setLayout = currentShaderDescription.SetLayouts.emplace_back();
+
+            // BINDLESS FLAGS
+            const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT |
+                                                                                          VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT);
+            const VkDescriptorSetLayoutBindingFlagsCreateInfo shaderBindingsExtendedInfo = {
+                VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, static_cast<uint32_t>(bindingFlags.size()),
+                bindingFlags.data()};
+
+            const VkDescriptorSetLayoutCreateInfo dslci = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &shaderBindingsExtendedInfo,
+                                                           VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT,
+                                                           static_cast<uint32_t>(bindings.size()), bindings.data()};
+            VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &dslci, nullptr, &setLayout),
+                     "Failed to create descriptor layout for shader needs!");
+
+            const std::string descriptorSetLayoutName = "VK_DESCRIPTOR_SET_LAYOUT_" + shaderNameExt;
+            VK_SetDebugName(logicalDevice, setLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, descriptorSetLayoutName.data());
+        }
+        reflectedDescriptorSets.clear();
+
+        // Cleanup only after descriptor sets && push constants assembled into my structures.
+        spvReflectDestroyShaderModule(&reflectModule);
+
+        currentShaderDescription.Sets.resize(currentShaderDescription.SetLayouts.size());
+        for (const auto& setLayout : currentShaderDescription.SetLayouts)
+        {
+            for (auto& dsPerFrame : currentShaderDescription.Sets)
+            {
+                for (uint32_t frameIndex{}; frameIndex < dsPerFrame.size(); ++frameIndex)
+                {
+                    PFR_ASSERT(VulkanContext::Get().GetDevice()->GetDescriptorAllocator()->Allocate(dsPerFrame.at(frameIndex), setLayout),
+                               "Failed to allocate descriptor set!");
+
+                    const std::string descriptorSetName = "VK_DESCRIPTOR_SET_" + shaderNameExt + "_FRAME_" + std::to_string(frameIndex);
+                    VK_SetDebugName(logicalDevice, dsPerFrame.at(frameIndex).second, VK_OBJECT_TYPE_DESCRIPTOR_SET,
+                                    descriptorSetName.data());
+                }
+            }
+        }
     }
 }
 

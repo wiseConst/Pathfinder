@@ -221,17 +221,18 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         else
 #endif
         {
-            const CommandBufferSpecification cbSpec = {
-                ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
-                Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
-            auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(cbSpec);
+            const CommandBufferSpecification cbSpec = {ECommandBufferType::/*COMMAND_BUFFER_TYPE_GRAPHICS*/ COMMAND_BUFFER_TYPE_TRANSFER,
+                                                       ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                       Renderer::GetRendererData()->FrameIndex,
+                                                       JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+            auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
             vulkanCommandBuffer->BeginRecording(true);
 
             const VkBufferCopy region = {0, 0, dataSize};
             vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
 
             vulkanCommandBuffer->EndRecording();
-            vulkanCommandBuffer->Submit(true, false);
+            vulkanCommandBuffer->Submit()->Wait();
         }
     }
 

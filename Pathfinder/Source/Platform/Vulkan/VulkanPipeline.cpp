@@ -223,7 +223,8 @@ void VulkanPipeline::CreateLayout()
     VK_SetDebugName(logicalDevice, m_Layout, VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayoutName.data());
 }
 
-void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName) const
+void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName,
+                                                              const bool bHotReload) const
 {
     PFR_ASSERT(!pipelineName.empty(), "Every pipeline should've a name!");
 
@@ -239,35 +240,38 @@ void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& o
     VkPipelineCacheCreateInfo cacheCI = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, nullptr, 0};
     auto& context                     = VulkanContext::Get();
 #if !VK_FORCE_PIPELINE_COMPILATION
-    const std::string cachePath = pipelineCacheDirFilePath.string() + "/" + pipelineName + std::string(".cache");
-    auto cacheData              = LoadData<std::vector<uint8_t>>(cachePath);
-
-    // Validate retrieved pipeline cache
-    if (!cacheData.empty())
+    if (!bHotReload)
     {
-        bool bSamePipelineUUID = true;
-        for (uint16_t i = 0; i < VK_UUID_SIZE; ++i)
-            if (context.GetDevice()->GetPipelineCacheUUID()[i] != cacheData[16 + i]) bSamePipelineUUID = false;
+        const std::string cachePath = pipelineCacheDirFilePath.string() + "/" + pipelineName + std::string(".cache");
+        auto cacheData              = LoadData<std::vector<uint8_t>>(cachePath);
 
-        bool bSameVendorID = true;
-        bool bSameDeviceID = true;
-        for (uint16_t i = 0; i < 4; ++i)
+        // Validate retrieved pipeline cache
+        if (!cacheData.empty())
         {
-            if (cacheData[8 + i] != ((context.GetDevice()->GetVendorID() >> (8 * i)) & 0xff)) bSameVendorID = false;
-            if (cacheData[12 + i] != ((context.GetDevice()->GetDeviceID() >> (8 * i)) & 0xff)) bSameDeviceID = false;
+            bool bSamePipelineUUID = true;
+            for (uint16_t i = 0; i < VK_UUID_SIZE; ++i)
+                if (context.GetDevice()->GetPipelineCacheUUID()[i] != cacheData[16 + i]) bSamePipelineUUID = false;
 
-            if (!bSameDeviceID || !bSameVendorID || !bSamePipelineUUID) break;
-        }
+            bool bSameVendorID = true;
+            bool bSameDeviceID = true;
+            for (uint16_t i = 0; i < 4; ++i)
+            {
+                if (cacheData[8 + i] != ((context.GetDevice()->GetVendorID() >> (8 * i)) & 0xff)) bSameVendorID = false;
+                if (cacheData[12 + i] != ((context.GetDevice()->GetDeviceID() >> (8 * i)) & 0xff)) bSameDeviceID = false;
 
-        if (bSamePipelineUUID && bSameVendorID && bSameDeviceID)
-        {
-            cacheCI.initialDataSize = cacheData.size();
-            cacheCI.pInitialData    = cacheData.data();
-            LOG_TAG_INFO(VULKAN, "Found valid pipeline cache \"%s\", get ready!", pipelineName.data());
-        }
-        else
-        {
-            LOG_TAG_WARN(VULKAN, "Pipeline cache for \"%s\" not valid! Recompiling...", pipelineName.data());
+                if (!bSameDeviceID || !bSameVendorID || !bSamePipelineUUID) break;
+            }
+
+            if (bSamePipelineUUID && bSameVendorID && bSameDeviceID)
+            {
+                cacheCI.initialDataSize = cacheData.size();
+                cacheCI.pInitialData    = cacheData.data();
+                LOG_TAG_INFO(VULKAN, "Found valid pipeline cache \"%s\", get ready!", pipelineName.data());
+            }
+            else
+            {
+                LOG_TAG_WARN(VULKAN, "Pipeline cache for \"%s\" not valid! Recompiling...", pipelineName.data());
+            }
         }
     }
 #endif
@@ -277,14 +281,20 @@ void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& o
 
 void VulkanPipeline::Invalidate()
 {
+    const bool bHotReload = m_Handle != VK_NULL_HANDLE;
     if (m_Handle)
-        Destroy();  // NOTE: I can't recreate pipelines, since I destroy shader modules as a garbage at the end of Renderer::Create.
+    {
+        Destroy();
+
+        // Since I destroy shader modules if they're useless after pipeline creation, we should recreate them.
+        m_Specification.Shader->Invalidate();
+    }
 
     PFR_ASSERT(m_Specification.Shader, "Not valid shader passed!");
     CreateLayout();
 
     VkPipelineCache pipelineCache = VK_NULL_HANDLE;
-    CreateOrRetrieveAndValidatePipelineCache(pipelineCache, m_Specification.DebugName);
+    CreateOrRetrieveAndValidatePipelineCache(pipelineCache, m_Specification.DebugName, bHotReload);
 
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(m_Specification.Shader);
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
@@ -717,8 +727,7 @@ void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string
     if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
 
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-#if !VK_FORCE_PIPELINE_COMPILATION
-    size_t cacheSize = 0;
+    size_t cacheSize          = 0;
     VK_CHECK(vkGetPipelineCacheData(logicalDevice, cache, &cacheSize, nullptr), "Failed to retrieve pipeline cache data size!");
 
     std::vector<uint8_t> cacheData(cacheSize);
@@ -733,7 +742,6 @@ void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string
     }
 
     SaveData(cachePath, cacheData.data(), cacheData.size() * cacheData[0]);
-#endif
     vkDestroyPipelineCache(logicalDevice, cache, nullptr);
 }
 

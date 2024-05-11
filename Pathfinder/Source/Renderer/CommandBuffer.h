@@ -31,6 +31,31 @@ struct CommandBufferSpecification
     uint8_t ThreadID          = 0;
 };
 
+class SyncPoint : private Uncopyable, private Unmovable
+{
+  public:
+    SyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages)
+        : m_TimelineSemaphoreHandle(timelineSemaphoreHandle), m_Value(value), m_PipelineStages(pipelineStages)
+    {
+    }
+    virtual ~SyncPoint() = default;
+
+    NODISCARD FORCEINLINE const auto& GetValue() const { return m_Value; }
+    NODISCARD FORCEINLINE const auto& GetTimelineSemaphore() const { return m_TimelineSemaphoreHandle; }
+    NODISCARD FORCEINLINE const auto& GetPipelineStages() const { return m_PipelineStages; }
+
+    virtual void Wait() = 0;  // Waits for the semaphore to reach 'value'
+    static Shared<SyncPoint> Create(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages);
+
+  protected:
+    void* m_TimelineSemaphoreHandle    = nullptr;
+    uint64_t m_Value                   = 0;
+    RendererTypeFlags m_PipelineStages = EPipelineStage::PIPELINE_STAGE_NONE;
+
+  private:
+    SyncPoint() = delete;
+};
+
 class Pipeline;
 class CommandBuffer : private Uncopyable, private Unmovable
 {
@@ -38,11 +63,7 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual ~CommandBuffer() = default;
 
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
-    NODISCARD FORCEINLINE virtual void* Get() const                                         = 0;
-    NODISCARD FORCEINLINE virtual void* GetWaitSemaphore() const                            = 0;
-    NODISCARD FORCEINLINE virtual void* GetTimelineSemaphore(bool bIncrementCounter = true) = 0;
-    NODISCARD FORCEINLINE virtual uint64_t GetTimelineValue() const                         = 0;
-    NODISCARD FORCEINLINE virtual void* GetSubmitFence() const                              = 0;
+    NODISCARD FORCEINLINE virtual void* Get() const = 0;
 
     NODISCARD FORCEINLINE static const auto& GetPipelineStatisticsNames() { return s_PipelineStatisticsNames; }
     NODISCARD FORCEINLINE const auto& GetPipelineStatisticsResults() const { return m_PipelineStatisticsResults; }
@@ -70,6 +91,12 @@ class CommandBuffer : private Uncopyable, private Unmovable
     /* STATISTICS  */
 
     /* DEBUG */
+    FORCEINLINE void InsertDebugBarrier() const
+    {
+        InsertExecutionBarrier(
+            EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT, EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT,
+            EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT, EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT);
+    }
     virtual void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const = 0;
     virtual void EndDebugLabel() const                                                                   = 0;
     /* DEBUG */
@@ -112,17 +139,15 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const = 0;
     virtual void FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const          = 0;
 
-    virtual void InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EAccessFlags srcAccessFlags,
-                                        const EPipelineStage dstPipelineStage, const EAccessFlags dstAccessFlags) const = 0;
-    virtual void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
-                                           const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
-                                           const EAccessFlags dstAccessFlags) const                                     = 0;
+    virtual void InsertExecutionBarrier(const RendererTypeFlags srcPipelineStages, const RendererTypeFlags srcAccessFlags,
+                                        const RendererTypeFlags dstPipelineStages, const RendererTypeFlags dstAccessFlags) const = 0;
+    virtual void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const RendererTypeFlags srcPipelineStages,
+                                           const RendererTypeFlags dstPipelineStages, const RendererTypeFlags srcAccessFlags,
+                                           const RendererTypeFlags dstAccessFlags) const                                         = 0;
 
-    virtual void Submit(bool bWaitAfterSubmit = true, bool bSignalWaitSemaphore = false, uint64_t timelineSignalValue = UINT64_MAX,
-                        const std::vector<PipelineStageFlags> pipelineStages = {}, const std::vector<void*>& waitSemaphores = {},
-                        const std::vector<uint64_t>& waitSemaphoreValues = {}, const std::vector<void*>& signalSemaphores = {},
-                        const std::vector<uint64_t>& signalSemaphoreValues = {}, const void* submitFence = nullptr) = 0;
-    virtual void Reset()                                                                                            = 0;
+    virtual Shared<SyncPoint> Submit(const std::vector<Shared<SyncPoint>>& waitPoints   = {},
+                                     const std::vector<Shared<SyncPoint>>& signalPoints = {}, const void* signalFence = nullptr) = 0;
+    virtual void Reset()                                                                                                         = 0;
 
     static Shared<CommandBuffer> Create(const CommandBufferSpecification& commandBufferSpec);
 

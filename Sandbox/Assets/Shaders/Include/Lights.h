@@ -40,7 +40,6 @@ struct PointLight
     float Intensity;
     vec3 Color;
     float Radius;
-    vec2 pad0;
     float MinRadius;
     uint32_t bCastShadows;
 };
@@ -56,7 +55,6 @@ struct SpotLight
     float InnerCutOff;
     float OuterCutOff;
     uint32_t bCastShadows;
-    float pad0;
 };
 
 #ifndef __cplusplus

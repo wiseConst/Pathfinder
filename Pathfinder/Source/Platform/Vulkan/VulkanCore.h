@@ -17,7 +17,7 @@ namespace Pathfinder
 
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
-// NOTE: SHADER CACHE WITH MACRO DEFINITIONS DOESN'T WORK
+// NOTE: SHADER CACHE WITH MACRO DEFINITIONS DOESN'T WORK, mb hash and apply it to save name?
 #define VK_FORCE_VALIDATION 1
 #define VK_FORCE_SHADER_COMPILATION 1
 #define VK_FORCE_PIPELINE_COMPILATION 1
@@ -203,49 +203,46 @@ static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeve
 namespace VulkanUtility
 {
 
-NODISCARD static VkImageMemoryBarrier GetImageMemoryBarrier(const VkImage& image, const VkImageAspectFlags aspectMask,
-                                                            const VkImageLayout oldLayout, const VkImageLayout newLayout,
-                                                            const VkAccessFlags srcAccessMask, const VkAccessFlags dstAccessMask,
-                                                            const uint32_t layerCount, const uint32_t baseArrayLayer,
-                                                            const uint32_t levelCount, const uint32_t baseMipLevel,
-                                                            const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                                                            const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
+NODISCARD static VkImageMemoryBarrier2 GetImageMemoryBarrier(const VkImage& image, const VkImageAspectFlags aspectMask,
+                                                             const VkImageLayout oldLayout, const VkImageLayout newLayout,
+                                                             const VkPipelineStageFlags2 srcStageMask, const VkAccessFlags2 srcAccessMask,
+                                                             const VkPipelineStageFlags2 dstStageMask, const VkAccessFlags2 dstAccessMask,
+                                                             const uint32_t layerCount, const uint32_t baseArrayLayer,
+                                                             const uint32_t levelCount, const uint32_t baseMipLevel,
+                                                             const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                                             const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
 {
-    VkImageMemoryBarrier imageMemoryBarrier            = {VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER};
-    imageMemoryBarrier.image                           = image;
-    imageMemoryBarrier.oldLayout                       = oldLayout;
-    imageMemoryBarrier.newLayout                       = newLayout;
-    imageMemoryBarrier.srcAccessMask                   = srcAccessMask;
-    imageMemoryBarrier.dstAccessMask                   = dstAccessMask;
-    imageMemoryBarrier.subresourceRange.aspectMask     = aspectMask;
-    imageMemoryBarrier.subresourceRange.layerCount     = layerCount;
-    imageMemoryBarrier.subresourceRange.levelCount     = levelCount;
-    imageMemoryBarrier.subresourceRange.baseArrayLayer = baseArrayLayer;
-    imageMemoryBarrier.subresourceRange.baseMipLevel   = baseMipLevel;
-
-    imageMemoryBarrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
-    imageMemoryBarrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
-
-    return imageMemoryBarrier;
+    return VkImageMemoryBarrier2{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                                 nullptr,
+                                 srcStageMask,
+                                 srcAccessMask,
+                                 dstStageMask,
+                                 dstAccessMask,
+                                 oldLayout,
+                                 newLayout,
+                                 srcQueueFamilyIndex,
+                                 dstQueueFamilyIndex,
+                                 image,
+                                 {aspectMask, baseMipLevel, levelCount, baseArrayLayer, layerCount}};
 }
 
-NODISCARD static VkBufferMemoryBarrier GetBufferMemoryBarrier(const VkBuffer& buffer, const VkDeviceSize size, const VkDeviceSize offset,
-                                                              const VkAccessFlags srcAccessMask, const VkAccessFlags dstAccessMask,
-                                                              const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                                                              const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
+NODISCARD static VkBufferMemoryBarrier2 GetBufferMemoryBarrier(const VkBuffer& buffer, const VkDeviceSize size, const VkDeviceSize offset,
+                                                               const VkPipelineStageFlags2 srcStageMask, const VkAccessFlags2 srcAccessMask,
+                                                               const VkPipelineStageFlags2 dstStageMask, const VkAccessFlags2 dstAccessMask,
+                                                               const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+                                                               const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
 {
-    VkBufferMemoryBarrier bufferMemoryBarrier = {VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER};
-    bufferMemoryBarrier.buffer                = buffer;
-    bufferMemoryBarrier.size                  = size;
-    bufferMemoryBarrier.offset                = offset;
-
-    bufferMemoryBarrier.srcAccessMask = srcAccessMask;
-    bufferMemoryBarrier.dstAccessMask = dstAccessMask;
-
-    bufferMemoryBarrier.srcQueueFamilyIndex = srcQueueFamilyIndex;
-    bufferMemoryBarrier.dstQueueFamilyIndex = dstQueueFamilyIndex;
-
-    return bufferMemoryBarrier;
+    return VkBufferMemoryBarrier2{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                                  nullptr,
+                                  srcStageMask,
+                                  srcAccessMask,
+                                  dstStageMask,
+                                  dstAccessMask,
+                                  srcQueueFamilyIndex,
+                                  dstQueueFamilyIndex,
+                                  buffer,
+                                  offset,
+                                  size};
 }
 
 NODISCARD static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
@@ -364,86 +361,105 @@ NODISCARD static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode 
     return VK_POLYGON_MODE_FILL;
 }
 
-NODISCARD static VkAccessFlags PathfinderAccessFlagsToVulkan(const EAccessFlags accessFlags)
+NODISCARD static VkAccessFlags2 PathfinderAccessFlagsToVulkan(const RendererTypeFlags accessFlags)
 {
-    VkAccessFlags vkAccessFlags = VK_ACCESS_NONE;
+    VkAccessFlags2 vkAccessFlags2 = VK_ACCESS_2_NONE;
 
-    if (accessFlags == EAccessFlags::ACCESS_INDIRECT_COMMAND_READ) vkAccessFlags |= VK_ACCESS_INDIRECT_COMMAND_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_INDEX_READ) vkAccessFlags |= VK_ACCESS_INDEX_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_VERTEX_ATTRIBUTE_READ) vkAccessFlags |= VK_ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_UNIFORM_READ) vkAccessFlags |= VK_ACCESS_UNIFORM_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_INPUT_ATTACHMENT_READ) vkAccessFlags |= VK_ACCESS_INPUT_ATTACHMENT_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_SHADER_READ) vkAccessFlags |= VK_ACCESS_SHADER_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_SHADER_WRITE) vkAccessFlags |= VK_ACCESS_SHADER_WRITE_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ) vkAccessFlags |= VK_ACCESS_COLOR_ATTACHMENT_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE) vkAccessFlags |= VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ) vkAccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE) vkAccessFlags |= VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_TRANSFER_READ) vkAccessFlags |= VK_ACCESS_TRANSFER_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_TRANSFER_WRITE) vkAccessFlags |= VK_ACCESS_TRANSFER_WRITE_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_HOST_READ) vkAccessFlags |= VK_ACCESS_HOST_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_HOST_WRITE) vkAccessFlags |= VK_ACCESS_HOST_WRITE_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_MEMORY_READ) vkAccessFlags |= VK_ACCESS_MEMORY_READ_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_MEMORY_WRITE) vkAccessFlags |= VK_ACCESS_MEMORY_WRITE_BIT;
-    if (accessFlags == EAccessFlags::ACCESS_NONE) vkAccessFlags |= VK_ACCESS_NONE;
-    if (accessFlags == EAccessFlags::ACCESS_TRANSFORM_FEEDBACK_WRITE) vkAccessFlags |= VK_ACCESS_TRANSFORM_FEEDBACK_WRITE_BIT_EXT;
-    if (accessFlags == EAccessFlags::ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ)
-        vkAccessFlags |= VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_READ_BIT_EXT;
-    if (accessFlags == EAccessFlags::ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE)
-        vkAccessFlags |= VK_ACCESS_TRANSFORM_FEEDBACK_COUNTER_WRITE_BIT_EXT;
-    if (accessFlags == EAccessFlags::ACCESS_CONDITIONAL_RENDERING_READ) vkAccessFlags |= VK_ACCESS_CONDITIONAL_RENDERING_READ_BIT_EXT;
-    if (accessFlags == EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT)
-        vkAccessFlags |= VK_ACCESS_COLOR_ATTACHMENT_READ_NONCOHERENT_BIT_EXT;
-    if (accessFlags == EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_READ) vkAccessFlags |= VK_ACCESS_ACCELERATION_STRUCTURE_READ_BIT_KHR;
-    if (accessFlags == EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_WRITE) vkAccessFlags |= VK_ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
-    if (accessFlags == EAccessFlags::ACCESS_FRAGMENT_DENSITY_MAP_READ) vkAccessFlags |= VK_ACCESS_FRAGMENT_DENSITY_MAP_READ_BIT_EXT;
-    if (accessFlags == EAccessFlags::ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ)
-        vkAccessFlags |= VK_ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_NONE) vkAccessFlags2 |= VK_ACCESS_2_NONE;
+    if (accessFlags & EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_INDEX_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INDEX_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_VERTEX_ATTRIBUTE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_UNIFORM_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_UNIFORM_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_INPUT_ATTACHMENT_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_TRANSFER_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_TRANSFER_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_TRANSFER_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_HOST_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_HOST_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_HOST_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_HOST_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_MEMORY_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_MEMORY_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_MEMORY_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_MEMORY_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
 
-    return vkAccessFlags;
+    if (accessFlags & EAccessFlags::ACCESS_VIDEO_DECODE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_DECODE_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_VIDEO_DECODE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR;
+
+    if (accessFlags & EAccessFlags::ACCESS_VIDEO_ENCODE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_ENCODE_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_VIDEO_ENCODE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_ENCODE_WRITE_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_READ_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR;
+
+    return vkAccessFlags2;
 }
 
-NODISCARD static VkPipelineStageFlags PathfinderPipelineStageToVulkan(const PipelineStageFlags pipelineStage)
+NODISCARD static VkPipelineStageFlags2 PathfinderPipelineStageToVulkan(const RendererTypeFlags pipelineStage)
 {
-    VkPipelineStageFlags vkPipelineStageFlags = 0;
+    VkPipelineStageFlags2 vkPipelineStageFlags2 = 0;
 
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_INPUT_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_VERTEX_INPUT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_VERTEX_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_NONE) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_NONE;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_INPUT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
     if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT;
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT;
     if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_GEOMETRY_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
     if (pipelineStage & EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
     if (pipelineStage & EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
     if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_TRANSFER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_HOST_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_HOST_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_ALL_GRAPHICS_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_NONE) vkPipelineStageFlags |= VK_PIPELINE_STAGE_NONE;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_CONDITIONAL_RENDERING_BIT_EXT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_RAY_TRACING_SHADER_BIT_KHR;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_FRAGMENT_DENSITY_PROCESS_BIT_EXT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT)
-        vkPipelineStageFlags |= VK_PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_TASK_SHADER_BIT_EXT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT) vkPipelineStageFlags |= VK_PIPELINE_STAGE_MESH_SHADER_BIT_EXT;
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_HOST_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_HOST_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
 
-    return vkPipelineStageFlags;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COPY_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COPY_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_RESOLVE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_RESOLVE_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_BLIT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_BLIT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_CLEAR_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_CLEAR_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_INDEX_INPUT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_ATTRIBUTE_INPUT_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_PRE_RASTERIZATION_SHADERS_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VIDEO_DECODE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VIDEO_ENCODE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VIDEO_ENCODE_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_COPY_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR;
+
+    return vkPipelineStageFlags2;
 }
 
 NODISCARD static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)

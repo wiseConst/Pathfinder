@@ -6,11 +6,13 @@
 namespace Pathfinder
 {
 
+class SceneHierarchyPanel;
+
 class SandboxLayer final : public Layer
 {
   public:
-    SandboxLayer() : Layer("SandboxLayer") {}
-    ~SandboxLayer() override = default;
+    SandboxLayer();
+    ~SandboxLayer();
 
     void Init() final override;
     void Destroy() final override;
@@ -20,8 +22,9 @@ class SandboxLayer final : public Layer
     void OnUIRender() final override;
 
   private:
-    Shared<Camera> m_Camera = nullptr;
-    Shared<Scene> m_ActiveScene = nullptr;
+    Shared<Camera> m_Camera                          = nullptr;
+    Shared<Scene> m_ActiveScene                      = nullptr;
+    Unique<SceneHierarchyPanel> m_WorldOutlinerPanel = nullptr;
 
     bool bRenderUI = false;
 };

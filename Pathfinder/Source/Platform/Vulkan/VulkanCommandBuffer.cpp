@@ -16,7 +16,7 @@
 namespace Pathfinder
 {
 
-static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const ShaderStageFlags shaderStageFlags)
+static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const RendererTypeFlags shaderStageFlags)
 {
     VkShaderStageFlags vkShaderStageFlags = 0;
 
@@ -42,6 +42,20 @@ static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const ShaderStageFl
     return vkShaderStageFlags;
 }
 
+VulkanSyncPoint::VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages)
+    : SyncPoint(timelineSemaphoreHandle, value, pipelineStages)
+{
+}
+
+void VulkanSyncPoint::Wait()
+{
+    const VkSemaphoreWaitInfo waitInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,    nullptr, VK_SEMAPHORE_WAIT_ANY_BIT, 1,
+                                          (VkSemaphore*)&m_TimelineSemaphoreHandle, &m_Value};
+
+    VK_CHECK(vkWaitSemaphores(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &waitInfo, std::numeric_limits<uint64_t>::max()),
+             "Failed to wait on SyncPoint's timeline semaphore!");
+}
+
 VulkanCommandBuffer::VulkanCommandBuffer(const CommandBufferSpecification& commandBufferSpec) : CommandBuffer(commandBufferSpec)
 {
     const auto& context = VulkanContext::Get();
@@ -65,24 +79,6 @@ VulkanCommandBuffer::VulkanCommandBuffer(const CommandBufferSpecification& comma
         const std::string semaphoreDebugName = "VK_TIMELINE_SEMAPHORE_" + commandBufferTypeStr;
         VK_SetDebugName(context.GetDevice()->GetLogicalDevice(), m_TimelineSemaphore.Handle, VK_OBJECT_TYPE_SEMAPHORE,
                         semaphoreDebugName.data());
-    }
-
-    {
-        VkSemaphoreCreateInfo semaphoreCI = {VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO};
-        VK_CHECK(vkCreateSemaphore(context.GetDevice()->GetLogicalDevice(), &semaphoreCI, VK_NULL_HANDLE, &m_SignalSemaphore),
-                 "Failed to create binary semaphore!");
-
-        const std::string semaphoreDebugName = "VK_SIGNAL_SEMAPHORE_" + commandBufferTypeStr;
-        VK_SetDebugName(context.GetDevice()->GetLogicalDevice(), m_SignalSemaphore, VK_OBJECT_TYPE_SEMAPHORE, semaphoreDebugName.data());
-    }
-
-    {
-        const VkFenceCreateInfo fenceCI = {VK_STRUCTURE_TYPE_FENCE_CREATE_INFO, nullptr, VkFenceCreateFlags{}};
-        VK_CHECK(vkCreateFence(context.GetDevice()->GetLogicalDevice(), &fenceCI, VK_NULL_HANDLE, &m_SubmitFence),
-                 "Failed to create fence!");
-
-        const std::string fenceDebugName = "VK_SUBMIT_FENCE_" + commandBufferTypeStr;
-        VK_SetDebugName(context.GetDevice()->GetLogicalDevice(), m_SubmitFence, VK_OBJECT_TYPE_FENCE, fenceDebugName.data());
     }
 }
 
@@ -181,35 +177,39 @@ void VulkanCommandBuffer::BeginTimestampQuery(const EPipelineStage pipelineStage
     ++m_CurrentTimestampIndex;
 }
 
-void VulkanCommandBuffer::InsertExecutionBarrier(const EPipelineStage srcPipelineStage, const EAccessFlags srcAccessFlags,
-                                                 const EPipelineStage dstPipelineStage, const EAccessFlags dstAccessFlags) const
+void VulkanCommandBuffer::InsertExecutionBarrier(const RendererTypeFlags srcPipelineStages, const RendererTypeFlags srcAccessFlags,
+                                                 const RendererTypeFlags dstPipelineStages, const RendererTypeFlags dstAccessFlags) const
 {
+    ++Renderer::GetStats().BarrierCount;
+    const VkMemoryBarrier2 memoryBarrier2 = {VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                                             nullptr,
+                                             VulkanUtility::PathfinderPipelineStageToVulkan(srcPipelineStages),
+                                             VulkanUtility::PathfinderAccessFlagsToVulkan(srcAccessFlags),
+                                             VulkanUtility::PathfinderPipelineStageToVulkan(dstPipelineStages),
+                                             VulkanUtility::PathfinderAccessFlagsToVulkan(dstAccessFlags)};
 
-    const auto vkSrcAccessFlags = VulkanUtility::PathfinderAccessFlagsToVulkan(srcAccessFlags);
-    const auto vkDstAccessFlags = VulkanUtility::PathfinderAccessFlagsToVulkan(dstAccessFlags);
-
-    const VkMemoryBarrier memoryBarrier = {VK_STRUCTURE_TYPE_MEMORY_BARRIER, nullptr, vkSrcAccessFlags, vkDstAccessFlags};
-    vkCmdPipelineBarrier(m_Handle, VulkanUtility::PathfinderPipelineStageToVulkan(srcPipelineStage),
-                         VulkanUtility::PathfinderPipelineStageToVulkan(dstPipelineStage), VK_DEPENDENCY_BY_REGION_BIT, 1, &memoryBarrier,
-                         0, nullptr, 0, nullptr);
+    const VkDependencyInfo dependencyInfo = {
+        VK_STRUCTURE_TYPE_DEPENDENCY_INFO, nullptr, VK_DEPENDENCY_BY_REGION_BIT, 1, &memoryBarrier2, 0, nullptr, 0, nullptr};
+    vkCmdPipelineBarrier2(m_Handle, &dependencyInfo);
 }
 
-void VulkanCommandBuffer::InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const EPipelineStage srcPipelineStage,
-                                                    const EPipelineStage dstPipelineStage, const EAccessFlags srcAccessFlags,
-                                                    const EAccessFlags dstAccessFlags) const
+void VulkanCommandBuffer::InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const RendererTypeFlags srcPipelineStages,
+                                                    const RendererTypeFlags dstPipelineStages, const RendererTypeFlags srcAccessFlags,
+                                                    const RendererTypeFlags dstAccessFlags) const
 {
     const auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
     PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
 
-    const auto vkSrcAccessFlags = VulkanUtility::PathfinderAccessFlagsToVulkan(srcAccessFlags);
-    const auto vkDstAccessFlags = VulkanUtility::PathfinderAccessFlagsToVulkan(dstAccessFlags);
+    const auto vkSrcAccessFlags    = VulkanUtility::PathfinderAccessFlagsToVulkan(srcAccessFlags);
+    const auto vkDstAccessFlags    = VulkanUtility::PathfinderAccessFlagsToVulkan(dstAccessFlags);
+    const auto vkSrcPipelineStages = VulkanUtility::PathfinderPipelineStageToVulkan(srcPipelineStages);
+    const auto vkDstPipelineStages = VulkanUtility::PathfinderPipelineStageToVulkan(dstPipelineStages);
 
-    const VkBuffer rawBuffer       = (VkBuffer)vulkanBuffer->Get();
-    const auto bufferMemoryBarrier = VulkanUtility::GetBufferMemoryBarrier(rawBuffer, vulkanBuffer->GetSpecification().BufferCapacity, 0,
-                                                                           vkSrcAccessFlags, vkDstAccessFlags);
-    InsertBarrier(VulkanUtility::PathfinderPipelineStageToVulkan(srcPipelineStage),
-                  VulkanUtility::PathfinderPipelineStageToVulkan(dstPipelineStage), VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1,
-                  &bufferMemoryBarrier, 0, nullptr);
+    const VkBuffer rawBuffer = (VkBuffer)vulkanBuffer->Get();
+    const auto bufferMemoryBarrier2 =
+        VulkanUtility::GetBufferMemoryBarrier(rawBuffer, vulkanBuffer->GetSpecification().BufferCapacity, 0, vkSrcPipelineStages,
+                                              vkSrcAccessFlags, vkDstPipelineStages, vkDstAccessFlags);
+    InsertBarrier(vkSrcPipelineStages, vkDstPipelineStages, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &bufferMemoryBarrier2, 0, nullptr);
 }
 
 void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheritanceInfo)
@@ -225,7 +225,6 @@ void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheri
     }
 
     VkCommandBufferBeginInfo commandBufferBeginInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO};
-
     if (m_Specification.Level == ECommandBufferLevel::COMMAND_BUFFER_LEVEL_SECONDARY)
     {
         commandBufferBeginInfo.flags |= VK_COMMAND_BUFFER_USAGE_RENDER_PASS_CONTINUE_BIT;
@@ -242,83 +241,79 @@ void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheri
     m_CurrentTimestampIndex = 0;
 }
 
-void VulkanCommandBuffer::Submit(bool bWaitAfterSubmit, bool bSignalWaitSemaphore, uint64_t timelineSignalValue,
-                                 const std::vector<PipelineStageFlags> pipelineStages, const std::vector<void*>& waitSemaphores,
-                                 const std::vector<uint64_t>& waitSemaphoreValues, const std::vector<void*>& signalSemaphores,
-                                 const std::vector<uint64_t>& signalSemaphoreValues, const void* submitFence)
+Shared<SyncPoint> VulkanCommandBuffer::Submit(const std::vector<Shared<SyncPoint>>& waitPoints,
+                                              const std::vector<Shared<SyncPoint>>& signalPoints, const void* signalFence)
 {
-    VkSubmitInfo submitInfo       = {VK_STRUCTURE_TYPE_SUBMIT_INFO};
-    submitInfo.commandBufferCount = 1;
-    submitInfo.pCommandBuffers    = &m_Handle;
+    VkSubmitInfo2 submitInfo2 = {VK_STRUCTURE_TYPE_SUBMIT_INFO_2};
+    ++m_TimelineSemaphore.Counter;
 
-    VkTimelineSemaphoreSubmitInfo timelineSemaphoreSI = {VK_STRUCTURE_TYPE_TIMELINE_SEMAPHORE_SUBMIT_INFO};
-    submitInfo.pNext                                  = &timelineSemaphoreSI;
+    std::vector<VkSemaphoreSubmitInfo> waitSemaphoreInfos(waitPoints.size());
+    for (size_t i{}; i < waitPoints.size(); ++i)
+    {
+        waitSemaphoreInfos[i].sType       = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        waitSemaphoreInfos[i].semaphore   = (VkSemaphore)waitPoints[i]->GetTimelineSemaphore();
+        waitSemaphoreInfos[i].value       = waitPoints[i]->GetValue();
+        waitSemaphoreInfos[i].stageMask   = VulkanUtility::PathfinderPipelineStageToVulkan(waitPoints[i]->GetPipelineStages());
+        waitSemaphoreInfos[i].deviceIndex = 0;
+    }
+    submitInfo2.pWaitSemaphoreInfos    = waitSemaphoreInfos.data();
+    submitInfo2.waitSemaphoreInfoCount = static_cast<uint32_t>(waitSemaphoreInfos.size());
 
-    // Managing all signal semaphores.
-    std::vector<VkSemaphore> finalSignalSemaphores = {};
-    if (bSignalWaitSemaphore) finalSignalSemaphores.emplace_back(m_SignalSemaphore);
-    if (timelineSignalValue != UINT64_MAX) finalSignalSemaphores.emplace_back(m_TimelineSemaphore.Handle);
-    for (const auto& signalSem : signalSemaphores)
-        finalSignalSemaphores.emplace_back((VkSemaphore)signalSem);
-
-    submitInfo.signalSemaphoreCount = static_cast<uint32_t>(finalSignalSemaphores.size());
-    submitInfo.pSignalSemaphores    = finalSignalSemaphores.data();
-
-    // Managing signal's semaphores values.
-    std::vector<uint64_t> finalSignalValues = {};
-    if (bSignalWaitSemaphore) finalSignalValues.emplace_back(1);
-    if (timelineSignalValue != UINT64_MAX) finalSignalValues.emplace_back(timelineSignalValue);
-
-    finalSignalValues.insert(finalSignalValues.end(), signalSemaphoreValues.begin(), signalSemaphoreValues.end());
-    timelineSemaphoreSI.signalSemaphoreValueCount = static_cast<uint32_t>(finalSignalValues.size());
-    timelineSemaphoreSI.pSignalSemaphoreValues    = finalSignalValues.data();
-
-    // Managing wait part.
-    timelineSemaphoreSI.waitSemaphoreValueCount = waitSemaphoreValues.size();
-    timelineSemaphoreSI.pWaitSemaphoreValues    = waitSemaphoreValues.data();
-
-    std::vector<VkPipelineStageFlags> waitDstStageMask;
-    for (auto& pipelineStageFlags : pipelineStages)
-        waitDstStageMask.emplace_back(VulkanUtility::PathfinderPipelineStageToVulkan(pipelineStageFlags));
-
-    submitInfo.waitSemaphoreCount = static_cast<uint32_t>(waitSemaphores.size());
-    submitInfo.pWaitSemaphores    = (const VkSemaphore*)waitSemaphores.data();
-    submitInfo.pWaitDstStageMask  = waitDstStageMask.data();
-
-    auto& context = VulkanContext::Get();
-    VkQueue queue = VK_NULL_HANDLE;
+    auto& context                    = VulkanContext::Get();
+    VkQueue queue                    = VK_NULL_HANDLE;
+    RendererTypeFlags pipelineStages = EPipelineStage::PIPELINE_STAGE_NONE;
     switch (m_Specification.Type)
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
         {
             queue = context.GetDevice()->GetGraphicsQueue();
+            pipelineStages |= EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT | EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                              EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
         {
             queue = context.GetDevice()->GetComputeQueue();
+            pipelineStages |= EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT | EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
         {
             queue = context.GetDevice()->GetTransferQueue();
+            pipelineStages |= EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
             break;
         }
     }
 
-    const auto vkSubmitFence = (VkFence)submitFence;
-    VK_CHECK(vkQueueSubmit(queue, 1, &submitInfo,
-                           vkSubmitFence                       ? vkSubmitFence
-                           : timelineSignalValue == UINT64_MAX ? m_SubmitFence
-                                                               : VK_NULL_HANDLE),
-             "Failed to submit command buffer!");
-    if (bWaitAfterSubmit)
-    {
-        const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
+    // +1 for current submission
+    std::vector<VkSemaphoreSubmitInfo> signalSemaphoreInfos(signalPoints.size() + 1);
+    const auto currentSyncPoint = SyncPoint::Create(m_TimelineSemaphore.Handle, m_TimelineSemaphore.Counter, pipelineStages);
+    signalSemaphoreInfos[signalPoints.size()].sType     = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+    signalSemaphoreInfos[signalPoints.size()].semaphore = (VkSemaphore)currentSyncPoint->GetTimelineSemaphore();
+    signalSemaphoreInfos[signalPoints.size()].value     = currentSyncPoint->GetValue();
+    signalSemaphoreInfos[signalPoints.size()].stageMask =
+        VulkanUtility::PathfinderPipelineStageToVulkan(currentSyncPoint->GetPipelineStages());
+    signalSemaphoreInfos[signalPoints.size()].deviceIndex = 0;
 
-        VK_CHECK(vkWaitForFences(logicalDevice, 1, &m_SubmitFence, VK_TRUE, UINT64_MAX), "Failed to wait for fence!");
-        VK_CHECK(vkResetFences(logicalDevice, 1, &m_SubmitFence), "Failed to reset fence!");
+    for (size_t i{}; i < signalPoints.size(); ++i)
+    {
+        signalSemaphoreInfos[i].sType       = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
+        signalSemaphoreInfos[i].semaphore   = (VkSemaphore)signalPoints[i]->GetTimelineSemaphore();
+        signalSemaphoreInfos[i].value       = signalPoints[i]->GetValue();
+        signalSemaphoreInfos[i].stageMask   = VulkanUtility::PathfinderPipelineStageToVulkan(signalPoints[i]->GetPipelineStages());
+        signalSemaphoreInfos[i].deviceIndex = 0;
     }
+    submitInfo2.pSignalSemaphoreInfos    = signalSemaphoreInfos.data();
+    submitInfo2.signalSemaphoreInfoCount = static_cast<uint32_t>(signalSemaphoreInfos.size());
+
+    const VkCommandBufferSubmitInfo commandBufferSI = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_SUBMIT_INFO, nullptr, m_Handle, 0};
+    submitInfo2.commandBufferInfoCount              = 1;
+    submitInfo2.pCommandBufferInfos                 = &commandBufferSI;
+
+    // NOTE: Since fence is OPTIONAL && I use timeline semaphores, so I can wait on them on host. But for swapchain we use 'RenderFence'.
+    VK_CHECK(vkQueueSubmit2(queue, 1, &submitInfo2, (VkFence)signalFence), "Failed submit command buffer!");
+
+    return currentSyncPoint;
 }
 
 void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkImageLayout oldLayout, const VkImageLayout newLayout,
@@ -327,13 +322,11 @@ void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkIm
 {
     if (oldLayout == newLayout) return;
 
-    VkAccessFlags srcAccessMask             = 0;
-    VkAccessFlags dstAccessMask             = 0;
-    VkImageMemoryBarrier imageMemoryBarrier = VulkanUtility::GetImageMemoryBarrier(
-        image, aspectMask, oldLayout, newLayout, srcAccessMask, dstAccessMask, layerCount, baseLayer, mipLevels, baseMipLevel);
+    VkAccessFlags2 srcAccessMask = VK_ACCESS_2_NONE;
+    VkAccessFlags2 dstAccessMask = VK_ACCESS_2_NONE;
 
-    VkPipelineStageFlags srcStageMask = 0;
-    VkPipelineStageFlags dstStageMask = 0;
+    VkPipelineStageFlags2 srcStageMask = VK_PIPELINE_STAGE_2_NONE;
+    VkPipelineStageFlags2 dstStageMask = VK_PIPELINE_STAGE_2_NONE;
 
     // Determine stages and resource access:
     switch (oldLayout)
@@ -341,38 +334,38 @@ void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkIm
         case VK_IMAGE_LAYOUT_UNDEFINED:
         {
             srcAccessMask = 0;
-            srcStageMask  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            srcStageMask  = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
             break;
         }
         case VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL:
         {
-            srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-            srcStageMask  = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            srcAccessMask = VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+            srcStageMask  = VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
             break;
         }
         case VK_IMAGE_LAYOUT_GENERAL:  // NOTE: May be not optimal stage
         {
             srcAccessMask = 0;
-            srcStageMask  = VK_PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            srcStageMask  = VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
             break;
         }
         case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
         {
-            srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            srcAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            srcStageMask  = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
             break;
         }
         case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
         {
-            srcAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            srcAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
             srcStageMask =
-                VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;  // framebuffer and storage image case?
+                VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;  // framebuffer and storage image case?
             break;
         }
         case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
         {
-            srcAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            srcStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            srcAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+            srcStageMask  = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
             break;
         }
         default: PFR_ASSERT(false, "Old layout is not supported!");
@@ -383,34 +376,58 @@ void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkIm
         case VK_IMAGE_LAYOUT_GENERAL:
         {
             dstAccessMask = 0;  // GENERAL layout means resource can be affected by any operations
-            dstStageMask  = VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            dstStageMask  = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
             break;
         }
         case VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL:
         {
-            dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+            dstAccessMask = VK_ACCESS_2_SHADER_READ_BIT;
             dstStageMask =
-                VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_COMPUTE_SHADER_BIT;  // framebuffer and storage image case?
+                VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;  // framebuffer and storage image case?
             break;
         }
         case VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL:
         {
-            dstAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
-            dstStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            dstAccessMask = VK_ACCESS_2_TRANSFER_WRITE_BIT;
+            dstStageMask  = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
             break;
         }
         case VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL:
         {
-            dstAccessMask = VK_ACCESS_TRANSFER_READ_BIT;
-            dstStageMask  = VK_PIPELINE_STAGE_TRANSFER_BIT;
+            dstAccessMask = VK_ACCESS_2_TRANSFER_READ_BIT;
+            dstStageMask  = VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
             break;
         }
         default: PFR_ASSERT(false, "New layout is not supported!");
     }
 
-    imageMemoryBarrier.srcAccessMask = srcAccessMask;
-    imageMemoryBarrier.dstAccessMask = dstAccessMask;
-    InsertBarrier(srcStageMask, dstStageMask, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier);
+    const auto vkSrcPipelineStages = VulkanUtility::PathfinderPipelineStageToVulkan(srcStageMask);
+    const auto vkDstPipelineStages = VulkanUtility::PathfinderPipelineStageToVulkan(dstStageMask);
+
+    const auto imageMemoryBarrier2 = VulkanUtility::GetImageMemoryBarrier(
+        image, aspectMask, oldLayout, newLayout, vkSrcPipelineStages, VulkanUtility::PathfinderAccessFlagsToVulkan(srcAccessMask),
+        vkDstPipelineStages, VulkanUtility::PathfinderAccessFlagsToVulkan(dstAccessMask), layerCount, baseLayer, mipLevels, baseMipLevel);
+
+    InsertBarrier(vkSrcPipelineStages, vkDstPipelineStages, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier2);
+}
+
+void VulkanCommandBuffer::InsertBarrier(const VkPipelineStageFlags2 srcStageMask, const VkPipelineStageFlags2 dstStageMask,
+                                        const VkDependencyFlags dependencyFlags, const uint32_t memoryBarrierCount,
+                                        const VkMemoryBarrier2* pMemoryBarriers, const uint32_t bufferMemoryBarrierCount,
+                                        const VkBufferMemoryBarrier2* pBufferMemoryBarriers, const uint32_t imageMemoryBarrierCount,
+                                        const VkImageMemoryBarrier2* pImageMemoryBarriers) const
+{
+    Renderer::GetStats().BarrierCount += memoryBarrierCount + bufferMemoryBarrierCount + imageMemoryBarrierCount;
+    const VkDependencyInfo dependencyInfo = {VK_STRUCTURE_TYPE_DEPENDENCY_INFO,
+                                             nullptr,
+                                             VK_DEPENDENCY_BY_REGION_BIT,
+                                             memoryBarrierCount,
+                                             pMemoryBarriers,
+                                             bufferMemoryBarrierCount,
+                                             pBufferMemoryBarriers,
+                                             imageMemoryBarrierCount,
+                                             pImageMemoryBarriers};
+    vkCmdPipelineBarrier2(m_Handle, &dependencyInfo);
 }
 
 void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const
@@ -497,8 +514,6 @@ void VulkanCommandBuffer::Destroy()
     context.GetDevice()->FreeCommandBuffer(m_Handle, m_Specification);
 
     const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
-    vkDestroyFence(logicalDevice, m_SubmitFence, VK_NULL_HANDLE);
-    vkDestroySemaphore(logicalDevice, m_SignalSemaphore, VK_NULL_HANDLE);
     vkDestroySemaphore(logicalDevice, m_TimelineSemaphore.Handle, VK_NULL_HANDLE);
 
     if (m_TimestampQuery) vkDestroyQueryPool(logicalDevice, m_TimestampQuery, nullptr);

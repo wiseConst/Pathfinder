@@ -126,7 +126,7 @@ void VulkanTexture2D::GenerateMipMaps()
                                                imageSpec.Mips - 1);
 
     vulkanCommandBuffer->EndRecording();
-    vulkanCommandBuffer->Submit(true);
+    vulkanCommandBuffer->Submit()->Wait();
 }
 
 }  // namespace Pathfinder

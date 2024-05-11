@@ -34,11 +34,12 @@ void Renderer::Init()
 {
     s_RendererData = MakeUnique<RendererData>();
     ShaderLibrary::Init();
-    PipelineBuilder::Init();
+    PipelineLibrary::Init();
     s_BindlessRenderer = BindlessRenderer::Create();
     SamplerStorage::Init();
     RayTracingBuilder::Init();
 
+    s_RendererSettings.bVSync   = Application::Get().GetWindow()->IsVSync();
     s_RendererSettings.bVSync   = Application::Get().GetWindow()->IsVSync();
     s_RendererData->LightStruct = MakeUnique<LightData>();
 
@@ -87,8 +88,8 @@ void Renderer::Init()
                               lightsSSBO                         = Buffer::Create(lightsSSBOSpec);
                           });
     {
-        CommandBufferSpecification cbSpec = {};
-        cbSpec.Level                      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY;
+        CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                             ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY};
         cbSpec.ThreadID                   = JobSystem::MapThreadID(JobSystem::GetMainThreadID());
 
         for (uint32_t frameIndex{}; frameIndex < s_FRAMES_IN_FLIGHT; ++frameIndex)
@@ -161,7 +162,7 @@ void Renderer::Init()
         objectCullingPipelineSpec.PipelineOptions       = std::make_optional<ComputePipelineOptions>();
         objectCullingPipelineSpec.Shader                = ShaderLibrary::Get("ObjectCulling");
         objectCullingPipelineSpec.bBindlessCompatible   = true;
-        PipelineBuilder::Push(s_RendererData->ObjectCullingPipeline, objectCullingPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->ObjectCullingPipeline, objectCullingPipelineSpec);
     }
 
     {
@@ -208,7 +209,7 @@ void Renderer::Init()
             ComputePipelineOptions rtComputePipelineOptions = {};
             rtComputePipelineSpec.PipelineOptions           = std::make_optional<ComputePipelineOptions>(rtComputePipelineOptions);
 
-            PipelineBuilder::Push(s_RendererData->RTComputePipeline, rtComputePipelineSpec);
+            PipelineLibrary::Push(s_RendererData->RTComputePipeline, rtComputePipelineSpec);
         }
 #endif
 
@@ -237,7 +238,7 @@ void Renderer::Init()
     depthGPO.bDepthWrite                     = true;
     depthGPO.DepthCompareOp                  = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL;
     depthPrePassPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(depthGPO);
-    PipelineBuilder::Push(s_RendererData->DepthPrePassPipeline, depthPrePassPipelineSpec);
+    PipelineLibrary::Push(s_RendererData->DepthPrePassPipeline, depthPrePassPipelineSpec);
 
     {
         FramebufferSpecification framebufferSpec = {"GBuffer"};
@@ -320,12 +321,12 @@ void Renderer::Init()
         forwardGPO.BlendMode                = EBlendMode::BLEND_MODE_ALPHA;
         forwardPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(forwardGPO);
 
-        PipelineBuilder::Push(s_RendererData->ForwardPlusOpaquePipeline, forwardPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->ForwardPlusOpaquePipeline, forwardPipelineSpec);
 
         forwardPipelineSpec.DebugName = "ForwardPlusTransparent";
         std::get<GraphicsPipelineOptions>(forwardPipelineSpec.PipelineOptions.value()).DepthCompareOp =
             std::get<GraphicsPipelineOptions>(depthPrePassPipelineSpec.PipelineOptions.value()).DepthCompareOp;
-        PipelineBuilder::Push(s_RendererData->ForwardPlusTransparentPipeline, forwardPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->ForwardPlusTransparentPipeline, forwardPipelineSpec);
     }
 
     {
@@ -355,7 +356,7 @@ void Renderer::Init()
         compositeGPO.TargetFramebuffer        = s_RendererData->CompositeFramebuffer;
         compositePipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(compositeGPO);
 
-        PipelineBuilder::Push(s_RendererData->CompositePipeline, compositePipelineSpec);
+        PipelineLibrary::Push(s_RendererData->CompositePipeline, compositePipelineSpec);
     }
 
     Renderer2D::Init();
@@ -370,14 +371,14 @@ void Renderer::Init()
         lightCullingPipelineSpec.Shader                = ShaderLibrary::Get("LightCulling");
         lightCullingPipelineSpec.bBindlessCompatible   = true;
         lightCullingPipelineSpec.PipelineOptions       = std::make_optional<ComputePipelineOptions>();
-        PipelineBuilder::Push(s_RendererData->LightCullingPipeline, lightCullingPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->LightCullingPipeline, lightCullingPipelineSpec);
 
         PipelineSpecification computeFrustumsPipelineSpec = {"ComputeFrustums"};
         computeFrustumsPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_COMPUTE;
         computeFrustumsPipelineSpec.Shader                = ShaderLibrary::Get("ComputeFrustums");
         computeFrustumsPipelineSpec.bBindlessCompatible   = true;
         computeFrustumsPipelineSpec.PipelineOptions       = std::make_optional<ComputePipelineOptions>();
-        PipelineBuilder::Push(s_RendererData->ComputeFrustumsPipeline, computeFrustumsPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->ComputeFrustumsPipeline, computeFrustumsPipelineSpec);
     }
 
     {
@@ -492,7 +493,7 @@ void Renderer::Init()
         ssaoGPO.TargetFramebuffer        = s_RendererData->SSAO.Framebuffer;
         ssaoPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(ssaoGPO);
 
-        PipelineBuilder::Push(s_RendererData->SSAO.Pipeline, ssaoPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->SSAO.Pipeline, ssaoPipelineSpec);
     }
 
     // Noise texture for ambient occlusions
@@ -500,10 +501,10 @@ void Renderer::Init()
         const auto& appSpec       = Application::Get().GetSpecification();
         const auto rotTexturePath = std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / "Other/rot_texture.bmp";
         int32_t x = 0, y = 0, channels = 0;
-        void* rawImageData  = ImageUtils::LoadRawImage(rotTexturePath, false, &x, &y, &channels);
-        void* rgbaImageData = ImageUtils::ConvertRgbToRgba((uint8_t*)rawImageData, x, y);
+        uint8_t* rawImageData = reinterpret_cast<uint8_t*>(ImageUtils::LoadRawImage(rotTexturePath, false, &x, &y, &channels));
+        void* rgbaImageData   = ImageUtils::ConvertRgbToRgba(rawImageData, x, y);
 
-        TextureSpecification aoNoiseTextureSpec = {x, y};
+        TextureSpecification aoNoiseTextureSpec = {static_cast<uint32_t>(x), static_cast<uint32_t>(y)};
         aoNoiseTextureSpec.Format               = EImageFormat::FORMAT_RGBA32F;
         aoNoiseTextureSpec.bBindlessUsage       = true;
         aoNoiseTextureSpec.Filter               = ESamplerFilter::SAMPLER_FILTER_NEAREST;
@@ -542,7 +543,7 @@ void Renderer::Init()
         hbaoGPO.TargetFramebuffer        = s_RendererData->HBAO.Framebuffer;
         hbaoPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(hbaoGPO);
 
-        PipelineBuilder::Push(s_RendererData->HBAO.Pipeline, hbaoPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->HBAO.Pipeline, hbaoPipelineSpec);
     }
 
     {
@@ -567,7 +568,7 @@ void Renderer::Init()
             blurAOGPO.TargetFramebuffer        = s_RendererData->BlurAOFramebuffer[i];
             blurAOPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(blurAOGPO);
 
-            PipelineBuilder::Push(s_RendererData->BlurAOPipeline[i], blurAOPipelineSpec);
+            PipelineLibrary::Push(s_RendererData->BlurAOPipeline[i], blurAOPipelineSpec);
         }
 
         Application::Get().GetWindow()->AddResizeCallback(
@@ -587,7 +588,7 @@ void Renderer::Init()
             blurAOGPO.TargetFramebuffer        = s_RendererData->BlurAOFramebuffer[1];
             blurAOPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(blurAOGPO);
 
-            PipelineBuilder::Push(s_RendererData->MedianBlurAOPipeline, blurAOPipelineSpec);
+            PipelineLibrary::Push(s_RendererData->MedianBlurAOPipeline, blurAOPipelineSpec);
         }
 
         {
@@ -601,7 +602,7 @@ void Renderer::Init()
             blurAOGPO.TargetFramebuffer        = s_RendererData->BlurAOFramebuffer[1];
             blurAOPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(blurAOGPO);
 
-            PipelineBuilder::Push(s_RendererData->BoxBlurAOPipeline, blurAOPipelineSpec);
+            PipelineLibrary::Push(s_RendererData->BoxBlurAOPipeline, blurAOPipelineSpec);
         }
     }
 
@@ -622,7 +623,7 @@ void Renderer::Init()
         sssPipelineSpec.Shader                = ShaderLibrary::Get("SSShadows");
         sssPipelineSpec.bBindlessCompatible   = true;
         sssPipelineSpec.PipelineOptions       = std::make_optional<ComputePipelineOptions>();
-        PipelineBuilder::Push(s_RendererData->SSShadowsPipeline, sssPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->SSShadowsPipeline, sssPipelineSpec);
     }
 
     {
@@ -635,7 +636,7 @@ void Renderer::Init()
         asGPO.TargetFramebuffer        = s_RendererData->GBuffer;
         asGPO.CullMode                 = ECullMode::CULL_MODE_BACK;
         asPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(asGPO);
-        PipelineBuilder::Push(s_RendererData->AtmospherePipeline, asPipelineSpec);
+        PipelineLibrary::Push(s_RendererData->AtmospherePipeline, asPipelineSpec);
     }
 
     {
@@ -660,7 +661,7 @@ void Renderer::Init()
             bloomGraphicsPipelineOptions.CullMode                = ECullMode::CULL_MODE_BACK;
             bloomPipelineSpec.PipelineOptions = std::make_optional<GraphicsPipelineOptions>(bloomGraphicsPipelineOptions);
 
-            PipelineBuilder::Push(s_RendererData->BloomPipeline[i], bloomPipelineSpec);
+            PipelineLibrary::Push(s_RendererData->BloomPipeline[i], bloomPipelineSpec);
         }
 
         Application::Get().GetWindow()->AddResizeCallback(
@@ -670,11 +671,10 @@ void Renderer::Init()
             });
     }
 
-    /* CREATE STAGE */
-    PipelineBuilder::Build();
-    ShaderLibrary::DestroyGarbageIfNeeded();
-    /* SHADER UPDATE STAGE */
+    PipelineLibrary::Compile();
 
+    // TODO: Remove all shader reflection, move with BDA. (also for now, since I made pipeline hot reloading I update these things every
+    // frame)
     s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferOpaque",
                                                                           s_RendererData->CulledMeshesBufferOpaque);
     s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferOpaque",
@@ -702,7 +702,7 @@ void Renderer::Shutdown()
 
     Renderer2D::Shutdown();
     ShaderLibrary::Shutdown();
-    PipelineBuilder::Shutdown();
+    PipelineLibrary::Shutdown();
     RayTracingBuilder::Shutdown();
 
     s_RendererData.reset();
@@ -714,6 +714,8 @@ void Renderer::Shutdown()
 
 void Renderer::Begin()
 {
+    ShaderLibrary::DestroyGarbageIfNeeded();
+
     // Update VSync state.
     auto& window = Application::Get().GetWindow();
     window->SetVSync(s_RendererSettings.bVSync);
@@ -788,17 +790,20 @@ void Renderer::Begin()
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginRecording(true);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginPipelineStatisticsQuery();
 
-    Renderer2D::Begin();
-
+    // NOTE: Once per frame
+    // Bind mega descriptor set to render command buffer for Graphics, Compute, RT stages.
     s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex],
                              EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     s_BindlessRenderer->Bind(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex],
                              EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT);
 
+    // Bind mega descriptor set to compute command buffer for Graphics, Compute, RT stages.
     s_BindlessRenderer->Bind(s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]);
     s_BindlessRenderer->Bind(s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex],
                              EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT);
+
+    Renderer2D::Begin();
 
     GraphicsContext::Get().FillMemoryBudgetStats(s_RendererStats.MemoryBudgets);
     s_RendererStats.RHITime += t.GetElapsedMilliseconds();
@@ -808,22 +813,19 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
 {
     Timer t = {};
     s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->SetData(s_RendererData->LightStruct.get(), sizeof(LightData));
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+        s_RendererData->LightsSSBO[s_RendererData->FrameIndex], EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT | PIPELINE_STAGE_FRAGMENT_SHADER_BIT | PIPELINE_STAGE_RAY_TRACING_SHADER_BIT,
+        EAccessFlags::ACCESS_TRANSFER_WRITE_BIT, EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
+
     s_BindlessRenderer->UpdateDataIfNeeded();
 
     ObjectCullingPass();
-
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE,
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ);
     RayTracingPass();
 
     s_RendererData->GBuffer->Clear(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
     DepthPrePass();
     ScreenSpaceShadowsPass();
-
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-        EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
-        EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ);
 
     AtmosphericScatteringPass();
 
@@ -832,8 +834,8 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     BlurAOPass();
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-        EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ);
+        EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ_BIT);
     ComputeFrustumsPass();
     LightCullingPass();
 
@@ -853,14 +855,8 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
 
     s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
 
-    void* tts       = s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->GetTimelineSemaphore();
-    uint64_t ttsVal = s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->GetTimelineValue();
-    s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->Submit(false, false, ttsVal);
-
-    void* cts       = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->GetTimelineSemaphore();
-    uint64_t ctsVal = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->GetTimelineValue();
-    s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Submit(
-        false, false, ctsVal, {EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT}, {tts}, {ttsVal});
+    const auto transferSyncPoint = s_RendererData->TransferCommandBuffer[s_RendererData->FrameIndex]->Submit();
+    const auto computeSyncPoint  = s_RendererData->ComputeCommandBuffer[s_RendererData->FrameIndex]->Submit({transferSyncPoint});
 
     Application::Get().GetWindow()->CopyToWindow(s_RendererData->CompositeFramebuffer->GetAttachments()[0].Attachment);
 
@@ -870,11 +866,12 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndRecording();
 
     const auto& swapchain = Application::Get().GetWindow()->GetSwapchain();
+    const auto swapchainImageAvailableSyncPoint =
+        SyncPoint::Create(swapchain->GetImageAvailableSemaphore(), 1, EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT);
+    const auto swapchainRenderFinishedSyncPoint =
+        SyncPoint::Create(swapchain->GetRenderSemaphore(), 1, EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Submit(
-        false, false, UINT64_MAX,
-        {EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-         EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT},
-        {swapchain->GetImageAvailableSemaphore(), cts, tts}, {1, ctsVal, ttsVal}, {swapchain->GetRenderSemaphore()}, {},
+        {transferSyncPoint, computeSyncPoint, swapchainImageAvailableSyncPoint}, {swapchainRenderFinishedSyncPoint},
         swapchain->GetRenderFence());
 
     s_RendererData->CurrentRenderCommandBuffer.reset();
@@ -905,6 +902,10 @@ void Renderer::BeginScene(const Camera& camera)
                                               1.f / s_RendererData->CompositeFramebuffer->GetSpecification().Height)};
 
     s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->SetData(&s_RendererData->CameraStruct, sizeof(s_RendererData->CameraStruct));
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+        s_RendererData->CameraSSBO[s_RendererData->FrameIndex], EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT | PIPELINE_STAGE_FRAGMENT_SHADER_BIT | PIPELINE_STAGE_RAY_TRACING_SHADER_BIT,
+        EAccessFlags::ACCESS_TRANSFER_WRITE_BIT, EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
 }
 
 void Renderer::EndScene() {}
@@ -964,8 +965,8 @@ void Renderer::ObjectCullingPass()
     {
         s_RendererData->DrawBufferOpaque->Resize(sizeof(uint32_t) +
                                                  s_RendererData->OpaqueObjects.size() * sizeof(DrawMeshTasksIndirectCommand));
-        s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_DrawBufferOpaque", s_RendererData->DrawBufferOpaque);
     }
+    s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_DrawBufferOpaque", s_RendererData->DrawBufferOpaque);
 
     if (s_RendererData->MeshesDataOpaque->GetSpecification().BufferCapacity / sizeof(MeshData) < s_RendererData->OpaqueObjects.size())
         s_RendererData->MeshesDataOpaque->Resize(s_RendererData->OpaqueObjects.size() * sizeof(MeshData));
@@ -986,21 +987,21 @@ void Renderer::ObjectCullingPass()
             submesh->GetMeshletTrianglesBuffer()->GetBindlessIndex(), submesh->GetMeshletBuffer()->GetBindlessIndex(),
             submesh->GetMaterial()->GetBufferIndex());
     }
-    s_RendererData->MeshesDataOpaque->SetData(opaqueMeshesData.data(), opaqueMeshesData.size() * sizeof(opaqueMeshesData[0]));
+    if (!opaqueMeshesData.empty())
+        s_RendererData->MeshesDataOpaque->SetData(opaqueMeshesData.data(), opaqueMeshesData.size() * sizeof(opaqueMeshesData[0]));
 
     if (s_RendererData->CulledMeshesBufferOpaque->GetSpecification().BufferCapacity / sizeof(uint32_t) <
         s_RendererData->OpaqueObjects.size())
     {
         s_RendererData->CulledMeshesBufferOpaque->Resize(s_RendererData->OpaqueObjects.size() * sizeof(uint32_t));
-
-        s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferOpaque",
-                                                                              s_RendererData->CulledMeshesBufferOpaque);
-
-        s_RendererData->DepthPrePassPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferOpaque",
-                                                                             s_RendererData->CulledMeshesBufferOpaque);
-        s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferOpaque",
-                                                                                  s_RendererData->CulledMeshesBufferOpaque);
     }
+    s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferOpaque",
+                                                                          s_RendererData->CulledMeshesBufferOpaque);
+
+    s_RendererData->DepthPrePassPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferOpaque",
+                                                                         s_RendererData->CulledMeshesBufferOpaque);
+    s_RendererData->ForwardPlusOpaquePipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferOpaque",
+                                                                              s_RendererData->CulledMeshesBufferOpaque);
 
     if ((s_RendererData->DrawBufferTransparent->GetSpecification().BufferCapacity - sizeof(uint32_t)) /
             sizeof(DrawMeshTasksIndirectCommand) <
@@ -1008,10 +1009,8 @@ void Renderer::ObjectCullingPass()
     {
         s_RendererData->DrawBufferTransparent->Resize(sizeof(uint32_t) +
                                                       s_RendererData->TransparentObjects.size() * sizeof(DrawMeshTasksIndirectCommand));
-
-        s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_DrawBufferTransparent",
-                                                                              s_RendererData->DrawBufferTransparent);
     }
+    s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_DrawBufferTransparent", s_RendererData->DrawBufferTransparent);
 
     if (s_RendererData->MeshesDataTransparent->GetSpecification().BufferCapacity / sizeof(MeshData) <
         s_RendererData->TransparentObjects.size())
@@ -1041,34 +1040,49 @@ void Renderer::ObjectCullingPass()
         s_RendererData->TransparentObjects.size())
     {
         s_RendererData->CulledMeshesBufferTransparent->Resize(s_RendererData->TransparentObjects.size() * sizeof(uint32_t));
-
-        s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferTransparent",
-                                                                              s_RendererData->CulledMeshesBufferTransparent);
-
-        s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferTransparent",
-                                                                                       s_RendererData->CulledMeshesBufferTransparent);
     }
+    s_RendererData->ObjectCullingPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferTransparent",
+                                                                          s_RendererData->CulledMeshesBufferTransparent);
+
+    s_RendererData->ForwardPlusTransparentPipeline->GetSpecification().Shader->Set("s_CulledMeshIDBufferTransparent",
+                                                                                   s_RendererData->CulledMeshesBufferTransparent);
 
     // Clear buffers for indirect fulfilling.
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+        s_RendererData->DrawBufferOpaque, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EAccessFlags::ACCESS_TRANSFER_WRITE_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->FillBuffer(s_RendererData->DrawBufferOpaque, 0);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
-        s_RendererData->DrawBufferOpaque, EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        EAccessFlags::ACCESS_TRANSFER_WRITE, EAccessFlags::ACCESS_SHADER_WRITE);
+        s_RendererData->DrawBufferOpaque, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT,
+        EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT | EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
 
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+        s_RendererData->CulledMeshesBufferOpaque, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->FillBuffer(s_RendererData->CulledMeshesBufferOpaque, 0);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
-        s_RendererData->CulledMeshesBufferOpaque, EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT,
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE, EAccessFlags::ACCESS_SHADER_WRITE);
+        s_RendererData->CulledMeshesBufferOpaque, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT,
+        EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT);
 
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+        s_RendererData->DrawBufferTransparent, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->FillBuffer(s_RendererData->DrawBufferTransparent, 0);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
-        s_RendererData->DrawBufferTransparent, EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT,
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE, EAccessFlags::ACCESS_SHADER_WRITE);
+        s_RendererData->DrawBufferTransparent, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT,
+        EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT | EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
 
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+        s_RendererData->CulledMeshesBufferTransparent, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->FillBuffer(s_RendererData->CulledMeshesBufferTransparent, 0);
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
-        s_RendererData->CulledMeshesBufferTransparent, EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT,
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE, EAccessFlags::ACCESS_SHADER_WRITE);
+        s_RendererData->CulledMeshesBufferTransparent, EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
+        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_TRANSFER_WRITE_BIT,
+        EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT);
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginDebugLabel("ObjectCullingPass", glm::vec3(0.1f, 0.1f, 0.1f));
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BeginTimestampQuery();
@@ -1093,13 +1107,30 @@ void Renderer::ObjectCullingPass()
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->Dispatch(
         DivideToNextMultiple(s_RendererData->TransparentObjects.size(), MESHLET_LOCAL_GROUP_SIZE), 1);
 
+    // Next operations will wait until culled objects data filled.
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
         s_RendererData->DrawBufferOpaque, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT, EAccessFlags::ACCESS_SHADER_WRITE, EAccessFlags::ACCESS_INDIRECT_COMMAND_READ);
+        EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT | EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT |
+            EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT,
+        EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT | EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT,
+        EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT | EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+        s_RendererData->CulledMeshesBufferOpaque, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT | EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT,
+        EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT, EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
         s_RendererData->DrawBufferTransparent, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-        EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT, EAccessFlags::ACCESS_SHADER_WRITE, EAccessFlags::ACCESS_INDIRECT_COMMAND_READ);
+        EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT | EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT |
+            EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT,
+        EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT | EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT,
+        EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT | EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
+
+    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
+        s_RendererData->CulledMeshesBufferTransparent, EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
+        EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT | EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT,
+        EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT, EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
@@ -1264,7 +1295,7 @@ void Renderer::ComputeFrustumsPass()
         // Insert buffer memory barrier to prevent light culling pass reading until frustum computing is done.
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
             s_RendererData->LightsSSBO[s_RendererData->FrameIndex], EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE, EAccessFlags::ACCESS_SHADER_READ);
+            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE_BIT, EAccessFlags::ACCESS_SHADER_READ_BIT);
 
         s_RendererData->bNeedsFrustumsRecomputing = false;
     }
@@ -1293,8 +1324,8 @@ void Renderer::LightCullingPass()
         pc.VisibleSpotLightIndicesDataBuffer  = s_RendererData->SpotLightIndicesSSBO->GetBDA();
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-            EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE,
-            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ);
+            EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
+            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ_BIT);
 
         BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->LightCullingPipeline);
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->BindPushConstants(s_RendererData->LightCullingPipeline, 0, 0,
@@ -1307,11 +1338,12 @@ void Renderer::LightCullingPass()
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
             s_RendererData->LightsSSBO[s_RendererData->FrameIndex], EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT,
-            EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE, EAccessFlags::ACCESS_SHADER_READ);
+            EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE_BIT,
+            EAccessFlags::ACCESS_SHADER_READ_BIT);
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE,
-            EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ);
+            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE_BIT,
+            EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ_BIT);
     }
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndTimestampQuery();
@@ -1413,8 +1445,8 @@ void Renderer::ScreenSpaceShadowsPass()
             1);
 
         s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE,
-            EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT, EAccessFlags::ACCESS_SHADER_READ);
+            EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_WRITE_BIT,
+            EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT, EAccessFlags::ACCESS_SHADER_READ_BIT);
     }
 
     s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->EndDebugLabel();
@@ -1431,8 +1463,8 @@ void Renderer::BloomPass()
         s_RendererData->BloomFramebuffer[i]->BeginPass(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
 
         PushConstantBlock pc  = {};
-        pc.AlbedoTextureIndex = (i == 0 ? s_RendererData->GBuffer->GetAttachments()[1].m_Index
-                                        : s_RendererData->BloomFramebuffer.at(i - 1)->GetAttachments()[0].m_Index);
+        pc.AlbedoTextureIndex = (i == 0 ? s_RendererData->GBuffer->GetAttachments().at(1).m_Index
+                                        : s_RendererData->BloomFramebuffer.at(i - 1)->GetAttachments().at(0).m_Index);
         pc.CameraDataBuffer   = s_RendererData->CameraSSBO[s_RendererData->FrameIndex]->GetBDA();
 
         BindPipeline(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex], s_RendererData->BloomPipeline[i]);
