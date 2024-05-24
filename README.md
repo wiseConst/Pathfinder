@@ -21,7 +21,7 @@
 
 # Clone:
 ```python
-git clone -b ShootThemUp --single-branch https://github.com/wiseConst/ShooterGameCourse.git
+git clone --recursive -b main --single-branch https://github.com/wiseConst/Pathfinder.git
 ```
 # Build:
 ```python
