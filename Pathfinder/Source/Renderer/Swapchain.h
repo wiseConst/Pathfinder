@@ -1,5 +1,4 @@
-#ifndef SWAPCHAIN_H
-#define SWAPCHAIN_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Core/Window.h"
@@ -54,4 +53,3 @@ class Swapchain : private Uncopyable, private Unmovable
 
 }  // namespace Pathfinder
 
-#endif  // SWAPCHAIN_H

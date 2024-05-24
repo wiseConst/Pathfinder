@@ -1,10 +1,10 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "Pipeline.h"
 
-#include "Core/CoreUtils.h"
-#include "Renderer/RendererAPI.h"
-#include "Platform/Vulkan/VulkanPipeline.h"
+#include <Core/CoreUtils.h>
+#include "RendererAPI.h"
 #include "Framebuffer.h"
+#include "Platform/Vulkan/VulkanPipeline.h"
 
 namespace Pathfinder
 {
@@ -22,29 +22,29 @@ Shared<Pipeline> Pipeline::Create(const PipelineSpecification& pipelineSpec)
 
 void PipelineBuilder::Init()
 {
-    LOG_TAG_INFO(RENDERER, "Pipeline builder created!");
+    LOG_INFO("Pipeline builder created!");
 }
 
 void PipelineBuilder::Shutdown()
 {
-    std::scoped_lock lock(m_PipelineBuilderMutex);
-    LOG_TAG_INFO(RENDERER, "Pipeline builder destroyed!");
+    std::scoped_lock lock(s_PipelineBuilderMutex);
+    LOG_INFO("Pipeline builder destroyed!");
     s_PipelinesToBuild.clear();
 }
 
 void PipelineBuilder::Build()
 {
-    std::scoped_lock lock(m_PipelineBuilderMutex);
+    std::scoped_lock lock(s_PipelineBuilderMutex);
     if (s_PipelinesToBuild.empty()) return;
 
     // Submit to JobSystem and wait on futures.
     std::vector<std::function<void()>> futures;
-    for (auto& [pipeline, pipelineSpec] : s_PipelinesToBuild)
+    for (const auto& pipelineSpec : s_PipelinesToBuild)
     {
-        auto future = JobSystem::Submit(
+        auto future = ThreadPool::Submit(
             [&]
             {
-                pipeline = Pipeline::Create(pipelineSpec);
+                auto pipeline = Pipeline::Create(pipelineSpec);
                 PipelineLibrary::Add(pipelineSpec, pipeline);
             });
 
@@ -59,7 +59,7 @@ void PipelineBuilder::Build()
         future();
 
 #if PFR_DEBUG
-    LOG_TAG_INFO(RENDERER, "Time taken to create (%zu) pipelines: %0.2fms", s_PipelinesToBuild.size(), t.GetElapsedMilliseconds());
+    LOG_INFO("Time taken to create ({}) pipelines: {:.2f}ms", s_PipelinesToBuild.size(), t.GetElapsedMilliseconds());
 #endif
     s_PipelinesToBuild.clear();
 }
@@ -67,13 +67,13 @@ void PipelineBuilder::Build()
 void PipelineLibrary::Init()
 {
     PipelineBuilder::Init();
-    LOG_TAG_INFO(RENDERER, "Pipeline library created!");
+    LOG_INFO("Pipeline library created!");
 }
 
 void PipelineLibrary::Shutdown()
 {
-    std::scoped_lock lock(m_PipelineLibraryMutex);
-    LOG_TAG_INFO(RENDERER, "Pipeline library destroyed!");
+    std::scoped_lock lock(s_PipelineLibraryMutex);
+    LOG_INFO("Pipeline library destroyed!");
     s_PipelineStorage.clear();
 
     PipelineBuilder::Shutdown();
@@ -83,7 +83,6 @@ std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const Pipelin
 {
     std::size_t hash = std::hash<std::string>{}(pipelineSpec.DebugName);
 
-    // TODO: Look at std::visitor
     switch (pipelineSpec.PipelineType)
     {
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
@@ -164,7 +163,7 @@ std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const Pipelin
     hash_combine(hash, std::hash<uint64_t>{}(static_cast<uint64_t>(pipelineSpec.PipelineType)));
     hash_combine(hash, std::hash<uint64_t>{}(static_cast<uint64_t>(pipelineSpec.bBindlessCompatible)));
 
-    LOG_TAG_WARN(PIPELINE_LIBRARY, "Pipeline <%s%> got hash: (%zu).", pipelineSpec.DebugName.data(), hash);
+    LOG_WARN("Pipeline <{}> got hash: ({}).", pipelineSpec.DebugName, hash);
     return hash;
 }
 

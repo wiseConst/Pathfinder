@@ -15,25 +15,25 @@
 namespace Pathfinder
 {
 
-static VkAttachmentLoadOp PathfinderLoadOpToVulkan(ELoadOp loadOp)
+static VkAttachmentLoadOp PathfinderLoadOpToVulkan(EOp loadOp)
 {
     switch (loadOp)
     {
-        case ELoadOp::DONT_CARE: return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        case ELoadOp::CLEAR: return VK_ATTACHMENT_LOAD_OP_CLEAR;
-        case ELoadOp::LOAD: return VK_ATTACHMENT_LOAD_OP_LOAD;
+        case EOp::DONT_CARE: return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        case EOp::CLEAR: return VK_ATTACHMENT_LOAD_OP_CLEAR;
+        case EOp::LOAD: return VK_ATTACHMENT_LOAD_OP_LOAD;
     }
 
     PFR_ASSERT(false, "Unknown load op!");
     return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 }
 
-static VkAttachmentStoreOp PathfinderStoreOpToVulkan(EStoreOp storeOp)
+static VkAttachmentStoreOp PathfinderStoreOpToVulkan(EOp storeOp)
 {
     switch (storeOp)
     {
-        case EStoreOp::DONT_CARE: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        case EStoreOp::STORE: return VK_ATTACHMENT_STORE_OP_STORE;
+        case EOp::DONT_CARE: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        case EOp::STORE: return VK_ATTACHMENT_STORE_OP_STORE;
     }
 
     PFR_ASSERT(false, "Unknown store op!");

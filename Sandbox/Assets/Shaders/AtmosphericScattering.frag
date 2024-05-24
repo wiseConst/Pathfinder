@@ -123,13 +123,13 @@ vec3 scatter(vec3 o, vec3 d, float L, vec3 Lo) {
 void main()
 {
     // Normalized pixel coordinates (from -1 to 1)
-    vec2 uv = (gl_FragCoord.xy * u_PC.CameraDataBuffer.InvFullResolution);// * 2. - 1.;
+    vec2 uv = (gl_FragCoord.xy * CameraData(u_PC.CameraDataBuffer).InvFullResolution);// * 2. - 1.;
     uv.y = 1 - uv.y;
     
     // Fix aspect
-    uv.x *= u_PC.CameraDataBuffer.FullResolution.x * u_PC.CameraDataBuffer.InvFullResolution.y;
+    uv.x *= CameraData(u_PC.CameraDataBuffer).FullResolution.x * CameraData(u_PC.CameraDataBuffer).InvFullResolution.y;
     
-    sundir = normalize(u_PC.LightDataBuffer.DirectionalLights[0].Direction);//normalize(vec3(.5, .4 * (1. + sin(.5 * iTime)), -1.));
+    sundir = normalize(LightData(u_PC.LightDataBuffer).DirectionalLights[0].Direction);//normalize(vec3(.5, .4 * (1. + sin(.5 * iTime)), -1.));
     
     vec3 O = vec3(0., 0., 0.);
     vec3 D = normalize(vec3(uv, -2.));

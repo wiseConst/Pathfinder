@@ -1,5 +1,4 @@
-#ifndef VULKANHWRT_H
-#define VULKANHWRT_H
+#pragma once
 
 #include "Renderer/HWRT.h"
 #include "VulkanCore.h"
@@ -29,5 +28,3 @@ class VulkanRayTracingBuilder final : public RayTracingBuilder
 };
 
 }  // namespace Pathfinder
-
-#endif

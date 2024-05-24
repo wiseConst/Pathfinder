@@ -1,11 +1,13 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanDevice.h"
 
 #include "VulkanAllocator.h"
 #include "VulkanDescriptors.h"
-#include "Renderer/Renderer.h"
-#include "Core/Application.h"
-#include "Core/Window.h"
+#include <Renderer/Renderer.h>
+#include <Core/Application.h>
+#include <Core/Window.h>
+
+#include <Core/CoreUtils.h>
 
 namespace Pathfinder
 {
@@ -45,6 +47,7 @@ VulkanDevice::VulkanDevice(const VkInstance& instance, const VulkanDeviceSpecifi
         if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
             m_SupportedDepthStencilFormats.emplace_back(format);
     }
+    PFR_ASSERT(!m_SupportedDepthStencilFormats.empty(), "No supported Depth-Stencil formats??");
 
     CreateLogicalDevice(vulkanDeviceSpec.PhysicalDeviceFeatures);
 
@@ -57,6 +60,10 @@ VulkanDevice::VulkanDevice(const VkInstance& instance, const VulkanDeviceSpecifi
     VK_SetDebugName(m_LogicalDevice, m_LogicalDevice, VK_OBJECT_TYPE_DEVICE, logicalDeviceDebugName.data());
     const std::string physicalDeviceDebugName("[PhysicalDevice]:" + std::string(vulkanDeviceSpec.DeviceName));
     VK_SetDebugName(m_LogicalDevice, m_PhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE, physicalDeviceDebugName.data());
+
+    LoadPipelineCache();
+    const std::string pipelineCacheDebugName("[PipelineCache]: " + std::string(s_ENGINE_NAME));
+    VK_SetDebugName(m_LogicalDevice, m_PipelineCache, VK_OBJECT_TYPE_PIPELINE_CACHE, pipelineCacheDebugName.data());
 }
 
 void VulkanDevice::CreateCommandPools()
@@ -101,9 +108,90 @@ void VulkanDevice::CreateCommandPools()
     }
 }
 
+void VulkanDevice::SavePipelineCache()
+{
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& cacheDir          = appSpec.CacheDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
+
+    const auto pipelineCacheDirFilePath = workingDirFilePath / assetsDir / cacheDir / "Pipelines";
+    if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
+
+    size_t cacheSize = 0;
+    VK_CHECK(vkGetPipelineCacheData(m_LogicalDevice, m_PipelineCache, &cacheSize, nullptr), "Failed to retrieve pipeline cache data size!");
+
+    std::vector<uint64_t> cacheData;
+    cacheData.resize(DivideToNextMultiple(cacheSize, sizeof(cacheData[0])));
+    VK_CHECK(vkGetPipelineCacheData(m_LogicalDevice, m_PipelineCache, &cacheSize, cacheData.data()),
+             "Failed to retrieve pipeline cache data!");
+
+    const std::string cachePath = pipelineCacheDirFilePath.string() + "\\" + std::string(s_ENGINE_NAME) + "_PSO.cache";
+    if (!cacheData.data() || cacheSize <= 0)
+    {
+        LOG_WARN("Invalid cache data or size! {}", cachePath);
+        vkDestroyPipelineCache(m_LogicalDevice, m_PipelineCache, nullptr);
+        return;
+    }
+
+    SaveData(cachePath, cacheData.data(), cacheSize);
+    vkDestroyPipelineCache(m_LogicalDevice, m_PipelineCache, nullptr);
+}
+
+void VulkanDevice::LoadPipelineCache()
+{
+    const auto& appSpec           = Application::Get().GetSpecification();
+    const auto& assetsDir         = appSpec.AssetsDir;
+    const auto& cacheDir          = appSpec.CacheDir;
+    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
+
+    // Validate cache directories.
+    const auto pipelineCacheDirFilePath = workingDirFilePath / assetsDir / cacheDir / "Pipelines";
+    if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
+
+    VkPipelineCacheCreateInfo cacheCI = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, nullptr, 0};
+
+#if !VK_FORCE_PIPELINE_COMPILATION
+    const std::string cachePath = pipelineCacheDirFilePath.string() + "\\" + std::string(s_ENGINE_NAME) + "_PSO.cache";
+    auto cacheData              = LoadData<std::vector<uint8_t>>(cachePath);
+
+    // Validate retrieved pipeline cache
+    if (!cacheData.empty())
+    {
+        bool bSamePipelineUUID = true;
+        for (uint16_t i = 0; i < VK_UUID_SIZE; ++i)
+            if (m_PipelineCacheUUID[i] != cacheData.at(16 + i)) bSamePipelineUUID = false;
+
+        bool bSameVendorID = true;
+        bool bSameDeviceID = true;
+        for (uint16_t i = 0; i < 4; ++i)
+        {
+            if (cacheData.at(8 + i) != ((m_VendorID >> (8 * i)) & 0xff)) bSameVendorID = false;
+            if (cacheData.at(12 + i) != ((m_DeviceID >> (8 * i)) & 0xff)) bSameDeviceID = false;
+
+            if (!bSameDeviceID || !bSameVendorID || !bSamePipelineUUID) break;
+        }
+
+        if (bSamePipelineUUID && bSameVendorID && bSameDeviceID)
+        {
+            cacheCI.initialDataSize = cacheData.size();
+            cacheCI.pInitialData    = cacheData.data();
+            LOG_INFO("Found valid pipeline cache \"{}\", get ready!", s_ENGINE_NAME);
+        }
+        else
+        {
+            LOG_WARN("Pipeline cache for \"{}\" not valid! Recompiling...", s_ENGINE_NAME);
+        }
+    }
+#endif
+
+    VK_CHECK(vkCreatePipelineCache(m_LogicalDevice, &cacheCI, nullptr, &m_PipelineCache), "Failed to create pipeline cache!");
+}
+
 VulkanDevice::~VulkanDevice()
 {
     WaitDeviceOnFinish();
+    SavePipelineCache();
 
     m_VMA.reset();
     m_VDA.reset();
@@ -195,6 +283,7 @@ void VulkanDevice::CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalD
     *ppNext = &extendedDynamicState3FeaturesEXT;
     ppNext  = &extendedDynamicState3FeaturesEXT.pNext;
 
+#if !RENDERDOC_DEBUG
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRayTracingPipelineFeatures = {
         VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
     VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccelerationStructureFeatures = {
@@ -216,6 +305,7 @@ void VulkanDevice::CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalD
 
     *ppNext = &enabledRayQueryFeatures;
     ppNext  = &enabledRayQueryFeatures.pNext;
+#endif
 
     VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
     meshShaderFeaturesEXT.meshShaderQueries                     = VK_TRUE;
@@ -259,9 +349,9 @@ void VulkanDevice::CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalD
     PFR_ASSERT(m_GraphicsQueue && m_PresentQueue && m_TransferQueue && m_ComputeQueue, "Failed to retrieve queue handles!");
 
 #if PFR_DEBUG
-    LOG_TAG_TRACE(VULKAN, "Enabled device extensions:");
+    LOG_TRACE("Enabled device extensions:");
     for (const auto& ext : s_DeviceExtensions)
-        LOG_TAG_TRACE(VULKAN, "  %s", ext);
+        LOG_TRACE("  {}", ext);
 #endif
 }
 

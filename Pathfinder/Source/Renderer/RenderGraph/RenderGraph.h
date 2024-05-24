@@ -1,83 +1,60 @@
-#ifndef RENDERGRAPH_H
-#define RENDERGRAPH_H
+#pragma once
 
-#include "Core/Core.h"
-#include "Renderer/RendererCoreDefines.h"
+#include <Core/Core.h>
+#include <Renderer/Buffer.h>
+#include <Renderer/Image.h>
+#include <Renderer/Texture2D.h>
 
 namespace Pathfinder
 {
 
-// NOTE: RenderGraph built via this book: Castorina M. Mastering Graphics Programming with Vulkan 2023
-
-enum class ERenderGraphResourceType : uint8_t
+enum class EPassType : uint8_t
 {
-    RENDER_GRAPH_RESOURCE_TYPE_ATTACHMENT = BIT(0),
-    RENDER_GRAPH_RESOURCE_TYPE_TEXTURE    = BIT(1),
-    RENDER_GRAPH_RESOURCE_TYPE_BUFFER     = BIT(2),
-    RENDER_GRAPH_RESOURCE_TYPE_REFERENCE =
-        BIT(3)  // used exclusively to ensure the right edges between nodes are computed without creating a new resource.
+    PASS_TYPE_GRAPHICS = 0,
+    PASS_TYPE_COMPUTE,
+    PASS_TYPE_RAY_TRACING,
 };
 
-struct RenderGraphResourceInfo
+using PassCallbackFn = std::function<void()>;
+class Pass final : private Uncopyable, private Unmovable
 {
-    bool bExternal = false;
-};
+  public:
+    Pass(const std::string& debugName, const EPassType passType, const PassCallbackFn& executeCallback) noexcept
+        : m_DebugName(debugName), m_PassType(passType), m_ExecuteCallback(executeCallback)
+    {
+        LOG_DEBUG("Pass {} created!", debugName);
+    }
+    ~Pass() = default;
 
-struct RenderGraphResourceHandle
-{
-};
+  private:
+    std::string m_DebugName          = s_DEFAULT_STRING;
+    EPassType m_PassType             = EPassType::PASS_TYPE_GRAPHICS;
+    PassCallbackFn m_ExecuteCallback = {};
 
-struct RenderGraphNode
-{
-    std::string Name = s_DEFAULT_STRING;
-    Shared<Pathfinder::Framebuffer> Framebuffer;
-    bool bRenderScene = false;  // false means render fullscreen quad, otherwise render whole scene
-
-    std::vector<RenderGraphResourceHandle> Inputs;
-    std::vector<RenderGraphResourceHandle> Outputs;
-    std::vector<uint32_t> Edges;  // Index into render graph array of nodes
-};
-
-struct RenderGraphResource
-{
-    ERenderGraphResourceType Type = ERenderGraphResourceType::RENDER_GRAPH_RESOURCE_TYPE_ATTACHMENT;
-    RenderGraphResourceInfo ResourceInfo;
-
-    RenderGraphNode
-        Producer;  // Stores a reference to the node that outputs a resource. This will be used to determine the edges of the graph.
-    RenderGraphResourceHandle OutputHandle;  // Stores the parent resource.
-
-    uint32_t ReferenceCounter = 0;  // Will be used when computing which resources can be aliased. Aliasing is a technique that allows
-                                    // multiple resources to share the same memory.
-
-    std::string Name = s_DEFAULT_STRING;  // Contains the name of the resource as defined in JSON. This is useful for debugging and
-                                          // also to retrieve the resource by name.
-};
-
-struct RenderGraphSpecification
-{
+    Pass() = delete;
 };
 
 class RenderGraph final : private Uncopyable, private Unmovable
 {
   public:
-    RenderGraph(const std::string_view& debugName) : m_DebugName(debugName) {}
-    ~RenderGraph() override = default;
+    RenderGraph(const std::string_view& debugName) : m_DebugName(debugName) { LOG_INFO("RenderGraph {} created!", m_DebugName); }
+    ~RenderGraph() = default;
 
-    // void Render(const std::vector<RenderObject>& opaqueObjects, const std::vector<RenderObject>& transparentObjects);
-
-    void AddNode(const RenderGraphNode& node)
+    NODISCARD FORCEINLINE Unique<Pass>& AddPass(const std::string& name, const EPassType passType,
+                                                const PassCallbackFn& executeCallback) noexcept
     {
-        if (m_Nodes.contains(node.Name)) return;
+        PFR_ASSERT(!name.empty(), "Pass name is empty!");
+        PFR_ASSERT(!m_PassNameToIndex.contains(name), "Pass already present!");
 
-        m_Nodes[node.Name] = node;
+        m_PassNameToIndex[name] = m_Passes.size();
+        return m_Passes.emplace_back(MakeUnique<Pass>(name, passType, executeCallback));
     }
 
   private:
-    std::unordered_map<std::string, RenderGraphNode> m_Nodes;
     std::string m_DebugName = s_DEFAULT_STRING;
+    std::vector<Unique<Pass>> m_Passes;
+    std::unordered_map<std::string, std::uint32_t> m_PassNameToIndex;
+
+    RenderGraph() = delete;
 };
-
 }  // namespace Pathfinder
-
-#endif

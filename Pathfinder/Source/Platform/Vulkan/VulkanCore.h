@@ -1,10 +1,9 @@
-﻿#ifndef VULKANCORE_H
-#define VULKANCORE_H
+﻿#pragma once
 
 #include <volk/volk.h>
-#include "Renderer/RendererCoreDefines.h"
-#include "Renderer/Buffer.h"
-#include "Renderer/Shader.h"
+#include <Renderer/RendererCoreDefines.h>
+#include <Renderer/Buffer.h>
+#include <Renderer/Shader.h>
 #include "Globals.h"
 
 namespace Pathfinder
@@ -17,10 +16,10 @@ namespace Pathfinder
 
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
-// NOTE: SHADER CACHE WITH MACRO DEFINITIONS DOESN'T WORK, mb hash and apply it to save name?
 #define VK_FORCE_VALIDATION 1
 #define VK_FORCE_SHADER_COMPILATION 1
-#define VK_FORCE_PIPELINE_COMPILATION 1
+#define VK_FORCE_PIPELINE_COMPILATION 0
+#define VK_FORCE_DRIVER_PIPELINE_CACHE 1
 
 #define VK_LOG_VMA_ALLOCATIONS 0
 #define VK_LOG_INFO 0
@@ -65,8 +64,8 @@ static const std::vector<const char*> s_DeviceExtensions = {
 
     VK_EXT_EXTENDED_DYNAMIC_STATE_3_EXTENSION_NAME,  // For useful pipeline features that can be changed real-time.
 
-    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,  // To build acceleration structures
 #if !RENDERDOC_DEBUG
+    VK_KHR_ACCELERATION_STRUCTURE_EXTENSION_NAME,  // To build acceleration structures
 
     VK_KHR_RAY_TRACING_PIPELINE_EXTENSION_NAME,  // To use vkCmdTraceRaysKHR
 
@@ -142,15 +141,15 @@ static std::string VK_GetResultString(const VkResult result)
     {                                                                                                                                      \
         const auto result              = (Vk_Result);                                                                                      \
         const std::string finalMessage = std::string(message) + std::string(" The result is: ") + std::string(VK_GetResultString(result)); \
-        if (result != VK_SUCCESS) LOG_TAG_ERROR(VULKAN, "%s", finalMessage.data());                                                        \
-        PFR_ASSERT(result == VK_SUCCESS, finalMessage.data());                                                                             \
+        if (result != VK_SUCCESS) LOG_ERROR("{}", finalMessage);                                                                           \
+        PFR_ASSERT(result == VK_SUCCESS, finalMessage);                                                                                    \
     }
 #elif PFR_DEBUG
 #define VK_CHECK(Vk_Result, message)                                                                                                       \
     {                                                                                                                                      \
         const auto result              = (Vk_Result);                                                                                      \
         const std::string finalMessage = std::string(message) + std::string(" The result is: ") + std::string(VK_GetResultString(result)); \
-        PFR_ASSERT(result == VK_SUCCESS, finalMessage.data());                                                                             \
+        PFR_ASSERT(result == VK_SUCCESS, finalMessage);                                                                                    \
     }
 #else
 #error Unknown configuration type!
@@ -160,18 +159,16 @@ static std::string VK_GetResultString(const VkResult result)
 #define VK_SetDebugName(logicalDevice, handle, type, name)                                                                                 \
     {                                                                                                                                      \
         PFR_ASSERT(handle, "Object handle is not valid!");                                                                                 \
-        VkDebugUtilsObjectNameInfoEXT objectNameInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT};                               \
-        objectNameInfo.objectHandle                  = (uint64_t)handle;                                                                   \
-        objectNameInfo.objectType                    = type;                                                                               \
-        objectNameInfo.pObjectName                   = name;                                                                               \
-        VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNameInfo), "Failed to set debug name!");                               \
+        const VkDebugUtilsObjectNameInfoEXT objectNI = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT, nullptr, type,                 \
+                                                        (uint64_t)handle, name};                                                           \
+        VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNI), "Failed to set debug name!");                                     \
     }
 #else
 #define VK_SetDebugName(logicalDevice, objectHandle, objectType, objectName)
 #endif
 
-static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes,
-                              const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, [[maybe_unused]] void* pUserData)
+static VkBool32 VK_DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes,
+                                 const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, [[maybe_unused]] void* pUserData)
 {
     switch (messageSeverity)
     {
@@ -203,14 +200,12 @@ static VkBool32 DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeve
 namespace VulkanUtility
 {
 
-NODISCARD static VkImageMemoryBarrier2 GetImageMemoryBarrier(const VkImage& image, const VkImageAspectFlags aspectMask,
-                                                             const VkImageLayout oldLayout, const VkImageLayout newLayout,
-                                                             const VkPipelineStageFlags2 srcStageMask, const VkAccessFlags2 srcAccessMask,
-                                                             const VkPipelineStageFlags2 dstStageMask, const VkAccessFlags2 dstAccessMask,
-                                                             const uint32_t layerCount, const uint32_t baseArrayLayer,
-                                                             const uint32_t levelCount, const uint32_t baseMipLevel,
-                                                             const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                                                             const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
+NODISCARD FORCEINLINE static VkImageMemoryBarrier2 GetImageMemoryBarrier(
+    const VkImage& image, const VkImageAspectFlags aspectMask, const VkImageLayout oldLayout, const VkImageLayout newLayout,
+    const VkPipelineStageFlags2 srcStageMask, const VkAccessFlags2 srcAccessMask, const VkPipelineStageFlags2 dstStageMask,
+    const VkAccessFlags2 dstAccessMask, const uint32_t layerCount, const uint32_t baseArrayLayer, const uint32_t levelCount,
+    const uint32_t baseMipLevel, const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+    const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
 {
     return VkImageMemoryBarrier2{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                                  nullptr,
@@ -226,11 +221,10 @@ NODISCARD static VkImageMemoryBarrier2 GetImageMemoryBarrier(const VkImage& imag
                                  {aspectMask, baseMipLevel, levelCount, baseArrayLayer, layerCount}};
 }
 
-NODISCARD static VkBufferMemoryBarrier2 GetBufferMemoryBarrier(const VkBuffer& buffer, const VkDeviceSize size, const VkDeviceSize offset,
-                                                               const VkPipelineStageFlags2 srcStageMask, const VkAccessFlags2 srcAccessMask,
-                                                               const VkPipelineStageFlags2 dstStageMask, const VkAccessFlags2 dstAccessMask,
-                                                               const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-                                                               const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
+NODISCARD FORCEINLINE static VkBufferMemoryBarrier2 GetBufferMemoryBarrier(
+    const VkBuffer& buffer, const VkDeviceSize size, const VkDeviceSize offset, const VkPipelineStageFlags2 srcStageMask,
+    const VkAccessFlags2 srcAccessMask, const VkPipelineStageFlags2 dstStageMask, const VkAccessFlags2 dstAccessMask,
+    const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
 {
     return VkBufferMemoryBarrier2{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
                                   nullptr,
@@ -326,29 +320,29 @@ NODISCARD static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShad
     return VK_SHADER_STAGE_VERTEX_BIT;
 }
 
-NODISCARD static VkDescriptorSetAllocateInfo GetDescriptorSetAllocateInfo(const VkDescriptorPool& descriptorPool,
-                                                                          const uint32_t descriptorSetCount,
-                                                                          const VkDescriptorSetLayout* descriptorSetLayouts)
+NODISCARD FORCEINLINE static VkDescriptorSetAllocateInfo GetDescriptorSetAllocateInfo(const VkDescriptorPool& descriptorPool,
+                                                                                      const uint32_t descriptorSetCount,
+                                                                                      const VkDescriptorSetLayout* descriptorSetLayouts)
 {
     return VkDescriptorSetAllocateInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, descriptorPool, descriptorSetCount,
                                        descriptorSetLayouts};
 }
 
-NODISCARD static VkDescriptorPoolCreateInfo GetDescriptorPoolCreateInfo(const uint32_t poolSizeCount, const uint32_t maxSetCount,
-                                                                        const VkDescriptorPoolSize* poolSizes,
-                                                                        const VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0,
-                                                                        const void* pNext = nullptr)
+NODISCARD FORCEINLINE static VkDescriptorPoolCreateInfo GetDescriptorPoolCreateInfo(
+    const uint32_t poolSizeCount, const uint32_t maxSetCount, const VkDescriptorPoolSize* poolSizes,
+    const VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0, const void* pNext = nullptr)
 {
     return VkDescriptorPoolCreateInfo{
         VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, pNext, descriptorPoolCreateFlags, maxSetCount, poolSizeCount, poolSizes};
 }
 
-NODISCARD static VkPushConstantRange GetPushConstantRange(const VkShaderStageFlags stageFlags, const uint32_t offset, const uint32_t size)
+NODISCARD FORCEINLINE static VkPushConstantRange GetPushConstantRange(const VkShaderStageFlags stageFlags, const uint32_t offset,
+                                                                      const uint32_t size)
 {
     return VkPushConstantRange{stageFlags, offset, size};
 }
 
-NODISCARD static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode polygonMode)
+NODISCARD FORCEINLINE static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode polygonMode)
 {
     switch (polygonMode)
     {
@@ -462,7 +456,7 @@ NODISCARD static VkPipelineStageFlags2 PathfinderPipelineStageToVulkan(const Ren
     return vkPipelineStageFlags2;
 }
 
-NODISCARD static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)
+NODISCARD FORCEINLINE static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)
 {
     switch (filter)
     {
@@ -474,7 +468,7 @@ NODISCARD static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter f
     return VK_FILTER_LINEAR;
 }
 
-NODISCARD static VkSamplerAddressMode PathfinderSamplerWrapToVulkan(const ESamplerWrap wrap)
+NODISCARD FORCEINLINE static VkSamplerAddressMode PathfinderSamplerWrapToVulkan(const ESamplerWrap wrap)
 {
     switch (wrap)
     {
@@ -492,5 +486,3 @@ NODISCARD static VkSamplerAddressMode PathfinderSamplerWrapToVulkan(const ESampl
 }  // namespace VulkanUtility
 
 }  // namespace Pathfinder
-
-#endif  // VULKANCORE_H

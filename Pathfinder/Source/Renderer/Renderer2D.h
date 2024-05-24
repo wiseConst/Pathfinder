@@ -1,22 +1,23 @@
-#ifndef RENDERER2D_H
-#define RENDERER2D_H
+#pragma once
 
-#include "Core/Core.h"
+#include <Core/Core.h>
 #include "RendererCoreDefines.h"
 
 namespace Pathfinder
 {
 
 class Pipeline;
+class Texture2D;
 
-struct Sprite
-{
-    // Ref<Texture2D> Texture = nullptr;
-    glm::mat4 Transform    = glm::mat4(1.0f);
-    glm::vec4 Color        = glm::vec4(1.0f);
-    glm::vec2 SpriteCoords = glm::vec2(0.0f);
-    uint32_t Layer         = 0;
-};
+// struct SpriteProxy
+//{
+//     glm::vec3 Translation     = glm::vec3(0.0f);
+//     glm::vec3 Scale           = glm::vec3(1.0f);
+//     glm::vec4 Orientation     = glm::vec4(1.0f, 0.f, 0.f, 0.f);
+//     glm::vec4 Color           = glm::vec4(1.0f);
+//     Shared<Texture2D> Texture = nullptr;
+//     uint32_t Layer            = 0;  // Only for sorting.
+// };
 
 class Renderer2D final : private Uncopyable, private Unmovable
 {
@@ -25,9 +26,10 @@ class Renderer2D final : private Uncopyable, private Unmovable
     static void Shutdown();
 
     static void Begin();
-    static void Flush();
+    static void Flush(Shared<CommandBuffer>& renderCommandBuffer);
 
-    static void DrawQuad(const glm::mat4& transform, const glm::vec4& color = glm::vec4(1.0f), const uint32_t layer = 0);
+    static void DrawQuad(const glm::vec3& translation, const glm::vec3& scale, const glm::vec4& orientation,
+                         const glm::vec4& color = glm::vec4(1.0f), const Shared<Texture2D>& texture = nullptr, const uint32_t layer = 0);
 
     NODISCARD FORCEINLINE static auto& GetStats() { return s_Renderer2DStats; }
 
@@ -40,63 +42,26 @@ class Renderer2D final : private Uncopyable, private Unmovable
   private:
     struct RendererData2D
     {
-        BufferPerFrame QuadVertexBuffer;
-        Shared<Pipeline> QuadPipeline = nullptr;
+        static constexpr uint32_t s_MAX_QUADS = 25000;
+        uint8_t FrameIndex                    = 0;
+        uint64_t QuadPipelineHash             = 0;
 
-        using QuadVertexBasePerFrame = std::array<QuadVertex*, s_FRAMES_IN_FLIGHT>;
-        QuadVertexBasePerFrame QuadVertexBase;
-        QuadVertexBasePerFrame QuadVertexCurrent;
-
-        std::vector<Sprite> Sprites;
-
-        uint8_t FrameIndex = 0;
-
-        static constexpr uint32_t s_MAX_QUADS              = 2500;
-        static constexpr uint32_t s_MAX_VERTICES           = s_MAX_QUADS * 4;
-        static constexpr uint32_t s_MAX_INDICES            = s_MAX_QUADS * 6;
-        static constexpr uint32_t s_MAX_VERTEX_BUFFER_SIZE = s_MAX_VERTICES * sizeof(QuadVertex);
-
-        Shared<Buffer> QuadIndexBuffer = nullptr;
-
-        static inline glm::vec3 QuadVertices[4] = {
-            glm::vec3(-0.5f, -0.5f, 0.0f),  // bottom left
-            glm::vec3(0.5f, -0.5f, 0.0f),   // bottom right
-            glm::vec3(0.5f, 0.5f, 0.0f),    // top right
-            glm::vec3(-0.5f, 0.5f, 0.0f),   // top left
-        };
-
-        // FIXME: Currently wrong defined
-        static inline glm::vec3 QuadNormals[4] = {
-            glm::vec3(1.0f, 0.0f, 0.0f),   //  top right
-            glm::vec3(0.0f, -1.0f, 0.0f),  // bottom right
-            glm::vec3(-1.0f, 0.0f, 0.0f),  // bottom left
-            glm::vec3(0.0f, 1.0f, 0.0f),   // top left
-        };
-
-        static inline glm::vec2 QuadUVs[4] = {
-            glm::vec2(0.0f, 0.0f),  // bottom left
-            glm::vec2(1.0f, 0.0f),  // bottom right
-            glm::vec2(1.0f, 1.0f),  // top right
-            glm::vec2(0.0f, 1.0f),  // top left
-        };
+        BufferPerFrame SpriteSSBO;
+        std::array<Sprite, s_MAX_QUADS> Sprites;
+        uint32_t CurrentSpriteCount = 0;
     };
     static inline Unique<RendererData2D> s_RendererData2D = nullptr;
 
     struct Renderer2DStats
     {
-        uint32_t BatchCount;
         uint32_t QuadCount;
         uint32_t TriangleCount;
         float GPUTime;
     };
     static inline Renderer2DStats s_Renderer2DStats = {};
 
-    Renderer2D();
-    ~Renderer2D() override;
-
-    static void FlushBatch();
+    Renderer2D()  = delete;
+    ~Renderer2D() = default;
 };
 
 }  // namespace Pathfinder
-
-#endif  // RENDERER2D_H

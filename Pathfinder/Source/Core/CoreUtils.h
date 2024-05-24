@@ -1,8 +1,6 @@
-#ifndef COREUTILS_H
-#define COREUTILS_H
+#pragma once
 
-#include "Core/Core.h"
-#include "Core/Threading.h"
+#include <Core/Core.h>
 #include <concepts>
 
 namespace Pathfinder
@@ -13,13 +11,9 @@ template <typename T>
         t.resize(std::size_t{});
         t.data();
     }
-static T LoadData(const std::string_view filePath)
+static T LoadData(const std::string_view& filePath)
 {
-    if (filePath.empty())
-    {
-        PFR_ASSERT(false, "FilePath is empty! Nothing to load data from!");
-        return T{};
-    }
+    PFR_ASSERT(!filePath.empty(), "FilePath is empty! Nothing to load data from!");
 
     std::ifstream file(filePath.data(), std::ios::in | std::ios::binary | std::ios::ate);
     if (!file.is_open())
@@ -39,13 +33,10 @@ static T LoadData(const std::string_view filePath)
     return buffer;
 }
 
-static void SaveData(const std::string_view filePath, const void* data, const int64_t dataSize)
+// NOTE: dataSize [bytes]
+static void SaveData(const std::string_view& filePath, const void* data, const int64_t dataSize)
 {
-    if (filePath.empty())
-    {
-        PFR_ASSERT(false, "FilePath is empty! Nothing to save data to!");
-        return;
-    }
+    PFR_ASSERT(!filePath.empty(), "FilePath is empty! Nothing to save data to!");
 
     if (!data || dataSize == 0)
     {
@@ -53,17 +44,15 @@ static void SaveData(const std::string_view filePath, const void* data, const in
         return;
     }
 
-    std::ofstream file(filePath.data(), std::ios::out | std::ios::binary | std::ofstream::trunc);
+    std::ofstream file(filePath.data(), std::ios::out | std::ios::binary | std::ios::trunc);
     if (!file.is_open())
     {
         LOG_WARN("Failed to open file \"%s\"!", filePath.data());
         return;
     }
 
-    file.write(static_cast<const char*>(data), dataSize);
+    file.write(reinterpret_cast<const char*>(data), dataSize);
     file.close();
 }
 
 }  // namespace Pathfinder
-
-#endif  // COREUTILS_H

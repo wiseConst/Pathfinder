@@ -1,5 +1,4 @@
-#ifndef IMAGE_H
-#define IMAGE_H
+#pragma once
 
 #include "Core/Core.h"
 #include "RendererCoreDefines.h"
@@ -43,7 +42,7 @@ enum EImageUsage : uint32_t
     IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT = BIT(8),
     IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT             = BIT(9),
 };
-typedef uint32_t ImageUsageFlags;
+using ImageUsageFlags = uint32_t;
 
 enum class EImageFormat : uint8_t
 {
@@ -302,5 +301,3 @@ uint32_t CalculateMipCount(const uint32_t width, const uint32_t height);
 }  // namespace ImageUtils
 
 }  // namespace Pathfinder
-
-#endif  // IMAGE_H

@@ -1,5 +1,4 @@
-#ifndef BUFFER_H
-#define BUFFER_H
+#pragma once
 
 #include "Core/Core.h"
 
@@ -151,18 +150,15 @@ enum EBufferUsage : uint32_t
     BUFFER_USAGE_SHADER_BINDING_TABLE                         = BIT(9),
     BUFFER_USAGE_INDIRECT                                     = BIT(10),
 };
-typedef uint32_t BufferUsageFlags;
+using BufferUsageFlags = uint32_t;
 
-// NOTE: If no buffer capacity specified when DataSize is, then will be resized to DataSize.
 struct BufferSpecification
 {
-    BufferUsageFlags BufferUsage = 0;
-    uint32_t BufferBinding       = 0;  // In case it's bindless, used for mesh purposes.
-    bool bBindlessUsage          = false;
-    bool bMapPersistent          = false;  // In case it's HOST_VISIBLE, or I force it to be it.
-    size_t BufferCapacity        = 0;
-    const void* Data             = nullptr;
-    size_t DataSize              = 0;
+    BufferUsageFlags UsageFlags = 0;
+    uint32_t Binding            = 0;  // In case it's bindless, used for mesh purposes.
+    bool bBindlessUsage         = false;
+    bool bMapPersistent         = false;  // In case it's HOST_VISIBLE, or I force it to be it.
+    size_t Capacity             = 0;
 };
 
 class Buffer : private Uncopyable, private Unmovable
@@ -177,9 +173,9 @@ class Buffer : private Uncopyable, private Unmovable
     virtual uint64_t GetBDA() const                       = 0;
 
     virtual void SetData(const void* data, const size_t dataSize) = 0;
-    virtual void Resize(const size_t newBufferCapacity)           = 0;
+    virtual void Resize(const size_t newCapacity)           = 0;
 
-    NODISCARD static Shared<Buffer> Create(const BufferSpecification& bufferSpec);
+    NODISCARD static Shared<Buffer> Create(const BufferSpecification& bufferSpec, const void* data = nullptr, const size_t dataSize = 0);
 
   protected:
     BufferSpecification m_Specification = {};
@@ -192,5 +188,3 @@ class Buffer : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // BUFFER_H

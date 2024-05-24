@@ -1,5 +1,4 @@
-#ifndef RAYTRACINGBUILDER_H
-#define RAYTRACINGBUILDER_H
+#pragma once
 
 #include "Core/Core.h"
 #include "RendererCoreDefines.h"
@@ -49,5 +48,3 @@ class RayTracingBuilder : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif

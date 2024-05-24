@@ -1,18 +1,17 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "MeshManager.h"
 
 #include "Submesh.h"
 #include "Globals.h"
 
-#include "Core/Application.h"
-#include "Core/Threading.h"
-#include "Core/Intrinsics.h"
+#include <Core/Application.h>
+#include <Core/Intrinsics.h>
 
-#include "Renderer/Buffer.h"
-#include "Renderer/Material.h"
-#include "Renderer/Image.h"
-#include "Renderer/Texture2D.h"
-#include "Renderer/Renderer.h"
+#include <Renderer/Buffer.h>
+#include <Renderer/Material.h>
+#include <Renderer/Image.h>
+#include <Renderer/Texture2D.h>
+#include <Renderer/Renderer.h>
 
 #include <fastgltf/glm_element_traits.hpp>
 #include <fastgltf/core.hpp>
@@ -31,7 +30,7 @@ static ESamplerFilter SamplerFilterToPathfinder(const fastgltf::Filter filter)
     {
         case fastgltf::Filter::Nearest: return ESamplerFilter::SAMPLER_FILTER_NEAREST;
         case fastgltf::Filter::Linear: return ESamplerFilter::SAMPLER_FILTER_LINEAR;
-        default: LOG_TAG_WARN(FASTGLTF, "Other sampler filters aren't supported!"); return ESamplerFilter::SAMPLER_FILTER_NEAREST;
+        default: LOG_WARN("FASTGLTF: Other sampler filters aren't supported!"); return ESamplerFilter::SAMPLER_FILTER_NEAREST;
     }
 
     PFR_ASSERT(false, "Unknown fastgltf::filter!");
@@ -45,7 +44,7 @@ static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
         case fastgltf::Wrap::ClampToEdge: return ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE;
         case fastgltf::Wrap::MirroredRepeat: return ESamplerWrap::SAMPLER_WRAP_MIRRORED_REPEAT;
         case fastgltf::Wrap::Repeat: return ESamplerWrap::SAMPLER_WRAP_REPEAT;
-        default: LOG_TAG_WARN(FASTGLTF, "Other sampler wraps aren't supported!"); return ESamplerWrap::SAMPLER_WRAP_REPEAT;
+        default: LOG_WARN("FASTGLTF: Other sampler wraps aren't supported!"); return ESamplerWrap::SAMPLER_WRAP_REPEAT;
     }
 
     PFR_ASSERT(false, "Unknown fastgltf::wrap!");
@@ -162,7 +161,7 @@ Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Share
                             break;
                         }
                         case 3:  // 24bpp(RGB) formats are hard to optimize in graphics hardware, so they're mostly
-                                 // not supported(also in Vulkan). (but we handle this by converting rgb to rgba)
+                        // not supported(also in Vulkan). (but we handle this by converting rgb to rgba)
                         case 4:
                         {
                             if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
@@ -244,13 +243,12 @@ void MeshManager::LoadMesh(std::vector<Shared<Submesh>>& submeshes, const std::f
     fastgltf::Expected<fastgltf::Asset> asset = parser.loadGltf(&data, meshFilePath.parent_path(), gltfOptions);
     if (const auto error = asset.error(); error != fastgltf::Error::None)
     {
-        LOG_TAG_ERROR(FASTGLTF, "Error occured while loading mesh \"%s\"! Error name: %s / Message: %s", meshFilePath.string().data(),
-                      fastgltf::getErrorName(error).data(), fastgltf::getErrorMessage(error).data());
+        LOG_ERROR("FASTGLTF: Error occured while loading mesh \"{}\"! Error name: {} / Message: {}", meshFilePath.string(),
+                  fastgltf::getErrorName(error), fastgltf::getErrorMessage(error));
         PFR_ASSERT(false, "Failed to load mesh!");
     }
-    LOG_TAG_INFO(FASTGLTF, "\"%s\" has (%zu) buffers, (%zu) textures, (%zu) animations, (%zu) materials, (%zu) meshes.",
-                 meshFilePath.string().data(), asset->buffers.size(), asset->animations.size(), asset->textures.size(),
-                 asset->materials.size(), asset->meshes.size());
+    LOG_INFO("FASTGLTF: \"{}\" has ({}) buffers, ({}) textures, ({}) animations, ({}) materials, ({}) meshes.", meshFilePath.string(),
+             asset->buffers.size(), asset->animations.size(), asset->textures.size(), asset->materials.size(), asset->meshes.size());
 
     std::string currentMeshDir = meshFilePath.parent_path().string() + "/";
     PFR_ASSERT(!currentMeshDir.empty(), "Current mesh directory path invalid!");
@@ -266,23 +264,24 @@ void MeshManager::LoadMesh(std::vector<Shared<Submesh>>& submeshes, const std::f
 
     submeshes.shrink_to_fit();
 
-    LOG_TAG_INFO(FASTGLTF, "Time taken to load and create mesh - \"%s\": (%0.5f) seconds.", meshFilePath.string().data(),
-                 t.GetElapsedSeconds());
+    LOG_INFO("FASTGLTF: Time taken to load and create mesh - \"{}\": ({:.5f}) seconds.", meshFilePath.string(), t.GetElapsedSeconds());
 }
 
 SurfaceMesh MeshManager::GenerateUVSphere(const uint32_t sectorCount, const uint32_t stackCount)
 {
     std::vector<glm::vec3> vertices = {};
+    const float invStackCount       = 1.f / stackCount;
+    const float sectorAngleCoeff    = 2 * glm::pi<float>() / sectorCount;
 
     for (uint32_t i = 0; i <= stackCount; ++i)
     {
-        const float stackAngle = glm::pi<float>() / 2 - glm::pi<float>() * i / stackCount;
+        const float stackAngle = glm::pi<float>() / 2 - glm::pi<float>() * i * invStackCount;
         const float xy         = cosf(stackAngle);
         const float z          = sinf(stackAngle);
 
         for (int j = 0; j <= sectorCount; ++j)
         {
-            const float sectorAngle = 2 * glm::pi<float>() * j / sectorCount;
+            const float sectorAngle = sectorAngleCoeff * j;
 #if 0
             glm::vec3 vertexPos    = glm::vec3(xy * cosf(sectorAngle), xy * sinf(sectorAngle), z);
             glm::vec3 vertexNormal = glm::normalize(vertexPos);
@@ -323,17 +322,13 @@ SurfaceMesh MeshManager::GenerateUVSphere(const uint32_t sectorCount, const uint
 
     SurfaceMesh mesh = {};
     {
-        BufferSpecification vbSpec = {EBufferUsage::BUFFER_USAGE_VERTEX};
-        vbSpec.Data                = vertices.data();
-        vbSpec.DataSize            = vertices.size() * sizeof(vertices[0]);
-        mesh.VertexBuffer          = Buffer::Create(vbSpec);
+        constexpr BufferSpecification vbSpec = {EBufferUsage::BUFFER_USAGE_VERTEX};
+        mesh.VertexBuffer                    = Buffer::Create(vbSpec, vertices.data(), vertices.size() * sizeof(vertices[0]));
     }
 
     {
-        BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_INDEX};
-        ibSpec.Data                = indices.data();
-        ibSpec.DataSize            = indices.size() * sizeof(indices[0]);
-        mesh.IndexBuffer           = Buffer::Create(ibSpec);
+        constexpr BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_INDEX};
+        mesh.IndexBuffer                     = Buffer::Create(ibSpec, indices.data(), indices.size() * sizeof(indices[0]));
     }
 
     return mesh;
@@ -530,11 +525,9 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         MeshManager::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
 
         BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_INDEX_BINDING, true};
-        ibSpec.Data                = finalIndices.data();
-        ibSpec.DataSize            = finalIndices.size() * sizeof(finalIndices[0]);
-        ibSpec.BufferUsage |=
+        ibSpec.UsageFlags |=
             EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
-        submesh->m_IndexBuffer = Buffer::Create(ibSpec);
+        submesh->m_IndexBuffer = Buffer::Create(ibSpec, finalIndices.data(), finalIndices.size() * sizeof(finalIndices[0]));
 
         std::vector<MeshPositionVertex> vertexPositions(finalVertices.size());
         std::vector<MeshAttributeVertex> vertexAttributes(finalVertices.size());
@@ -553,18 +546,16 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         meshoptimizeVertices.clear();
 
         BufferSpecification vbPosSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_VERTEX_POS_BINDING, true};
-        vbPosSpec.Data                = vertexPositions.data();
-        vbPosSpec.DataSize            = vertexPositions.size() * sizeof(vertexPositions[0]);
-        vbPosSpec.BufferUsage |=
+        vbPosSpec.UsageFlags |=
             EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
-        submesh->m_VertexPositionBuffer = Buffer::Create(vbPosSpec);
+        submesh->m_VertexPositionBuffer =
+            Buffer::Create(vbPosSpec, vertexPositions.data(), vertexPositions.size() * sizeof(vertexPositions[0]));
 
         BufferSpecification vbAttribSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, true};
-        vbAttribSpec.Data                = vertexAttributes.data();
-        vbAttribSpec.DataSize            = vertexAttributes.size() * sizeof(vertexAttributes[0]);
-        vbAttribSpec.BufferUsage |=
+        vbAttribSpec.UsageFlags |=
             EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
-        submesh->m_VertexAttributeBuffer = Buffer::Create(vbAttribSpec);
+        submesh->m_VertexAttributeBuffer =
+            Buffer::Create(vbAttribSpec, vertexAttributes.data(), vertexAttributes.size() * sizeof(vertexAttributes[0]));
 
         submesh->m_BoundingSphere = MeshManager::GenerateBoundingSphere(vertexPositions);
 
@@ -573,25 +564,22 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         std::vector<Meshlet> meshlets;
         MeshManager::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
 
-        BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_BINDING, true};
-        mbSpec.Data                = meshlets.data();
-        mbSpec.DataSize            = meshlets.size() * sizeof(meshlets[0]);
-        submesh->m_MeshletBuffer   = Buffer::Create(mbSpec);
+        constexpr BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_BINDING, true};
+        submesh->m_MeshletBuffer             = Buffer::Create(mbSpec, meshlets.data(), meshlets.size() * sizeof(meshlets[0]));
 
-        BufferSpecification mbVertSpec   = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_VERTEX_BINDING, true};
-        mbVertSpec.Data                  = meshletVertices.data();
-        mbVertSpec.DataSize              = meshletVertices.size() * sizeof(meshletVertices[0]);
-        submesh->m_MeshletVerticesBuffer = Buffer::Create(mbVertSpec);
+        constexpr BufferSpecification mbVertSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_VERTEX_BINDING, true};
+        submesh->m_MeshletVerticesBuffer =
+            Buffer::Create(mbVertSpec, meshletVertices.data(), meshletVertices.size() * sizeof(meshletVertices[0]));
 
-        BufferSpecification mbTriSpec     = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, true};
-        mbTriSpec.Data                    = meshletTriangles.data();
-        mbTriSpec.DataSize                = meshletTriangles.size() * sizeof(meshletTriangles[0]);
-        submesh->m_MeshletTrianglesBuffer = Buffer::Create(mbTriSpec);
+        constexpr BufferSpecification mbTriSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, true};
+        submesh->m_MeshletTrianglesBuffer =
+            Buffer::Create(mbTriSpec, meshletTriangles.data(), meshletTriangles.size() * sizeof(meshletTriangles[0]));
     }
 }
 
 AABB MeshManager::GenerateAABB(const std::vector<MeshPositionVertex>& points)
 {
+#if _MSC_VER
     if (AVX2Supported())
     {
         size_t i       = 0;
@@ -651,6 +639,7 @@ AABB MeshManager::GenerateAABB(const std::vector<MeshPositionVertex>& points)
         const glm::vec3 center = (max + min) * 0.5f;
         return {center, max - center};
     }
+#endif
 
     glm::vec3 min = glm::vec3(FLT_MAX);
     glm::vec3 max = glm::vec3(FLT_MIN);
@@ -669,7 +658,7 @@ Sphere MeshManager::GenerateBoundingSphere(const std::vector<MeshPositionVertex>
     glm::vec3 farthestVtx[2] = {points[0].Position, points[0].Position};
     glm::vec3 averagedVertexPos(0.0f);
 
-// First pass - find averaged vertex pos.
+    // First pass - find averaged vertex pos.
 #if TEST_LATER
     if (AVX2Supported())
     {

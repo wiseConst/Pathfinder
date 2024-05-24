@@ -1,5 +1,4 @@
-#ifndef INHERITANCE_H
-#define INHERITANCE_H
+#pragma once
 
 namespace Pathfinder
 {
@@ -7,12 +6,11 @@ namespace Pathfinder
 class Unmovable
 {
   public:
-    Unmovable(const Unmovable&&)            = delete;
-    Unmovable& operator=(const Unmovable&&) = delete;
+    Unmovable(Unmovable&&)            = delete;
+    Unmovable& operator=(Unmovable&&) = delete;
 
   protected:
     constexpr Unmovable()          = default;
-    constexpr virtual ~Unmovable() = default;
 };
 
 class Uncopyable
@@ -23,9 +21,7 @@ class Uncopyable
 
   protected:
     constexpr Uncopyable()          = default;
-    constexpr virtual ~Uncopyable() = default;
 };
 
 }  // namespace Pathfinder
 
-#endif  // INHERITANCE_H

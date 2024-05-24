@@ -1,4 +1,4 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanTexture2D.h"
 
 #include "VulkanContext.h"
@@ -8,8 +8,6 @@
 
 #include "Renderer/Renderer.h"
 #include "VulkanBindlessRenderer.h"
-
-#include "Core/Threading.h"
 
 namespace Pathfinder
 {
@@ -77,7 +75,7 @@ void VulkanTexture2D::GenerateMipMaps()
 
     const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
                                                ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, Renderer::GetRendererData()->FrameIndex,
-                                               JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+                                               ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
     auto vulkanCommandBuffer =
         MakeShared<VulkanCommandBuffer>(cbSpec);  // Blit is a graphics command, so dedicated transfer queue doesn't support them.
     vulkanCommandBuffer->BeginRecording(true);

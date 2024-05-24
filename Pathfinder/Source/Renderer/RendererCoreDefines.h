@@ -1,7 +1,6 @@
-#ifndef RENDERERCOREDEFINES_H
-#define RENDERERCOREDEFINES_H
+#pragma once
 
-#include "Core/Math.h"
+#include <Core/Math.h>
 #include <array>
 #include <map>
 
@@ -179,6 +178,13 @@ enum class EBlurType : uint8_t
     BLUR_TYPE_BOX,
 };
 
+enum class EAmbientOcclusionType : uint8_t
+{
+    AMBIENT_OCCLUSION_TYPE_SSAO = 0,  // Default SSAO from learnopengl
+    AMBIENT_OCCLUSION_TYPE_HBAO,      // Default HBAO from NVidia
+    AMBIENT_OCCLUSION_TYPE_RTAO,
+};
+
 struct QuadVertex
 {
     glm::vec3 Position = glm::vec3(0.0f);
@@ -241,5 +247,3 @@ struct MemoryBudget
 };
 
 }  // namespace Pathfinder
-
-#endif  // RENDERERCOREDEFINES_H

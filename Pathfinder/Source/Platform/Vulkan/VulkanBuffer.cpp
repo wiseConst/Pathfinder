@@ -1,4 +1,4 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanBuffer.h"
 
 #include "VulkanCommandBuffer.h"
@@ -7,8 +7,6 @@
 
 #include "Renderer/Renderer.h"
 #include "VulkanBindlessRenderer.h"
-
-#include "Core/Threading.h"
 
 namespace Pathfinder
 {
@@ -121,24 +119,22 @@ void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation)
 
 }  // namespace BufferUtils
 
-VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec) : Buffer(bufferSpec)
+VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec, const void* data, const size_t dataSize) : Buffer(bufferSpec)
 {
-    if (m_Specification.BufferCapacity > 0)
+    if (m_Specification.Capacity > 0)
     {
-        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
-                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
-                                  BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
-        m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
+        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.Capacity,
+                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.UsageFlags),
+                                  BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.UsageFlags));
+        m_DescriptorInfo = {m_Handle, 0, m_Specification.Capacity};
     }
 
-    if (m_Specification.Data && m_Specification.DataSize != 0)
+    if (data && dataSize != 0)
     {
-        SetData(m_Specification.Data, m_Specification.DataSize);
-        m_Specification.Data     = nullptr;
-        m_Specification.DataSize = 0;
+        SetData(data, dataSize);
     }
 
-    if (m_Specification.BufferCapacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
+    if (m_Specification.Capacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
     {
         void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
         m_bIsMapped  = true;
@@ -146,7 +142,7 @@ VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec) : Buffer(buffe
 
     if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
     {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.BufferBinding, m_Index);
+        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.Binding, m_Index);
     }
 }
 
@@ -172,19 +168,19 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
 
     if (!m_Handle)
     {
-        m_Specification.BufferCapacity = m_Specification.BufferCapacity > dataSize ? m_Specification.BufferCapacity : dataSize;
-        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
-                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
-                                  BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
+        m_Specification.Capacity = m_Specification.Capacity > dataSize ? m_Specification.Capacity : dataSize;
+        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.Capacity,
+                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.UsageFlags),
+                                  BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.UsageFlags));
 
-        m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
+        m_DescriptorInfo = {m_Handle, 0, m_Specification.Capacity};
     }
 
-    if (dataSize > m_Specification.BufferCapacity) Resize(dataSize);
+    if (dataSize > m_Specification.Capacity) Resize(dataSize);
 
     // NOTE: Check for uniform buffer's memory because I force them to be on BAR(host & device) memory
-    if (m_Specification.BufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE ||
-        m_Specification.BufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM && BufferUtils::IsMappable(m_Allocation))
+    if (m_Specification.UsageFlags & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE ||
+        m_Specification.UsageFlags & EBufferUsage::BUFFER_USAGE_UNIFORM && BufferUtils::IsMappable(m_Allocation))
     {
         void* mapped = nullptr;
         if (!m_bIsMapped)
@@ -224,7 +220,7 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
             const CommandBufferSpecification cbSpec = {ECommandBufferType::/*COMMAND_BUFFER_TYPE_GRAPHICS*/ COMMAND_BUFFER_TYPE_TRANSFER,
                                                        ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                                                        Renderer::GetRendererData()->FrameIndex,
-                                                       JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+                                                       ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
             auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
             vulkanCommandBuffer->BeginRecording(true);
 
@@ -238,22 +234,22 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
 
     if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
     {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&GetDescriptorInfo(), m_Specification.BufferBinding, m_Index);
+        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&GetDescriptorInfo(), m_Specification.Binding, m_Index);
     }
 }
 
 void VulkanBuffer::Resize(const size_t newBufferCapacity)
 {
-    if (newBufferCapacity == m_Specification.BufferCapacity) return;
+    if (newBufferCapacity == m_Specification.Capacity) return;
 
     Destroy();
-    m_Specification.BufferCapacity = newBufferCapacity;
-    BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
-                              BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
-                              BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
-    m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
+    m_Specification.Capacity = newBufferCapacity;
+    BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.Capacity,
+                              BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.UsageFlags),
+                              BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.UsageFlags));
+    m_DescriptorInfo = {m_Handle, 0, m_Specification.Capacity};
 
-    if (m_Specification.BufferCapacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
+    if (m_Specification.Capacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
     {
         void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
         m_bIsMapped  = true;
@@ -261,7 +257,7 @@ void VulkanBuffer::Resize(const size_t newBufferCapacity)
 
     if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
     {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.BufferBinding, m_Index);
+        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.Binding, m_Index);
     }
 }
 
@@ -282,7 +278,7 @@ void VulkanBuffer::Destroy()
 
     if (m_Index != UINT32_MAX && m_Specification.bBindlessUsage)
     {
-        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index, m_Specification.BufferBinding);
+        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index, m_Specification.Binding);
     }
 }
 

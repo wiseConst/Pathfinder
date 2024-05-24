@@ -1,12 +1,12 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanContext.h"
 
 #include "VulkanDevice.h"
 #include "VulkanDeviceManager.h"
 #include "VulkanAllocator.h"
 
-#include "Core/Application.h"
-#include "Core/Window.h"
+#include <Core/Application.h>
+#include <Core/Window.h>
 
 namespace Pathfinder
 {
@@ -44,15 +44,15 @@ void VulkanContext::CreateInstance()
 #endif
     PFR_ASSERT(PFR_VK_API_VERSION <= supportedApiVersionFromDLL, "Desired VK version >= available VK version.");
 
-    VkApplicationInfo applicationInfo  = {VK_STRUCTURE_TYPE_APPLICATION_INFO};
-    applicationInfo.apiVersion         = supportedApiVersionFromDLL;
-    applicationInfo.pApplicationName   = Application::Get().GetSpecification().Title.data();
-    applicationInfo.pEngineName        = s_ENGINE_NAME.data();
-    applicationInfo.engineVersion      = VK_MAKE_API_VERSION(0, 1, 1, 0);
-    applicationInfo.applicationVersion = VK_MAKE_API_VERSION(0, 1, 1, 0);
-
-    VkInstanceCreateInfo instanceCI = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
-    instanceCI.pApplicationInfo     = &applicationInfo;
+    const VkApplicationInfo applicationInfo = {VK_STRUCTURE_TYPE_APPLICATION_INFO,
+                                               nullptr,
+                                               Application::Get().GetSpecification().Title.data(),
+                                               VK_MAKE_API_VERSION(0, 1, 1, 0),
+                                               s_ENGINE_NAME.data(),
+                                               VK_MAKE_API_VERSION(0, 1, 1, 0),
+                                               supportedApiVersionFromDLL};
+    VkInstanceCreateInfo instanceCI         = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
+    instanceCI.pApplicationInfo             = &applicationInfo;
 
     const auto enabledInstanceExtensions = GetRequiredExtensions();
     instanceCI.enabledExtensionCount     = static_cast<uint32_t>(enabledInstanceExtensions.size());
@@ -77,17 +77,17 @@ void VulkanContext::CreateInstance()
     volkLoadInstanceOnly(m_VulkanInstance);
 
 #if PFR_DEBUG
-    LOG_INFO("Using vulkan version: %u.%u.%u.%u", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
+    LOG_INFO("Using vulkan version: {}.{}.{}.{}", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
              VK_API_VERSION_MAJOR(supportedApiVersionFromDLL), VK_API_VERSION_MINOR(supportedApiVersionFromDLL),
              VK_API_VERSION_PATCH(supportedApiVersionFromDLL));
 
-    LOG_TAG_TRACE(VULKAN, "Enabled instance extensions:");
+    LOG_TRACE("Enabled instance extensions:");
     for (const auto& ext : enabledInstanceExtensions)
-        LOG_TAG_TRACE(VULKAN, "  %s", ext);
+        LOG_TRACE("  {}", ext);
 
-    LOG_TAG_TRACE(VULKAN, "Enabled instance layers:");
+    LOG_TRACE("Enabled instance layers:");
     for (const auto& layer : s_InstanceLayers)
-        LOG_TAG_TRACE(VULKAN, "  %s", layer);
+        LOG_TRACE("  {}", layer);
 #endif
 }
 
@@ -95,16 +95,18 @@ void VulkanContext::CreateDebugMessenger()
 {
     if constexpr (!s_bEnableValidationLayers && !VK_FORCE_VALIDATION) return;
 
-    VkDebugUtilsMessengerCreateInfoEXT debugMessengerCreateInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT};
-    debugMessengerCreateInfo.messageSeverity =
+    constexpr VkDebugUtilsMessengerCreateInfoEXT debugMessengerCI = {
+        VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        nullptr,
+        0,  //
         VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT;
-    debugMessengerCreateInfo.messageType = VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-                                           VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT |
-                                           VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT;
-    debugMessengerCreateInfo.pfnUserCallback = &DebugCallback;
-
-    VK_CHECK(vkCreateDebugUtilsMessengerEXT(m_VulkanInstance, &debugMessengerCreateInfo, nullptr, &m_DebugMessenger),
+            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,  //
+        VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
+            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,  //
+        &VK_DebugCallback,                                                                                                 //
+        nullptr                                                                                                            // pUserData
+    };
+    VK_CHECK(vkCreateDebugUtilsMessengerEXT(m_VulkanInstance, &debugMessengerCI, nullptr, &m_DebugMessenger),
              "Failed to create debug messenger!");
 }
 
@@ -142,11 +144,10 @@ bool VulkanContext::CheckVulkanAPISupport() const
         bool bIsSupported = false;
         for (const auto& [instanceExt, specVersion] : extensions)
         {
-            if (strcmp(instanceExt, wsiExt) == 0)
-            {
-                bIsSupported = true;
-                break;
-            }
+            if (strcmp(instanceExt, wsiExt) != 0) continue;
+
+            bIsSupported = true;
+            break;
         }
 
         if (!bIsSupported) return false;
@@ -178,11 +179,10 @@ bool VulkanContext::CheckVulkanValidationSupport() const
         bool bIsSupported = false;
         for (const auto& availableLayer : availableLayers)
         {
-            if (strcmp(availableLayer.layerName, requestedLayer) == 0)
-            {
-                bIsSupported = true;
-                break;
-            }
+            if (strcmp(availableLayer.layerName, requestedLayer) != 0) continue;
+
+            bIsSupported = true;
+            break;
         }
 
         if (!bIsSupported) return false;
@@ -215,6 +215,7 @@ void VulkanContext::FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudge
 void VulkanContext::Destroy()
 {
     m_Device->WaitDeviceOnFinish();
+
     m_Device.reset();
 
     if constexpr (VK_FORCE_VALIDATION || s_bEnableValidationLayers)

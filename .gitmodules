@@ -32,3 +32,6 @@
 [submodule "Pathfinder/vendor/nlohmann"]
 	path = Pathfinder/vendor/nlohmann
 	url = https://github.com/nlohmann/json.git
+[submodule "Pathfinder/vendor/spdlog"]
+	path = Pathfinder/vendor/spdlog
+	url = https://github.com/gabime/spdlog.git

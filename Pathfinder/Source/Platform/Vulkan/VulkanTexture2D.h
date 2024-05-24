@@ -1,5 +1,4 @@
-#ifndef VULKANTEXTURE2D_H
-#define VULKANTEXTURE2D_H
+#pragma once
 
 #include "Renderer/Texture2D.h"
 #include "VulkanCore.h"
@@ -11,7 +10,6 @@ class VulkanTexture2D final : public Texture2D
 {
   public:
     VulkanTexture2D(const TextureSpecification& textureSpec, const void* data, const size_t dataSize);
-    VulkanTexture2D() = delete;
     ~VulkanTexture2D() override { Destroy(); }
 
     // NOTE: Since image layout changes frequently, update layout on call.
@@ -23,11 +21,10 @@ class VulkanTexture2D final : public Texture2D
 
     friend class VulkanBindlessRenderer;
 
+    VulkanTexture2D() = delete;
     void Destroy() final override;
     void Invalidate(const void* data, const size_t dataSize) final override;
     void GenerateMipMaps() final override;
 };
 
 }  // namespace Pathfinder
-
-#endif

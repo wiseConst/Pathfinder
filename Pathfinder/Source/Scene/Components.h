@@ -1,8 +1,8 @@
-#ifndef COMPONENTS_H
-#define COMPONENTS_H
+#pragma once
 
-#include "Core/Core.h"
-#include "Renderer/Mesh/Mesh.h"
+#include <Core/Core.h>
+#include <Renderer/Mesh/Mesh.h>
+#include <Renderer/Texture2D.h>
 #include "Lights.h"
 
 namespace Pathfinder
@@ -28,7 +28,6 @@ struct TagComponent
     TagComponent(const std::string& tag) : Tag(tag) {}
 };
 
-// FIXME: On cpu im using matrices, but on gpu quaternions, move to quaternions everywhere.
 struct TransformComponent
 {
     glm::vec3 Translation{0.0f};
@@ -58,7 +57,7 @@ struct TransformComponent
 struct DirectionalLightComponent
 {
     float Intensity       = 1.f;
-    vec3 Color            = glm::vec3(1.f);
+    glm::vec3 Color       = glm::vec3(1.f);
     uint32_t bCastShadows = 0;
 
     DirectionalLightComponent()                                 = default;
@@ -72,11 +71,11 @@ struct DirectionalLightComponent
 // Position is stored in TransformComponent as Translation.
 struct PointLightComponent
 {
-    float Intensity;
-    vec3 Color;
-    float Radius;
-    float MinRadius;
-    uint32_t bCastShadows;
+    float Intensity          = 1.f;
+    glm::vec3 Color          = glm::vec3(1.f);
+    float Radius             = 1.f;
+    float MinRadius          = 0.f;
+    uint32_t bCastShadows    = 0;
     bool bDrawBoundingSphere = false;
 
     PointLightComponent()                           = default;
@@ -92,14 +91,14 @@ struct PointLightComponent
 // Position is stored in TransformComponent as Translation.
 struct SpotLightComponent
 {
-    float Intensity;
-    vec3 Direction;
-    float Height;
-    vec3 Color;
-    float Radius;
-    float InnerCutOff;
-    float OuterCutOff;
-    uint32_t bCastShadows;
+    float Intensity       = 1.f;
+    glm::vec3 Direction   = glm::vec3(0.f);
+    float Height          = 1.f;
+    glm::vec3 Color       = glm::vec3(1.f);
+    float Radius          = 1.f;
+    float InnerCutOff     = .5f;
+    float OuterCutOff     = .0f;
+    uint32_t bCastShadows = 0;
 
     SpotLightComponent()                          = default;
     SpotLightComponent(const SpotLightComponent&) = default;
@@ -122,6 +121,18 @@ struct MeshComponent
     MeshComponent(const std::string& meshSource) : MeshSource(meshSource) { Mesh = Mesh::Create(MeshSource); }
 };
 
-}  // namespace Pathfinder
+struct SpriteComponent
+{
+    glm::vec4 Color           = glm::vec4(1.0f);
+    uint32_t Layer            = 0;
+    Shared<Texture2D> Texture = nullptr;
 
-#endif
+    SpriteComponent()                       = default;
+    SpriteComponent(const SpriteComponent&) = default;
+    SpriteComponent(const glm::vec4& color, const Shared<Texture2D>& texture, const uint32_t layer)
+        : Color(color), Texture(texture), Layer(layer)
+    {
+    }
+};
+
+}  // namespace Pathfinder

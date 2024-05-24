@@ -1,5 +1,4 @@
-#ifndef GRAPHICSCONTEXT_H
-#define GRAPHICSCONTEXT_H
+#pragma once
 
 #include "RendererAPI.h"
 #include "Core/Core.h"
@@ -39,5 +38,3 @@ class GraphicsContext : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // GRAPHICSCONTEXT_H

@@ -1,5 +1,4 @@
-#ifndef VULKANCONTEXT_H
-#define VULKANCONTEXT_H
+#pragma once
 
 #include "Renderer/GraphicsContext.h"
 #include "VulkanCore.h"
@@ -44,5 +43,3 @@ class VulkanContext final : public GraphicsContext
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANCONTEXT_H

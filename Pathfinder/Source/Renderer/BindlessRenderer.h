@@ -1,5 +1,4 @@
-#ifndef BINDLESSRENDERER_H
-#define BINDLESSRENDERER_H
+#pragma once
 
 #include "RendererCoreDefines.h"
 #include "Core/Core.h"
@@ -42,5 +41,3 @@ class BindlessRenderer : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // BINDLESSRENDERER_H

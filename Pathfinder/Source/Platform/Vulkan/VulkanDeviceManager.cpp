@@ -60,11 +60,11 @@ Unique<VulkanDevice> VulkanDeviceManager::ChooseBestFitDevice(const VkInstance& 
     PFR_ASSERT(candidates.rbegin()->first > 0, "No suitable device found!");
     const auto suitableGpu = candidates.rbegin()->second;
 
-    LOG_TAG_INFO(VULKAN, "Renderer: %s", suitableGpu.Properties.deviceName);
-    LOG_TAG_INFO(VULKAN, " Vendor: %s", GetVendorNameCString(suitableGpu.Properties.vendorID));
-    LOG_TAG_INFO(VULKAN, " Driver: %s [%s]", suitableGpu.DriverProperties.driverName, suitableGpu.DriverProperties.driverInfo);
-    LOG_TAG_INFO(VULKAN, " Using Vulkan API Version: %u.%u.%u", VK_API_VERSION_MAJOR(suitableGpu.Properties.apiVersion),
-                 VK_API_VERSION_MINOR(suitableGpu.Properties.apiVersion), VK_API_VERSION_PATCH(suitableGpu.Properties.apiVersion));
+    LOG_INFO("Renderer: {}", suitableGpu.Properties.deviceName);
+    LOG_INFO(" Vendor: {}", GetVendorNameCString(suitableGpu.Properties.vendorID));
+    LOG_INFO(" Driver: {} [{}]", suitableGpu.DriverProperties.driverName, suitableGpu.DriverProperties.driverInfo);
+    LOG_INFO(" Using Vulkan API Version: {}.{}.{}", VK_API_VERSION_MAJOR(suitableGpu.Properties.apiVersion),
+             VK_API_VERSION_MINOR(suitableGpu.Properties.apiVersion), VK_API_VERSION_PATCH(suitableGpu.Properties.apiVersion));
 
     VulkanDeviceSpecification vulkanDeviceSpec = {};
     vulkanDeviceSpec.PhysicalDevice            = suitableGpu.PhysicalDevice;
@@ -87,7 +87,7 @@ uint32_t VulkanDeviceManager::RateDeviceSuitability(GPUInfo& gpuInfo)
 {
     if (!IsDeviceSuitable(gpuInfo))
     {
-        LOG_TAG_WARN(VULKAN, "GPU: \"%s\" is not suitable.", gpuInfo.Properties.deviceName);
+        LOG_WARN("GPU: \"{}\" is not suitable.", gpuInfo.Properties.deviceName);
         return 0;
     }
 
@@ -182,74 +182,73 @@ bool VulkanDeviceManager::IsDeviceSuitable(GPUInfo& gpuInfo)
     if (!descriptorIndexingFeatures.runtimeDescriptorArray || !descriptorIndexingFeatures.descriptorBindingPartiallyBound ||
         !descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount)
     {
-        LOG_TAG_ERROR(VULKAN, "Bindless descriptor management not supported!");
+        LOG_ERROR("Bindless descriptor management not supported!");
         return false;
     }
 
     if (!rayQueryFeatures.rayQuery || !asFeatures.accelerationStructure || !rtPipelineFeatures.rayTracingPipeline)
     {
-        LOG_TAG_ERROR(VULKAN, "RTX not supported!");
+        LOG_ERROR("RTX not supported!");
         return false;
     }
 
     if (!meshShaderFeatures.meshShader || !meshShaderFeatures.meshShaderQueries || !meshShaderFeatures.taskShader)
     {
-        LOG_TAG_ERROR(VULKAN, "Mesh-Shading not supported!");
+        LOG_ERROR("Mesh-Shading not supported!");
         return false;
     }
 
 #if VK_LOG_INFO
-    LOG_TAG_INFO(VULKAN, "GPU info:");
-    LOG_TAG_TRACE(VULKAN, " Renderer: %s", gpuInfo.Properties.deviceName);
-    LOG_TAG_TRACE(VULKAN, " Vendor: %s/%u", GetVendorNameCString(gpuInfo.Properties.vendorID), gpuInfo.Properties.vendorID);
-    LOG_TAG_TRACE(VULKAN, " %s %s", gpuInfo.DriverProperties.driverName, gpuInfo.DriverProperties.driverInfo);
-    LOG_TAG_TRACE(VULKAN, " API Version %u.%u.%u", VK_API_VERSION_MAJOR(gpuInfo.Properties.apiVersion),
-                  VK_API_VERSION_MINOR(gpuInfo.Properties.apiVersion), VK_API_VERSION_PATCH(gpuInfo.Properties.apiVersion));
-    LOG_TAG_INFO(VULKAN, " Device Type: %s", GetDeviceTypeCString(gpuInfo.Properties.deviceType));
-    LOG_TAG_INFO(VULKAN, " Max Push Constants Size(depends on gpu): %u", gpuInfo.Properties.limits.maxPushConstantsSize);
-    LOG_TAG_INFO(VULKAN, " Max Sampler Anisotropy: %0.0f", gpuInfo.Properties.limits.maxSamplerAnisotropy);
-    LOG_TAG_INFO(VULKAN, " Max Sampler Allocations: %u", gpuInfo.Properties.limits.maxSamplerAllocationCount);
-    LOG_TAG_INFO(VULKAN, " Min Uniform Buffer Offset Alignment: %u", gpuInfo.Properties.limits.minUniformBufferOffsetAlignment);
-    LOG_TAG_INFO(VULKAN, " Min Memory Map Alignment: %u", gpuInfo.Properties.limits.minMemoryMapAlignment);
-    LOG_TAG_INFO(VULKAN, " Min Storage Buffer Offset Alignment: %u", gpuInfo.Properties.limits.minStorageBufferOffsetAlignment);
-    LOG_TAG_INFO(VULKAN, " Max Memory Allocations: %u", gpuInfo.Properties.limits.maxMemoryAllocationCount);
+    LOG_INFO("GPU info:");
+    LOG_TRACE(" Renderer: {}", gpuInfo.Properties.deviceName);
+    LOG_TRACE(" Vendor: {}/{}", GetVendorNameCString(gpuInfo.Properties.vendorID), gpuInfo.Properties.vendorID);
+    LOG_TRACE(" {} {}", gpuInfo.DriverProperties.driverName, gpuInfo.DriverProperties.driverInfo);
+    LOG_TRACE(" API Version {}.{}.{}", VK_API_VERSION_MAJOR(gpuInfo.Properties.apiVersion),
+              VK_API_VERSION_MINOR(gpuInfo.Properties.apiVersion), VK_API_VERSION_PATCH(gpuInfo.Properties.apiVersion));
+    LOG_INFO(" Device Type: {}", GetDeviceTypeCString(gpuInfo.Properties.deviceType));
+    LOG_INFO(" Max Push Constants Size(depends on gpu): {}", gpuInfo.Properties.limits.maxPushConstantsSize);
+    LOG_INFO(" Max Sampler Anisotropy: {}", gpuInfo.Properties.limits.maxSamplerAnisotropy);
+    LOG_INFO(" Max Sampler Allocations: {}", gpuInfo.Properties.limits.maxSamplerAllocationCount);
+    LOG_INFO(" Min Uniform Buffer Offset Alignment: {}", gpuInfo.Properties.limits.minUniformBufferOffsetAlignment);
+    LOG_INFO(" Min Memory Map Alignment: {}", gpuInfo.Properties.limits.minMemoryMapAlignment);
+    LOG_INFO(" Min Storage Buffer Offset Alignment: {}", gpuInfo.Properties.limits.minStorageBufferOffsetAlignment);
+    LOG_INFO(" Max Memory Allocations: {}", gpuInfo.Properties.limits.maxMemoryAllocationCount);
 
-    LOG_TAG_INFO(VULKAN, " [RTX]: Max Ray Bounce: %u", gpuInfo.RTProperties.maxRayRecursionDepth);
-    LOG_TAG_INFO(VULKAN, " [RTX]: Shader Group Handle Size: %u", gpuInfo.RTProperties.shaderGroupHandleSize);
-    LOG_TAG_INFO(VULKAN, " [RTX]: Max Primitive Count: %llu", gpuInfo.ASProperties.maxPrimitiveCount);
-    LOG_TAG_INFO(VULKAN, " [RTX]: Max Geometry Count: %llu", gpuInfo.ASProperties.maxGeometryCount);
-    LOG_TAG_INFO(VULKAN, " [RTX]: Max Instance(BLAS) Count: %llu", gpuInfo.ASProperties.maxInstanceCount);
+    LOG_INFO(" [RTX]: Max Ray Bounce: {}", gpuInfo.RTProperties.maxRayRecursionDepth);
+    LOG_INFO(" [RTX]: Shader Group Handle Size: {}", gpuInfo.RTProperties.shaderGroupHandleSize);
+    LOG_INFO(" [RTX]: Max Primitive Count: {}", gpuInfo.ASProperties.maxPrimitiveCount);
+    LOG_INFO(" [RTX]: Max Geometry Count: {}", gpuInfo.ASProperties.maxGeometryCount);
+    LOG_INFO(" [RTX]: Max Instance(BLAS) Count: {}", gpuInfo.ASProperties.maxInstanceCount);
 
-    LOG_TAG_INFO(VULKAN, " [MS]: Max Output Vertices: %u", gpuInfo.MSProperties.maxMeshOutputVertices);
-    LOG_TAG_INFO(VULKAN, " [MS]: Max Output Primitives: %u", gpuInfo.MSProperties.maxMeshOutputPrimitives);
-    LOG_TAG_INFO(VULKAN, " [MS]: Max Output Memory Size: %u", gpuInfo.MSProperties.maxMeshOutputMemorySize);
-    LOG_TAG_INFO(VULKAN, " [MS]: Max Mesh Work Group Count: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxMeshWorkGroupCount[0],
-                 gpuInfo.MSProperties.maxMeshWorkGroupCount[1], gpuInfo.MSProperties.maxMeshWorkGroupCount[2]);
-    LOG_TAG_INFO(VULKAN, " [MS]: Max Mesh Work Group Invocations: %u", gpuInfo.MSProperties.maxMeshWorkGroupInvocations);
-    LOG_TAG_INFO(VULKAN, " [MS]: Max Mesh Work Group Size: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxMeshWorkGroupSize[0],
+    LOG_INFO(" [MS]: Max Output Vertices: {}", gpuInfo.MSProperties.maxMeshOutputVertices);
+    LOG_INFO(" [MS]: Max Output Primitives: {}", gpuInfo.MSProperties.maxMeshOutputPrimitives);
+    LOG_INFO(" [MS]: Max Output Memory Size: {}", gpuInfo.MSProperties.maxMeshOutputMemorySize);
+    LOG_INFO(" [MS]: Max Mesh Work Group Count: (X, Y, Z) - ({}, {}, {})", gpuInfo.MSProperties.maxMeshWorkGroupCount[0],
+             gpuInfo.MSProperties.maxMeshWorkGroupCount[1], gpuInfo.MSProperties.maxMeshWorkGroupCount[2]);
+    LOG_INFO" [MS]: Max Mesh Work Group Invocations: {}", gpuInfo.MSProperties.maxMeshWorkGroupInvocations);
+    LOG_INFO" [MS]: Max Mesh Work Group Size: (X, Y, Z) - ({}, {}, {})", gpuInfo.MSProperties.maxMeshWorkGroupSize[0],
                  gpuInfo.MSProperties.maxMeshWorkGroupSize[1], gpuInfo.MSProperties.maxMeshWorkGroupSize[2]);
-    LOG_TAG_INFO(VULKAN, " [MS]: Max Mesh Work Group Total Count: %u", gpuInfo.MSProperties.maxMeshWorkGroupTotalCount);
-    LOG_TAG_WARN(VULKAN, " [MS]: Max Preferred Mesh Work Group Invocations: %u", gpuInfo.MSProperties.maxPreferredMeshWorkGroupInvocations);
+    LOG_INFO(" [MS]: Max Mesh Work Group Total Count: {}", gpuInfo.MSProperties.maxMeshWorkGroupTotalCount);
+    LOG_WARN(" [MS]: Max Preferred Mesh Work Group Invocations: {}", gpuInfo.MSProperties.maxPreferredMeshWorkGroupInvocations);
 
     // Task shader
-    LOG_TAG_INFO(VULKAN, " [TS]: Max Task Work Group Count: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxTaskWorkGroupCount[0],
-                 gpuInfo.MSProperties.maxTaskWorkGroupCount[1], gpuInfo.MSProperties.maxTaskWorkGroupCount[2]);
-    LOG_TAG_INFO(VULKAN, " [TS]: Max Task Work Group Invocations: %u", gpuInfo.MSProperties.maxTaskWorkGroupInvocations);
-    LOG_TAG_INFO(VULKAN, " [TS]: Max Task Work Group Size: (X, Y, Z) - (%u, %u, %u)", gpuInfo.MSProperties.maxTaskWorkGroupSize[0],
-                 gpuInfo.MSProperties.maxTaskWorkGroupSize[1], gpuInfo.MSProperties.maxTaskWorkGroupSize[2]);
-    LOG_TAG_INFO(VULKAN, " [TS]: Max Task Work Group Total Count: %u", gpuInfo.MSProperties.maxTaskWorkGroupTotalCount);
-    LOG_TAG_WARN(VULKAN, " [TS]: Max Preferred Task Work Group Invocations: %u", gpuInfo.MSProperties.maxPreferredTaskWorkGroupInvocations);
-    LOG_TAG_INFO(VULKAN, " [TS]: Max Task Payload Size: %u", gpuInfo.MSProperties.maxTaskPayloadSize);
+    LOG_INFO(" [TS]: Max Task Work Group Count: (X, Y, Z) - ({}, {}, {})", gpuInfo.MSProperties.maxTaskWorkGroupCount[0],
+             gpuInfo.MSProperties.maxTaskWorkGroupCount[1], gpuInfo.MSProperties.maxTaskWorkGroupCount[2]);
+    LOG_INFO(" [TS]: Max Task Work Group Invocations: {}", gpuInfo.MSProperties.maxTaskWorkGroupInvocations);
+    LOG_INFO(" [TS]: Max Task Work Group Size: (X, Y, Z) - ({}, {}, {})", gpuInfo.MSProperties.maxTaskWorkGroupSize[0],
+             gpuInfo.MSProperties.maxTaskWorkGroupSize[1], gpuInfo.MSProperties.maxTaskWorkGroupSize[2]);
+    LOG_INFO(" [TS]: Max Task Work Group Total Count: {}", gpuInfo.MSProperties.maxTaskWorkGroupTotalCount);
+    LOG_WARN(" [TS]: Max Preferred Task Work Group Invocations: {}", gpuInfo.MSProperties.maxPreferredTaskWorkGroupInvocations);
+    LOG_INFO(" [TS]: Max Task Payload Size: {}", gpuInfo.MSProperties.maxTaskPayloadSize);
 
-    LOG_TAG_WARN(VULKAN, " [MS]: Prefers Compact Primitive Output: %s",
-                 gpuInfo.MSProperties.prefersCompactPrimitiveOutput ? "TRUE" : "FALSE");
-    LOG_TAG_WARN(VULKAN, " [MS]: Prefers Compact Vertex Output: %s", gpuInfo.MSProperties.prefersCompactVertexOutput ? "TRUE" : "FALSE");
+    LOG_WARN(" [MS]: Prefers Compact Primitive Output: {}", gpuInfo.MSProperties.prefersCompactPrimitiveOutput ? "TRUE" : "FALSE");
+    LOG_WARN(" [MS]: Prefers Compact Vertex Output: {}", gpuInfo.MSProperties.prefersCompactVertexOutput ? "TRUE" : "FALSE");
 #endif
 
     gpuInfo.QueueFamilyIndices = QueueFamilyIndices::FindQueueFamilyIndices(gpuInfo.PhysicalDevice);
     if (!gpuInfo.QueueFamilyIndices.IsComplete())
     {
-        LOG_TAG_ERROR(VULKAN, "Failed to find queue family indices!");
+        LOG_ERROR("Failed to find queue family indices!");
         return false;
     }
 
@@ -271,8 +270,8 @@ bool VulkanDeviceManager::CheckDeviceExtensionSupport(GPUInfo& gpuInfo)
 #if VK_LOG_INFO
     for (const auto& [extensionName, specVersion] : availableExtensions)
     {
-        LOG_TAG_TRACE(VULKAN, "%s (%u.%u.%u.%u)", extensionName, VK_API_VERSION_VARIANT(specVersion), VK_API_VERSION_MAJOR(specVersion),
-                      VK_API_VERSION_MINOR(specVersion), VK_API_VERSION_PATCH(specVersion));
+        LOG_TRACE(VULKAN, "{} ({}.{}.{}.{})", extensionName, VK_API_VERSION_VARIANT(specVersion), VK_API_VERSION_MAJOR(specVersion),
+                  VK_API_VERSION_MINOR(specVersion), VK_API_VERSION_PATCH(specVersion));
     }
 #endif
 
@@ -290,7 +289,7 @@ bool VulkanDeviceManager::CheckDeviceExtensionSupport(GPUInfo& gpuInfo)
 
         if (!bIsSupported)
         {
-            LOG_TAG_ERROR(VULKAN, "Extension: %s is not supported!", requestedExt);
+            LOG_ERROR("Extension: {} is not supported!", requestedExt);
             return false;
         }
     }

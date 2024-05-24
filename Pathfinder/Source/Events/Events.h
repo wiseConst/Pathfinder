@@ -1,5 +1,4 @@
-#ifndef EVENTS_H
-#define EVENTS_H
+#pragma once
 
 #include <string>
 
@@ -32,41 +31,40 @@ enum class EEventType : uint8_t
 class Event : private Uncopyable, private Unmovable
 {
   public:
-    Event()                                      = delete;
     NODISCARD virtual std::string Format() const = 0;
-
     FORCEINLINE EEventType GetType() const { return m_EventType; }
     FORCEINLINE bool IsHandled() const { return m_bIsHandled; }
 
-    NODISCARD FORCEINLINE bool IsKeyEvent()
+    NODISCARD FORCEINLINE bool IsKeyEvent() const
     {
         return m_EventType >= EEventType::EVENT_TYPE_KEY_BUTTON_PRESSED && m_EventType <= EEventType::EVENT_TYPE_KEY_BUTTON_REPEATED;
     }
 
-    NODISCARD FORCEINLINE bool IsMouseEvent()
+    NODISCARD FORCEINLINE bool IsMouseEvent() const
     {
         return m_EventType >= EEventType::EVENT_TYPE_MOUSE_MOVED && m_EventType <= EEventType::EVENT_TYPE_MOUSE_BUTTON_REPEATED;
     }
 
   protected:
-    Event(const std::string& name, const EEventType eventType) : m_Name(name), m_EventType(eventType) {}
-    virtual ~Event() = default;
-
     std::string m_Name     = s_DEFAULT_STRING;
-    EEventType m_EventType = EEventType::EVENT_TYPE_NONE;
     bool m_bIsHandled      = false;
+    EEventType m_EventType = EEventType::EVENT_TYPE_NONE;
 
     friend class EventDispatcher;
+
+    Event() = delete;
+    Event(const std::string& name, const EEventType eventType) : m_Name(name), m_EventType(eventType) {}
+    virtual ~Event() = default;
 };
 
 class EventDispatcher final : private Uncopyable, private Unmovable
 {
   public:
     explicit EventDispatcher(Event& event) : m_Event(event) {}
-    EventDispatcher()           = delete;
-    ~EventDispatcher() override = default;
+    ~EventDispatcher() = default;
 
-    template <typename T, typename F> void Dispatch(F&& func)
+    template <typename T, typename F> 
+    FORCEINLINE void Dispatch(F&& func)
     {
         if (m_Event.GetType() != T::GetStaticType() || m_Event.m_bIsHandled) return;
 
@@ -75,8 +73,8 @@ class EventDispatcher final : private Uncopyable, private Unmovable
 
   private:
     Event& m_Event;
+
+    EventDispatcher() = delete;
 };
 
 }  // namespace Pathfinder
-
-#endif  // EVENTS_H

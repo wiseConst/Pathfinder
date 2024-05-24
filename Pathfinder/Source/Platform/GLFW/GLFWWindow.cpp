@@ -94,7 +94,7 @@ GLFWWindow::GLFWWindow(const WindowSpecification& windowSpec) noexcept : Window(
     glfwSetWindowUserPointer(m_Handle, this);
     SetEventCallbacks();
 
-    LOG_TAG_TRACE(GLFW, "Created window \"%s\" (%u, %u).", m_Specification.Title.data(), m_Specification.Width, m_Specification.Height);
+    LOG_TRACE("Created window \"{}\" ({}, {}).", m_Specification.Title.data(), m_Specification.Width, m_Specification.Height);
 }
 
 bool GLFWWindow::BeginFrame()
@@ -322,7 +322,7 @@ void GLFWWindow::Destroy()
     glfwDestroyWindow(m_Handle);
     glfwTerminate();
 
-    LOG_TAG_TRACE(GLFW, "Destroyed window \"%s\".", m_Specification.Title.data());
+    LOG_TRACE("Destroyed window \"{}\".", m_Specification.Title);
 }
 
 }  // namespace Pathfinder

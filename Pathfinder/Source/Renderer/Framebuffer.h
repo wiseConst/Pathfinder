@@ -1,22 +1,16 @@
-#ifndef FRAMEBUFFER_H
-#define FRAMEBUFFER_H
+#pragma once
 
-#include "Core/Core.h"
+#include <Core/Core.h>
 #include "Image.h"
 
 namespace Pathfinder
 {
 
-enum class ELoadOp : uint8_t
+enum class EOp : uint8_t
 {
     CLEAR = 0,
     LOAD,
-    DONT_CARE
-};
-
-enum class EStoreOp : uint8_t
-{
-    STORE = 0,
+    STORE,
     DONT_CARE
 };
 
@@ -24,8 +18,8 @@ struct FramebufferAttachmentSpecification
 {
     EImageFormat Format   = EImageFormat::FORMAT_UNDEFINED;
     EImageLayout Layout   = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
-    ELoadOp LoadOp        = ELoadOp::CLEAR;
-    EStoreOp StoreOp      = EStoreOp::STORE;
+    EOp LoadOp            = EOp::CLEAR;
+    EOp StoreOp           = EOp::STORE;
     glm::vec4 ClearColor  = glm::vec4(1.0f);
     bool bCopyable        = false;  // Also means can be clear-colored.
     ESamplerWrap Wrap     = ESamplerWrap::SAMPLER_WRAP_REPEAT;
@@ -83,5 +77,3 @@ class Framebuffer : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // FRAMEBUFFER_H

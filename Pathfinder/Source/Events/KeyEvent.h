@@ -1,5 +1,4 @@
-#ifndef KEYEVENT_H
-#define KEYEVENT_H
+#pragma once
 
 #include "Events.h"
 #include "Core/Keys.h"
@@ -81,4 +80,3 @@ class KeyButtonReleasedEvent final : public KeyEvent
 
 }  // namespace Pathfinder
 
-#endif  // KEYEVENT_H

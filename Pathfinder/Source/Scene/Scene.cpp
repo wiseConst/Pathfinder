@@ -1,28 +1,30 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "Scene.h"
 
 #include "Entity.h"
 #include "Components.h"
 
-#include "Renderer/Renderer.h"
-#include "Renderer/Pipeline.h"
-#include "Renderer/Shader.h"
-#include "Renderer/HWRT.h"
-#include "Renderer/Debug/DebugRenderer.h"
+#include <Renderer/Renderer.h>
+#include <Renderer/Renderer2D.h>
+#include <Renderer/Pipeline.h>
+#include <Renderer/Shader.h>
+#include <Renderer/HWRT.h>
+#include <Renderer/Debug/DebugRenderer.h>
 
 namespace Pathfinder
 {
-static DirectionalLight DirectionalLightFromDirectionalLightComponent(const glm::vec3& direction, const DirectionalLightComponent& dlc)
+FORCEINLINE static DirectionalLight DirectionalLightFromDirectionalLightComponent(const glm::vec3& direction,
+                                                                                  const DirectionalLightComponent& dlc)
 {
     return {direction, dlc.Intensity, dlc.Color, dlc.bCastShadows};
 }
 
-static PointLight PointLightFromPointLightComponent(const glm::vec3& position, const PointLightComponent& plc)
+FORCEINLINE static PointLight PointLightFromPointLightComponent(const glm::vec3& position, const PointLightComponent& plc)
 {
     return {position, plc.Intensity, plc.Color, plc.Radius, plc.MinRadius, plc.bCastShadows};
 }
 
-static SpotLight SpotLightFromSpotLightComponent(const glm::vec3& position, const SpotLightComponent& slc)
+FORCEINLINE static SpotLight SpotLightFromSpotLightComponent(const glm::vec3& position, const SpotLightComponent& slc)
 {
     return {position, slc.Intensity, slc.Direction, slc.Height, slc.Color, slc.Radius, slc.InnerCutOff, slc.OuterCutOff, slc.bCastShadows};
 }
@@ -43,20 +45,36 @@ void Scene::OnUpdate(const float deltaTime)
 {
     // RebuildTLAS();
 
+    std::scoped_lock<std::mutex> lock(m_SceneMutex);
     for (const auto entityID : m_Registry.view<IDComponent>())
     {
         Entity entity{entityID, this};
         auto& tc = entity.GetComponent<TransformComponent>();
 
+        if (entity.HasComponent<SpriteComponent>())
+        {
+            const auto& sc = entity.GetComponent<SpriteComponent>();
+
+            const auto quaternionOrientation = glm::quat{tc.Rotation};
+            Renderer2D::DrawQuad(tc.Translation, tc.Scale,
+                                 {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w},
+                                 sc.Color, sc.Texture, sc.Layer);
+        }
+
         if (entity.HasComponent<MeshComponent>())
         {
-            const auto& mc = entity.GetComponent<MeshComponent>();
-            Renderer::SubmitMesh(mc.Mesh, tc);
+            const auto& mc                   = entity.GetComponent<MeshComponent>();
+            const auto quaternionOrientation = glm::quat{tc.Rotation};
+            Renderer::SubmitMesh(mc.Mesh, tc.Translation, tc.Scale,
+                                 {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w});
 
             if (Renderer::GetRendererSettings().bDrawColliders || mc.bDrawBoundingSphere)
             {
                 //  DebugRenderer::DrawAABB(mc.Mesh, tc, glm::vec4(1, 1, 0, 1));
-                DebugRenderer::DrawSphere(mc.Mesh, tc, glm::vec4(0, 0, 1, 1));
+                DebugRenderer::DrawSphere(
+                    mc.Mesh, tc.Translation, tc.Scale,
+                    {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w},
+                    glm::vec4(0, 0, 1, 1));
             }
         }
 
@@ -78,8 +96,13 @@ void Scene::OnUpdate(const float deltaTime)
                 tc.Translation           = glm::vec3(0.0f);
                 const glm::vec3 position = tc.Translation;
 
+                const auto quaternionOrientation = glm::quat{tc.Rotation};
+
                 //  DebugRenderer::DrawAABB(mc.Mesh, tc, glm::vec4(1, 1, 0, 1));
-                DebugRenderer::DrawSphere(position, plc.Radius, tc, glm::vec4(0, 0, 1, 1));
+                DebugRenderer::DrawSphere(
+                    tc.Translation, tc.Scale,
+                    {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w}, position,
+                    plc.Radius, glm::vec4(0, 0, 1, 1));
 
                 tc.Translation = position;
             }
@@ -95,6 +118,7 @@ void Scene::OnUpdate(const float deltaTime)
 
 void Scene::RebuildTLAS()
 {
+    std::scoped_lock<std::mutex> lock(m_SceneMutex);
     // NOTE: Temp, no TLAS rebuilding/updating for now.
     if (m_TLAS.Buffer && m_TLAS.Handle) return;
 
@@ -116,8 +140,8 @@ void Scene::RebuildTLAS()
     for (auto& blas : blases)
         RayTracingBuilder::DestroyAccelerationStructure(blas);
 
-    Renderer::GetRendererData()->RTPipeline->GetSpecification().Shader->Set("u_SceneTLAS", m_TLAS);
-    Renderer::GetRendererData()->RTComputePipeline->GetSpecification().Shader->Set("u_SceneTLAS", m_TLAS);
+    PipelineLibrary::Get(Renderer::GetRendererData()->RTPipelineHash)->GetSpecification().Shader->Set("u_SceneTLAS", m_TLAS);
+    PipelineLibrary::Get(Renderer::GetRendererData()->RTComputePipelineHash)->GetSpecification().Shader->Set("u_SceneTLAS", m_TLAS);
     LOG_DEBUG("Time taken to rebuild TLAS: %0.3f ms.", t.GetElapsedMilliseconds());
 }
 
@@ -130,6 +154,7 @@ Entity Scene::CreateEntityWithUUID(const UUID uuid, const std::string& entityNam
 {
     PFR_ASSERT(!entityName.empty(), "Entity name is empty!");
 
+    std::scoped_lock<std::mutex> lock(m_SceneMutex);
     ++m_EntityCount;
 
     // Creating entity with 3 core components.
@@ -143,6 +168,7 @@ Entity Scene::CreateEntityWithUUID(const UUID uuid, const std::string& entityNam
 
 void Scene::DestroyEntity(const Entity entity)
 {
+    std::scoped_lock<std::mutex> lock(m_SceneMutex);
     m_Registry.destroy(entity);
 
     --m_EntityCount;

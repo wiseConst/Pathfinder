@@ -13,7 +13,7 @@ class SceneHierarchyPanel final : private Uncopyable, private Unmovable
   public:
     SceneHierarchyPanel() = default;
     SceneHierarchyPanel(const Shared<Scene>& context);
-    ~SceneHierarchyPanel() override = default;
+    ~SceneHierarchyPanel() = default;
 
     void SetContext(const Shared<Scene>& context);
 

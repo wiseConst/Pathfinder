@@ -19,7 +19,7 @@ namespace Pathfinder
 VulkanBindlessRenderer::VulkanBindlessRenderer()
 {
     CreateDescriptorPools();
-    LOG_TAG_INFO(VULKAN, "Vulkan Bindless Renderer created!");
+    LOG_INFO("Vulkan Bindless Renderer created!");
 }
 
 void VulkanBindlessRenderer::Bind(const Shared<CommandBuffer>& commandBuffer, const EPipelineStage overrideBindPoint)
@@ -275,7 +275,7 @@ void VulkanBindlessRenderer::Destroy()
 
     vkDestroyPipelineLayout(logicalDevice, m_MegaPipelineLayout, nullptr);
 
-    LOG_TAG_INFO(VULKAN, "Vulkan Bindless Renderer destroyed!");
+    LOG_INFO("Vulkan Bindless Renderer destroyed!");
 }
 
 }  // namespace Pathfinder

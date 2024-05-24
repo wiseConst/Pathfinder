@@ -1,5 +1,4 @@
-#ifndef VULKANIMAGE_H
-#define VULKANIMAGE_H
+#pragma once
 
 #include "Renderer/Image.h"
 #include "VulkanCore.h"
@@ -11,8 +10,11 @@ namespace Pathfinder
 namespace ImageUtils
 {
 
-void CreateImage(VkImage& image, VmaAllocation& allocation, const VkFormat format, const VkImageUsageFlags imageUsage,
-                 const VkExtent3D extent, const uint32_t mipLevels = 1, const uint32_t layerCount = 1);
+void CreateImage(VkImage& outImage, VmaAllocation& outAllocation, const VkFormat format, const VkImageUsageFlags imageUsage,
+                 const VkExtent3D extent, const VkImageType imageType = VK_IMAGE_TYPE_2D, const uint32_t mipLevels = 1,
+                 const uint32_t layerCount = 1, const std::vector<uint32_t>& queueFamilyIndices = {},
+                 const VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, const VkImageTiling imageTiling = VK_IMAGE_TILING_OPTIMAL,
+                 const VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
 
 void CreateImageView(const VkImage& image, VkImageView& imageView, VkFormat format, const VkImageAspectFlags aspectFlags,
                      const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D, const uint32_t mipLevels = 1,
@@ -86,5 +88,3 @@ class VulkanSamplerStorage final : public SamplerStorage
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANIMAGE_H

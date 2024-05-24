@@ -1,5 +1,4 @@
-#ifndef VULKANDEVICEMANAGER_H
-#define VULKANDEVICEMANAGER_H
+#pragma once
 
 #include "VulkanCore.h"
 
@@ -55,7 +54,7 @@ struct QueueFamilyIndices
                                    !(family.queueFlags & VK_QUEUE_OPTICAL_FLOW_BIT_NV);
             if (bDMAQueue && indices.TransferFamily == UINT32_MAX)  // Dedicated transfer queue for DMA
             {
-                LOG_TAG_TRACE(VULKAN, "Found DMA queue!");
+                LOG_TRACE("Found DMA queue!");
                 indices.TransferFamily = i;
             }
 
@@ -138,4 +137,3 @@ class VulkanDeviceManager final
 
 }  // namespace Pathfinder
 
-#endif

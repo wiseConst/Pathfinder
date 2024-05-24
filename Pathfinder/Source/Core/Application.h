@@ -1,10 +1,9 @@
-#ifndef APPLICATION_H
-#define APPLICATION_H
+#pragma once
 
 #include "Core.h"
-#include "Renderer/RendererAPI.h"
-#include "Layers/LayerQueue.h"
-#include "Layers/UILayer.h"
+#include <Renderer/RendererAPI.h>
+#include <Layers/LayerQueue.h>
+#include <Layers/UILayer.h>
 
 namespace Pathfinder
 {
@@ -37,7 +36,6 @@ struct ApplicationSpecification final
 class Application : private Unmovable, private Uncopyable
 {
   public:
-    Application() = delete;
     explicit Application(const ApplicationSpecification& appSpec) noexcept;
     virtual ~Application();
 
@@ -74,10 +72,9 @@ class Application : private Unmovable, private Uncopyable
     static inline bool s_bIsRunning = false;
 
     void OnEvent(Event& e);
+    Application() = delete;
 };
 
 Unique<Application> Create();
 
 }  // namespace Pathfinder
-
-#endif  // APPLICATION_H

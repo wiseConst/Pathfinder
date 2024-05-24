@@ -1,5 +1,4 @@
-#ifndef INPUT_H
-#define INPUT_H
+#pragma once
 
 #include "Core.h"
 #include "Keys.h"
@@ -26,5 +25,3 @@ class Input final
 };
 
 }  // namespace Pathfinder
-
-#endif  // INPUT_H

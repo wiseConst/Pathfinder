@@ -1,4 +1,4 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanPipeline.h"
 
 #include "VulkanContext.h"
@@ -7,10 +7,9 @@
 #include "VulkanFramebuffer.h"
 #include "VulkanImage.h"
 
-#include "Renderer/Renderer.h"
+#include <Renderer/Renderer.h>
 #include "VulkanBindlessRenderer.h"
-#include "Core/CoreUtils.h"
-#include "Core/Application.h"
+#include <Core/Application.h>
 
 namespace Pathfinder
 {
@@ -223,65 +222,8 @@ void VulkanPipeline::CreateLayout()
     VK_SetDebugName(logicalDevice, m_Layout, VK_OBJECT_TYPE_PIPELINE_LAYOUT, pipelineLayoutName.data());
 }
 
-void VulkanPipeline::CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName,
-                                                              const bool bHotReload) const
-{
-    PFR_ASSERT(!pipelineName.empty(), "Every pipeline should've a name!");
-
-    const auto& appSpec           = Application::Get().GetSpecification();
-    const auto& assetsDir         = appSpec.AssetsDir;
-    const auto& cacheDir          = appSpec.CacheDir;
-    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
-
-    // Validate cache directories.
-    const auto pipelineCacheDirFilePath = workingDirFilePath / assetsDir / cacheDir / "Pipelines";
-    if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
-
-    VkPipelineCacheCreateInfo cacheCI = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, nullptr, 0};
-    auto& context                     = VulkanContext::Get();
-#if !VK_FORCE_PIPELINE_COMPILATION
-    if (!bHotReload)
-    {
-        const std::string cachePath = pipelineCacheDirFilePath.string() + "/" + pipelineName + std::string(".cache");
-        auto cacheData              = LoadData<std::vector<uint8_t>>(cachePath);
-
-        // Validate retrieved pipeline cache
-        if (!cacheData.empty())
-        {
-            bool bSamePipelineUUID = true;
-            for (uint16_t i = 0; i < VK_UUID_SIZE; ++i)
-                if (context.GetDevice()->GetPipelineCacheUUID()[i] != cacheData[16 + i]) bSamePipelineUUID = false;
-
-            bool bSameVendorID = true;
-            bool bSameDeviceID = true;
-            for (uint16_t i = 0; i < 4; ++i)
-            {
-                if (cacheData[8 + i] != ((context.GetDevice()->GetVendorID() >> (8 * i)) & 0xff)) bSameVendorID = false;
-                if (cacheData[12 + i] != ((context.GetDevice()->GetDeviceID() >> (8 * i)) & 0xff)) bSameDeviceID = false;
-
-                if (!bSameDeviceID || !bSameVendorID || !bSamePipelineUUID) break;
-            }
-
-            if (bSamePipelineUUID && bSameVendorID && bSameDeviceID)
-            {
-                cacheCI.initialDataSize = cacheData.size();
-                cacheCI.pInitialData    = cacheData.data();
-                LOG_TAG_INFO(VULKAN, "Found valid pipeline cache \"%s\", get ready!", pipelineName.data());
-            }
-            else
-            {
-                LOG_TAG_WARN(VULKAN, "Pipeline cache for \"%s\" not valid! Recompiling...", pipelineName.data());
-            }
-        }
-    }
-#endif
-    VK_CHECK(vkCreatePipelineCache(context.GetDevice()->GetLogicalDevice(), &cacheCI, nullptr, &outCache),
-             "Failed to create pipeline cache!");
-}
-
 void VulkanPipeline::Invalidate()
 {
-    const bool bHotReload = m_Handle != VK_NULL_HANDLE;
     if (m_Handle)
     {
         Destroy();
@@ -292,9 +234,6 @@ void VulkanPipeline::Invalidate()
 
     PFR_ASSERT(m_Specification.Shader, "Not valid shader passed!");
     CreateLayout();
-
-    VkPipelineCache pipelineCache = VK_NULL_HANDLE;
-    CreateOrRetrieveAndValidatePipelineCache(pipelineCache, m_Specification.DebugName, bHotReload);
 
     const auto vulkanShader = std::static_pointer_cast<VulkanShader>(m_Specification.Shader);
     PFR_ASSERT(vulkanShader, "Failed to cast Shader to VulkanShader!");
@@ -317,34 +256,32 @@ void VulkanPipeline::Invalidate()
                 const auto* graphicsPipelineOptions = std::get_if<GraphicsPipelineOptions>(&m_Specification.PipelineOptions.value());
                 PFR_ASSERT(graphicsPipelineOptions, "GraphicsPipelineOptions isn't valid!");
 
-                if (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_VERTEX ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_FRAGMENT ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_GEOMETRY ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TASK ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_MESH ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION)
+                if (shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_VERTEX ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_FRAGMENT ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_GEOMETRY ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_TASK ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_MESH ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION)
                 {
                     if (graphicsPipelineOptions->bMeshShading &&
-                        (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_VERTEX ||
-                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_GEOMETRY ||
-                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL ||
-                         shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION))
+                        (shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_VERTEX ||
+                         shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_GEOMETRY ||
+                         shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL ||
+                         shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION))
                     {
                         continue;
                     }
-                    else if (!graphicsPipelineOptions->bMeshShading && (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_MESH ||
-                                                                        shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_TASK))
+                    else if (!graphicsPipelineOptions->bMeshShading && (shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_MESH ||
+                                                                        shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_TASK))
                     {
                         continue;
                     }
 
-                    auto& shaderStage = shaderStages.emplace_back();
-
-                    shaderStage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-                    shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
-                    shaderStage.module = shaderDescriptions[i].Module;
-                    shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+                    auto& shaderStage =
+                        shaderStages.emplace_back(VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
+                                                  VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
+                                                  shaderDescriptions[i].Module, shaderDescriptions[i].EntrypointName.data());
 
                     if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
                     {
@@ -366,14 +303,12 @@ void VulkanPipeline::Invalidate()
                 const auto* computePipelineOptions = std::get_if<ComputePipelineOptions>(&m_Specification.PipelineOptions.value());
                 PFR_ASSERT(computePipelineOptions, "ComputePipelineOptions isn't valid!");
 
-                if (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_COMPUTE)
+                if (shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_COMPUTE)
                 {
-                    auto& shaderStage = shaderStages.emplace_back();
-
-                    shaderStage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-                    shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
-                    shaderStage.module = shaderDescriptions[i].Module;
-                    shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+                    auto& shaderStage =
+                        shaderStages.emplace_back(VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
+                                                  VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
+                                                  shaderDescriptions[i].Module, shaderDescriptions[i].EntrypointName.data());
 
                     if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
                     {
@@ -395,19 +330,17 @@ void VulkanPipeline::Invalidate()
                 const auto* rayTracingPipelineOptions = std::get_if<RayTracingPipelineOptions>(&m_Specification.PipelineOptions.value());
                 PFR_ASSERT(rayTracingPipelineOptions, "RayTracingPipelineOptions isn't valid!");
 
-                if (shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_ANY_HIT ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_CLOSEST_HIT ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_RAYGEN ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_INTERSECTION ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_CALLABLE ||
-                    shaderDescriptions[i].Stage == EShaderStage::SHADER_STAGE_MISS)
+                if (shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_ANY_HIT ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_CLOSEST_HIT ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_RAYGEN ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_INTERSECTION ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_CALLABLE ||
+                    shaderDescriptions[i].Stage & EShaderStage::SHADER_STAGE_MISS)
                 {
-                    auto& shaderStage = shaderStages.emplace_back();
-
-                    shaderStage.sType  = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
-                    shaderStage.pName  = shaderDescriptions[i].EntrypointName.data();
-                    shaderStage.module = shaderDescriptions[i].Module;
-                    shaderStage.stage  = VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage);
+                    auto& shaderStage =
+                        shaderStages.emplace_back(VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
+                                                  VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
+                                                  shaderDescriptions[i].Module, shaderDescriptions[i].EntrypointName.data());
 
                     if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
                     {
@@ -424,8 +357,13 @@ void VulkanPipeline::Invalidate()
         }
     }
 
-    auto& context             = VulkanContext::Get();
-    const auto& logicalDevice = context.GetDevice()->GetLogicalDevice();
+    auto& context                 = VulkanContext::Get();
+    const auto& logicalDevice     = context.GetDevice()->GetLogicalDevice();
+    VkPipelineCache pipelineCache = context.GetDevice()->GetPipelineCache();
+
+#if VK_FORCE_PIPELINE_COMPILATION || VK_FORCE_DRIVER_PIPELINE_CACHE
+    pipelineCache = VK_NULL_HANDLE;
+#endif
 
     switch (m_Specification.PipelineType)
     {
@@ -581,9 +519,8 @@ void VulkanPipeline::Invalidate()
             if (graphicsPO->bDynamicPolygonMode) dynamicStates.emplace_back(VK_DYNAMIC_STATE_POLYGON_MODE_EXT);
             if (graphicsPO->LineWidth != 1.0F) dynamicStates.emplace_back(VK_DYNAMIC_STATE_LINE_WIDTH);
 
-            VkPipelineDynamicStateCreateInfo dynamicState = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO};
-            dynamicState.dynamicStateCount                = static_cast<uint32_t>(dynamicStates.size());
-            dynamicState.pDynamicStates                   = dynamicStates.data();
+            const VkPipelineDynamicStateCreateInfo dynamicState = {VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO, nullptr, 0,
+                                                                   static_cast<uint32_t>(dynamicStates.size()), dynamicStates.data()};
 
             VkGraphicsPipelineCreateInfo graphicsPCI = {VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO};
             graphicsPCI.layout                       = m_Layout;
@@ -638,6 +575,7 @@ void VulkanPipeline::Invalidate()
             pipelineRenderingCreateInfo.stencilAttachmentFormat = stencilAttachmentFormat;
 
             graphicsPCI.pNext = &pipelineRenderingCreateInfo;
+
             VK_CHECK(vkCreateGraphicsPipelines(logicalDevice, pipelineCache, 1, &graphicsPCI, VK_NULL_HANDLE, &m_Handle),
                      "Failed to create GRAPHICS pipeline!");
             break;
@@ -651,11 +589,9 @@ void VulkanPipeline::Invalidate()
             const auto* computePO = std::get_if<ComputePipelineOptions>(&m_Specification.PipelineOptions.value());
             PFR_ASSERT(computePO, "ComputePipelineOptions isn't valid!");
 
-            VkComputePipelineCreateInfo computePCI = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO};
-            computePCI.layout                      = m_Layout;
-
             if (shaderStages.size() > 1) LOG_WARN("Compute pipeline has more than 1 compute shader??");
-            computePCI.stage = shaderStages[0];
+            const VkComputePipelineCreateInfo computePCI = {VK_STRUCTURE_TYPE_COMPUTE_PIPELINE_CREATE_INFO, nullptr, 0, shaderStages[0],
+                                                            m_Layout};
 
             VK_CHECK(vkCreateComputePipelines(logicalDevice, pipelineCache, 1, &computePCI, VK_NULL_HANDLE, &m_Handle),
                      "Failed to create COMPUTE pipeline!");
@@ -711,38 +647,6 @@ void VulkanPipeline::Invalidate()
     }
 
     VK_SetDebugName(logicalDevice, m_Handle, VK_OBJECT_TYPE_PIPELINE, m_Specification.DebugName.data());
-    SavePipelineCache(pipelineCache, m_Specification.DebugName);
-}
-
-void VulkanPipeline::SavePipelineCache(VkPipelineCache& cache, const std::string& pipelineName) const
-{
-    PFR_ASSERT(!pipelineName.empty(), "Every pipeline should've a name!");
-
-    const auto& appSpec           = Application::Get().GetSpecification();
-    const auto& assetsDir         = appSpec.AssetsDir;
-    const auto& cacheDir          = appSpec.CacheDir;
-    const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
-
-    const auto pipelineCacheDirFilePath = workingDirFilePath / assetsDir / cacheDir / "Pipelines";
-    if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
-
-    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
-    size_t cacheSize          = 0;
-    VK_CHECK(vkGetPipelineCacheData(logicalDevice, cache, &cacheSize, nullptr), "Failed to retrieve pipeline cache data size!");
-
-    std::vector<uint8_t> cacheData(cacheSize);
-    VK_CHECK(vkGetPipelineCacheData(logicalDevice, cache, &cacheSize, cacheData.data()), "Failed to retrieve pipeline cache data!");
-
-    const std::string cachePath = pipelineCacheDirFilePath.string() + "/" + pipelineName + std::string(".cache");
-    if (!cacheData.data() || cacheSize <= 0)
-    {
-        LOG_TAG_WARN(VULKAN, "Invalid cache data or size! %s", cachePath.data());
-        vkDestroyPipelineCache(logicalDevice, cache, nullptr);
-        return;
-    }
-
-    SaveData(cachePath, cacheData.data(), cacheData.size() * cacheData[0]);
-    vkDestroyPipelineCache(logicalDevice, cache, nullptr);
 }
 
 void VulkanPipeline::Destroy()

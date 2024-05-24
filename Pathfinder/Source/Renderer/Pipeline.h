@@ -1,13 +1,12 @@
-#ifndef PIPELINE_H
-#define PIPELINE_H
+#pragma once
 
-#include "Core/Core.h"
-#include "RendererCoreDefines.h"
-#include "Buffer.h"
-
+#include <Core/Core.h>
 #include <unordered_map>
 #include <variant>
 #include <optional>
+
+#include "RendererCoreDefines.h"
+#include "Buffer.h"
 
 namespace Pathfinder
 {
@@ -50,8 +49,7 @@ enum class EPipelineType : uint8_t
 };
 
 class Shader;
-
-// TODO: Refactor and maybe remove PipelineType since I have dedicated pipeline options.
+class Framebuffer;
 
 struct GraphicsPipelineOptions
 {
@@ -139,62 +137,9 @@ struct PipelineSpecification
     Shared<Pathfinder::Shader> Shader = nullptr;
     EPipelineType PipelineType        = EPipelineType::PIPELINE_TYPE_GRAPHICS;
     bool bBindlessCompatible          = false;
+    uint64_t Hash                     = 0;  // Cleared and assigned on stage pipeline builder, based on options.
 
-    bool operator==(const PipelineSpecification& other) const
-    {
-        if (DebugName != other.DebugName ||                                  //
-            bBindlessCompatible != other.bBindlessCompatible ||              //
-            Shader != other.Shader || PipelineType != other.PipelineType ||  //
-            ShaderConstantsMap.size() != other.ShaderConstantsMap.size())
-            return false;
-
-        switch (PipelineType)
-        {
-            case EPipelineType::PIPELINE_TYPE_GRAPHICS:
-            {
-                const auto* thisPipelineOptions  = std::get_if<GraphicsPipelineOptions>(&PipelineOptions.value());
-                const auto* otherPipelineOptions = std::get_if<GraphicsPipelineOptions>(&other.PipelineOptions.value());
-                if (!thisPipelineOptions || !otherPipelineOptions || *thisPipelineOptions != *otherPipelineOptions) return false;
-
-                break;
-            }
-            case EPipelineType::PIPELINE_TYPE_COMPUTE:
-            {
-                // NOTE: Nothing to compare here yet.
-                const auto* thisPipelineOptions  = std::get_if<ComputePipelineOptions>(&PipelineOptions.value());
-                const auto* otherPipelineOptions = std::get_if<ComputePipelineOptions>(&other.PipelineOptions.value());
-
-                if (!thisPipelineOptions || !otherPipelineOptions || *thisPipelineOptions != *otherPipelineOptions) return false;
-
-                break;
-            }
-            case EPipelineType::PIPELINE_TYPE_RAY_TRACING:
-            {
-                const auto* thisPipelineOptions  = std::get_if<RayTracingPipelineOptions>(&PipelineOptions.value());
-                const auto* otherPipelineOptions = std::get_if<RayTracingPipelineOptions>(&other.PipelineOptions.value());
-
-                if (!thisPipelineOptions || !otherPipelineOptions || *thisPipelineOptions != *otherPipelineOptions) return false;
-                break;
-            }
-        }
-
-        for (const auto& [stage1, constants1] : ShaderConstantsMap)
-        {
-            const auto& it = other.ShaderConstantsMap.find(stage1);
-            if (it == other.ShaderConstantsMap.end()) return false;
-
-            const auto& constants2 = it->second;
-
-            if (constants1.size() != constants2.size()) return false;
-
-            for (size_t i{}; i < constants1.size(); ++i)
-            {
-                if (constants1[i].index() != constants2[i].index() || constants1[i] != constants2[i]) return false;
-            }
-        }
-
-        return true;
-    }
+    FORCEINLINE bool operator==(const PipelineSpecification& other) const { return Hash == other.Hash; }
 };
 
 class Pipeline : private Uncopyable, private Unmovable
@@ -207,7 +152,7 @@ class Pipeline : private Uncopyable, private Unmovable
 
     template <typename TPipelineOption> NODISCARD FORCEINLINE const TPipelineOption* GetPipelineOptions() const
     {
-        PFR_ASSERT(m_Specification.PipelineOptions.has_value(), "GraphicsPipelineOptions isn't valid!");
+        PFR_ASSERT(m_Specification.PipelineOptions.has_value(), "TPipelineOption isn't valid!");
 
         const bool bGraphicsPipelineOption   = std::is_same<TPipelineOption, GraphicsPipelineOptions>::value;
         const bool bComputePipelineOption    = std::is_same<TPipelineOption, ComputePipelineOptions>::value;
@@ -219,7 +164,7 @@ class Pipeline : private Uncopyable, private Unmovable
         if (bGraphicsPipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_GRAPHICS ||  //
             bComputePipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_COMPUTE ||    //
             bRayTracingPipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_RAY_TRACING)
-            PFR_ASSERT(pipelineOptions, "TPipelineOption isn't valid!");
+            PFR_ASSERT(pipelineOptions, "TPipelineOption doesn't match with the pipeline type!");
 
         return pipelineOptions;
     }
@@ -234,7 +179,9 @@ class Pipeline : private Uncopyable, private Unmovable
         }
     }
 
-    virtual void Invalidate() = 0;
+  private:
+    NODISCARD static Shared<Pipeline> Create(const PipelineSpecification& pipelineSpec);
+    Pipeline() = delete;
 
   protected:
     PipelineSpecification m_Specification = {};
@@ -242,10 +189,10 @@ class Pipeline : private Uncopyable, private Unmovable
     friend class PipelineBuilder;
     friend class PipelineLibrary;
 
-    NODISCARD static Shared<Pipeline> Create(const PipelineSpecification& pipelineSpec);
     Pipeline(const PipelineSpecification& pipelineSpec) : m_Specification(pipelineSpec) {}
-    Pipeline()             = delete;
-    virtual void Destroy() = 0;
+
+    virtual void Invalidate() = 0;
+    virtual void Destroy()    = 0;
 };
 
 class PipelineBuilder final : private Uncopyable, private Unmovable
@@ -255,25 +202,24 @@ class PipelineBuilder final : private Uncopyable, private Unmovable
     static void Shutdown();
 
   private:
-    PipelineBuilder()           = delete;
-    ~PipelineBuilder() override = default;
+    PipelineBuilder()  = delete;
+    ~PipelineBuilder() = default;
 
   private:
-    static inline std::mutex m_PipelineBuilderMutex;
-    static inline std::vector<std::pair<Shared<Pipeline>&, PipelineSpecification>> s_PipelinesToBuild;
+    static inline std::mutex s_PipelineBuilderMutex;
+    static inline std::vector<PipelineSpecification> s_PipelinesToBuild;
 
     friend class PipelineLibrary;
 
-    // FIXME: Copying spec??
-    FORCEINLINE static void Push(Shared<Pipeline>& pipeline, const PipelineSpecification pipelineSpec)
+    FORCEINLINE static void Push(const PipelineSpecification& pipelineSpec)
     {
-        std::scoped_lock lock(m_PipelineBuilderMutex);
-        s_PipelinesToBuild.emplace_back(pipeline, pipelineSpec);
+        std::scoped_lock lock(s_PipelineBuilderMutex);
+        s_PipelinesToBuild.emplace_back(pipelineSpec);
     }
     static void Build();
 };
 
-// TODO: Remove all pipeline handles out of renderer, and retrieve pipelines by size_t hash = pipeline.
+// TODO: Maybe add std::multimap<string, hash> name_to_hash to retrieve pipeline(s) by its name(s)
 class PipelineLibrary final : private Uncopyable, private Unmovable
 {
   public:
@@ -281,33 +227,36 @@ class PipelineLibrary final : private Uncopyable, private Unmovable
     static void Shutdown();
 
     FORCEINLINE NODISCARD static const auto& GetStorage() { return s_PipelineStorage; }
-
-    FORCEINLINE static void Compile() { PipelineBuilder::Build(); }
-
-    FORCEINLINE NODISCARD static const Shared<Pipeline>& Get(const PipelineSpecification& pipelineSpec)
+    FORCEINLINE NODISCARD static const auto& Get(const uint64_t& pipelineHash)
     {
-        std::scoped_lock lock(m_PipelineLibraryMutex);
-        // NOTE: In case this pipeline doesn't exist, we build it in place.
-        if (!s_PipelineStorage.contains(pipelineSpec))
-        {
-            s_PipelineStorage[pipelineSpec] = Pipeline::Create(pipelineSpec);
-        }
-
-        return s_PipelineStorage.at(pipelineSpec);
+        std::scoped_lock lock(s_PipelineLibraryMutex);
+        PFR_ASSERT(s_PipelineStorage.contains(pipelineHash), "Pipeline with hash is not present!");
+        return s_PipelineStorage.at(pipelineHash);
     }
 
-    // FIXME: Copying spec??
-    FORCEINLINE static void Push(Shared<Pipeline>& pipeline, const PipelineSpecification pipelineSpec)
+    FORCEINLINE static void Compile() { PipelineBuilder::Build(); }
+    FORCEINLINE static void Invalidate(const uint64_t& pipelineHash)
     {
-        // NOTE: If pipeline with the same 'pipelineSpec' exists, no need to duplicate it.
-        if (s_PipelineStorage.contains(pipelineSpec))
-        {
-            pipeline = Get(pipelineSpec);
-            return;
-        }
+        PFR_ASSERT(s_PipelineStorage.contains(pipelineHash), "PipelineLibrary::Invalidate(). Pipeline Hash is not present!");
 
-        std::scoped_lock lock(m_PipelineLibraryMutex);
-        PipelineBuilder::Push(pipeline, pipelineSpec);
+        s_PipelineStorage.at(pipelineHash)->Invalidate();
+
+        // NOTE: PipelineHash never changes..
+        PFR_ASSERT(pipelineHash == s_PipelineStorage.at(pipelineHash)->GetSpecification().Hash, "Pipeline hash changed on invalidation?!");
+    }
+
+    // Returns pipeline hash.
+    FORCEINLINE static const uint64_t Push(PipelineSpecification& pipelineSpec)
+    {
+        PipelineSpecificationHash psHash{};
+        pipelineSpec.Hash = psHash(pipelineSpec);
+
+        PFR_ASSERT(!s_PipelineStorage.contains(pipelineSpec.Hash), "Pipeline with hash is already present! Possibly hash-collision??");
+
+        std::scoped_lock lock(s_PipelineLibraryMutex);
+        PipelineBuilder::Push(pipelineSpec);
+
+        return pipelineSpec.Hash;
     }
 
   private:
@@ -323,24 +272,27 @@ class PipelineLibrary final : private Uncopyable, private Unmovable
         }
     };
 
-    static inline std::mutex m_PipelineLibraryMutex;
-    static inline std::unordered_map<PipelineSpecification, Shared<Pipeline>, PipelineSpecificationHash> s_PipelineStorage;
+    static inline std::mutex s_PipelineLibraryMutex;
+    static inline std::unordered_map<uint64_t, Shared<Pipeline>> s_PipelineStorage;
 
     friend class PipelineBuilder;
 
-    // FIXME: Copying spec??
-    FORCEINLINE static void Add(const PipelineSpecification pipelineSpec, const Shared<Pipeline> pipeline)
+    FORCEINLINE static void Add(const PipelineSpecification& pipelineSpec, const Shared<Pipeline>& pipeline)
     {
-        std::scoped_lock lock(m_PipelineLibraryMutex);
-        if (s_PipelineStorage.contains(pipelineSpec)) return;
+        std::scoped_lock lock(s_PipelineLibraryMutex);
+        PFR_ASSERT(pipelineSpec.Hash, "Pipeline has no hash?!");
 
-        s_PipelineStorage[pipelineSpec] = pipeline;
+        if (s_PipelineStorage.contains(pipelineSpec.Hash))
+        {
+            LOG_WARN("Pipeline {} already present with, current pipeline hash: {}", pipelineSpec.DebugName, pipelineSpec.Hash);
+            return;
+        }
+
+        s_PipelineStorage[pipelineSpec.Hash] = pipeline;
     }
 
-    PipelineLibrary()           = delete;
-    ~PipelineLibrary() override = default;
+    PipelineLibrary()  = delete;
+    ~PipelineLibrary() = default;
 };
 
 }  // namespace Pathfinder
-
-#endif  // PIPELINE_H

@@ -1,5 +1,4 @@
-#ifndef COMMANDBUFFER_H
-#define COMMANDBUFFER_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Core/Math.h"
@@ -34,7 +33,7 @@ struct CommandBufferSpecification
 class SyncPoint : private Uncopyable, private Unmovable
 {
   public:
-    SyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages)
+    SyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages) noexcept
         : m_TimelineSemaphoreHandle(timelineSemaphoreHandle), m_Value(value), m_PipelineStages(pipelineStages)
     {
     }
@@ -44,7 +43,7 @@ class SyncPoint : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetTimelineSemaphore() const { return m_TimelineSemaphoreHandle; }
     NODISCARD FORCEINLINE const auto& GetPipelineStages() const { return m_PipelineStages; }
 
-    virtual void Wait() = 0;  // Waits for the semaphore to reach 'value'
+    virtual void Wait() const = 0;  // Waits for the semaphore to reach 'value'
     static Shared<SyncPoint> Create(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages);
 
   protected:
@@ -106,7 +105,7 @@ class CommandBuffer : private Uncopyable, private Unmovable
 
     virtual void BindPipeline(Shared<Pipeline>& pipeline) const                                 = 0;
     virtual void BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const = 0;
-    virtual void BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
+    virtual void BindPushConstants(Shared<Pipeline> pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
                                    const void* data = nullptr) const                            = 0;
 
     FORCEINLINE virtual void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ = 1) = 0;
@@ -186,5 +185,3 @@ class CommandBuffer : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // COMMANDBUFFER_H

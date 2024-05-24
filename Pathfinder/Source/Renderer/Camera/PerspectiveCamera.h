@@ -1,5 +1,4 @@
-#ifndef PERSPECTIVECAMERA_H
-#define PERSPECTIVECAMERA_H
+#pragma once
 
 #include "Camera.h"
 #include "Core/Application.h"
@@ -107,53 +106,10 @@ class PerspectiveCamera final : public Camera
     float m_Sensitivity = 0.5f;
     bool m_bFirstInput  = true;
 
-    // NOTE: again fucking math, but here's simple explanation(assuming column-major matrix order)
-    // View matrix (inversed) constructs like this: Mview = (R)^(-1) * T = (R)^(Transpose) * T - only for rotation matrices
-    // So you want to move your objects to camera origin instead of moving "cam"
-    // T is mat4 E, with its 3rd column looks like negated camera position to move objects back to the camera
-    // And you then want to unrotate your camera to make it point into Z direction[canonical view direction](in my case towards -Z) cuz my
-    // coordinate system is RH.
-    // So R = [R,U,F], r-right vec for X,u-up vec for Y, f-forward vec for Z
     void RecalculateViewMatrix() final override
     {
-        // To imitate true fps cam, I don't need to change my constant m_Up, but create new Up vec based on new Right and Forward vectors.
         const auto upVec = glm::cross(m_Right, m_Forward);
-
-        // NOTE: Using formula: R^(transpose) * T; m_Right, upVec, m_Forward - orthogonal basis
-        // Inverse rotation back to canonical view direction since I assume that cam always look towards -Z(RH coordinate system)
-
-        /*
-        // You'll notice that XY(-Z)=RUF => Z=-F, that's fucking why
-        m_View[0][0] = m_Right.x;
-        m_View[0][1] = upVec.x;
-        m_View[0][2] = -m_Forward.x;
-
-        m_View[1][0] = m_Right.y;
-        m_View[1][1] = upVec.y;
-        m_View[1][2] = -m_Forward.y;
-
-        m_View[2][0] = m_Right.z;
-        m_View[2][1] = upVec.z;
-        m_View[2][2] = -m_Forward.z;
-
-        // Translate objects back to the camera origin that's why negating
-        m_View[3][0] = -glm::dot(m_Right, m_Position);
-        m_View[3][1] = -glm::dot(upVec, m_Position);
-        m_View[3][2] = glm::dot(m_Forward, m_Position);  // No "-": -Pos * -F
-        */
-
-        m_View = glm::lookAt(m_Position, m_Position + m_Forward, upVec);
-
-        // TODO: Integrate quaternions in the future
-        /*
-        const auto GetRotationMatrix = [&]()
-        {
-            const glm::quat pitchRotation = glm::angleAxis(m_Pitch, glm::vec3{1.f, 0.f, 0.f});
-            const glm::quat yawRotation   = glm::angleAxis(m_Yaw, glm::vec3{0.f, -1.f, 0.f});
-            return glm::toMat4(yawRotation) * glm::toMat4(pitchRotation);
-        };
-
-        m_View = glm::transpose(GetRotationMatrix()) * glm::translate(glm::mat4(1.f), -m_Position); */
+        m_View           = glm::lookAt(m_Position, m_Position + m_Forward, upVec);
     }
 
     bool OnMouseMoved(const MouseMovedEvent& e) final override
@@ -190,10 +146,11 @@ class PerspectiveCamera final : public Camera
         m_Pitch += deltaY * m_Sensitivity;
         m_Pitch = std::clamp(m_Pitch, -s_MAX_PITCH, s_MAX_PITCH);
 
-        m_Rotation.x = glm::cos(glm::radians(m_Yaw)) * glm::cos(glm::radians(m_Pitch));
-        m_Rotation.y = glm::sin(glm::radians(m_Pitch));
-        m_Rotation.z = glm::sin(glm::radians(m_Yaw)) * glm::cos(glm::radians(m_Pitch));
-        m_Forward    = glm::normalize(m_Rotation);
+        const float cosPitch = glm::cos(glm::radians(m_Pitch));
+        m_Rotation.x         = glm::cos(glm::radians(m_Yaw)) * cosPitch;
+        m_Rotation.y         = glm::sin(glm::radians(m_Pitch));
+        m_Rotation.z         = glm::sin(glm::radians(m_Yaw)) * cosPitch;
+        m_Forward            = glm::normalize(m_Rotation);
 
         m_Right = glm::normalize(glm::cross(m_Forward, m_Up));
         RecalculateViewMatrix();
@@ -233,20 +190,19 @@ class PerspectiveCamera final : public Camera
 
     void RecalculateCullFrustum()
     {
-        const float halfVSide = GetFarPlaneDepth() * glm::tan(glm::radians(m_FOV * .5f));
+        const float halfVSide = GetFarPlaneDepth() * glm::tan(glm::radians(m_FOV) * .5f);
         const float halfHSide = halfVSide * m_AR;
         const auto forwardFar = m_Forward * GetFarPlaneDepth();
+        const auto trueUpVec  = glm::cross(m_Right, m_Forward);
 
         // Left, Right, Top, Bottom, Near, Far
-        m_CullFrustum.Planes[0] = ComputePlane(m_Position, glm::cross(forwardFar - m_Right * halfHSide, m_Up));
-        m_CullFrustum.Planes[1] = ComputePlane(m_Position, glm::cross(m_Up, forwardFar + m_Right * halfHSide));
-        m_CullFrustum.Planes[2] = ComputePlane(m_Position, glm::cross(forwardFar + m_Up * halfVSide, m_Right));
-        m_CullFrustum.Planes[3] = ComputePlane(m_Position, glm::cross(m_Right, forwardFar - m_Up * halfVSide));
+        m_CullFrustum.Planes[0] = ComputePlane(m_Position, glm::cross(forwardFar - m_Right * halfHSide, trueUpVec));
+        m_CullFrustum.Planes[1] = ComputePlane(m_Position, glm::cross(trueUpVec, forwardFar + m_Right * halfHSide));
+        m_CullFrustum.Planes[2] = ComputePlane(m_Position, glm::cross(forwardFar + trueUpVec * halfVSide, m_Right));
+        m_CullFrustum.Planes[3] = ComputePlane(m_Position, glm::cross(m_Right, forwardFar - trueUpVec * halfVSide));
         m_CullFrustum.Planes[4] = ComputePlane(m_Position + m_Forward * GetNearPlaneDepth(), m_Forward);
         m_CullFrustum.Planes[5] = ComputePlane(m_Position + forwardFar, -m_Forward);
     }
 };
 
 }  // namespace Pathfinder
-
-#endif  // PERSPECTIVECAMERA_H

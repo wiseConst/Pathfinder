@@ -1,5 +1,4 @@
-#ifndef VULKANPIPELINE_H
-#define VULKANPIPELINE_H
+#pragma once
 
 #include "Renderer/Pipeline.h"
 #include "VulkanCore.h"
@@ -10,7 +9,6 @@ namespace Pathfinder
 class VulkanPipeline final : public Pipeline
 {
   public:
-    VulkanPipeline() = delete;
     explicit VulkanPipeline(const PipelineSpecification& pipelineSpec);
     ~VulkanPipeline() override { Destroy(); }
 
@@ -27,15 +25,10 @@ class VulkanPipeline final : public Pipeline
     VkPipeline m_Handle       = VK_NULL_HANDLE;
     VkPipelineLayout m_Layout = VK_NULL_HANDLE;
 
+    VulkanPipeline() = delete;
     void CreateLayout();
-
     void Invalidate() final override;
     void Destroy() final override;
-
-    void CreateOrRetrieveAndValidatePipelineCache(VkPipelineCache& outCache, const std::string& pipelineName, const bool bHotReload) const;
-    void SavePipelineCache(VkPipelineCache& cache, const std::string& pipelineName) const;
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANPIPELINE_H

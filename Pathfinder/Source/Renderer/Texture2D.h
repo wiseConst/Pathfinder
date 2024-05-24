@@ -1,5 +1,4 @@
-#ifndef TEXTURE2D_H
-#define TEXTURE2D_H
+#pragma once
 
 #include "Core/Core.h"
 #include "RendererCoreDefines.h"
@@ -49,8 +48,6 @@ class Texture2D : private Uncopyable, private Unmovable
 class TextureCompressor final : private Uncopyable, private Unmovable
 {
   public:
-    ~TextureCompressor() override = default;
-
     // NOTE:
     // Compresses data from srcImageFormat into textureSpec.Format
     // outImageData will be fullfiled, so you have to free() it manually.
@@ -64,8 +61,7 @@ class TextureCompressor final : private Uncopyable, private Unmovable
 
   private:
     TextureCompressor() = default;
+    ~TextureCompressor() = default;
 };
 
 }  // namespace Pathfinder
-
-#endif

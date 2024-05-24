@@ -1,26 +1,8 @@
-#ifndef MATH_H
-#define MATH_H
+#pragma once
 
-#define GLM_FORCE_INTRINSICS
-#define GLM_FORCE_AVX
-#define GLM_FORCE_AVX2
-#define GLM_FORCE_AVX512
-
-#define GLM_FORCE_RADIANS
-#define GLM_FORCE_CTOR_INIT
-#define GLM_FORCE_DEPTH_ZERO_TO_ONE
-#define GLM_FORCE_QUAT_DATA_XYZW
-#define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/quaternion.hpp>
-#include <glm/gtx/quaternion.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/gtc/random.hpp>
-#include <glm/ext/quaternion_trigonometric.hpp>
-#include <glm/gtx/matrix_decompose.hpp>
-
+#include "MathDefines.h"
 #include "CoreDefines.h"
+#include "Primitives.h"
 
 namespace Pathfinder
 {
@@ -54,7 +36,7 @@ NODISCARD FORCEINLINE static uint32_t DivideToNextMultiple(const uint32_t divide
     return (dividend + divisor - 1) / divisor;
 }
 
-static glm::u8vec4 PackVec4ToU8Vec4(const glm::vec4& vec)
+NODISCARD FORCEINLINE static glm::u8vec4 PackVec4ToU8Vec4(const glm::vec4& vec)
 {
     // Normalize the components to [0, 255]
     const uint8_t r = static_cast<uint8_t>(vec.r * 255.0f);
@@ -65,6 +47,12 @@ static glm::u8vec4 PackVec4ToU8Vec4(const glm::vec4& vec)
     return glm::u8vec4(r, g, b, a);
 }
 
-}  // namespace Pathfinder
+NODISCARD FORCEINLINE static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
+{
+    Plane plane    = {glm::normalize(normal), 0};
+    plane.Distance = glm::dot(p0, plane.Normal);  // signed distance to the origin using p0
 
-#endif  // MATH_H
+    return plane;
+}
+
+}  // namespace Pathfinder

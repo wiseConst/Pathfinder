@@ -1,5 +1,4 @@
-#ifndef MESHMANAGER_H
-#define MESHMANAGER_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Renderer/RendererCoreDefines.h"
@@ -58,5 +57,3 @@ class MeshManager final
 };
 
 }  // namespace Pathfinder
-
-#endif

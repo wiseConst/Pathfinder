@@ -47,7 +47,7 @@ VulkanSyncPoint::VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t v
 {
 }
 
-void VulkanSyncPoint::Wait()
+void VulkanSyncPoint::Wait() const
 {
     const VkSemaphoreWaitInfo waitInfo = {VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,    nullptr, VK_SEMAPHORE_WAIT_ANY_BIT, 1,
                                           (VkSemaphore*)&m_TimelineSemaphoreHandle, &m_Value};
@@ -207,7 +207,7 @@ void VulkanCommandBuffer::InsertBufferMemoryBarrier(const Shared<Buffer> buffer,
 
     const VkBuffer rawBuffer = (VkBuffer)vulkanBuffer->Get();
     const auto bufferMemoryBarrier2 =
-        VulkanUtility::GetBufferMemoryBarrier(rawBuffer, vulkanBuffer->GetSpecification().BufferCapacity, 0, vkSrcPipelineStages,
+        VulkanUtility::GetBufferMemoryBarrier(rawBuffer, vulkanBuffer->GetSpecification().Capacity, 0, vkSrcPipelineStages,
                                               vkSrcAccessFlags, vkDstPipelineStages, vkDstAccessFlags);
     InsertBarrier(vkSrcPipelineStages, vkDstPipelineStages, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 1, &bufferMemoryBarrier2, 0, nullptr);
 }
@@ -495,7 +495,7 @@ void VulkanCommandBuffer::BindShaderData(Shared<Pipeline>& pipeline, const Share
                             static_cast<uint32_t>(descriptorSets.size()), descriptorSets.data(), 0, nullptr);
 }
 
-void VulkanCommandBuffer::BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset,
+void VulkanCommandBuffer::BindPushConstants(Shared<Pipeline> pipeline, const uint32_t pushConstantIndex, const uint32_t offset,
                                             const uint32_t size, const void* data) const
 {
     auto vulkanPipeline = std::static_pointer_cast<VulkanPipeline>(pipeline);

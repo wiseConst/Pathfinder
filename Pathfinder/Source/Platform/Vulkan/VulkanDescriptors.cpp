@@ -8,7 +8,7 @@
 namespace Pathfinder
 {
 
-VulkanDescriptorAllocator::VulkanDescriptorAllocator(VkDevice& device) : m_LogicalDevice(device) {}
+ VulkanDescriptorAllocator::VulkanDescriptorAllocator(VkDevice& device) : m_LogicalDevice(device) {}
 
 bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const VkDescriptorSetLayout& descriptorSetLayout)
 {
@@ -93,7 +93,7 @@ void VulkanDescriptorAllocator::ReleaseDescriptorSets(DescriptorSet* descriptorS
         PFR_ASSERT(descriptorSets[i].first < UINT32_MAX, "Invalid Pool ID!");
         if (!descriptorSets[i].second)
         {
-            LOG_TAG_WARN(VULKAN, "Failed to release descriptor set!");
+            LOG_WARN("Failed to release descriptor set!");
             continue;
         }
 
@@ -114,7 +114,7 @@ VkDescriptorPool VulkanDescriptorAllocator::CreatePool(const uint32_t count, VkD
         poolSizes[i].descriptorCount = static_cast<uint32_t>(s_DefaultPoolSizes[i].second * count);
         if (poolSizes[i].descriptorCount > 4096)
         {
-            LOG_TAG_WARN(VULKAN, "Descriptor count exceeded limit > 4096!");
+            LOG_WARN("Descriptor count exceeded limit > 4096!");
             poolSizes[i].descriptorCount = 4096;
         }
     }

@@ -1,4 +1,4 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanSwapchain.h"
 
 #include "VulkanContext.h"
@@ -6,11 +6,10 @@
 #include "VulkanCommandBuffer.h"
 #include "VulkanImage.h"
 
-#include "Core/Application.h"
-#include "Core/Threading.h"
-#include "Core/Window.h"
+#include <Core/Application.h>
+#include <Core/Window.h>
 
-#include "Renderer/Renderer.h"
+#include <Renderer/Renderer.h>
 
 #include <GLFW/glfw3.h>
 #if PFR_WINDOWS
@@ -274,7 +273,12 @@ void VulkanSwapchain::Invalidate()
     auto oldSwapchain = m_Handle;
     if (oldSwapchain)
     {
-        std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
+        std::ranges::for_each(m_ImageViews,
+                              [&](auto& imageView)
+                              {
+                                  --Renderer::GetStats().ImageViewCount;
+                                  vkDestroyImageView(logicalDevice, imageView, nullptr);
+                              });
         std::ranges::for_each(m_RenderSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
         std::ranges::for_each(m_ImageAcquiredSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
         std::ranges::for_each(m_RenderFence, [&](auto& fence) { vkDestroyFence(logicalDevice, fence, nullptr); });
@@ -349,7 +353,7 @@ void VulkanSwapchain::Invalidate()
                                  : m_PresentMode == EPresentMode::PRESENT_MODE_IMMEDIATE ? "IMMEDIATE"
                                  : m_PresentMode == EPresentMode::PRESENT_MODE_MAILBOX   ? "MAILBOX"
                                                                                          : "UNKNOWN";
-    LOG_DEBUG("PresentMode: %s.", presentModeStr);
+    LOG_DEBUG("PresentMode: {}.", presentModeStr);
 #endif
 
     PFR_ASSERT(Details.SurfaceCapabilities.maxImageCount > 0, "Swapchain max image count less than zero!");
@@ -412,6 +416,7 @@ void VulkanSwapchain::Invalidate()
         VK_SetDebugName(logicalDevice, m_ImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW, debugName.data());
     }
 
+    Renderer::GetStats().ImageViewCount += m_ImageViews.size();
     m_ImageLayouts.assign(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
 
     switch (m_WindowMode)
@@ -491,7 +496,7 @@ void VulkanSwapchain::PresentImage()
     {
         const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
                                                    ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
-                                                   JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+                                                   ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
         auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
@@ -603,8 +608,7 @@ void VulkanSwapchain::Recreate()
     Invalidate();
 
 #if PFR_DEBUG
-    LOG_TAG_TRACE(VULKAN, "Swapchain recreated with: (%u, %u). Took: %0.2fms", m_ImageExtent.width, m_ImageExtent.height,
-                  t.GetElapsedMilliseconds());
+    LOG_TRACE("Swapchain recreated with: ({}, {}). Took: {:.2f}ms", m_ImageExtent.width, m_ImageExtent.height, t.GetElapsedMilliseconds());
 #endif
 
     for (auto& resizeCallback : m_ResizeCallbacks)
@@ -622,7 +626,12 @@ void VulkanSwapchain::Destroy()
     vkDestroySwapchainKHR(logicalDevice, m_Handle, nullptr);
     vkDestroySurfaceKHR(context.GetInstance(), m_Surface, nullptr);
 
-    std::ranges::for_each(m_ImageViews, [&](auto& imageView) { vkDestroyImageView(logicalDevice, imageView, nullptr); });
+    std::ranges::for_each(m_ImageViews,
+                          [&](auto& imageView)
+                          {
+                              --Renderer::GetStats().ImageViewCount;
+                              vkDestroyImageView(logicalDevice, imageView, nullptr);
+                          });
     std::ranges::for_each(m_ImageAcquiredSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
     std::ranges::for_each(m_RenderSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
     std::ranges::for_each(m_RenderFence, [&](auto& fence) { vkDestroyFence(logicalDevice, fence, nullptr); });
@@ -645,7 +654,7 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
     {
         const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
                                                    ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
-                                                   JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+                                                   ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
         vulkanCommandBuffer                     = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
     }

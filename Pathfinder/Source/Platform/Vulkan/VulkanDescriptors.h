@@ -1,5 +1,4 @@
-#ifndef VULKANDESCRIPTORS_H
-#define VULKANDESCRIPTORS_H
+#pragma once
 
 #include "VulkanCore.h"
 #include <vector>
@@ -13,14 +12,13 @@ using DescriptorSetPerFrame = std::array<DescriptorSet, s_FRAMES_IN_FLIGHT>;
 class VulkanDescriptorAllocator final : private Unmovable, private Uncopyable
 {
   public:
-    VulkanDescriptorAllocator(VkDevice& device);
-    VulkanDescriptorAllocator() = delete;
-    ~VulkanDescriptorAllocator() override { Destroy(); }
+    explicit VulkanDescriptorAllocator(VkDevice& device);
+    ~VulkanDescriptorAllocator() { Destroy(); }
 
     NODISCARD bool Allocate(DescriptorSet& outDescriptorSet, const VkDescriptorSetLayout& descriptorSetLayout);
     void ReleaseDescriptorSets(DescriptorSet* descriptorSets, const uint32_t descriptorSetCount);
 
-    FORCEINLINE const uint32_t GetAllocatedDescriptorSetsCount() { return m_AllocatedDescriptorSets; }
+    FORCEINLINE const auto GetAllocatedDescriptorSetsCount() const { return m_AllocatedDescriptorSets; }
 
   private:
     std::mutex m_Mutex;
@@ -50,8 +48,7 @@ class VulkanDescriptorAllocator final : private Unmovable, private Uncopyable
 
     NODISCARD VkDescriptorPool CreatePool(const uint32_t count, VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0);
     void Destroy();
+    VulkanDescriptorAllocator() = delete;
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANDESCRIPTORS_H

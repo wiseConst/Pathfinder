@@ -23,7 +23,7 @@ void main()
     uint sbtRecordStride = 0;
     uint missIndex = 0;
 	
-	const vec3 rayOrigin = u_PC.CameraDataBuffer.Position;
+	const vec3 rayOrigin = CameraData(u_PC.CameraDataBuffer).Position;
 	const vec3 rayDir = normalize(vec3(1,1,1));
 	traceRayEXT(u_SceneTLAS, rayFlags, cullMask, sbtRecordOffset, sbtRecordStride, missIndex, rayOrigin, 0.0, rayDir, 1.e9, 1);
 

@@ -1,10 +1,9 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "Texture2D.h"
 
 #include "RendererAPI.h"
 #include "Platform/Vulkan/VulkanTexture2D.h"
 
-#include "Core/Threading.h"
 #include <compressonator.h>
 
 namespace Pathfinder
@@ -122,7 +121,7 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
                  dstTexture.dwDataSize, rawImageSize / (float)dstTexture.dwDataSize);
 #endif
 
-    const auto CMP_PrintInfoStr         = [](const char* InfoStr) { LOG_TAG_INFO(AMD_Compressonator, "%s", InfoStr); };
+    const auto CMP_PrintInfoStr         = [](const char* InfoStr) { LOG_INFO("AMD_Compressonator: {}", InfoStr); };
     CMP_CompressOptions compressOptions = {0};
     compressOptions.dwSize              = sizeof(compressOptions);
     compressOptions.m_PrintInfoStr      = CMP_PrintInfoStr;
@@ -161,7 +160,7 @@ void TextureCompressor::SaveCompressed(const std::filesystem::path& savePath, co
     std::ofstream out(savePath, std::ios::out | std::ios::binary);
     if (!out.is_open())
     {
-        LOG_TAG_WARN(TextureCompressor, "Failed to save compressed texture! <%s>", savePath.string().data());
+        LOG_WARN("TextureCompressor: Failed to save compressed texture! <{}>", savePath.string());
         return;
     }
 
@@ -181,7 +180,7 @@ void TextureCompressor::LoadCompressed(const std::filesystem::path& loadPath, Te
     std::ifstream in(loadPath, std::ios::in | std::ios::binary);
     if (!in.is_open())
     {
-        LOG_TAG_WARN(TextureCompressor, "Failed to load compressed texture! <%s>", loadPath.string().data());
+        LOG_WARN("TextureCompressor: Failed to load compressed texture! <{}>", loadPath.string());
         return;
     }
 

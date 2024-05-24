@@ -1,7 +1,7 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "SceneManager.h"
 
-#include "Core/Application.h"
+#include <Core/Application.h>
 
 #include "Renderer/RendererCoreDefines.h"
 #include "Scene.h"
@@ -12,35 +12,35 @@
 namespace glm
 {
 
-static void to_json(auto& j, const glm::vec2& P)
+static void to_json(nlohmann::ordered_json& j, const glm::vec2& P)
 {
     j = {{"x", P.x}, {"y", P.y}};
 };
 
-static void from_json(const auto& j, glm::vec2& P)
+static void from_json(const nlohmann::ordered_json& j, glm::vec2& P)
 {
     P.x = j.at("x").get<float>();
     P.y = j.at("y").get<float>();
 }
 
-static void to_json(auto& j, const glm::vec3& P)
+static void to_json(nlohmann::ordered_json& j, const glm::vec3& P)
 {
     j = {{"x", P.x}, {"y", P.y}, {"z", P.z}};
 };
 
-static void from_json(const auto& j, glm::vec3& P)
+static void from_json(const nlohmann::ordered_json& j, glm::vec3& P)
 {
     P.x = j.at("x").get<float>();
     P.y = j.at("y").get<float>();
     P.z = j.at("z").get<float>();
 }
 
-static void to_json(auto& j, const glm::vec4& P)
+static void to_json(nlohmann::ordered_json& j, const glm::vec4& P)
 {
     j = {{"x", P.x}, {"y", P.y}, {"z", P.z}, {"w", P.w}};
 };
 
-static void from_json(const auto& j, glm::vec4& P)
+static void from_json(const nlohmann::ordered_json& j, glm::vec4& P)
 {
     P.x = j.at("x").get<float>();
     P.y = j.at("y").get<float>();
@@ -113,6 +113,13 @@ static void SerializeEntity(nlohmann::ordered_json& out, const Entity entity)
         node["SpotLightComponent"]["OuterCutOff"]  = slc.OuterCutOff;
         node["SpotLightComponent"]["bCastShadows"] = slc.bCastShadows;
     }
+
+    if (entity.HasComponent<SpriteComponent>())
+    {
+        const auto& sc = entity.GetComponent<SpriteComponent>();
+        glm::to_json(node["SpriteComponent"]["Color"], sc.Color);
+        node["SpriteComponent"]["Layer"] = sc.Layer;
+    }
 }
 
 void SceneManager::Serialize(const Shared<Scene>& scene, const std::filesystem::path& sceneFilePath)
@@ -148,7 +155,7 @@ void SceneManager::Serialize(const Shared<Scene>& scene, const std::filesystem::
     out << std::setw(2) << json << std::endl;
     out.close();
 
-    LOG_TAG_TRACE(SCENE_MANAGER, "Time taken to serialize \"%s\", %f seconds.", sceneFilePath.string().data(), t.GetElapsedSeconds());
+    LOG_TRACE("SCENE_MANAGER: Time taken to serialize \"{}\", {} seconds.", sceneFilePath.string().data(), t.GetElapsedSeconds());
 }
 
 void SceneManager::Deserialize(Shared<Scene>& scene, const std::filesystem::path& sceneFilePath)
@@ -243,9 +250,17 @@ void SceneManager::Deserialize(Shared<Scene>& scene, const std::filesystem::path
             if (node["SpotLightComponent"].contains("bCastShadows"))
                 slc.bCastShadows = node["SpotLightComponent"]["bCastShadows"].get<uint32_t>();
         }
+
+        if (node.contains("SpriteComponent"))
+        {
+            auto& sc = entity.AddComponent<SpriteComponent>();
+
+            if (node["SpriteComponent"].contains("Color")) glm::from_json(node["SpriteComponent"]["Color"], sc.Color);
+            if (node["SpriteComponent"].contains("Layer")) sc.Layer = node["SpriteComponent"]["Layer"].get<uint32_t>();
+        }
     }
 
-    LOG_TAG_TRACE(SCENE_MANAGER, "Time taken to deserialize \"%s\", %f seconds.", sceneFilePath.string().data(), t.GetElapsedSeconds());
+    LOG_TRACE("SCENE_MANAGER: Time taken to deserialize \"{}\", {} seconds.", sceneFilePath.string().data(), t.GetElapsedSeconds());
 }
 
 }  // namespace Pathfinder

@@ -1,5 +1,4 @@
-#ifndef MATERIAL_H
-#define MATERIAL_H
+#pragma once
 
 #include "Core/Core.h"
 #include "RendererCoreDefines.h"
@@ -13,7 +12,7 @@ class Material final : private Uncopyable, private Unmovable
 {
   public:
     Material(const PBRData& pbrData);
-    ~Material() override { m_MaterialBuffer.reset(); }
+    ~Material() { m_MaterialBuffer.reset(); }
 
     NODISCARD FORCEINLINE auto& GetPBRData() { return m_MaterialData; }
     NODISCARD FORCEINLINE const auto IsOpaque() const { return m_MaterialData.bIsOpaque; }
@@ -44,5 +43,3 @@ class Material final : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif

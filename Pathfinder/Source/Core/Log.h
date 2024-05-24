@@ -1,131 +1,55 @@
-#ifndef LOG_H
-#define LOG_H
+#pragma once
 
-#include <fstream>
-#include <mutex>
-#include <format>
-#include <vector>
+#include "MathDefines.h"
+#include <memory>
+
+#include <spdlog/spdlog.h>
+#include <spdlog/fmt/ostr.h>
 
 namespace Pathfinder
 {
 
-enum class ELogLevel : uint8_t
-{
-    LOG_LEVEL_NONE = 0,
-    LOG_LEVEL_ERROR,
-    LOG_LEVEL_WARN,
-    LOG_LEVEL_TRACE,
-    LOG_LEVEL_INFO,
-    LOG_LEVEL_DEBUG
-};
-
-static const char* LogLevelToCString(const ELogLevel level)
-{
-    switch (level)
-    {
-        case ELogLevel::LOG_LEVEL_ERROR: return "ERROR";
-        case ELogLevel::LOG_LEVEL_WARN: return "WARNING";
-        case ELogLevel::LOG_LEVEL_TRACE: return "TRACE";
-        case ELogLevel::LOG_LEVEL_INFO: return "INFO";
-        case ELogLevel::LOG_LEVEL_DEBUG: return "DEBUG";
-    }
-
-    return "Untagged";
-}
-
-static const char* LogLevelToASCIIColor(const ELogLevel level)
-{
-    switch (level)
-    {
-        case ELogLevel::LOG_LEVEL_ERROR: return "\x1b[91m";
-        case ELogLevel::LOG_LEVEL_WARN: return "\x1b[93m";
-        case ELogLevel::LOG_LEVEL_TRACE: return "\x1b[92m";
-        case ELogLevel::LOG_LEVEL_INFO: return "\x1b[94m";
-        case ELogLevel::LOG_LEVEL_DEBUG: return "\x1b[96m";
-    }
-
-    return "\033[0m";
-}
-
-class Logger
+class Log final
 {
   public:
     static void Init(const std::string_view& logFileName);
-    static void Shutdown();
+    static void Shutdown() { spdlog::shutdown(); }
 
-    template <typename... Args> static void Log(const ELogLevel level, const char* tag, const char* message, Args&&... args)
-    {
-        std::lock_guard lock(s_LogMutex);
-
-        // Calculate the length of the message with formatted arguments
-        const int32_t formattedMessageLength = snprintf(nullptr, 0, message, args...);
-        if (formattedMessageLength < 0)
-        {
-            puts("Error formatting message.");
-            return;
-        }
-
-        // Fill message with N args
-        std::string formattedMessage(formattedMessageLength, 0);
-        sprintf(formattedMessage.data(), message, args...);
-
-        // Create structured log message
-        const char* systemTimeString = GetCurrentSystemTime();
-        std::string logMessage       = {};
-        if (tag)
-            logMessage = std::format("{} [{}] [{}] {}", systemTimeString, LogLevelToCString(level), tag, formattedMessage);
-        else
-            logMessage = std::format("{} [{}] {}", systemTimeString, LogLevelToCString(level), formattedMessage);
-
-        // Push message and check if buffer is full and needs to be flushed
-        s_LogBuffer.push_back(logMessage);
-        if (s_LogBuffer.size() >= s_LogBufferSize) Flush();
-
-        const std::string coloredMessage =
-            std::format("{}{}{}", LogLevelToASCIIColor(level), logMessage, LogLevelToASCIIColor(ELogLevel::LOG_LEVEL_NONE));
-        puts(coloredMessage.data());
-    }
+    static auto& GetLogger() { return s_Logger; }
 
   private:
-    static inline std::ofstream s_LogFile;
-    static inline std::mutex s_LogMutex;
-    static inline std::vector<std::string> s_LogBuffer;
-    static inline constexpr uint32_t s_LogBufferSize = 32;  // s_LogBufferSize strings and then flush
+    static inline std::shared_ptr<spdlog::logger> s_Logger = nullptr;
 
-    Logger() noexcept = delete;
-    ~Logger()         = default;
-    static const char* GetCurrentSystemTime();
-    static void Flush()
-    {
-        // Should be called only in Log() and Shutdown().
-        if (s_LogFile.is_open())
-        {
-            for (const auto& message : s_LogBuffer)
-                s_LogFile << message << std::endl;
-
-            s_LogFile.flush();    // Ensure the messages are written immediately
-            s_LogBuffer.clear();  // Clear the buffer after flushing
-        }
-    }
+    Log()  = delete;
+    ~Log() = default;
 };
 
 }  // namespace Pathfinder
 
-#define LOG_ERROR(msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_ERROR, nullptr, msg, ##__VA_ARGS__)
-#define LOG_WARN(msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_WARN, nullptr, msg, ##__VA_ARGS__)
-
-#define LOG_TRACE(msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_TRACE, nullptr, msg, ##__VA_ARGS__)
-#define LOG_INFO(msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_INFO, nullptr, msg, ##__VA_ARGS__)
+#define LOG_TRACE(...) ::Pathfinder::Log::GetLogger()->trace(__VA_ARGS__)
+#define LOG_INFO(...) ::Pathfinder::Log::GetLogger()->info(__VA_ARGS__)
+#define LOG_WARN(...) ::Pathfinder::Log::GetLogger()->warn(__VA_ARGS__)
+#define LOG_ERROR(...) ::Pathfinder::Log::GetLogger()->error(__VA_ARGS__)
 
 #if PFR_DEBUG
-#define LOG_DEBUG(msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_DEBUG, nullptr, msg, ##__VA_ARGS__)
+#define LOG_DEBUG(...) ::Pathfinder::Log::GetLogger()->debug(__VA_ARGS__)
 #else
-#define LOG_DEBUG(msg, ...) (msg)
+#define LOG_DEBUG(...)
 #endif
 
-#define LOG_TAG_INFO(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_INFO, #tag, msg, ##__VA_ARGS__)
-#define LOG_TAG_TRACE(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_TRACE, #tag, msg, ##__VA_ARGS__)
-#define LOG_TAG_WARN(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_WARN, #tag, msg, ##__VA_ARGS__)
-#define LOG_TAG_ERROR(tag, msg, ...) Logger::Log(ELogLevel::LOG_LEVEL_ERROR, #tag, msg, ##__VA_ARGS__)
+template <typename OStream, glm::length_t L, typename T, glm::qualifier Q>
+inline OStream& operator<<(OStream& os, const glm::vec<L, T, Q>& vector)
+{
+    return os << glm::to_string(vector);
+}
 
-#endif  // LOG_H
+template <typename OStream, glm::length_t C, glm::length_t R, typename T, glm::qualifier Q>
+inline OStream& operator<<(OStream& os, const glm::mat<C, R, T, Q>& matrix)
+{
+    return os << glm::to_string(matrix);
+}
+
+template <typename OStream, typename T, glm::qualifier Q> inline OStream& operator<<(OStream& os, glm::qua<T, Q> quaternion)
+{
+    return os << glm::to_string(quaternion);
+}

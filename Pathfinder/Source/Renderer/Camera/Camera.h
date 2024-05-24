@@ -1,5 +1,4 @@
-#ifndef CAMERA_H
-#define CAMERA_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Core/Math.h"
@@ -73,5 +72,3 @@ class Camera : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // CAMERA_H

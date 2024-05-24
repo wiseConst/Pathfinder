@@ -1,6 +1,9 @@
 #version 460
 
 #extension GL_EXT_mesh_shader : require
+#extension GL_GOOGLE_include_directive : require
+#include "Include/Globals.h"
+#include "Include/MeshletTaskPayload.glslh"
 
 // NOTE: 
 // This line guarantees that gl_Position is computed by the exact expression that was given in the shader without 
@@ -16,22 +19,8 @@ out gl_MeshPerVertexEXT {
   invariant float gl_CullDistance[];
 } gl_MeshVerticesEXT[];
 
-#extension GL_GOOGLE_include_directive : require
-#include "Include/Globals.h"
-#include "Include/MeshletTaskPayload.glslh"
-
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out;
-
-layout(set = LAST_BINDLESS_SET + 2, binding = 0, scalar) readonly buffer CulledMeshIDBufferOpaque
-{
-    uint32_t CulledMeshIDs[];
-} s_CulledMeshIDBufferOpaque;
-
-layout(set = LAST_BINDLESS_SET + 2, binding = 1, scalar) readonly buffer CulledMeshIDBufferTransparent
-{
-    uint32_t CulledMeshIDs[];
-} s_CulledMeshIDBufferTransparent;
 
 layout(location = 0) out VertexOutput
 {
@@ -44,34 +33,21 @@ layout(location = 0) out VertexOutput
 
 #define DEBUG_MESHLETS 0
 
-mat3 quaternionToMat3(const vec4 q) {
-    const vec3 q2 = q.xyz * q.xyz;
-    const vec3 qq2 = q.xyz * q2;
-    const vec3 qq1 = q.xyz * q.w;
-    const vec3 q1q2 = q.w * q.w * q.xyz;
-
-    return mat3(
-        1.0 - 2.0 * (q2.y + q2.z), 2.0 * (qq2.x + qq1.z), 2.0 * (qq2.y - qq1.y),
-        2.0 * (qq2.x - qq1.z), 1.0 - 2.0 * (q2.x + q2.z), 2.0 * (qq2.z + qq1.x),
-        2.0 * (qq2.y + qq1.y), 2.0 * (qq2.z - qq1.x), 1.0 - 2.0 * (q2.x + q2.y)
-    );
-}
-
 void main()
 {
     uint32_t i = 0; // reusable var
     const uint32_t mi = tp_TaskData.baseMeshletID + uint32_t(tp_TaskData.meshlets[gl_WorkGroupID.x]);
     const uint32_t ti = gl_LocalInvocationID.x;
 
-    MeshData md;
-    if(u_PC.MaterialBufferIndex == 0) {
-        if(s_CulledMeshIDBufferOpaque.CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
-        md = s_GlobalMeshDataBufferOpaque.MeshesData[s_CulledMeshIDBufferOpaque.CulledMeshIDs[gl_DrawID]];
-    }
-    else {
-        if(s_CulledMeshIDBufferTransparent.CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
-        md = s_GlobalMeshDataBufferTransparent.MeshesData[s_CulledMeshIDBufferTransparent.CulledMeshIDs[gl_DrawID]];
-    }
+#ifdef __PFR_RENDER_OPAQUE_OBJECTS_
+        if(CulledMeshIDBufferOpaque(u_PC.addr0).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+        MeshData  md = s_GlobalMeshDataBufferOpaque.MeshesData[CulledMeshIDBufferOpaque(u_PC.addr0).CulledMeshIDs[gl_DrawID]];
+#endif
+    
+#ifdef __PFR_RENDER_TRANSPARENT_OBJECTS_
+        if(CulledMeshIDBufferTransparent(u_PC.addr0).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+        MeshData  md = s_GlobalMeshDataBufferTransparent.MeshesData[CulledMeshIDBufferTransparent(u_PC.addr0).CulledMeshIDs[gl_DrawID]];
+#endif
 
     const uint32_t primitiveCount = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].triangleCount;
     const uint32_t vertexCount = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].vertexCount;
@@ -87,14 +63,14 @@ void main()
         const vec3 mcolor = vec3(float(mhash & 255), float((mhash >> 8) & 255), float((mhash >> 16) & 255)) / 255.0;
     #endif
  
-    const mat3 normalMatrix = quaternionToMat3(md.orientation);
+    const mat3 normalMatrix = QuatToRotMat3(md.orientation);
     const uint32_t vertexOffset = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].vertexOffset;
     for(i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         const uint32_t vi = s_GlobalMeshletVerticesBuffers[md.meshletVerticesBufferIndex].vertices[vertexOffset + i];
         const vec3 worldPos = RotateByQuat(s_GlobalVertexPosBuffers[md.vertexPosBufferIndex].Positions[vi].Position * md.scale, md.orientation) + md.translation;
 
-        gl_MeshVerticesEXT[i].gl_Position = u_PC.CameraDataBuffer.ViewProjection * vec4(worldPos, 1.0);
+        gl_MeshVerticesEXT[i].gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
         o_VertexOutput[i].WorldPos = worldPos;
 
         o_VertexOutput[i].Color = UnpackU8Vec4ToVec4(s_GlobalVertexAttribBuffers[md.vertexAttributeBufferIndex].Attributes[vi].Color);

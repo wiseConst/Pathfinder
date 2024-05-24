@@ -58,7 +58,7 @@ HitResult GetObjectHitResult(rayQueryEXT rq)
   
   const vec3 objectNormal = normalize(cross(v1 - v0, v2 - v0));
   hr.worldNormal = objectNormal;
-  hr.color = vec3(texture(u_GlobalTextures[nonuniformEXT(material.AlbedoTextureIndex)], gl_GlobalInvocationID.xy / u_PC.CameraDataBuffer.FullResolution));
+  hr.color = vec3(texture(u_GlobalTextures[nonuniformEXT(material.AlbedoTextureIndex)], gl_GlobalInvocationID.xy / CameraData(u_PC.CameraDataBuffer).FullResolution));
  // hr.color = vec3(0.5) + 0.5 * hr.worldNormal;
  
   #if 0
@@ -123,18 +123,18 @@ float stepAndOutputRNGFloat(inout uint rngState)
 void main()
 {
   const uvec2 pixel = gl_GlobalInvocationID.xy;
-  if(any(greaterThan(pixel, uvec2(u_PC.CameraDataBuffer.FullResolution)))) return;
+  if(any(greaterThan(pixel, uvec2(CameraData(u_PC.CameraDataBuffer).FullResolution)))) return;
 
   // State of the random number generator.
-  uint rngState = uint(u_PC.CameraDataBuffer.FullResolution.x) * pixel.y + pixel.x;  // Initial seed
+  uint rngState = uint(CameraData(u_PC.CameraDataBuffer).FullResolution.x) * pixel.y + pixel.x;  // Initial seed
 
   // This scene uses a right-handed coordinate system like the OBJ file format, where the
   // +x axis points right, the +y axis points up, and the -z axis points into the screen.
-  const vec3 cameraPos = u_PC.CameraDataBuffer.Position;
+  const vec3 cameraPos = CameraData(u_PC.CameraDataBuffer).Position;
 
   // Next, define the field of view by the vertical slope of the topmost rays,
   // and create a ray direction:
-  const float fovVerticalSlope = 1.0 / 5.0;//u_PC.CameraDataBuffer.FOV;
+  const float fovVerticalSlope = 1.0 / 5.0;//CameraData(u_PC.CameraDataBuffer).FOV;
 
   // The sum of the colors of all of the samples.
   vec3 summedPixelColor = vec3(0.0);
@@ -159,12 +159,12 @@ void main()
       
       #if DENOISE
       const vec2 randomPixelCenter = vec2(pixel) + vec2(stepAndOutputRNGFloat(rngState), stepAndOutputRNGFloat(rngState));
-      const vec2 screenUV = vec2(2.0 * (float(randomPixelCenter.x) + 0.5 - 0.5 * u_PC.CameraDataBuffer.FullResolution.x) / u_PC.CameraDataBuffer.FullResolution.y,    //
-                                 -(2.0 * (float(randomPixelCenter.y) + 0.5 - 0.5 * u_PC.CameraDataBuffer.FullResolution.y) / u_PC.CameraDataBuffer.FullResolution.y)  // Flip the y axis
+      const vec2 screenUV = vec2(2.0 * (float(randomPixelCenter.x) + 0.5 - 0.5 * CameraData(u_PC.CameraDataBuffer).FullResolution.x) / CameraData(u_PC.CameraDataBuffer).FullResolution.y,    //
+                                 -(2.0 * (float(randomPixelCenter.y) + 0.5 - 0.5 * CameraData(u_PC.CameraDataBuffer).FullResolution.y) / CameraData(u_PC.CameraDataBuffer).FullResolution.y)  // Flip the y axis
       );
       #else
-        const vec2 screenUV = vec2(2.0 * (float(pixel.x) + 0.5 - 0.5 * u_PC.CameraDataBuffer.FullResolution.x) / u_PC.CameraDataBuffer.FullResolution.y,    //
-                                 -(2.0 * (float(pixel.y) + 0.5 - 0.5 * u_PC.CameraDataBuffer.FullResolution.y) / u_PC.CameraDataBuffer.FullResolution.y)  // Flip the y axis
+        const vec2 screenUV = vec2(2.0 * (float(pixel.x) + 0.5 - 0.5 * CameraData(u_PC.CameraDataBuffer).FullResolution.x) / CameraData(u_PC.CameraDataBuffer).FullResolution.y,    //
+                                 -(2.0 * (float(pixel.y) + 0.5 - 0.5 * CameraData(u_PC.CameraDataBuffer).FullResolution.y) / CameraData(u_PC.CameraDataBuffer).FullResolution.y)  // Flip the y axis
       );
       #endif
 

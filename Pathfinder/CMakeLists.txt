@@ -98,6 +98,14 @@ target_link_libraries(${PROJECT_NAME} PRIVATE glm)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/glm)
 set_target_properties(glm PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
+# spdlog
+set(SPDLOG_ENABLE_PCH ON CACHE INTERNAL "")
+set(SPDLOG_NO_EXCEPTIONS ON CACHE INTERNAL "")
+add_subdirectory(${VENDOR_DIR}/spdlog)
+#target_link_libraries(${PROJECT_NAME} PRIVATE spdlog)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/spdlog/include)
+set_target_properties(spdlog PROPERTIES FOLDER "ThirdParty/spdlog" POSITION_INDEPENDENT_CODE ON)
+
 # nlohmann/json
 set(JSON_BuildTests OFF CACHE INTERNAL "")
 add_subdirectory(${VENDOR_DIR}/nlohmann)

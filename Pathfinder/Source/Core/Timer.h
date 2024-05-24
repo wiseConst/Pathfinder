@@ -1,5 +1,4 @@
-#ifndef TIMER_H
-#define TIMER_H
+#pragma once
 
 #include "Core.h"
 #include <chrono>
@@ -31,5 +30,3 @@ class Timer final
 };
 
 }  // namespace Pathfinder
-
-#endif  // TIMER_H

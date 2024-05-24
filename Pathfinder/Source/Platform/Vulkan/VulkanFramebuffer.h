@@ -1,5 +1,4 @@
-#ifndef VULKANFRAMEBUFFER_H
-#define VULKANFRAMEBUFFER_H
+#pragma once
 
 #include "Renderer/Framebuffer.h"
 #include "VulkanCore.h"
@@ -38,5 +37,3 @@ class VulkanFramebuffer final : public Framebuffer
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANFRAMEBUFFER_H

@@ -1,5 +1,4 @@
-#ifndef LAYERQUEUE_H
-#define LAYERQUEUE_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Layer.h"
@@ -12,7 +11,7 @@ class LayerQueue final : private Uncopyable, private Unmovable
 {
   public:
     LayerQueue() = default;
-    ~LayerQueue() override { Destroy(); }
+    ~LayerQueue() { Destroy(); }
 
     FORCEINLINE void Init()
     {
@@ -75,5 +74,3 @@ class LayerQueue final : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // LAYERQUEUE_H

@@ -1,5 +1,4 @@
-#ifndef VULKANSWAPCHAIN_H
-#define VULKANSWAPCHAIN_H
+#pragma once
 
 #include "Renderer/Swapchain.h"
 #include "VulkanCore.h"
@@ -95,5 +94,3 @@ class VulkanSwapchain final : public Swapchain
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANSWAPCHAIN_H

@@ -1,5 +1,4 @@
-#ifndef ENTITY_H
-#define ENTITY_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Scene.h"
@@ -65,5 +64,3 @@ class Entity final
 };
 
 }  // namespace Pathfinder
-
-#endif

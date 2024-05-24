@@ -1,9 +1,9 @@
 #include "SandboxLayer.h"
-#include "Panels/SceneHierarchyPanel.h"
+#include <Panels/SceneHierarchyPanel.h>
 
 namespace Pathfinder
 {
-static const std::string sceneFilePath = "Scenes/TestBedLights";
+static const std::string sceneFilePath = "Scenes/SponzaSonne";
 
 SandboxLayer::SandboxLayer() : Layer("SandboxLayer") {}
 SandboxLayer::~SandboxLayer() = default;
@@ -200,6 +200,45 @@ void SandboxLayer::OnUIRender()
         }
         ImGui::Separator();
 
+        std::string currentAOTypeStr = s_DEFAULT_STRING;
+        switch (rs.AOType)
+        {
+            case EAmbientOcclusionType::AMBIENT_OCCLUSION_TYPE_SSAO: currentAOTypeStr = "SSAO"; break;
+            case EAmbientOcclusionType::AMBIENT_OCCLUSION_TYPE_HBAO: currentAOTypeStr = "HBAO"; break;
+            case EAmbientOcclusionType::AMBIENT_OCCLUSION_TYPE_RTAO: currentAOTypeStr = "RTAO"; break;
+        }
+        const char* aoItems[3] = {"SSAO", "HBAO", "RTAO"};
+        ImGui::Text("Ambient Occlusion");
+        if (ImGui::BeginCombo("##aoTypeCombo", currentAOTypeStr.data()))
+        {
+            for (uint32_t n{}; n < IM_ARRAYSIZE(aoItems); ++n)
+            {
+                const auto bIsSeleceted = strcmp(currentAOTypeStr.data(), aoItems[n]) == 0;
+                if (ImGui::Selectable(aoItems[n], bIsSeleceted))
+                {
+                    currentAOTypeStr = aoItems[n];
+                }
+                if (bIsSeleceted) ImGui::SetItemDefaultFocus();
+            }
+
+            if (strcmp(currentAOTypeStr.data(), "SSAO") == 0)
+            {
+                rs.AOType = EAmbientOcclusionType::AMBIENT_OCCLUSION_TYPE_SSAO;
+            }
+            else if (strcmp(currentAOTypeStr.data(), "HBAO") == 0)
+            {
+                rs.AOType = EAmbientOcclusionType::AMBIENT_OCCLUSION_TYPE_HBAO;
+            }
+#if TODO_IMPLEMENT
+            else if (strcmp(currentAOTypeStr.data(), "RTAO") == 0)
+            {
+                rs.AOType = EAmbientOcclusionType::AMBIENT_OCCLUSION_TYPE_RTAO;
+            }
+#endif
+            ImGui::EndCombo();
+        }
+        ImGui::Separator();
+
         bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
         bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
 
@@ -215,9 +254,9 @@ void SandboxLayer::OnUIRender()
         {
             ImGui::Text("%s", name.data());
             const uint32_t imageWidth =
-                image->GetSpecification().Width > 10 ? image->GetSpecification().Width / 2 : image->GetSpecification().Width * 100;
+                image->GetSpecification().Width > 10 ? image->GetSpecification().Width / 4 : image->GetSpecification().Width * 100;
             const uint32_t imageHeight =
-                image->GetSpecification().Height > 10 ? image->GetSpecification().Height / 2 : image->GetSpecification().Height * 100;
+                image->GetSpecification().Height > 10 ? image->GetSpecification().Height / 4 : image->GetSpecification().Height * 100;
             UILayer::DrawImage(image, {imageWidth, imageHeight}, {0, 0}, {1, 1});
             ImGui::Separator();
         }
@@ -237,15 +276,16 @@ void SandboxLayer::OnUIRender()
         // NAME|ACTION
         // DepthPrePass | RELOAD
         // SSAO         | RELOAD
-        for (const auto& [spec, pipeline] : PipelineLibrary::GetStorage())
+        for (const auto& [hash, pipeline] : PipelineLibrary::GetStorage())
         {
-            ImGui::PushID(spec.DebugName.data());
-            ImGui::Text("%s", spec.DebugName.data());
+            const auto& pipelineSpec = pipeline->GetSpecification();
+            ImGui::PushID(pipelineSpec.DebugName.data());
+            ImGui::Text("%s", pipelineSpec.DebugName.data());
             ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 100.0f);
             if (ImGui::Button("Hot-Reload"))
             {
-                LOG_WARN("Hot-reloading pipeline: %s", spec.DebugName.data());
-                pipeline->Invalidate();
+                LOG_WARN("Hot-reloading pipeline: {}", pipelineSpec.DebugName);
+                PipelineLibrary::Invalidate(hash);
             }
             ImGui::Separator();
             ImGui::PopID();
@@ -260,7 +300,11 @@ void SandboxLayer::OnUIRender()
     static bool bShowRendererStats = true;
     if (bShowRendererStats)
     {
+        const auto& rs = Renderer::GetStats();
         ImGui::Begin("Renderer Statistics", &bShowRendererStats);
+
+        ImGui::Separator();
+        ImGui::Text("ImageViews: %u", rs.ImageViewCount);
 
         ImGui::SeparatorText("Pass Statistics");
         for (const auto& [pass, passTime] : Renderer::GetPassStatistics())
@@ -270,7 +314,6 @@ void SandboxLayer::OnUIRender()
         for (const auto& [pipelineStat, stat] : Renderer::GetPipelineStatistics())
             ImGui::Text("%s: %llu", pipelineStat.data(), stat);
 
-        const auto& rs = Renderer::GetStats();
         ImGui::SeparatorText("Memory Statistics");
         for (uint32_t memoryHeapIndex = 0; const auto& memoryBudget : rs.MemoryBudgets)
         {

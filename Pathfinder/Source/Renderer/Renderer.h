@@ -1,16 +1,15 @@
-#ifndef RENDERER_H
-#define RENDERER_H
+#pragma once
 
-#include "Core/Core.h"
+#include <Core/Core.h>
 #include "BindlessRenderer.h"
 #include "RendererCoreDefines.h"
-#include "RenderGraph/RenderGraph.h"
+
+#include <Renderer/RenderGraph/RenderGraph.h>
 
 namespace Pathfinder
 {
 
 class Texture2D;
-class TextureCube;
 class Pipeline;
 class Camera;
 class Framebuffer;
@@ -20,6 +19,8 @@ class Mesh;
 class UILayer;
 
 // NOTE: It's not final cuz in future SceneRenderer may derive from this class
+// TODO: Remove BindlessRenderer, replace with DescriptorManager -> VulkanDescriptors
+// TODO: Introduce QueryManager -> VulkanQueryManager for runtime queries, instead of creating for each command buffer(sucks)
 
 class Renderer : private Uncopyable, private Unmovable
 {
@@ -36,24 +37,28 @@ class Renderer : private Uncopyable, private Unmovable
     static void BeginScene(const Camera& camera);
     static void EndScene();
 
-    static void SubmitMesh(const Shared<Mesh>& mesh, const glm::mat4& transform = glm::mat4(1.0f));
+    static void SubmitMesh(const Shared<Mesh>& mesh, const glm::vec3& translation = glm::vec3(0.0f),
+                           const glm::vec3& scale = glm::vec3(1.0f), const glm::vec4& orientation = glm::vec4(1.f, 0.f, 0.f, 0.f));
     static void AddDirectionalLight(const DirectionalLight& dl);
     static void AddPointLight(const PointLight& pl);
     static void AddSpotLight(const SpotLight& sl);
 
-    static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline>& pipeline);
+    static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline> pipeline);
 
     static const std::map<std::string, Shared<Image>> GetRenderTargetList();
+
     static const std::map<std::string, float>& GetPassStatistics()
     {
         PFR_ASSERT(s_RendererData, "RendererData is not valid!");
         return s_RendererData->PassStats;
     }
+
     static const std::map<std::string, uint64_t>& GetPipelineStatistics()
     {
         PFR_ASSERT(s_RendererData, "RendererData is not valid!");
         return s_RendererData->PipelineStats;
     }
+
     static Shared<Image> GetFinalPassImage();
 
     NODISCARD FORCEINLINE static const auto& GetRendererData()
@@ -75,7 +80,9 @@ class Renderer : private Uncopyable, private Unmovable
     struct RenderObject
     {
         Shared<Submesh> submesh = nullptr;
-        glm::mat4 Transform     = glm::mat4(1.0f);
+        glm::vec3 Translation   = glm::vec3(0.f);
+        glm::vec3 Scale         = glm::vec3(1.f);
+        glm::vec4 Orientation   = glm::vec4(1.f, 0.f, 0.f, 0.f);
     };
 
     struct RendererData
@@ -108,32 +115,32 @@ class Renderer : private Uncopyable, private Unmovable
         Unique<Pathfinder::RenderGraph> RenderGraph = nullptr;
 
         Shared<Framebuffer> CompositeFramebuffer = nullptr;
-        Shared<Pipeline> CompositePipeline       = nullptr;
+        uint64_t CompositePipelineHash           = 0;
 
-        Shared<Image> RTImage              = nullptr;
-        Shared<Pipeline> RTPipeline        = nullptr;
-        Shared<Pipeline> RTComputePipeline = nullptr;
-        ShaderBindingTable RTSBT           = {};
+        Shared<Image> RTImage          = nullptr;
+        uint64_t RTPipelineHash        = 0;
+        uint64_t RTComputePipelineHash = 0;
+        ShaderBindingTable RTSBT       = {};
 
         // Forward+ renderer
-        Shared<Framebuffer> GBuffer                     = nullptr;
-        Shared<Pipeline> ForwardPlusOpaquePipeline      = nullptr;
-        Shared<Pipeline> ForwardPlusTransparentPipeline = nullptr;
+        Shared<Framebuffer> GBuffer                 = nullptr;
+        uint64_t ForwardPlusOpaquePipelineHash      = 0;
+        uint64_t ForwardPlusTransparentPipelineHash = 0;
 
         Shared<Framebuffer> DepthPrePassFramebuffer = nullptr;
-        Shared<Pipeline> DepthPrePassPipeline       = nullptr;
+        uint64_t DepthPrePassPipelineHash           = 0;
 
         // Atmospheric Scattering // TODO: Optimize via depth rejection.
-        Shared<Pipeline> AtmospherePipeline = nullptr;
+        uint64_t AtmospherePipelineHash = 0;
 
         // BLOOM Ping-pong
-        std::array<Shared<Pipeline>, 2> BloomPipeline;
+        std::array<uint64_t, 2> BloomPipelineHash;
         std::array<Shared<Framebuffer>, 2> BloomFramebuffer;
 
         /*             SCREEN-SPACE SHADOWS                */
-        bool bAnybodyCastsShadows          = false;
-        Shared<Image> SSShadowsImage       = nullptr;
-        Shared<Pipeline> SSShadowsPipeline = nullptr;
+        bool bAnybodyCastsShadows      = false;
+        Shared<Image> SSShadowsImage   = nullptr;
+        uint64_t SSShadowsPipelineHash = 0;
         /*             SCREEN-SPACE SHADOWS                */
 
         std::vector<RenderObject> OpaqueObjects;
@@ -141,13 +148,13 @@ class Renderer : private Uncopyable, private Unmovable
         Shared<Texture2D> WhiteTexture = nullptr;
 
         // Light-Culling
-        bool bNeedsFrustumsRecomputing           = true;
-        Shared<Pipeline> ComputeFrustumsPipeline = nullptr;
-        Shared<Buffer> FrustumsSSBO              = nullptr;
-        Shared<Image> FrustumDebugImage          = nullptr;
-        Shared<Image> LightHeatMapImage          = nullptr;
-        Shared<Pipeline> LightCullingPipeline    = nullptr;
-        Shared<Buffer> PointLightIndicesSSBO     = nullptr;
+        bool bNeedsFrustumsRecomputing       = true;
+        uint64_t ComputeFrustumsPipelineHash = 0;
+        Shared<Buffer> FrustumsSSBO          = nullptr;
+        Shared<Image> FrustumDebugImage      = nullptr;
+        Shared<Image> LightHeatMapImage      = nullptr;
+        uint64_t LightCullingPipelineHash    = 0;
+        Shared<Buffer> PointLightIndicesSSBO = nullptr;
         // NOTE: Instead of creating this shit manually, shader can create you this
         // in e.g. you got writeonly buffer -> shader can create it,
         // in e.g. you got readonly  buffer -> shader gonna wait for you to give it him
@@ -157,16 +164,14 @@ class Renderer : private Uncopyable, private Unmovable
         // AO
         // TODO: Add HBAO, GTAO, RTAO
         Shared<Texture2D> AONoiseTexture = nullptr;
-        struct AO
-        {
-            Shared<Pathfinder::Pipeline> Pipeline       = nullptr;
-            Shared<Pathfinder::Framebuffer> Framebuffer = nullptr;
-        };
-        AO SSAO                               = {};
-        AO HBAO                               = {};
-        Shared<Pipeline> MedianBlurAOPipeline = nullptr;
-        Shared<Pipeline> BoxBlurAOPipeline    = nullptr;
-        std::array<Shared<Pipeline>, 2> BlurAOPipeline;  // gaussian
+
+        Shared<Pathfinder::Framebuffer> AOFramebuffer = nullptr;
+        uint64_t SSAOPipelineHash                     = 0;
+        uint64_t HBAOPipelineHash                     = 0;
+
+        uint64_t MedianBlurAOPipelineHash = 0;
+        uint64_t BoxBlurAOPipelineHash    = 0;
+        std::array<uint64_t, 2> BlurAOPipelineHash;  // gaussian
         std::array<Shared<Framebuffer>, 2> BlurAOFramebuffer;
 
         // Indirect Rendering
@@ -175,17 +180,17 @@ class Renderer : private Uncopyable, private Unmovable
             uint32_t DrawCountOpaque;
             uint32_t DrawCountTransparent;
         } ObjectCullStats;
+        uint64_t OpaqueObjectCullingPipelineHash = 0;
+        Shared<Buffer> DrawBufferOpaque          = nullptr;
+        Shared<Buffer> MeshesDataOpaque          = nullptr;
+        Shared<Buffer> CulledMeshesBufferOpaque  = nullptr;
 
-        Shared<Buffer> DrawBufferOpaque         = nullptr;
-        Shared<Buffer> MeshesDataOpaque         = nullptr;
-        Shared<Buffer> CulledMeshesBufferOpaque = nullptr;
-
-        Shared<Buffer> DrawBufferTransparent         = nullptr;
-        Shared<Buffer> MeshesDataTransparent         = nullptr;
-        Shared<Buffer> CulledMeshesBufferTransparent = nullptr;
-
-        Shared<Pipeline> ObjectCullingPipeline = nullptr;
+        uint64_t TransparentObjectCullingPipelineHash = 0;
+        Shared<Buffer> DrawBufferTransparent          = nullptr;
+        Shared<Buffer> MeshesDataTransparent          = nullptr;
+        Shared<Buffer> CulledMeshesBufferTransparent  = nullptr;
     };
+
     static inline Unique<RendererData> s_RendererData         = nullptr;
     static inline Shared<BindlessRenderer> s_BindlessRenderer = nullptr;
 
@@ -194,9 +199,11 @@ class Renderer : private Uncopyable, private Unmovable
         bool bVSync;
         bool bDrawColliders;
 
-        EBlurType BlurType = EBlurType::BLUR_TYPE_GAUSSIAN;
+        EBlurType BlurType;
+        EAmbientOcclusionType AOType;
     };
-    static inline RendererSettings s_RendererSettings = {};
+
+    static inline RendererSettings s_RendererSettings;
 
     struct RendererStats
     {
@@ -208,16 +215,18 @@ class Renderer : private Uncopyable, private Unmovable
         float GPUTime;
         float SwapchainPresentTime;
         float RHITime;
+        uint32_t ImageViewCount;
         std::vector<MemoryBudget> MemoryBudgets;
     };
+
     static inline RendererStats s_RendererStats = {};
 
     static bool IsWorldEmpty()
     {
         return s_RendererData && s_RendererData->TransparentObjects.empty() && s_RendererData->OpaqueObjects.empty();
     }
-    static void ObjectCullingPass();
 
+    static void ObjectCullingPass();
     static void DepthPrePass();
     static void ScreenSpaceShadowsPass();
 
@@ -237,5 +246,3 @@ class Renderer : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // RENDERER_H

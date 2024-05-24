@@ -10,7 +10,8 @@
 
 namespace Pathfinder
 {
-static void DrawVec3Control(const std::string& label, glm::vec3& values, const float resetValue = 0.0f, const float columnWidth = 100.0f)
+static void DrawVec3Control(const std::string& label, glm::vec3& values, const glm::vec2& range = glm::vec2(0.f),
+                            const float resetValue = 0.0f, const float columnWidth = 100.0f)
 {
     ImGui::PushID(label.data());
     ImGui::Columns(2);  // First for label, second for values
@@ -34,7 +35,7 @@ static void DrawVec3Control(const std::string& label, glm::vec3& values, const f
     ImGui::PopStyleColor(3);
 
     ImGui::SameLine();
-    ImGui::DragFloat("##X", &values.x, 0.05f, 0.0f, 0.0f, "%.2f");
+    ImGui::DragFloat("##X", &values.x, 0.05f, range.x, range.y, "%.2f");
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
@@ -46,7 +47,7 @@ static void DrawVec3Control(const std::string& label, glm::vec3& values, const f
     ImGui::PopStyleColor(3);
 
     ImGui::SameLine();
-    ImGui::DragFloat("##Y", &values.y, 0.05f, 0.0f, 0.0f, "%.2f");
+    ImGui::DragFloat("##Y", &values.y, 0.05f, range.x, range.y, "%.2f");
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
@@ -58,7 +59,7 @@ static void DrawVec3Control(const std::string& label, glm::vec3& values, const f
     ImGui::PopStyleColor(3);
 
     ImGui::SameLine();
-    ImGui::DragFloat("##Z", &values.z, 0.05f, 0.0f, 0.0f, "%.2f");
+    ImGui::DragFloat("##Z", &values.z, 0.05f, range.x, range.y, "%.2f");
     ImGui::PopItemWidth();
     ImGui::SameLine();
 
@@ -201,6 +202,12 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
 
     if (ImGui::BeginPopup("AddComponent"))
     {
+        if (ImGui::MenuItem("Sprite"))
+        {
+            m_SelectionContext.AddComponent<SpriteComponent>();
+            ImGui::CloseCurrentPopup();
+        }
+
         if (ImGui::MenuItem("Mesh"))
         {
             m_SelectionContext.AddComponent<MeshComponent>();
@@ -229,15 +236,24 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
     }
     ImGui::PopItemWidth();
 
-    DrawComponent<TransformComponent>("Transform", entity,
-                                      [](auto& tc)
+    DrawComponent<TransformComponent>("TransformComponent", entity,
+                                      [&](auto& tc)
                                       {
-                                          DrawVec3Control("Translation", tc.Translation);
+                                          // TODO: For DirectionalLights replace Translation(used as direction) for Rotation(better to
+                                          // understand).
+                                          if (entity.HasComponent<DirectionalLightComponent>())
+                                          {
+                                              const glm::vec2 range{-1.0f, 1.0f};
+                                              DrawVec3Control("Translation", tc.Translation, range);
+                                          }
+                                          else
+                                              DrawVec3Control("Translation", tc.Translation);
+
                                           DrawVec3Control("Rotation", tc.Rotation);
                                           DrawVec3Control("Scale", tc.Scale);
                                       });
 
-    DrawComponent<PointLightComponent>("PointLight", entity,
+    DrawComponent<PointLightComponent>("PointLightComponent", entity,
                                        [](auto& plc)
                                        {
                                            ImGui::Separator();
@@ -302,7 +318,7 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
                                           ImGui::Checkbox("CastShadows", (bool*)&slc.bCastShadows);
                                       });
 
-    DrawComponent<MeshComponent>("Mesh", entity,
+    DrawComponent<MeshComponent>("MeshComponent", entity,
                                  [](auto& mc)
                                  {
                                      uint32_t submeshIndex = 0;
@@ -346,6 +362,25 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
                                          if (bIsAnythingAdjusted) mat->Update();
                                      }
                                  });
+
+    DrawComponent<SpriteComponent>(
+        "SpriteComponent", entity,
+        [](auto& sc)
+        {
+            ImGui::Separator();
+            ImGui::Text("Color");
+            ImGui::ColorPicker4("Color", (float*)&sc.Color);
+
+            ImGui::Separator();
+            ImGui::SliderInt("Layer", (int32_t*)&sc.Layer, 0, 5);
+
+            if (sc.Texture)
+            {
+                ImGui::Separator();
+                const auto& textureSpec = sc.Texture->GetSpecification();
+                UILayer::DrawImage(sc.Texture->GetImage(), {textureSpec.Width, textureSpec.Height}, {0, 0}, {1, 1});
+            }
+        });
 }
 
 }  // namespace Pathfinder

@@ -5,38 +5,20 @@
 #include "Lights.h"
 #include "Primitives.h"
 
-using vec2    = glm::vec2;
-using u16vec2 = glm::u16vec2;
-using u8vec4  = glm::u8vec4;
-using vec3    = glm::vec3;
-using vec4    = glm::vec4;
-using mat4    = glm::mat4;
-
-// TODO: Make bindless renderer somehow automated for creation from shader headers files
 static constexpr uint32_t s_MAX_TEXTURES        = BIT(16);
 static constexpr uint32_t s_MAX_IMAGES          = BIT(16);
 static constexpr uint32_t s_MAX_STORAGE_BUFFERS = BIT(16);
-static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(16);
+static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(20);
 
 #else
 
-// Bindless https://vincent-p.github.io/posts/vulkan_bindless_descriptors/
-
-#extension GL_EXT_nonuniform_qualifier : require
-#extension GL_EXT_scalar_block_layout : require
-#extension GL_EXT_buffer_reference2 : require  // GL_EXT_buffer_reference extension is also implicitly enabled.
-
-#extension GL_EXT_shader_explicit_arithmetic_types : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int8 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int16 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int32 : require
-#extension GL_EXT_shader_explicit_arithmetic_types_int64 : require
-
 // NOTE: Mark things as Global/BDA to make sure that basic shader reflection won't catch it!
 
+#include "Pathfinder.glsl"
 #include "Include/Meshlets.h"
 #include "Include/Lights.h"
 #include "Include/Primitives.h"
+#include "Include/Math.glsl"
 
 #endif
 
@@ -54,6 +36,15 @@ static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(16);
 
 #define SSS_LOCAL_GROUP_SIZE 16u
 
+struct Sprite
+{
+    vec3 Translation;
+    vec3 Scale;
+    vec4 Orientation;
+    u8vec4 Color;
+    uint32_t BindlessTextureIndex;
+};
+
 struct MeshPositionVertex
 {
     vec3 Position;
@@ -70,39 +61,6 @@ struct MeshAttributeVertex
     f16vec2 UV;
 #endif
 };
-
-#ifdef __cplusplus
-static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)
-{
-    Plane plane;
-    plane.Normal   = glm::normalize(normal);
-    plane.Distance = glm::dot(p0, plane.Normal);  // signed distance to the origin using p0
-
-    return plane;
-}
-
-#else
-vec4 UnpackU8Vec4ToVec4(u8vec4 packed)
-{
-    const float invDivisor = 1 / 255.0f;
-    const float r          = invDivisor * packed.r;
-    const float g          = invDivisor * packed.g;
-    const float b          = invDivisor * packed.b;
-    const float a          = invDivisor * packed.a;
-
-    return vec4(r, g, b, a);
-}
-
-// From glm && https://people.csail.mit.edu/bkph/articles/Quaternions.pdf
-vec3 RotateByQuat(const vec3 position, const vec4 orientation)
-{
-    const vec3 uv = 2.0f * cross(orientation.xyz, position);
-
-    // NOTE: That the center of rotation is always the origin, so we adding an offset(position).
-    return position + uv * orientation.w + cross(orientation.xyz, uv);
-}
-
-#endif
 
 const uint32_t s_INVALID_CULLED_OBJECT_INDEX = 2 << 20;
 
@@ -286,6 +244,18 @@ layout(buffer_reference, buffer_reference_align = 1, scalar) buffer VisibleSpotL
 }
 s_VisibleSpotLightIndicesBufferBDA;  // Name unused, check u_PC
 
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CulledMeshIDBufferOpaque
+{
+    uint32_t CulledMeshIDs[];
+}
+s_CulledMeshIDBufferOpaqueBDA;  // Name unused, check u_PC
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CulledMeshIDBufferTransparent
+{
+    uint32_t CulledMeshIDs[];
+}
+s_CulledMeshIDBufferTransparentBDA;  // Name unused, check u_PC
+
 #endif
 
 #ifdef __cplusplus
@@ -295,29 +265,21 @@ struct PushConstantBlock
 layout(push_constant, scalar) uniform PushConstantBlock
 {
 #endif
-    mat4 Transform;
+    uint64_t CameraDataBuffer;
+    uint64_t LightDataBuffer;
+    vec4 data0;
+    vec4 data1;
+    vec4 data2;
     uint32_t StorageImageIndex;
     uint32_t AlbedoTextureIndex;
-
-    uint32_t MeshIndexBufferIndex;
-    uint32_t MaterialBufferIndex;
 
     uint64_t LightCullingFrustumDataBuffer;
     uint64_t VisiblePointLightIndicesDataBuffer;
     uint64_t VisibleSpotLightIndicesDataBuffer;
-
-#ifdef __cplusplus
-    uint64_t LightDataBuffer;
-#else
-    LightData LightDataBuffer;
-#endif
-
-#ifdef __cplusplus
-    uint64_t CameraDataBuffer;
-#else
-    CameraData CameraDataBuffer;
-#endif
-    vec2 pad0;
+    uint64_t addr0;
+    uint64_t addr1;
+    uint64_t addr2;
+    uint64_t addr3;
 }
 #ifdef __cplusplus
 ;
@@ -326,9 +288,10 @@ u_PC;
 #endif
 
 #ifndef __cplusplus
+
 vec4 ClipSpaceToView(const vec4 clip)
 {
-    vec4 view = u_PC.CameraDataBuffer.InverseProjection * clip;
+    vec4 view = CameraData(u_PC.CameraDataBuffer).InverseProjection * clip;
     return view / view.w;
 }
 
@@ -344,7 +307,7 @@ vec4 ClipSpaceToView(const vec4 clip)
 
     Vulkan NDC: +Y is down. Point(-1, -1) is at the top left corner.
     Framebuffer coordinate: +Y is down. Origin(0, 0) is at the top left corner.
-        See the description about “VkViewport” and “FragCoord” in Vulkan 1.1 spec.
+        See the description about ï¿½VkViewportï¿½ and ï¿½FragCoordï¿½ in Vulkan 1.1 spec.
         But we can flip the viewport coordinate via a negative viewport height value. NOTE!!!: Works only via graphics pipelines!
     Texture coordinate:     +Y is down. Origin(0, 0) is at the top left corner.
 */
@@ -360,10 +323,10 @@ vec4 ScreenSpaceToView(const vec4 screen, const vec2 inverseScreenDimensions)
 
 vec4 ViewToScreenSpace(const vec4 viewPos)
 {
-    vec4 ss = u_PC.CameraDataBuffer.Projection * viewPos;
+    vec4 ss = CameraData(u_PC.CameraDataBuffer).Projection * viewPos;
     ss      = ss / ss.w;
     ss.xy   = vec2(ss.x, 1.f - ss.y) * .5f + .5f;
-    ss      = vec4(ss.xy * u_PC.CameraDataBuffer.InvFullResolution, ss.z, ss.w);
+    ss      = vec4(ss.xy * CameraData(u_PC.CameraDataBuffer).InvFullResolution, ss.z, ss.w);
 
     return ss;
 }
@@ -373,13 +336,7 @@ vec4 ViewToScreenSpace(const vec4 viewPos)
 // https://www.youtube.com/watch?v=z1KG2Cwi1pk&list=PLU2nPsAdxKWQYxkmQ3TdbLsyc1l2j25XM&index=125&ab_channel=GameEngineSeries
 float ScreenSpaceDepthToView(const float fScreenDepth)
 {
-    return -u_PC.CameraDataBuffer.Projection[3][2] / (fScreenDepth + u_PC.CameraDataBuffer.Projection[2][2]);
-}
-
-// https://developer.download.nvidia.com/cg/saturate.html
-float saturate(float x)
-{
-    return clamp(x, 0.0, 1.0);
+    return -CameraData(u_PC.CameraDataBuffer).Projection[3][2] / (fScreenDepth + CameraData(u_PC.CameraDataBuffer).Projection[2][2]);
 }
 
 #endif

@@ -1,5 +1,4 @@
-#ifndef ORTHOGRAPHICCAMERA_H
-#define ORTHOGRAPHICCAMERA_H
+#pragma once
 
 #include "Camera.h"
 #include "Core/Application.h"
@@ -176,5 +175,3 @@ class OrthographicCamera final : public Camera
 };
 
 }  // namespace Pathfinder
-
-#endif  // ORTHOGRAPHICCAMERA_H

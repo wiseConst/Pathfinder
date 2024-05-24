@@ -1,15 +1,17 @@
-#ifndef SHADER_H
-#define SHADER_H
+#pragma once
 
-#include "Core/Core.h"
+#include <Core/Core.h>
 #include <map>
 #include <string>
+#include <future>
 #include "RendererCoreDefines.h"
 
 #include <shaderc/shaderc.hpp>
 
 namespace Pathfinder
 {
+
+// TODO: Shader Hash instead of std::string?
 
 static constexpr uint8_t s_SHADER_EXTENSIONS_SIZE                                                 = 13;
 static constexpr std::array<const std::string_view, s_SHADER_EXTENSIONS_SIZE> s_SHADER_EXTENSIONS = {
@@ -81,16 +83,28 @@ class Shader : private Uncopyable, private Unmovable
 class ShaderLibrary final : private Uncopyable, private Unmovable
 {
   public:
-    ShaderLibrary()           = default;
-    ~ShaderLibrary() override = default;
-
     static void Init();
     static void Shutdown();
 
-    static void Load(const ShaderSpecification& shaderSpec);
     static void Load(const std::vector<ShaderSpecification>& shaderSpecs);
     NODISCARD static const Shared<Shader>& Get(const std::string& shaderName);
     NODISCARD static const Shared<Shader>& Get(const ShaderSpecification& shaderSpec);
+
+    FORCEINLINE static void WaitUntilShadersLoaded()
+    {
+#if PFR_DEBUG
+        Timer t = {};
+#endif
+
+        for (auto& future : s_ShaderFutures)
+            future.get();
+
+#if PFR_DEBUG
+        LOG_INFO("Time took to create ({}) shaders: {:.2f}ms", s_ShaderFutures.size(), t.GetElapsedMilliseconds());
+#endif
+
+        s_ShaderFutures.clear();
+    }
 
     FORCEINLINE static void DestroyGarbageIfNeeded()
     {
@@ -100,14 +114,17 @@ class ShaderLibrary final : private Uncopyable, private Unmovable
                               {
                                   if (shaderData.second && shaderData.second->DestroyGarbageIfNeeded()) ++shaderGargbageCount;
                               });
-        if (shaderGargbageCount != 0) LOG_TAG_TRACE(SHADER_LIBRARY, "Destroyed (%zu) shader garbages!", shaderGargbageCount);
+        if (shaderGargbageCount != 0) LOG_TRACE("Destroyed ({}) shader garbages!", shaderGargbageCount);
     }
 
   private:
+    static inline std::vector<std::shared_future<void>> s_ShaderFutures;
     static inline std::multimap<std::string, Shared<Shader>> s_Shaders;
     static inline std::mutex s_ShaderLibMutex;
+
+    static void Load(const ShaderSpecification& shaderSpec);
+    ShaderLibrary()  = delete;
+    ~ShaderLibrary() = default;
 };
 
 }  // namespace Pathfinder
-
-#endif  // SHADER_H

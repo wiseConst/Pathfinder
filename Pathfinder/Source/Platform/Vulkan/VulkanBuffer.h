@@ -1,5 +1,4 @@
-#ifndef VULKANBUFFER_H
-#define VULKANBUFFER_H
+#pragma once
 
 #include "Renderer/Buffer.h"
 #include "VulkanCore.h"
@@ -12,8 +11,7 @@ namespace Pathfinder
 class VulkanBuffer final : public Buffer
 {
   public:
-    explicit VulkanBuffer(const BufferSpecification& bufferSpec);
-    VulkanBuffer() = delete;
+    explicit VulkanBuffer(const BufferSpecification& bufferSpec, const void* data, const size_t dataSize);
     ~VulkanBuffer() override { Destroy(); }
 
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
@@ -31,6 +29,7 @@ class VulkanBuffer final : public Buffer
     bool m_bIsMapped                        = false;
 
     void Destroy() final override;
+    VulkanBuffer() = delete;
 };
 
 namespace BufferUtils
@@ -51,4 +50,3 @@ void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation);
 
 }  // namespace Pathfinder
 
-#endif  // VULKANBUFFER_H

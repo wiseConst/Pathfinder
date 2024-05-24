@@ -1,5 +1,4 @@
-#ifndef SCENE_H
-#define SCENE_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Renderer/RendererCoreDefines.h"
@@ -13,9 +12,8 @@ class Entity;
 class Scene final : private Uncopyable, private Unmovable
 {
   public:
-    Scene() = delete;
     Scene(const std::string& sceneName = s_DEFAULT_STRING);
-    ~Scene() override;
+    ~Scene();
 
     Entity CreateEntity(const std::string& entityName = s_DEFAULT_STRING);
     Entity CreateEntityWithUUID(const UUID uuid, const std::string& entityName = s_DEFAULT_STRING);
@@ -40,15 +38,15 @@ class Scene final : private Uncopyable, private Unmovable
     entt::registry m_Registry = {};
     std::string m_Name        = s_DEFAULT_STRING;
     uint32_t m_EntityCount    = 0;
+    std::mutex m_SceneMutex;
 
     AccelerationStructure m_TLAS = {};
 
     void RebuildTLAS();
+    Scene() = delete;
 
     friend class Entity;
     friend class SceneManager;
 };
 
 }  // namespace Pathfinder
-
-#endif

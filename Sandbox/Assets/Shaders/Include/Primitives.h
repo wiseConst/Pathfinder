@@ -1,11 +1,19 @@
 #ifndef PRIMITIVES_H
 #define PRIMITIVES_H
 
+#ifdef __cplusplus
+using vec2    = glm::vec2;
+using u16vec2 = glm::u16vec2;
+using u8vec4  = glm::u8vec4;
+using vec3    = glm::vec3;
+using vec4    = glm::vec4;
+using mat4    = glm::mat4;
+#endif
+
 struct Plane
 {
-    vec3 Normal;  // Should be normalized.
-    // LearnOpenGL:  distance from origin to the nearest point in the plane(PERPENDICULAR VECTOR FROM THE ORIGIN IN OTHER WORDS)
-    float Distance;  // Signed distance from the plane to the origin of the world(or whatever coordinate space you're working in).
+    vec3 Normal;
+    float Distance;
 };
 
 struct AABB
@@ -13,7 +21,6 @@ struct AABB
     vec3 Center;
     vec3 Extents;
 };
-
 
 // Left, Right, Top, Bottom, Near, Far
 struct Frustum

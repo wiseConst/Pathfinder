@@ -1,5 +1,4 @@
-#ifndef VULKANCOMMANDBUFFER_H
-#define VULKANCOMMANDBUFFER_H
+#pragma once
 
 #include "Renderer/CommandBuffer.h"
 #include "VulkanCore.h"
@@ -13,7 +12,7 @@ class VulkanSyncPoint final : public SyncPoint
     VulkanSyncPoint( void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages);
     ~VulkanSyncPoint() override = default;
 
-    void Wait() final override;
+    void Wait() const final override;
 
   private:
     VulkanSyncPoint() = delete;
@@ -90,7 +89,7 @@ class VulkanCommandBuffer final : public CommandBuffer
                        const uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier2* pImageMemoryBarriers) const;
 
     void BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const final override;
-    void BindPushConstants(Shared<Pipeline>& pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
+    void BindPushConstants(Shared<Pipeline> pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
                            const void* data = nullptr) const final override;
     void BindDescriptorSets(Shared<VulkanPipeline>& pipeline, const uint32_t firstSet = 0, const uint32_t descriptorSetCount = 0,
                             VkDescriptorSet* descriptorSets = VK_NULL_HANDLE, const uint32_t dynamicOffsetCount = 0,
@@ -207,5 +206,3 @@ class VulkanCommandBuffer final : public CommandBuffer
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANCOMMANDBUFFER_H

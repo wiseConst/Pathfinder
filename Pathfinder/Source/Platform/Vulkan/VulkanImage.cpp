@@ -1,4 +1,4 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanImage.h"
 
 #include "VulkanContext.h"
@@ -6,11 +6,10 @@
 #include "VulkanCommandBuffer.h"
 #include "VulkanBuffer.h"
 
-#include "Core/Application.h"
-#include "Core/Threading.h"
-#include "Core/Window.h"
+#include <Core/Application.h>
+#include <Core/Window.h>
 
-#include "Renderer/Renderer.h"
+#include <Renderer/Renderer.h>
 
 namespace Pathfinder
 {
@@ -91,51 +90,49 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
 }
 
 // NOTE: MultiGPU feature gonna require that device creates images
-void CreateImage(VkImage& image, VmaAllocation& allocation, const VkFormat format, const VkImageUsageFlags imageUsage,
-                 const VkExtent3D extent, const uint32_t mipLevels, const uint32_t layerCount)
+void CreateImage(VkImage& outImage, VmaAllocation& outAllocation, const VkFormat format, const VkImageUsageFlags imageUsage,
+                 const VkExtent3D extent, const VkImageType imageType, const uint32_t mipLevels, const uint32_t layerCount,
+                 const std::vector<uint32_t>& queueFamilyIndices, const VkImageLayout initialLayout, const VkImageTiling imageTiling,
+                 const VkSampleCountFlagBits samples)
 {
-    VkImageCreateInfo imageCI = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-    imageCI.imageType         = VK_IMAGE_TYPE_2D;
-    imageCI.extent            = extent;
-    imageCI.format            = format;
-    imageCI.usage             = imageUsage;
-    imageCI.mipLevels         = mipLevels;
+    const VkImageCreateFlags imageCreateFlags = layerCount == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
+    const auto sharingMode                    = queueFamilyIndices.empty() ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
+    const VkImageCreateInfo imageCI           = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                                 nullptr,
+                                                 imageCreateFlags,
+                                                 imageType,
+                                                 format,
+                                                 extent,
+                                                 mipLevels,
+                                                 layerCount,
+                                                 samples,
+                                                 imageTiling,
+                                                 imageUsage,
+                                                 sharingMode,
+                                                 static_cast<uint32_t>(queueFamilyIndices.size()),
+                                                 queueFamilyIndices.data(),
+                                                 initialLayout};
 
-    // NOTE: No sharing between queues at least for now.
-    imageCI.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
-    imageCI.queueFamilyIndexCount = 0;
-    imageCI.pQueueFamilyIndices   = nullptr;
-
-    imageCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
-    imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageCI.arrayLayers   = layerCount;
-    imageCI.flags         = layerCount == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
-    imageCI.samples       = VK_SAMPLE_COUNT_1_BIT;
-
-    VulkanContext::Get().GetDevice()->GetAllocator()->CreateImage(imageCI, image, allocation);
+    VulkanContext::Get().GetDevice()->GetAllocator()->CreateImage(imageCI, outImage, outAllocation);
 }
 
 void CreateImageView(const VkImage& image, VkImageView& imageView, const VkFormat format, const VkImageAspectFlags aspectFlags,
                      const VkImageViewType imageViewType, const uint32_t mipLevels, const uint32_t layerCount)
 {
-    VkImageViewCreateInfo imageViewCreateInfo       = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-    imageViewCreateInfo.viewType                    = imageViewType;
-    imageViewCreateInfo.image                       = image;
-    imageViewCreateInfo.format                      = format;
-    imageViewCreateInfo.subresourceRange.aspectMask = aspectFlags;
+    const VkImageViewCreateInfo imageViewCI = {
+        VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        nullptr,
+        0,
+        image,
+        imageViewType,
+        format,
+        {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A},
+        {aspectFlags, 0, mipLevels, 0, layerCount}};
 
-    imageViewCreateInfo.subresourceRange.baseMipLevel   = 0;
-    imageViewCreateInfo.subresourceRange.levelCount     = mipLevels;
-    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-    imageViewCreateInfo.subresourceRange.layerCount     = layerCount;
-
-    imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
-    imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
-    imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
-    imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
-
-    VK_CHECK(vkCreateImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &imageViewCreateInfo, nullptr, &imageView),
+    VK_CHECK(vkCreateImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &imageViewCI, nullptr, &imageView),
              "Failed to create an image view!");
+
+    ++Renderer::GetStats().ImageViewCount;
 }
 
 void DestroyImage(VkImage& image, VmaAllocation& allocation)
@@ -192,7 +189,7 @@ void VulkanImage::SetLayout(const EImageLayout newLayout)
 {
     const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
                                                ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, Renderer::GetRendererData()->FrameIndex,
-                                               JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+                                               ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
     auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
     vulkanCommandBuffer->BeginRecording(true);
 
@@ -250,7 +247,7 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
         const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS /*COMMAND_BUFFER_TYPE_TRANSFER*/,
                                                    ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                                                    Renderer::GetRendererData()->FrameIndex,
-                                                   JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+                                                   ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
         auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
@@ -268,9 +265,9 @@ void VulkanImage::Invalidate()
 
     PFR_ASSERT(m_Specification.Mips > 0, "Mips should be 1 at least!");
     const auto vkImageFormat = ImageUtils::PathfinderImageFormatToVulkan(m_Specification.Format);
-    ImageUtils::CreateImage(m_Handle, m_Allocation, vkImageFormat,
-                            ImageUtils::PathfinderImageUsageFlagsToVulkan(m_Specification.UsageFlags),
-                            {m_Specification.Width, m_Specification.Height, 1}, m_Specification.Mips, m_Specification.Layers);
+    ImageUtils::CreateImage(
+        m_Handle, m_Allocation, vkImageFormat, ImageUtils::PathfinderImageUsageFlagsToVulkan(m_Specification.UsageFlags),
+        {m_Specification.Width, m_Specification.Height, 1}, VK_IMAGE_TYPE_2D, m_Specification.Mips, m_Specification.Layers);
 
     const VkImageViewType imageViewType = m_Specification.Layers == 1
                                               ? VK_IMAGE_VIEW_TYPE_2D
@@ -287,7 +284,7 @@ void VulkanImage::Invalidate()
                                 m_Specification.Layers);
 
     // NOTE: Small crutch since SetLayout() doesn't assume using inside Invalidate() but I find it convenient.
-    // On image creation it has undefined layout. Store newLayout and set it to specification after transition.
+    // On image creation it has undefined layout. We store newLayout and set it to specification after transition.
     // Because SetLayout uses oldLayout as m_Specification.Layout and newLayout I specify as m_Specification.Layout,
     // so layouts are equal and no transition happens.
     {
@@ -318,6 +315,8 @@ void VulkanImage::Destroy()
     m_Handle = VK_NULL_HANDLE;
 
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_View, nullptr);
+
+    --Renderer::GetStats().ImageViewCount;
 
     if (m_DescriptorInfo.sampler) SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
 

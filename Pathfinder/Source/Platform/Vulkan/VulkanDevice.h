@@ -1,8 +1,7 @@
-#ifndef VULKANDEVICE_H
-#define VULKANDEVICE_H
+#pragma once
 
 #include "VulkanCore.h"
-#include "Renderer/CommandBuffer.h"
+#include <Renderer/CommandBuffer.h>
 
 // TODO: Big renderer refactor, since I dropped default pipeline support, mesh-shading prior only.
 
@@ -30,7 +29,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
 {
   public:
     explicit VulkanDevice(const VkInstance& instance, const VulkanDeviceSpecification& vulkanDeviceSpec);
-    ~VulkanDevice() override;
+    ~VulkanDevice();
 
     void AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, const CommandBufferSpecification& commandBufferSpec) const;
     void FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const CommandBufferSpecification& commandBufferSpec) const;
@@ -80,6 +79,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     // Should be called each frame.
     void ResetCommandPools() const;
 
+    NODISCARD FORCEINLINE const auto& GetPipelineCache() const { return m_PipelineCache; }
     NODISCARD FORCEINLINE const auto& GetPipelineCacheUUID() const { return m_PipelineCacheUUID; }
     NODISCARD FORCEINLINE const auto GetVendorID() const { return m_VendorID; }
     NODISCARD FORCEINLINE const auto GetDeviceID() const { return m_DeviceID; }
@@ -110,6 +110,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     uint32_t m_VendorID                       = 0;
     uint32_t m_DeviceID                       = 0;
     uint8_t m_PipelineCacheUUID[VK_UUID_SIZE] = {0};
+    VkPipelineCache m_PipelineCache           = VK_NULL_HANDLE;
 
     Unique<VulkanAllocator> m_VMA;
     Unique<VulkanDescriptorAllocator> m_VDA;
@@ -117,8 +118,8 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     VulkanDevice() = delete;
     void CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalDeviceFeatures);
     void CreateCommandPools();
+    void SavePipelineCache();
+    void LoadPipelineCache();
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANDEVICE_H

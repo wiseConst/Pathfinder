@@ -1,30 +1,28 @@
-#ifndef MESH_H
-#define MESH_H
+#pragma once
 
-#include "Core/Core.h"
-#include "Renderer/RendererCoreDefines.h"
+#include <Core/Core.h>
+#include <filesystem>
 
 namespace Pathfinder
 {
 
 class Submesh;
+
 class Mesh final : private Uncopyable, private Unmovable
 {
-  public:
+public:
     explicit Mesh(const std::filesystem::path& meshPath);
-    ~Mesh() override { Destroy(); }
+    ~Mesh() { Destroy(); }
 
     NODISCARD static Shared<Mesh> Create(const std::string& meshPath);
 
     NODISCARD FORCEINLINE const auto& GetSubmeshes() const { return m_Submeshes; }
 
-  private:
+private:
     std::vector<Shared<Submesh>> m_Submeshes;
 
     void Destroy() { m_Submeshes.clear(); }
     Mesh() = delete;
 };
 
-}  // namespace Pathfinder
-
-#endif  // MESH_H
+} // namespace Pathfinder

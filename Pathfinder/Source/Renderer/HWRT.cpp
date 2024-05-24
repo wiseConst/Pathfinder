@@ -1,4 +1,4 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "HWRT.h"
 
 #include "RendererAPI.h"
@@ -17,7 +17,7 @@ void RayTracingBuilder::Init()
         {
             s_Instance = new VulkanRayTracingBuilder();
 
-            LOG_TAG_INFO(RAYTRACING_BUILDER, "VulkanRayTracingBuilder created!");
+            LOG_INFO("VulkanRayTracingBuilder created!");
             break;
         }
         default:
@@ -31,7 +31,7 @@ void RayTracingBuilder::Shutdown()
 {
     delete s_Instance;
     s_Instance = nullptr;
-    LOG_TAG_INFO(RAYTRACING_BUILDER, "RayTracingBuilder destroyed!");
+    LOG_INFO("RayTracingBuilder destroyed!");
 }
 
 }  // namespace Pathfinder

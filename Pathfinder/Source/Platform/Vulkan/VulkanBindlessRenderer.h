@@ -1,5 +1,4 @@
-#ifndef VULKANBINDLESSRENDERER_H
-#define VULKANBINDLESSRENDERER_H
+#pragma once
 
 #include "Renderer/BindlessRenderer.h"
 #include "VulkanCore.h"
@@ -37,6 +36,7 @@ class VulkanBindlessRenderer final : public BindlessRenderer
   private:
     std::vector<VkWriteDescriptorSet> m_Writes;
 
+    // TODO: Apply Pool class from Core.h??
     struct IndicesPool
     {
         std::vector<uint32_t> Busy;
@@ -63,5 +63,3 @@ class VulkanBindlessRenderer final : public BindlessRenderer
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANBINDLESSRENDERER_H

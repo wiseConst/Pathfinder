@@ -7,29 +7,28 @@ layout(location = 0) in vec3 inPosition;
 
 layout(location = 0) out vec4 outColor;
 
- struct DebugSphereRenderInfo
- {
+struct DebugSphereData
+{
     vec3 Translation;
-    vec4 Orientation;
     vec3 Scale;
+    vec4 Orientation;
     vec3 Center;
     float Radius;
-    vec4 Color;
- };
+    u8vec4 Color;
+};
 
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer DebugSphereRenderInfoBuffer
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer DebugSphereDataBuffer
 {
-    DebugSphereRenderInfo sphereInfos[];
+    DebugSphereData debugSpheres[];
 }
-s_DebugSphereRenderInfoBufferBDA;  // Name unused, check u_PC
+s_DebugSphereDataBufferBDA;  // Name unused, check u_PC
 
 void main()
 {
-    DebugSphereRenderInfoBuffer infoBuffer = DebugSphereRenderInfoBuffer(u_PC.LightDataBuffer);
-    DebugSphereRenderInfo sphereInfo =  infoBuffer.sphereInfos[u_PC.StorageImageIndex];
+    const DebugSphereData sphereData = DebugSphereDataBuffer(u_PC.addr0).debugSpheres[gl_InstanceIndex];
 
-    const vec3 worldPos = RotateByQuat((inPosition * sphereInfo.Radius + sphereInfo.Center) * sphereInfo.Scale, sphereInfo.Orientation) + sphereInfo.Translation;
-    gl_Position = u_PC.CameraDataBuffer.ViewProjection * vec4(worldPos, 1.0);
+    const vec3 worldPos = RotateByQuat((inPosition * sphereData.Radius + sphereData.Center) * sphereData.Scale, sphereData.Orientation) + sphereData.Translation;
+    gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
     
-    outColor = sphereInfo.Color;
+    outColor = UnpackU8Vec4ToVec4(sphereData.Color);
 }

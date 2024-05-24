@@ -1,5 +1,4 @@
-#ifndef VULKANALLOCATOR_H
-#define VULKANALLOCATOR_H
+#pragma once
 
 #include "VulkanCore.h"
 #define VK_NO_PROTOTYPES
@@ -14,7 +13,7 @@ class VulkanAllocator final : private Uncopyable, private Unmovable
 {
   public:
     VulkanAllocator(const VkDevice& device, const VkPhysicalDevice& physicalDevice);
-    ~VulkanAllocator() override;
+    ~VulkanAllocator();
 
     void CreateImage(const VkImageCreateInfo& imageCI, VkImage& image, VmaAllocation& allocation,
                      VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY);
@@ -41,5 +40,3 @@ class VulkanAllocator final : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANALLOCATOR_H

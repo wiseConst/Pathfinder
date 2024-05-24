@@ -10,7 +10,7 @@ layout(local_size_x = LIGHT_CULLING_TILE_SIZE, local_size_y = LIGHT_CULLING_TILE
 void main()
 {
     const vec2 wgid = vec2(gl_GlobalInvocationID.xy); // Each thread inside warp creates 1 frustum.
-    if(any(greaterThan(wgid, u_PC.CameraDataBuffer.FullResolution))) return;
+    if(any(greaterThan(wgid, CameraData(u_PC.CameraDataBuffer).FullResolution))) return;
 
     // -Z = -1
     vec4 screenSpace[4];
@@ -25,11 +25,11 @@ void main()
     
     vec3 viewSpace[4];
     for(uint i = 0; i < 4; ++i)
-        viewSpace[i] = ScreenSpaceToView(screenSpace[i], u_PC.CameraDataBuffer.InvFullResolution).xyz;
+        viewSpace[i] = ScreenSpaceToView(screenSpace[i], CameraData(u_PC.CameraDataBuffer).InvFullResolution).xyz;
 
     // View space eye position is always at the origin.
     const vec3 eyePos = vec3(0);
-    const uint linearTileIndex = GetLinearGridIndex(wgid * LIGHT_CULLING_TILE_SIZE, u_PC.CameraDataBuffer.FullResolution.x);
+    const uint linearTileIndex = GetLinearGridIndex(wgid * LIGHT_CULLING_TILE_SIZE, CameraData(u_PC.CameraDataBuffer).FullResolution.x);
     LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[0] = ComputePlane(eyePos, viewSpace[2], viewSpace[0]);
     LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
     LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);

@@ -1,5 +1,4 @@
-#ifndef VULKANSHADER_H
-#define VULKANSHADER_H
+#pragma once
 
 #include "Renderer/Shader.h"
 #include "Renderer/Buffer.h"
@@ -99,4 +98,3 @@ class VulkanShader final : public Shader
 
 }  // namespace Pathfinder
 
-#endif  // VULKANSHADER_H
