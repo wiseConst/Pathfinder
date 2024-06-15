@@ -1,107 +1,16 @@
 #pragma once
 
-#include "Core/Core.h"
+#include <Core/Core.h>
 #include "RendererCoreDefines.h"
 
 namespace Pathfinder
 {
 
-enum class EImageLayout : uint8_t
-{
-    IMAGE_LAYOUT_UNDEFINED = 0,
-    IMAGE_LAYOUT_GENERAL,
-    IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-    IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_PRESENT_SRC,
-    IMAGE_LAYOUT_SHARED_PRESENT,
-    IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL
-};
 
-enum EImageUsage : uint32_t
-{
-    IMAGE_USAGE_TRANSFER_SRC_BIT                     = BIT(0),
-    IMAGE_USAGE_TRANSFER_DST_BIT                     = BIT(1),
-    IMAGE_USAGE_SAMPLED_BIT                          = BIT(2),
-    IMAGE_USAGE_STORAGE_BIT                          = BIT(3),
-    IMAGE_USAGE_COLOR_ATTACHMENT_BIT                 = BIT(4),
-    IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT         = BIT(5),
-    IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT             = BIT(6),
-    IMAGE_USAGE_INPUT_ATTACHMENT_BIT                 = BIT(7),
-    IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT = BIT(8),
-    IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT             = BIT(9),
-};
-using ImageUsageFlags = uint32_t;
-
-enum class EImageFormat : uint8_t
-{
-    FORMAT_UNDEFINED = 0,
-
-    FORMAT_R8_UNORM,
-    FORMAT_RG8_UNORM,
-    FORMAT_RGB8_UNORM,
-    FORMAT_RGBA8_UNORM,
-    FORMAT_BGRA8_UNORM,  // Swapchain
-    FORMAT_A2R10G10B10_UNORM_PACK32,
-
-    FORMAT_R16_UNORM,
-    FORMAT_R16F,
-
-    FORMAT_R32F,
-    FORMAT_R64F,
-
-    FORMAT_RGB16_UNORM,
-    FORMAT_RGB16F,
-
-    FORMAT_RGBA16_UNORM,
-    FORMAT_RGBA16F,
-
-    FORMAT_RGB32F,
-    FORMAT_RGBA32F,
-
-    FORMAT_RGB64F,
-    FORMAT_RGBA64F,
-
-    // DEPTH
-    FORMAT_D16_UNORM,
-    FORMAT_D32F,
-    FORMAT_S8_UINT,
-    FORMAT_D16_UNORM_S8_UINT,
-    FORMAT_D24_UNORM_S8_UINT,
-    FORMAT_D32_SFLOAT_S8_UINT,
-
-    // BCn
-    FORMAT_BC1_RGB_UNORM,
-    FORMAT_BC1_RGB_SRGB,
-    FORMAT_BC1_RGBA_UNORM,
-    FORMAT_BC1_RGBA_SRGB,
-    FORMAT_BC2_UNORM,
-    FORMAT_BC2_SRGB,
-    FORMAT_BC3_UNORM,
-    FORMAT_BC3_SRGB,
-    FORMAT_BC4_UNORM,
-    FORMAT_BC4_SNORM,
-    FORMAT_BC5_UNORM,
-    FORMAT_BC5_SNORM,
-    FORMAT_BC6H_UFLOAT,
-    FORMAT_BC6H_SFLOAT,
-    FORMAT_BC7_UNORM,
-    FORMAT_BC7_SRGB,
-};
-
+// NOTE: Bindless by default, once and forever.
 struct ImageSpecification
 {
+    std::string DebugName      = s_DEFAULT_STRING;
     uint32_t Width             = 0;
     uint32_t Height            = 0;
     EImageFormat Format        = EImageFormat::FORMAT_UNDEFINED;
@@ -111,7 +20,6 @@ struct ImageSpecification
     ImageUsageFlags UsageFlags = 0;
     uint32_t Mips              = 1;
     uint32_t Layers            = 1;
-    bool bBindlessUsage        = false;
 };
 
 class Image : private Uncopyable, private Unmovable
@@ -121,7 +29,11 @@ class Image : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual void* Get() const = 0;
-    NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const { return m_Index; }
+    NODISCARD FORCEINLINE const auto GetBindlessIndex() const
+    {
+        PFR_ASSERT(m_BindlessIndex.has_value(), "Image doesn't have bindless index!");
+        return m_BindlessIndex.value();
+    }
 
     virtual void Resize(const uint32_t width, const uint32_t height)                                  = 0;
     virtual void SetLayout(const EImageLayout newLayout)                                              = 0;
@@ -133,9 +45,9 @@ class Image : private Uncopyable, private Unmovable
     const auto& GetUUID() const { return m_UUID; }
 
   protected:
-    ImageSpecification m_Specification = {};
-    uint32_t m_Index                   = UINT32_MAX;  // bindless array purposes
-    UUID m_UUID                        = {};
+    ImageSpecification m_Specification      = {};
+    UUID m_UUID                             = {};
+    std::optional<uint32_t> m_BindlessIndex = std::nullopt;
 
     Image(const ImageSpecification& imageSpec) : m_Specification(imageSpec) {}
     Image() = delete;
@@ -174,20 +86,9 @@ struct SamplerSpecification
 
     bool operator==(const SamplerSpecification& other) const
     {
-        if (Filter == other.Filter &&                        //
-            Wrap == other.Wrap &&                            //
-            bAnisotropyEnable == other.bAnisotropyEnable &&  //
-            bCompareEnable == other.bCompareEnable &&        //
-            CompareOp == other.CompareOp &&                  //
-            MipLodBias == other.MipLodBias &&                //
-            MaxAnisotropy == other.MaxAnisotropy &&          //
-            MinLod == other.MinLod &&                        //
-            MaxLod == other.MaxLod)
-        {
-            return true;
-        }
-
-        return false;
+        return std::tie(Filter, Wrap, bAnisotropyEnable, bCompareEnable, CompareOp, MipLodBias, MaxAnisotropy, MinLod, MaxLod) ==
+               std::tie(other.Filter, other.Wrap, other.bAnisotropyEnable, other.bCompareEnable, other.CompareOp, other.MipLodBias,
+                        other.MaxAnisotropy, other.MinLod, other.MaxLod);
     }
 };
 
@@ -296,7 +197,10 @@ void* ConvertRgbToRgba(const uint8_t* rgb, const uint32_t width, const uint32_t 
 
 void UnloadRawImage(void* data);
 
-uint32_t CalculateMipCount(const uint32_t width, const uint32_t height);
+FORCEINLINE static uint32_t CalculateMipCount(const uint32_t width, const uint32_t height)
+{
+    return static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;  // +1 for base mip level.
+}
 
 }  // namespace ImageUtils
 

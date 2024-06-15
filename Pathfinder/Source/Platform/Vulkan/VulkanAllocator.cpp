@@ -1,9 +1,9 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanAllocator.h"
 
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
-#include "Renderer/Renderer.h"
+#include <Renderer/Renderer.h>
 
 #define VK_NO_PROTOTYPES
 #define VMA_IMPLEMENTATION
@@ -12,18 +12,18 @@
 namespace Pathfinder
 {
 
-VulkanAllocator::VulkanAllocator(const VkDevice& device, const VkPhysicalDevice& physicalDevice)
+VulkanAllocator::VulkanAllocator(const VkInstance& instance, const VkDevice& device, const VkPhysicalDevice& physicalDevice)
 {
-    VmaVulkanFunctions vulkanFunctions    = {};
-    vulkanFunctions.vkGetInstanceProcAddr = vkGetInstanceProcAddr;
-    vulkanFunctions.vkGetDeviceProcAddr   = vkGetDeviceProcAddr;
+    const VmaVulkanFunctions vulkanFunctions = {.vkGetInstanceProcAddr = vkGetInstanceProcAddr, .vkGetDeviceProcAddr = vkGetDeviceProcAddr};
 
-    VmaAllocatorCreateInfo allocatorCI = {VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT | VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE4_BIT |
-                                              VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT | VMA_ALLOCATOR_CREATE_EXT_MEMORY_PRIORITY_BIT,
-                                          physicalDevice, device};
-    allocatorCI.instance               = VulkanContext::Get().GetInstance();
-    allocatorCI.vulkanApiVersion       = PFR_VK_API_VERSION;
-    allocatorCI.pVulkanFunctions       = &vulkanFunctions;
+    VmaAllocatorCreateInfo allocatorCI = {.flags = VMA_ALLOCATOR_CREATE_BUFFER_DEVICE_ADDRESS_BIT |
+                                                   VMA_ALLOCATOR_CREATE_KHR_MAINTENANCE4_BIT | VMA_ALLOCATOR_CREATE_EXT_MEMORY_BUDGET_BIT |
+                                                   VMA_ALLOCATOR_CREATE_EXT_MEMORY_PRIORITY_BIT,
+                                          .physicalDevice   = physicalDevice,
+                                          .device           = device,
+                                          .pVulkanFunctions = &vulkanFunctions,
+                                          .instance         = instance,
+                                          .vulkanApiVersion = PFR_VK_API_VERSION};
 
     VK_CHECK(vmaCreateAllocator(&allocatorCI, &m_Handle), "Failed to create VMA!");
     m_MemoryBudgets.fill({{0, 0, 0, 0}, 0, 0});
@@ -60,7 +60,7 @@ void VulkanAllocator::CreateImage(const VkImageCreateInfo& imageCI, VkImage& ima
     vmaGetHeapBudgets(m_Handle, m_MemoryBudgets.data());
 
 #if VK_LOG_VMA_ALLOCATIONS
-    LOG_DEBUG("[VMA]: Created image with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
+    LOG_DEBUG("[VMA]: Created image with offset: {} (bytes), size: {:.6f} (MB).", allocationInfo.offset,
               static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
 #endif
 }
@@ -100,7 +100,7 @@ void VulkanAllocator::CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer&
     vmaGetHeapBudgets(m_Handle, m_MemoryBudgets.data());
 
 #if VK_LOG_VMA_ALLOCATIONS
-    LOG_DEBUG("[VMA]: Created buffer with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
+    LOG_DEBUG("[VMA]: Created buffer with offset: {} (bytes), size: {:.6f} (MB).", allocationInfo.offset,
               static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
 #endif
 }
@@ -114,7 +114,7 @@ void VulkanAllocator::DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation)
     vmaGetHeapBudgets(m_Handle, m_MemoryBudgets.data());
 
 #if VK_LOG_VMA_ALLOCATIONS
-    LOG_DEBUG("[VMA]: Destroyed buffer with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
+    LOG_DEBUG("[VMA]: Destroyed buffer with offset: {} (bytes), size: {:.6f} (MB).", allocationInfo.offset,
               static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
 #endif
 }
@@ -128,7 +128,7 @@ void VulkanAllocator::DestroyImage(VkImage& image, VmaAllocation& allocation)
     vmaGetHeapBudgets(m_Handle, m_MemoryBudgets.data());
 
 #if VK_LOG_VMA_ALLOCATIONS
-    LOG_DEBUG("[VMA]: Destroyed image with offset: %zu (bytes), size: %0.6f (MB).", allocationInfo.offset,
+    LOG_DEBUG("[VMA]: Destroyed image with offset: {} (bytes), size: {:.6f} (MB).", allocationInfo.offset,
               static_cast<float>(allocationInfo.size) / 1024.0f / 1024.0f);
 #endif
 }

@@ -90,49 +90,56 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
 }
 
 // NOTE: MultiGPU feature gonna require that device creates images
+// VK_IMAGE_TILING_LINEAR should never be used and will never be faster
 void CreateImage(VkImage& outImage, VmaAllocation& outAllocation, const VkFormat format, const VkImageUsageFlags imageUsage,
-                 const VkExtent3D extent, const VkImageType imageType, const uint32_t mipLevels, const uint32_t layerCount,
+                 const VkExtent3D& extent, const VkImageType imageType, const uint32_t mipLevels, const uint32_t layerCount,
                  const std::vector<uint32_t>& queueFamilyIndices, const VkImageLayout initialLayout, const VkImageTiling imageTiling,
                  const VkSampleCountFlagBits samples)
 {
     const VkImageCreateFlags imageCreateFlags = layerCount == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
     const auto sharingMode                    = queueFamilyIndices.empty() ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
-    const VkImageCreateInfo imageCI           = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                                                 nullptr,
-                                                 imageCreateFlags,
-                                                 imageType,
-                                                 format,
-                                                 extent,
-                                                 mipLevels,
-                                                 layerCount,
-                                                 samples,
-                                                 imageTiling,
-                                                 imageUsage,
-                                                 sharingMode,
-                                                 static_cast<uint32_t>(queueFamilyIndices.size()),
-                                                 queueFamilyIndices.data(),
-                                                 initialLayout};
+    const VkImageCreateInfo imageCI           = {.sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                                                 .flags                 = imageCreateFlags,
+                                                 .imageType             = imageType,
+                                                 .format                = format,
+                                                 .extent                = extent,
+                                                 .mipLevels             = mipLevels,
+                                                 .arrayLayers           = layerCount,
+                                                 .samples               = samples,
+                                                 .tiling                = imageTiling,
+                                                 .usage                 = imageUsage,
+                                                 .sharingMode           = sharingMode,
+                                                 .queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size()),
+                                                 .pQueueFamilyIndices   = queueFamilyIndices.data(),
+                                                 .initialLayout         = initialLayout};
 
     VulkanContext::Get().GetDevice()->GetAllocator()->CreateImage(imageCI, outImage, outAllocation);
 }
 
+// TODO: ImageViewCache from LegitEngine
 void CreateImageView(const VkImage& image, VkImageView& imageView, const VkFormat format, const VkImageAspectFlags aspectFlags,
-                     const VkImageViewType imageViewType, const uint32_t mipLevels, const uint32_t layerCount)
+                     const VkImageViewType imageViewType, const uint32_t baseMipLevel, const uint32_t mipLevels,
+                     const uint32_t baseArrayLayer, const uint32_t layerCount)
 {
     const VkImageViewCreateInfo imageViewCI = {
-        VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
-        nullptr,
-        0,
-        image,
-        imageViewType,
-        format,
-        {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A},
-        {aspectFlags, 0, mipLevels, 0, layerCount}};
+        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image            = image,
+        .viewType         = imageViewType,
+        .format           = format,
+        .components       = {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A},
+        .subresourceRange = {
+            .aspectMask = aspectFlags, .baseMipLevel = 0, .levelCount = mipLevels, .baseArrayLayer = 0, .layerCount = layerCount}};
 
     VK_CHECK(vkCreateImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &imageViewCI, nullptr, &imageView),
              "Failed to create an image view!");
 
     ++Renderer::GetStats().ImageViewCount;
+}
+
+void DestroyImageView(const VkImageView& imageView)
+{
+    vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), imageView, nullptr);
+    --Renderer::GetStats().ImageViewCount;
 }
 
 void DestroyImage(VkImage& image, VmaAllocation& allocation)
@@ -187,25 +194,29 @@ VulkanImage::VulkanImage(const ImageSpecification& imageSpec) : Image(imageSpec)
 
 void VulkanImage::SetLayout(const EImageLayout newLayout)
 {
-    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
-                                               ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, Renderer::GetRendererData()->FrameIndex,
-                                               ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
-    auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
-    vulkanCommandBuffer->BeginRecording(true);
+    if (!Renderer::GetRendererData()->bIsFrameBegin)
+    {
+        const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+                                                   .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                   .FrameIndex = Renderer::GetRendererData()->FrameIndex,
+                                                   .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+        auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
+        vulkanCommandBuffer->BeginRecording(true);
 
-    VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
-    if (ImageUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-    if (ImageUtils::IsDepthFormat(m_Specification.Format))
-        imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
-    else
-        imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+        VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
+        if (ImageUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        if (ImageUtils::IsDepthFormat(m_Specification.Format))
+            imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+        else
+            imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
 
-    vulkanCommandBuffer->TransitionImageLayout(m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout),
-                                               ImageUtils::PathfinderImageLayoutToVulkan(newLayout), imageAspectMask,
-                                               m_Specification.Layers, 0, m_Specification.Mips, 0);
+        vulkanCommandBuffer->TransitionImageLayout(m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout),
+                                                   ImageUtils::PathfinderImageLayoutToVulkan(newLayout), imageAspectMask,
+                                                   m_Specification.Layers, 0, m_Specification.Mips, 0);
 
-    vulkanCommandBuffer->EndRecording();
-    vulkanCommandBuffer->Submit()->Wait();
+        vulkanCommandBuffer->EndRecording();
+        vulkanCommandBuffer->Submit()->Wait();
+    }
 
     m_Specification.Layout       = newLayout;
     m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
@@ -244,10 +255,11 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
     else
 #endif
     {
-        const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS /*COMMAND_BUFFER_TYPE_TRANSFER*/,
-                                                   ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
-                                                   Renderer::GetRendererData()->FrameIndex,
-                                                   ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+        const CommandBufferSpecification cbSpec = {.Type =
+                                                       ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS /*COMMAND_BUFFER_TYPE_TRANSFER*/,
+                                                   .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                   .FrameIndex = Renderer::GetRendererData()->FrameIndex,
+                                                   .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
         auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
@@ -280,7 +292,7 @@ void VulkanImage::Invalidate()
     else
         imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
 
-    ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat, imageAspectMask, imageViewType, m_Specification.Mips,
+    ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat, imageAspectMask, imageViewType, 0, m_Specification.Mips, 0,
                                 m_Specification.Layers);
 
     // NOTE: Small crutch since SetLayout() doesn't assume using inside Invalidate() but I find it convenient.
@@ -300,10 +312,17 @@ void VulkanImage::Invalidate()
         (VkSampler)SamplerStorage::CreateOrRetrieveCachedSampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap}),
         m_View, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
 
-    if (m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
+    if (m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT && !m_BindlessIndex.has_value())
     {
+        SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
         const auto& vkImageInfo = GetDescriptorInfo();
-        Renderer::GetBindlessRenderer()->LoadImage(&vkImageInfo, m_Index);
+        Renderer::GetDescriptorManager()->LoadImage(&vkImageInfo, m_BindlessIndex.value());
+    }
+
+    if (m_Specification.DebugName != s_DEFAULT_STRING)
+    {
+        VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_IMAGE,
+                        m_Specification.DebugName.data());
     }
 }
 
@@ -314,18 +333,15 @@ void VulkanImage::Destroy()
     ImageUtils::DestroyImage(m_Handle, m_Allocation);
     m_Handle = VK_NULL_HANDLE;
 
+    ImageUtils::DestroyImageView(m_View);
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_View, nullptr);
-
-    --Renderer::GetStats().ImageViewCount;
 
     if (m_DescriptorInfo.sampler) SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
 
     m_DescriptorInfo = {};
 
-    if (m_Index != UINT32_MAX && m_Specification.bBindlessUsage)
-    {
-        Renderer::GetBindlessRenderer()->FreeImage(m_Index);
-    }
+    if (m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT && m_BindlessIndex.has_value())
+        Renderer::GetDescriptorManager()->FreeImage(m_BindlessIndex.value());
 }
 
 void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const glm::vec4& color) const
@@ -348,7 +364,11 @@ void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const g
                                                m_Specification.Mips, 0);
 
     const VkClearColorValue clearColorValue = {color.x, color.y, color.z, color.w};
-    const VkImageSubresourceRange range     = {imageAspectMask, 0, m_Specification.Mips, 0, m_Specification.Layers};
+    const VkImageSubresourceRange range     = {.aspectMask     = imageAspectMask,
+                                               .baseMipLevel   = 0,
+                                               .levelCount     = m_Specification.Mips,
+                                               .baseArrayLayer = 0,
+                                               .layerCount     = m_Specification.Layers};
 
     const auto rawCommandBuffer = static_cast<VkCommandBuffer>(commandBuffer->Get());
     vkCmdClearColorImage(rawCommandBuffer, m_Handle, vkNewLayout, &clearColorValue, 1, &range);

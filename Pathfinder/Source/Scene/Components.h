@@ -2,7 +2,7 @@
 
 #include <Core/Core.h>
 #include <Renderer/Mesh/Mesh.h>
-#include <Renderer/Texture2D.h>
+#include <Renderer/Texture.h>
 #include "Lights.h"
 
 namespace Pathfinder
@@ -125,11 +125,11 @@ struct SpriteComponent
 {
     glm::vec4 Color           = glm::vec4(1.0f);
     uint32_t Layer            = 0;
-    Shared<Texture2D> Texture = nullptr;
+    Shared<Texture> Texture = nullptr;
 
     SpriteComponent()                       = default;
     SpriteComponent(const SpriteComponent&) = default;
-    SpriteComponent(const glm::vec4& color, const Shared<Texture2D>& texture, const uint32_t layer)
+    SpriteComponent(const glm::vec4& color, const Shared<Texture>& texture, const uint32_t layer)
         : Color(color), Texture(texture), Layer(layer)
     {
     }

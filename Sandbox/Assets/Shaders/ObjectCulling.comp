@@ -13,79 +13,39 @@ struct DrawMeshTasksIndirectCommand
     uint32_t groupCountZ;
 };
 
-#ifdef __PFR_RENDER_OPAQUE_OBJECTS_
-
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer DrawBufferOpaque
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer DrawBuffer
 {
     uint32_t Count;
     DrawMeshTasksIndirectCommand Commands[];
-} s_DrawBufferOpaqueBDA;
-
-#endif
-
-#ifdef __PFR_RENDER_TRANSPARENT_OBJECTS_
-
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer DrawBufferTransparent
-{
-    uint32_t Count;
-    DrawMeshTasksIndirectCommand Commands[];
-} s_DrawBufferTransparentBDA;
-
-#endif
+} s_DrawBufferBDA;
 
 void main()
 {
 	const uint32_t gID = gl_GlobalInvocationID.x;
-	if (gID >= u_PC.data0.x) return; // contains Opaque/Transparent object count.
+	if (gID >= u_PC.data0.x) return; // contains object count.
 
-    #ifdef __PFR_RENDER_OPAQUE_OBJECTS_
-      MeshData md = s_GlobalMeshDataBufferOpaque.MeshesData[gID];
-    #endif
-     
-    #ifdef __PFR_RENDER_TRANSPARENT_OBJECTS_
-      MeshData md = s_GlobalMeshDataBufferTransparent.MeshesData[gID];
-    #endif
+    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[gID];
 
     Sphere sphere;
     sphere.Center = RotateByQuat(md.sphere.Center * md.scale, md.orientation) + md.translation;
     sphere.Radius = md.sphere.Radius * max(max(md.scale.x, md.scale.y), md.scale.z);
     if(SphereInsideFrustum(sphere, CameraData(u_PC.CameraDataBuffer).ViewFrustum))
     {
-         #ifdef __PFR_RENDER_OPAQUE_OBJECTS_
-                const uint32_t index = atomicAdd(DrawBufferOpaque(u_PC.addr0).Count, 1);
-                DrawBufferOpaque(u_PC.addr0).Commands[index].groupCountX = DivideToNextMultiple(s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets.length(), MESHLET_LOCAL_GROUP_SIZE);
-                DrawBufferOpaque(u_PC.addr0).Commands[index].groupCountY = 1;
-                DrawBufferOpaque(u_PC.addr0).Commands[index].groupCountZ = 1;
-    
-                CulledMeshIDBufferOpaque(u_PC.addr1).CulledMeshIDs[index] = gID;
-         #endif
+         const uint32_t index = atomicAdd(DrawBuffer(u_PC.addr1).Count, 1);
+         DrawBuffer(u_PC.addr1).Commands[index].groupCountX = uint32_t(ceil(float(md.meshletCount) / MESHLET_LOCAL_GROUP_SIZE));
+         DrawBuffer(u_PC.addr1).Commands[index].groupCountY = 1;
+         DrawBuffer(u_PC.addr1).Commands[index].groupCountZ = 1;
 
-         #ifdef __PFR_RENDER_TRANSPARENT_OBJECTS_    
-                const uint32_t index = atomicAdd(DrawBufferTransparent(u_PC.addr0).Count, 1);
-                DrawBufferTransparent(u_PC.addr0).Commands[index].groupCountX = DivideToNextMultiple(s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets.length(), MESHLET_LOCAL_GROUP_SIZE);
-                DrawBufferTransparent(u_PC.addr0).Commands[index].groupCountY = 1;
-                DrawBufferTransparent(u_PC.addr0).Commands[index].groupCountZ = 1;
-               
-                CulledMeshIDBufferTransparent(u_PC.addr1).CulledMeshIDs[index] = gID;
-         #endif
+         CulledMeshIDBuffer(u_PC.addr2).CulledMeshIDs[index] = gID;
     }
 
     barrier();
 
     if(gl_LocalInvocationID.x == 0)
     {
-         #ifdef __PFR_RENDER_OPAQUE_OBJECTS_
-            if(DrawBufferOpaque(u_PC.addr0).Count < u_PC.data0.x)
-            {
-                 CulledMeshIDBufferOpaque(u_PC.addr1).CulledMeshIDs[DrawBufferOpaque(u_PC.addr0).Count] = s_INVALID_CULLED_OBJECT_INDEX;
-            }
-         #endif
-
-         #ifdef __PFR_RENDER_TRANSPARENT_OBJECTS_
-            if(DrawBufferTransparent(u_PC.addr0).Count < u_PC.data0.x)
-            {
-                 CulledMeshIDBufferTransparent(u_PC.addr1).CulledMeshIDs[DrawBufferTransparent(u_PC.addr0).Count] = s_INVALID_CULLED_OBJECT_INDEX;
-            }
-         #endif
+        if(DrawBuffer(u_PC.addr1).Count < u_PC.data0.x)
+        {
+             CulledMeshIDBuffer(u_PC.addr2).CulledMeshIDs[DrawBuffer(u_PC.addr1).Count] = s_INVALID_CULLED_OBJECT_INDEX;
+        }
     }
 }

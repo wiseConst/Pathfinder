@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Core/Core.h"
+#include <Core/Core.h>
 #include "RendererCoreDefines.h"
 #include "Image.h"
 
@@ -9,36 +9,42 @@ namespace Pathfinder
 
 struct TextureSpecification
 {
-    uint32_t Width        = 1;
-    uint32_t Height       = 1;
-    bool bGenerateMips    = false;
-    bool bFlipOnLoad      = false;
-    ESamplerWrap Wrap     = ESamplerWrap::SAMPLER_WRAP_REPEAT;
-    ESamplerFilter Filter = ESamplerFilter::SAMPLER_FILTER_LINEAR;
-    EImageFormat Format   = EImageFormat::FORMAT_RGBA8_UNORM;
-    uint32_t Layers       = 1;
-    bool bBindlessUsage   = false;
+    std::string DebugName      = s_DEFAULT_STRING;
+    uint32_t Width             = 1;
+    uint32_t Height            = 1;
+    bool bGenerateMips         = false;
+    ESamplerWrap Wrap          = ESamplerWrap::SAMPLER_WRAP_REPEAT;
+    ESamplerFilter Filter      = ESamplerFilter::SAMPLER_FILTER_LINEAR;
+    EImageFormat Format        = EImageFormat::FORMAT_RGBA8_UNORM;
+    ImageUsageFlags UsageFlags = EImageUsage::IMAGE_USAGE_SAMPLED_BIT;
+    uint32_t Layers            = 1;
 };
 
-class Texture2D : private Uncopyable, private Unmovable
+class Texture : private Uncopyable, private Unmovable
 {
   public:
-    virtual ~Texture2D() = default;
+    virtual ~Texture() = default;
 
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
-    NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const { return m_Index; }
+    NODISCARD FORCEINLINE const auto GetBindlessIndex() const
+    {
+        PFR_ASSERT(m_BindlessIndex.has_value(), "Texture doesn't have bindless index!");
+        return m_BindlessIndex.value();
+    }
     NODISCARD FORCEINLINE const auto& GetImage() const { return m_Image; }
 
-    NODISCARD static Shared<Texture2D> Create(const TextureSpecification& textureSpec, const void* data = nullptr,
+    NODISCARD static Shared<Texture> Create(const TextureSpecification& textureSpec, const void* data = nullptr,
                                               const size_t dataSize = 0);
 
-  protected:
-    Shared<Image> m_Image                = nullptr;
-    TextureSpecification m_Specification = {};
-    uint32_t m_Index                     = UINT32_MAX;  // bindless array purposes
+    virtual void Resize(const uint32_t width, const uint32_t height) = 0;
 
-    Texture2D(const TextureSpecification& textureSpec) : m_Specification(textureSpec) {}
-    Texture2D() = delete;
+  protected:
+    Shared<Image> m_Image                   = nullptr;
+    TextureSpecification m_Specification    = {};
+    std::optional<uint32_t> m_BindlessIndex = std::nullopt;
+
+    Texture(const TextureSpecification& textureSpec) : m_Specification(textureSpec) {}
+    Texture() = delete;
 
     virtual void Destroy() = 0;
     virtual void Invalidate(const void* data, const size_t dataSize);
@@ -60,7 +66,7 @@ class TextureCompressor final : private Uncopyable, private Unmovable
     static void LoadCompressed(const std::filesystem::path& loadPath, TextureSpecification& outTextureSpec, std::vector<uint8_t>& outData);
 
   private:
-    TextureCompressor() = default;
+    TextureCompressor()  = default;
     ~TextureCompressor() = default;
 };
 

@@ -2,7 +2,6 @@
 #include "Shader.h"
 
 #include <Core/Application.h>
-#include <Core/CoreUtils.h>
 #include "RendererAPI.h"
 #include <Platform/Vulkan/VulkanShader.h>
 
@@ -142,14 +141,11 @@ std::vector<uint32_t> Shader::CompileOrRetrieveCached(const std::string& shaderN
                                                       shaderc_shader_kind shaderKind, const bool bHotReload)
 {
     const auto& appSpec           = Application::Get().GetSpecification();
-    const auto& assetsDir         = appSpec.AssetsDir;
-    const auto& shadersDir        = appSpec.ShadersDir;
-    const auto& cacheDir          = appSpec.CacheDir;
     const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
 
     // Firstly check if cache exists and retrieve it
-    const std::filesystem::path cachedShaderPath =
-        workingDirFilePath / assetsDir / cacheDir / shadersDir / (HashShader(shaderName, m_Specification.MacroDefinitions) + ".spv");
+    const std::filesystem::path cachedShaderPath = workingDirFilePath / appSpec.AssetsDir / appSpec.CacheDir / appSpec.ShadersDir /
+                                                   (HashShader(shaderName, m_Specification.MacroDefinitions) + ".spv");
 #if !VK_FORCE_SHADER_COMPILATION
     // TODO: Add extra shader directories if don't exist, cuz loading fucked up
     if (!bHotReload && std::filesystem::exists(cachedShaderPath)) return LoadData<std::vector<uint32_t>>(cachedShaderPath.string());
@@ -159,8 +155,10 @@ std::vector<uint32_t> Shader::CompileOrRetrieveCached(const std::string& shaderN
     thread_local shaderc::Compiler compiler;
     thread_local shaderc::CompileOptions compileOptions;
     compileOptions.SetOptimizationLevel(shaderc_optimization_level_performance);
-    compileOptions.SetGenerateDebugInfo();
     compileOptions.SetWarningsAsErrors();
+#if PFR_DEBUG
+    compileOptions.SetGenerateDebugInfo();
+#endif
 
     for (const auto& [name, value] : m_Specification.MacroDefinitions)
     {
@@ -186,9 +184,9 @@ std::vector<uint32_t> Shader::CompileOrRetrieveCached(const std::string& shaderN
             if (preprocessedResult.GetCompilationStatus() != shaderc_compilation_status_success)
             {
                 if (preprocessedResult.GetNumWarnings() > 0)
-                    LOG_WARN("Shader: \"{}\". Detected %zu warnings!", shaderName.data(), preprocessedResult.GetNumWarnings());
+                    LOG_WARN("Shader: \"{}\". Detected {} warnings!", shaderName.data(), preprocessedResult.GetNumWarnings());
                 if (preprocessedResult.GetNumErrors() > 0)
-                    LOG_ERROR("Failed to preprocess \"{}\" shader! %s", shaderName.data(), preprocessedResult.GetErrorMessage().data());
+                    LOG_ERROR("Failed to preprocess \"{}\" shader! {}", shaderName.data(), preprocessedResult.GetErrorMessage().data());
 
                 const std::string shaderErrorMessage = std::string("Shader compilation failed! ") + std::string(shaderName);
                 PFR_ASSERT(false, shaderErrorMessage.data());
@@ -214,7 +212,6 @@ std::vector<uint32_t> Shader::CompileOrRetrieveCached(const std::string& shaderN
             SaveData(cachedShaderPath.string(), compiledShaderSrc.data(), compiledShaderSrc.size() * sizeof(compiledShaderSrc[0]));
 
             return compiledShaderSrc;
-            break;
         }
     }
 
@@ -239,11 +236,10 @@ void ShaderLibrary::Load(const ShaderSpecification& shaderSpec)
     Timer t = {};
 #endif
 
-    {
-        const auto shader = Shader::Create(shaderSpec);
-        std::lock_guard lock(s_ShaderLibMutex);
-        s_Shaders.emplace(shaderSpec.Name, shader);
-    }
+    const auto shader = Shader::Create(shaderSpec);
+    std::lock_guard lock(s_ShaderLibMutex);
+    s_Shaders.emplace(shaderSpec.Name, shader);
+
 #if LOG_SHADER_INFO && PFR_DEBUG
     LOG_TRACE("Time taken to compile \"{}\" shader, {:.2f}ms", shaderSpec.Name.data(), t.GetElapsedMilliseconds() * 1000.0f);
 #endif
@@ -274,7 +270,7 @@ const Shared<Shader>& ShaderLibrary::Get(const ShaderSpecification& shaderSpec)
 {
     if (!s_Shaders.contains(shaderSpec.Name))
     {
-        LOG_ERROR("\"{}\" doesn't exist!", shaderSpec.Name.data());
+        LOG_ERROR("\"{}\" doesn't exist!", shaderSpec.Name);
         PFR_ASSERT(false, "Failed to retrieve shader!");
     }
 

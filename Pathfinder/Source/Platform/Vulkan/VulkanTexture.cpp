@@ -1,5 +1,5 @@
 #include <PathfinderPCH.h>
-#include "VulkanTexture2D.h"
+#include "VulkanTexture.h"
 
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
@@ -7,17 +7,18 @@
 #include "VulkanCommandBuffer.h"
 
 #include "Renderer/Renderer.h"
-#include "VulkanBindlessRenderer.h"
+#include "VulkanDescriptors.h"
 
 namespace Pathfinder
 {
 
-VulkanTexture2D::VulkanTexture2D(const TextureSpecification& textureSpec, const void* data, const size_t dataSize) : Texture2D(textureSpec)
+VulkanTexture::VulkanTexture(const TextureSpecification& textureSpec, const void* data, const size_t dataSize) : Texture(textureSpec)
 {
+    m_Specification.UsageFlags |= EImageUsage::IMAGE_USAGE_SAMPLED_BIT;
     Invalidate(data, dataSize);
 }
 
-NODISCARD const VkDescriptorImageInfo& VulkanTexture2D::GetDescriptorInfo()
+NODISCARD const VkDescriptorImageInfo& VulkanTexture::GetDescriptorInfo()
 {
     if (m_Image; const auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Image))
     {
@@ -25,41 +26,38 @@ NODISCARD const VkDescriptorImageInfo& VulkanTexture2D::GetDescriptorInfo()
     }
     else
     {
-        PFR_ASSERT(false, "VulkanTexture2D: m_Image is not valid! or failed to cast ot VulkanImage!");
+        PFR_ASSERT(false, "VulkanTexture: m_Image is not valid! or failed to cast ot VulkanImage!");
     }
 
     m_DescriptorInfo.sampler = m_Sampler;
     return m_DescriptorInfo;
 }
 
-void VulkanTexture2D::Destroy()
+void VulkanTexture::Destroy()
 {
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
-    if (m_Index != UINT32_MAX && m_Specification.bBindlessUsage)
-    {
-        Renderer::GetBindlessRenderer()->FreeTexture(m_Index);
-    }
+    if (m_BindlessIndex.has_value()) Renderer::GetDescriptorManager()->FreeTexture(m_BindlessIndex.value());
 
     const SamplerSpecification samplerSpec = {m_Specification.Filter, m_Specification.Wrap};
     SamplerStorage::DestroySampler(samplerSpec);
 }
 
-void VulkanTexture2D::Invalidate(const void* data, const size_t dataSize)
+void VulkanTexture::Invalidate(const void* data, const size_t dataSize)
 {
+    if (m_Image) Destroy();
+
     const SamplerSpecification samplerSpec = {m_Specification.Filter, m_Specification.Wrap};
     m_Sampler                              = (VkSampler)SamplerStorage::CreateOrRetrieveCachedSampler(samplerSpec);
 
-    Texture2D::Invalidate(data, dataSize);
+    Texture::Invalidate(data, dataSize);
 
-    if (m_Specification.bBindlessUsage)
-    {
-        const auto& vkTextureInfo = GetDescriptorInfo();
-        Renderer::GetBindlessRenderer()->LoadTexture(&vkTextureInfo, m_Index);
-    }
+    m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    const auto& vkTextureInfo = GetDescriptorInfo();
+    Renderer::GetDescriptorManager()->LoadTexture(&vkTextureInfo, m_BindlessIndex.value());
 }
 
-void VulkanTexture2D::GenerateMipMaps()
+void VulkanTexture::GenerateMipMaps()
 {
     // Check if image format supports linear blitting.
     VkFormatProperties formatProperties = {};

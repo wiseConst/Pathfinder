@@ -44,5 +44,4 @@
 #include <omp.h>
 
 #include <Core/Log.h>
-#include <Core/Timer.h>
 #include <Core/ThreadPool.h>

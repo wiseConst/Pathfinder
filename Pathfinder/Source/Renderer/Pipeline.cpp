@@ -1,10 +1,8 @@
 #include <PathfinderPCH.h>
 #include "Pipeline.h"
 
-#include <Core/CoreUtils.h>
 #include "RendererAPI.h"
-#include "Framebuffer.h"
-#include "Platform/Vulkan/VulkanPipeline.h"
+#include <Platform/Vulkan/VulkanPipeline.h>
 
 namespace Pathfinder
 {
@@ -81,8 +79,7 @@ void PipelineLibrary::Shutdown()
 
 std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const PipelineSpecification& pipelineSpec) const
 {
-    std::size_t hash = std::hash<std::string>{}(pipelineSpec.DebugName);
-
+    std::size_t hash = 0;
     switch (pipelineSpec.PipelineType)
     {
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
@@ -94,7 +91,10 @@ std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const Pipelin
                 break;
             }
 
-            hash_combine(hash, std::hash<std::string>{}(GPO->TargetFramebuffer->GetSpecification().Name));
+            for (const auto format : GPO->Formats)
+            {
+                hash_combine(hash, std::hash<std::uint8_t>{}(static_cast<std::uint8_t>(format)));
+            }
             hash_combine(hash, std::hash<ECullMode>{}(GPO->CullMode));
             hash_combine(hash, std::hash<EFrontFace>{}(GPO->FrontFace));
             hash_combine(hash, std::hash<EPrimitiveTopology>{}(GPO->PrimitiveTopology));
@@ -161,7 +161,6 @@ std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const Pipelin
     }
     hash_combine(hash, std::hash<std::string>{}(pipelineSpec.Shader->GetSpecification().Name));
     hash_combine(hash, std::hash<uint64_t>{}(static_cast<uint64_t>(pipelineSpec.PipelineType)));
-    hash_combine(hash, std::hash<uint64_t>{}(static_cast<uint64_t>(pipelineSpec.bBindlessCompatible)));
 
     LOG_WARN("Pipeline <{}> got hash: ({}).", pipelineSpec.DebugName, hash);
     return hash;

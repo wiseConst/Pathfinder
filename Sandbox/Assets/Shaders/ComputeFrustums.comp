@@ -13,25 +13,24 @@ void main()
     if(any(greaterThan(wgid, CameraData(u_PC.CameraDataBuffer).FullResolution))) return;
 
     // -Z = -1
-    vec4 screenSpace[4];
+    vec4 screenToViewCoords[4];
     // Top left point
-    screenSpace[0] = vec4(wgid.xy * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
+    screenToViewCoords[0] = vec4(wgid.xy * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
     // Top right point
-    screenSpace[1] = vec4(vec2(wgid.x + 1.0, wgid.y) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
+    screenToViewCoords[1] = vec4(vec2(wgid.x + 1.0, wgid.y) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
     // Bottom left point
-    screenSpace[2] = vec4(vec2(wgid.x, wgid.y + 1.0) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
+    screenToViewCoords[2] = vec4(vec2(wgid.x, wgid.y + 1.0) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
     // Bottom right point
-    screenSpace[3] = vec4(vec2(wgid.x + 1.0, wgid.y + 1.0) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
+    screenToViewCoords[3] = vec4(vec2(wgid.x + 1.0, wgid.y + 1.0) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
     
-    vec3 viewSpace[4];
     for(uint i = 0; i < 4; ++i)
-        viewSpace[i] = ScreenSpaceToView(screenSpace[i], CameraData(u_PC.CameraDataBuffer).InvFullResolution).xyz;
+        screenToViewCoords[i].xyz = ScreenSpaceToView(screenToViewCoords[i], CameraData(u_PC.CameraDataBuffer).InvFullResolution).xyz;
 
     // View space eye position is always at the origin.
     const vec3 eyePos = vec3(0);
     const uint linearTileIndex = GetLinearGridIndex(wgid * LIGHT_CULLING_TILE_SIZE, CameraData(u_PC.CameraDataBuffer).FullResolution.x);
-    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[0] = ComputePlane(eyePos, viewSpace[2], viewSpace[0]);
-    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[1] = ComputePlane(eyePos, viewSpace[1], viewSpace[3]);
-    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[2] = ComputePlane(eyePos, viewSpace[0], viewSpace[1]);
-    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[3] = ComputePlane(eyePos, viewSpace[3], viewSpace[2]);
+    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[0] = ComputePlane(eyePos, screenToViewCoords[2].xyz, screenToViewCoords[0].xyz);
+    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[1] = ComputePlane(eyePos, screenToViewCoords[1].xyz, screenToViewCoords[3].xyz);
+    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[2] = ComputePlane(eyePos, screenToViewCoords[0].xyz, screenToViewCoords[1].xyz);
+    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[3] = ComputePlane(eyePos, screenToViewCoords[3].xyz, screenToViewCoords[2].xyz);
 }

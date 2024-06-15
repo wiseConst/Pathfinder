@@ -9,7 +9,7 @@ namespace Pathfinder
 class VulkanSyncPoint final : public SyncPoint
 {
   public:
-    VulkanSyncPoint( void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages);
+    VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages);
     ~VulkanSyncPoint() override = default;
 
     void Wait() const final override;
@@ -28,26 +28,12 @@ class VulkanCommandBuffer final : public CommandBuffer
     ~VulkanCommandBuffer() override { Destroy(); }
 
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
-    const std::vector<float> GetTimestampsResults() final override;
 
-    void BeginPipelineStatisticsQuery() final override;
-    FORCEINLINE void EndPipelineStatisticsQuery() const final override { vkCmdEndQuery(m_Handle, m_PipelineStatisticsQuery, 0); }
-
-    void BeginTimestampQuery(const EPipelineStage pipelineStage) final override;
-    FORCEINLINE void EndTimestampQuery(const EPipelineStage pipelineStage) final override
-    {
-        PFR_ASSERT(m_CurrentTimestampIndex + 1 < s_MAX_TIMESTAMPS, "Timestamp query limit reached!");
-        vkCmdWriteTimestamp(m_Handle, (VkPipelineStageFlagBits)VulkanUtility::PathfinderPipelineStageToVulkan(pipelineStage),
-                            m_TimestampQuery, m_CurrentTimestampIndex);
-        ++m_CurrentTimestampIndex;
-    }
-
-    void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const final override
+    FORCEINLINE void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const final override
     {
         if constexpr (VK_FORCE_VALIDATION || s_bEnableValidationLayers)
         {
-            VkDebugUtilsLabelEXT labelInfo = {VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT};
-            labelInfo.pLabelName           = label.data();
+            VkDebugUtilsLabelEXT labelInfo = {.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT, .pLabelName = label.data()};
             labelInfo.color[0]             = color.r;
             labelInfo.color[1]             = color.g;
             labelInfo.color[2]             = color.b;
@@ -55,24 +41,22 @@ class VulkanCommandBuffer final : public CommandBuffer
             vkCmdBeginDebugUtilsLabelEXT(m_Handle, &labelInfo);
         }
     }
+
     FORCEINLINE void EndDebugLabel() const final override
     {
         if constexpr (VK_FORCE_VALIDATION || s_bEnableValidationLayers) vkCmdEndDebugUtilsLabelEXT(m_Handle);
     }
 
-    FORCEINLINE void Reset() final override { VK_CHECK(vkResetCommandBuffer(m_Handle, 0), "Failed to reset command buffer!"); }
-
     void FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const final override;
-    FORCEINLINE void InsertExecutionBarrier(const RendererTypeFlags srcPipelineStages, const RendererTypeFlags srcAccessFlags,
-                                            const RendererTypeFlags dstPipelineStages,
-                                            const RendererTypeFlags dstAccessFlags) const final override;
 
-    void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const RendererTypeFlags srcPipelineStages,
-                                   const RendererTypeFlags dstPipelineStages, const RendererTypeFlags srcAccessFlags,
-                                   const RendererTypeFlags dstAccessFlags) const final override;
+    void InsertBarriers(const std::vector<MemoryBarrier>& memoryBarriers, const std::vector<BufferMemoryBarrier>& bufferMemoryBarriers = {},
+                        const std::vector<ImageMemoryBarrier>& imageMemoryBarriers = {}) const final override;
 
     void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = VK_NULL_HANDLE) final override;
-    FORCEINLINE void EndRecording() final override { VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer"); }
+    FORCEINLINE void EndRecording() const final override
+    {
+        VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer");
+    }
 
     Shared<SyncPoint> Submit(const std::vector<Shared<SyncPoint>>& waitPoints = {}, const std::vector<Shared<SyncPoint>>& signalPoints = {},
                              const void* signalFence = nullptr) final override;
@@ -80,21 +64,19 @@ class VulkanCommandBuffer final : public CommandBuffer
                                const VkImageAspectFlags aspectMask, const uint32_t layerCount, const uint32_t baseLayer,
                                const uint32_t mipLevels, const uint32_t baseMipLevel) const;
 
+    void BeginRendering(const std::vector<Shared<Texture>>& attachments,
+                        const std::vector<RenderingInfo>& renderingInfos) const final override;
     FORCEINLINE void BeginRendering(const VkRenderingInfo* renderingInfo) const { vkCmdBeginRendering(m_Handle, renderingInfo); }
-    FORCEINLINE void EndRendering() const { vkCmdEndRendering(m_Handle); }
+    FORCEINLINE void EndRendering() const final override { vkCmdEndRendering(m_Handle); }
 
     void InsertBarrier(const VkPipelineStageFlags2 srcStageMask, const VkPipelineStageFlags2 dstStageMask,
                        const VkDependencyFlags dependencyFlags, const uint32_t memoryBarrierCount, const VkMemoryBarrier2* pMemoryBarriers,
                        const uint32_t bufferMemoryBarrierCount, const VkBufferMemoryBarrier2* pBufferMemoryBarriers,
                        const uint32_t imageMemoryBarrierCount, const VkImageMemoryBarrier2* pImageMemoryBarriers) const;
 
-    void BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const final override;
-    void BindPushConstants(Shared<Pipeline> pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
-                           const void* data = nullptr) const final override;
-    void BindDescriptorSets(Shared<VulkanPipeline>& pipeline, const uint32_t firstSet = 0, const uint32_t descriptorSetCount = 0,
-                            VkDescriptorSet* descriptorSets = VK_NULL_HANDLE, const uint32_t dynamicOffsetCount = 0,
-                            uint32_t* dynamicOffsets = nullptr) const;
-
+    void BindPushConstants(Shared<Pipeline> pipeline, const uint32_t offset, const uint32_t size, const void* data = nullptr) const;
+    void SetViewportAndScissor(const uint32_t width, const uint32_t height, const int32_t offsetX = 0,
+                               const int32_t offsetY = 0) const final override;
     void BindPipeline(Shared<Pipeline>& pipeline) const final override;
 
     FORCEINLINE void DrawIndexed(const uint32_t indexCount, const uint32_t instanceCount = 1, const uint32_t firstIndex = 0,
@@ -145,7 +127,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     // COMPUTE
-    FORCEINLINE void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) final override
+    FORCEINLINE void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) const final override
     {
         vkCmdDispatch(m_Handle, groupCountX, groupCountY, groupCountZ);
     }
@@ -168,22 +150,21 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     // TRANSFER
-    FORCEINLINE void CopyBuffer(const VkBuffer& srcBuffer, VkBuffer& dstBuffer, const uint32_t regionCount, const VkBufferCopy* pRegions)
+    FORCEINLINE void CopyBuffer(const VkBuffer& srcBuffer, VkBuffer& dstBuffer, const uint32_t regionCount,
+                                const VkBufferCopy* pRegions) const
     {
         vkCmdCopyBuffer(m_Handle, srcBuffer, dstBuffer, regionCount, pRegions);
     }
 
     FORCEINLINE void CopyBufferToImage(const VkBuffer& srcBuffer, VkImage& dstImage, const VkImageLayout dstImageLayout,
-                                       const uint32_t regionCount, const VkBufferImageCopy* pRegions)
+                                       const uint32_t regionCount, const VkBufferImageCopy* pRegions) const
     {
         vkCmdCopyBufferToImage(m_Handle, srcBuffer, dstImage, dstImageLayout, regionCount, pRegions);
     }
 
-    void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const final override;
-
     FORCEINLINE void BlitImage(const VkImage& srcImage, const VkImageLayout srcImageLayout, VkImage& dstImage,
                                const VkImageLayout dstImageLayout, const uint32_t regionCount, const VkImageBlit* pRegions,
-                               const VkFilter filter)
+                               const VkFilter filter) const
     {
         vkCmdBlitImage(m_Handle, srcImage, srcImageLayout, dstImage, dstImageLayout, regionCount, pRegions, filter);
     }
@@ -195,11 +176,6 @@ class VulkanCommandBuffer final : public CommandBuffer
         VkSemaphore Handle = VK_NULL_HANDLE;
         uint64_t Counter   = 0;
     } m_TimelineSemaphore;
-
-    VkQueryPool m_PipelineStatisticsQuery = VK_NULL_HANDLE;
-
-    VkQueryPool m_TimestampQuery     = VK_NULL_HANDLE;
-    uint32_t m_CurrentTimestampIndex = 0;
 
     void Destroy() final override;
     VulkanCommandBuffer() = delete;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Core/Core.h"
+#include <Renderer/RendererCoreDefines.h>
 
 namespace Pathfinder
 {
@@ -136,27 +137,11 @@ class BufferLayout final
     }
 };
 
-enum EBufferUsage : uint32_t
-{
-    BUFFER_USAGE_VERTEX                                       = BIT(0),
-    BUFFER_USAGE_INDEX                                        = BIT(1),
-    BUFFER_USAGE_STORAGE                                      = BIT(2),
-    BUFFER_USAGE_TRANSFER_SOURCE                              = BIT(3),  // NOTE: Mark as BUFFER_USAGE_TRANSFER_SOURCE to place in CPU only.
-    BUFFER_USAGE_TRANSFER_DESTINATION                         = BIT(4),
-    BUFFER_USAGE_UNIFORM                                      = BIT(5),
-    BUFFER_USAGE_SHADER_DEVICE_ADDRESS                        = BIT(6),
-    BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(7),
-    BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE               = BIT(8),
-    BUFFER_USAGE_SHADER_BINDING_TABLE                         = BIT(9),
-    BUFFER_USAGE_INDIRECT                                     = BIT(10),
-};
-using BufferUsageFlags = uint32_t;
 
 struct BufferSpecification
 {
+    std::string DebugName       = s_DEFAULT_STRING;
     BufferUsageFlags UsageFlags = 0;
-    uint32_t Binding            = 0;  // In case it's bindless, used for mesh purposes.
-    bool bBindlessUsage         = false;
     bool bMapPersistent         = false;  // In case it's HOST_VISIBLE, or I force it to be it.
     size_t Capacity             = 0;
 };
@@ -167,19 +152,17 @@ class Buffer : private Uncopyable, private Unmovable
     virtual ~Buffer() = default;
 
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
-    NODISCARD FORCEINLINE virtual void* Get() const = 0;
-    NODISCARD FORCEINLINE uint32_t GetBindlessIndex() const { return m_Index; }
+    NODISCARD FORCEINLINE virtual void* Get() const       = 0;
     NODISCARD FORCEINLINE virtual void* GetMapped() const = 0;
     virtual uint64_t GetBDA() const                       = 0;
 
     virtual void SetData(const void* data, const size_t dataSize) = 0;
-    virtual void Resize(const size_t newCapacity)           = 0;
+    virtual void Resize(const size_t newCapacity)                 = 0;
 
     NODISCARD static Shared<Buffer> Create(const BufferSpecification& bufferSpec, const void* data = nullptr, const size_t dataSize = 0);
 
   protected:
     BufferSpecification m_Specification = {};
-    uint32_t m_Index                    = UINT32_MAX;  // bindless array purposes
 
     Buffer(const BufferSpecification& bufferSpec) : m_Specification(bufferSpec) {}
     Buffer() = delete;

@@ -9,7 +9,7 @@ namespace Pathfinder
 
 class Buffer;
 class Material;
-class Texture2D;
+class Texture;
 
 class Submesh final : private Uncopyable, private Unmovable
 {

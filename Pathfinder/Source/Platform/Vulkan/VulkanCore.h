@@ -33,7 +33,7 @@ constexpr static bool s_bEnableValidationLayers = false;
 #endif
 
 static const std::vector<const char*> s_InstanceLayers = {
-    "VK_LAYER_KHRONOS_validation",  // Validaiton layers
+    "VK_LAYER_KHRONOS_validation",  // Validation layers
 #ifdef PFR_LINUX
     "VK_LAYER_MESA_overlay",  // Linux statistics overlay(framerate graph etc)
 #endif
@@ -45,7 +45,7 @@ static const std::vector<const char*> s_InstanceExtensions = {
 
 static const std::vector<const char*> s_DeviceExtensions = {
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,                     // For rendering into OS-window
-    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,             // To neglect renderpasses as my target is desktop only
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,             // To neglect render-passes as my target is desktop only
     VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,            // To do async work with proper synchronization on device side.
     VK_KHR_MAINTENANCE_4_EXTENSION_NAME,                 // Shader SPIRV 1.6
     VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,             // Advanced synchronization types
@@ -53,7 +53,7 @@ static const std::vector<const char*> s_DeviceExtensions = {
     VK_EXT_PAGEABLE_DEVICE_LOCAL_MEMORY_EXTENSION_NAME,  // It will allow device-local memory allocations to be paged in and out by the
                                                          // operating system, and may not return VK_ERROR_OUT_OF_DEVICE_MEMORY even if
                                                          // device-local memory appears to be full, but will instead page this, or other
-                                                         // allocations, out to make room. The Vulkan implementation will also ensure that
+                                                         // allocations, out to make room. The Vulkan impl will also ensure that
                                                          // host-local memory allocations will never be promoted to device-local memory by
                                                          // the operating system, or consume device-local memory.
     VK_EXT_MEMORY_PRIORITY_EXTENSION_NAME,               // Required by PAGEABLE_DEVICE_LOCAL_MEMORY
@@ -159,9 +159,11 @@ static std::string VK_GetResultString(const VkResult result)
 #define VK_SetDebugName(logicalDevice, handle, type, name)                                                                                 \
     {                                                                                                                                      \
         PFR_ASSERT(handle, "Object handle is not valid!");                                                                                 \
-        const VkDebugUtilsObjectNameInfoEXT objectNI = {VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT, nullptr, type,                 \
-                                                        (uint64_t)handle, name};                                                           \
-        VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &objectNI), "Failed to set debug name!");                                     \
+        const VkDebugUtilsObjectNameInfoEXT duoni = {.sType        = VK_STRUCTURE_TYPE_DEBUG_UTILS_OBJECT_NAME_INFO_EXT,                   \
+                                                     .objectType   = type,                                                                 \
+                                                     .objectHandle = (uint64_t)handle,                                                     \
+                                                     .pObjectName  = name};                                                                 \
+        VK_CHECK(vkSetDebugUtilsObjectNameEXT(logicalDevice, &duoni), "Failed to set debug name!");                                        \
     }
 #else
 #define VK_SetDebugName(logicalDevice, objectHandle, objectType, objectName)
@@ -200,43 +202,78 @@ static VkBool32 VK_DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageS
 namespace VulkanUtility
 {
 
+FORCEINLINE static const char* GetVendorNameCString(const uint32_t vendorID)
+{
+    switch (vendorID)
+    {
+        case 0x10DE: return "NVIDIA";
+        case 0x1002: return "AMD";
+        case 0x8086: return "INTEL";
+        case 0x13B5: return "ARM";
+        case 0x5143: return "Qualcomm";
+        case 0x1010: return "ImgTec";
+    }
+
+    PFR_ASSERT(false, "Unknown vendor!");
+    return s_DEFAULT_STRING;
+}
+
+FORCEINLINE static const char* GetDeviceTypeCString(const VkPhysicalDeviceType deviceType)
+{
+    switch (deviceType)
+    {
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER: return "OTHER";
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "INTEGRATED_GPU";
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return "DISCRETE_GPU";
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return "VIRTUAL_GPU";
+        case VK_PHYSICAL_DEVICE_TYPE_CPU: return "CPU";
+    }
+
+    PFR_ASSERT(false, "Unknown device type!");
+    return nullptr;
+}
+
 NODISCARD FORCEINLINE static VkImageMemoryBarrier2 GetImageMemoryBarrier(
     const VkImage& image, const VkImageAspectFlags aspectMask, const VkImageLayout oldLayout, const VkImageLayout newLayout,
     const VkPipelineStageFlags2 srcStageMask, const VkAccessFlags2 srcAccessMask, const VkPipelineStageFlags2 dstStageMask,
     const VkAccessFlags2 dstAccessMask, const uint32_t layerCount, const uint32_t baseArrayLayer, const uint32_t levelCount,
     const uint32_t baseMipLevel, const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-    const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
+    const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, void* pNext = nullptr)
 {
-    return VkImageMemoryBarrier2{VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-                                 nullptr,
-                                 srcStageMask,
-                                 srcAccessMask,
-                                 dstStageMask,
-                                 dstAccessMask,
-                                 oldLayout,
-                                 newLayout,
-                                 srcQueueFamilyIndex,
-                                 dstQueueFamilyIndex,
-                                 image,
-                                 {aspectMask, baseMipLevel, levelCount, baseArrayLayer, layerCount}};
+    return VkImageMemoryBarrier2{.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+                                 .pNext               = pNext,
+                                 .srcStageMask        = srcStageMask,
+                                 .srcAccessMask       = srcAccessMask,
+                                 .dstStageMask        = dstStageMask,
+                                 .dstAccessMask       = dstAccessMask,
+                                 .oldLayout           = oldLayout,
+                                 .newLayout           = newLayout,
+                                 .srcQueueFamilyIndex = srcQueueFamilyIndex,
+                                 .dstQueueFamilyIndex = dstQueueFamilyIndex,
+                                 .image               = image,
+                                 .subresourceRange    = {.aspectMask     = aspectMask,
+                                                         .baseMipLevel   = baseMipLevel,
+                                                         .levelCount     = levelCount,
+                                                         .baseArrayLayer = baseArrayLayer,
+                                                         .layerCount     = layerCount}};
 }
-
 NODISCARD FORCEINLINE static VkBufferMemoryBarrier2 GetBufferMemoryBarrier(
     const VkBuffer& buffer, const VkDeviceSize size, const VkDeviceSize offset, const VkPipelineStageFlags2 srcStageMask,
     const VkAccessFlags2 srcAccessMask, const VkPipelineStageFlags2 dstStageMask, const VkAccessFlags2 dstAccessMask,
-    const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED)
+    const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
+    void* pNext = nullptr)
 {
-    return VkBufferMemoryBarrier2{VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-                                  nullptr,
-                                  srcStageMask,
-                                  srcAccessMask,
-                                  dstStageMask,
-                                  dstAccessMask,
-                                  srcQueueFamilyIndex,
-                                  dstQueueFamilyIndex,
-                                  buffer,
-                                  offset,
-                                  size};
+    return VkBufferMemoryBarrier2{.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+                                  .pNext               = pNext,
+                                  .srcStageMask        = srcStageMask,
+                                  .srcAccessMask       = srcAccessMask,
+                                  .dstStageMask        = dstStageMask,
+                                  .dstAccessMask       = dstAccessMask,
+                                  .srcQueueFamilyIndex = srcQueueFamilyIndex,
+                                  .dstQueueFamilyIndex = dstQueueFamilyIndex,
+                                  .buffer              = buffer,
+                                  .offset              = offset,
+                                  .size                = size};
 }
 
 NODISCARD static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
@@ -322,24 +359,32 @@ NODISCARD static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShad
 
 NODISCARD FORCEINLINE static VkDescriptorSetAllocateInfo GetDescriptorSetAllocateInfo(const VkDescriptorPool& descriptorPool,
                                                                                       const uint32_t descriptorSetCount,
-                                                                                      const VkDescriptorSetLayout* descriptorSetLayouts)
+                                                                                      const VkDescriptorSetLayout* descriptorSetLayouts,
+                                                                                      void* pNext = nullptr)
 {
-    return VkDescriptorSetAllocateInfo{VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, descriptorPool, descriptorSetCount,
-                                       descriptorSetLayouts};
+    return VkDescriptorSetAllocateInfo{.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
+                                       .pNext              = pNext,
+                                       .descriptorPool     = descriptorPool,
+                                       .descriptorSetCount = descriptorSetCount,
+                                       .pSetLayouts        = descriptorSetLayouts};
 }
 
 NODISCARD FORCEINLINE static VkDescriptorPoolCreateInfo GetDescriptorPoolCreateInfo(
     const uint32_t poolSizeCount, const uint32_t maxSetCount, const VkDescriptorPoolSize* poolSizes,
     const VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0, const void* pNext = nullptr)
 {
-    return VkDescriptorPoolCreateInfo{
-        VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO, pNext, descriptorPoolCreateFlags, maxSetCount, poolSizeCount, poolSizes};
+    return VkDescriptorPoolCreateInfo{.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                                      .pNext         = pNext,
+                                      .flags         = descriptorPoolCreateFlags,
+                                      .maxSets       = maxSetCount,
+                                      .poolSizeCount = poolSizeCount,
+                                      .pPoolSizes    = poolSizes};
 }
 
 NODISCARD FORCEINLINE static VkPushConstantRange GetPushConstantRange(const VkShaderStageFlags stageFlags, const uint32_t offset,
                                                                       const uint32_t size)
 {
-    return VkPushConstantRange{stageFlags, offset, size};
+    return VkPushConstantRange{.stageFlags = stageFlags, .offset = offset, .size = size};
 }
 
 NODISCARD FORCEINLINE static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode polygonMode)
@@ -481,6 +526,31 @@ NODISCARD FORCEINLINE static VkSamplerAddressMode PathfinderSamplerWrapToVulkan(
 
     PFR_ASSERT(false, "Unknown sampler wrap!");
     return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+}
+
+NODISCARD FORCEINLINE static VkAttachmentLoadOp PathfinderLoadOpToVulkan(const EOp loadOp)
+{
+    switch (loadOp)
+    {
+        case EOp::DONT_CARE: return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        case EOp::CLEAR: return VK_ATTACHMENT_LOAD_OP_CLEAR;
+        case EOp::LOAD: return VK_ATTACHMENT_LOAD_OP_LOAD;
+    }
+
+    PFR_ASSERT(false, "Unknown load op!");
+    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+}
+
+NODISCARD FORCEINLINE static VkAttachmentStoreOp PathfinderStoreOpToVulkan(const EOp storeOp)
+{
+    switch (storeOp)
+    {
+        case EOp::DONT_CARE: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        case EOp::STORE: return VK_ATTACHMENT_STORE_OP_STORE;
+    }
+
+    PFR_ASSERT(false, "Unknown store op!");
+    return VK_ATTACHMENT_STORE_OP_DONT_CARE;
 }
 
 }  // namespace VulkanUtility

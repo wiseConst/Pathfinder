@@ -19,8 +19,9 @@
 
 namespace Pathfinder
 {
-
-static VkPresentModeKHR PathfinderPresentModeToVulkan(const EPresentMode presentMode)
+namespace SwapchainUtils
+{
+NODISCARD FORCEINLINE static VkPresentModeKHR PathfinderPresentModeToVulkan(const EPresentMode presentMode)
 {
     switch (presentMode)
     {
@@ -32,7 +33,7 @@ static VkPresentModeKHR PathfinderPresentModeToVulkan(const EPresentMode present
     return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-static EPresentMode VulkanPresentModeToPathfinder(const VkPresentModeKHR presentMode)
+NODISCARD FORCEINLINE static EPresentMode VulkanPresentModeToPathfinder(const VkPresentModeKHR presentMode)
 {
     switch (presentMode)
     {
@@ -44,7 +45,7 @@ static EPresentMode VulkanPresentModeToPathfinder(const VkPresentModeKHR present
     return EPresentMode::PRESENT_MODE_FIFO;
 }
 
-static EImageFormat VulkanImageFormatToPathfinder(const VkFormat imageFormat)
+NODISCARD FORCEINLINE static EImageFormat VulkanImageFormatToPathfinder(const VkFormat imageFormat)
 {
     switch (imageFormat)
     {
@@ -81,10 +82,11 @@ static EImageFormat VulkanImageFormatToPathfinder(const VkFormat imageFormat)
 struct SwapchainSupportDetails final
 {
   public:
-    static SwapchainSupportDetails QuerySwapchainSupportDetails(const VkPhysicalDevice& physicalDevice, const VkSurfaceKHR& surface)
+    NODISCARD FORCEINLINE static SwapchainSupportDetails QuerySwapchainSupportDetails(const VkPhysicalDevice& physicalDevice,
+                                                                                      const VkSurfaceKHR& surface)
     {
-        SwapchainSupportDetails Details = {};
-        VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &Details.SurfaceCapabilities),
+        SwapchainSupportDetails details = {};
+        VK_CHECK(vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &details.SurfaceCapabilities),
                  "Failed to query surface capabilities.");
 
         uint32_t surfaceFormatNum{0};
@@ -92,8 +94,8 @@ struct SwapchainSupportDetails final
                  "Failed to query number of surface formats.");
         PFR_ASSERT(surfaceFormatNum > 0, "Surface format count is not valid!");
 
-        Details.ImageFormats.resize(surfaceFormatNum);
-        VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatNum, Details.ImageFormats.data()),
+        details.ImageFormats.resize(surfaceFormatNum);
+        VK_CHECK(vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &surfaceFormatNum, details.ImageFormats.data()),
                  "Failed to query surface formats.");
 
         uint32_t presentModeCount{0};
@@ -101,24 +103,17 @@ struct SwapchainSupportDetails final
                  "Failed to query number of present modes.");
         PFR_ASSERT(presentModeCount > 0, "Present mode count is not valid!");
 
-        Details.PresentModes.resize(presentModeCount);
-        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, Details.PresentModes.data()),
+        details.PresentModes.resize(presentModeCount);
+        VK_CHECK(vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, details.PresentModes.data()),
                  "Failed to query present modes.");
 
-        return Details;
+        return details;
     }
 
-    VkSurfaceFormatKHR ChooseBestSurfaceFormat() const
+    NODISCARD FORCEINLINE VkSurfaceFormatKHR ChooseBestSurfaceFormat() const
     {
-        // If Vulkan returned an unknown format, then just force what we want.
-        if (ImageFormats.size() == 1 && ImageFormats[0].format == VK_FORMAT_UNDEFINED)
-        {
-            VkSurfaceFormatKHR format = {};
-            // ImGui uses VK_FORMAT_B8G8R8A8_UNORM
-            format.format     = VK_FORMAT_B8G8R8A8_UNORM;  // VK_FORMAT_B8G8R8A8_SRGB;
-            format.colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR;
-            return format;
-        }
+        if (ImageFormats.size() == 1 && ImageFormats.at(0).format == VK_FORMAT_UNDEFINED)
+            return {.format = VK_FORMAT_B8G8R8A8_UNORM, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
 
         for (const auto& imageFormat : ImageFormats)
         {
@@ -134,24 +129,20 @@ struct SwapchainSupportDetails final
         return ImageFormats[0];
     }
 
-    VkPresentModeKHR ChooseBestPresentMode(const VkPresentModeKHR requestedPresentMode) const
+    NODISCARD FORCEINLINE VkPresentModeKHR ChooseBestPresentMode(const VkPresentModeKHR requestedPresentMode) const
     {
-        if (requestedPresentMode == VK_PRESENT_MODE_FIFO_KHR) return VK_PRESENT_MODE_FIFO_KHR;
-
-        for (const auto& presentMode : PresentModes)
-            if (presentMode == requestedPresentMode) return presentMode;
-
-        return VK_PRESENT_MODE_FIFO_KHR;
+        return std::find(PresentModes.begin(), PresentModes.end(), requestedPresentMode) != PresentModes.end() ? requestedPresentMode
+                                                                                                               : VK_PRESENT_MODE_FIFO_KHR;
     }
 
-    VkExtent2D ChooseBestExtent(GLFWwindow* window) const
+    NODISCARD FORCEINLINE VkExtent2D ChooseBestExtent(GLFWwindow* window) const
     {
         if (SurfaceCapabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) return SurfaceCapabilities.currentExtent;
 
         int32_t width{0}, height{0};
         glfwGetFramebufferSize(window, &width, &height);
 
-        VkExtent2D actualExtent = {static_cast<uint32_t>(width), static_cast<uint32_t>(height)};
+        VkExtent2D actualExtent = {.width = static_cast<uint32_t>(width), .height = static_cast<uint32_t>(height)};
         actualExtent.width =
             std::clamp(actualExtent.width, SurfaceCapabilities.minImageExtent.width, SurfaceCapabilities.maxImageExtent.width);
         actualExtent.height =
@@ -160,11 +151,11 @@ struct SwapchainSupportDetails final
         return actualExtent;
     }
 
-  public:
     VkSurfaceCapabilitiesKHR SurfaceCapabilities;
     std::vector<VkPresentModeKHR> PresentModes;
     std::vector<VkSurfaceFormatKHR> ImageFormats;
 };
+}  // namespace SwapchainUtils
 
 VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(windowHandle)
 {
@@ -185,14 +176,14 @@ VulkanSwapchain::VulkanSwapchain(void* windowHandle) noexcept : m_WindowHandle(w
 
 NODISCARD const EImageFormat VulkanSwapchain::GetImageFormat() const
 {
-    return VulkanImageFormatToPathfinder(m_ImageFormat.format);
+    return SwapchainUtils::VulkanImageFormatToPathfinder(m_ImageFormat.format);
 }
 
 void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
 {
     const auto& rd = Renderer::GetRendererData();
-
-    const auto& commandBuffer = rd->CurrentRenderCommandBuffer.lock();
+    // TODO: Refactor with input as command buffer
+    const auto& commandBuffer = rd->RenderCommandBuffer.at(m_FrameIndex);
     PFR_ASSERT(commandBuffer, "Failed to retrieve current render command buffer!");
 
     const auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
@@ -273,12 +264,7 @@ void VulkanSwapchain::Invalidate()
     auto oldSwapchain = m_Handle;
     if (oldSwapchain)
     {
-        std::ranges::for_each(m_ImageViews,
-                              [&](auto& imageView)
-                              {
-                                  --Renderer::GetStats().ImageViewCount;
-                                  vkDestroyImageView(logicalDevice, imageView, nullptr);
-                              });
+        std::ranges::for_each(m_ImageViews, [&](auto& imageView) { ImageUtils::DestroyImageView(imageView); });
         std::ranges::for_each(m_RenderSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
         std::ranges::for_each(m_ImageAcquiredSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
         std::ranges::for_each(m_RenderFence, [&](auto& fence) { vkDestroyFence(logicalDevice, fence, nullptr); });
@@ -320,11 +306,13 @@ void VulkanSwapchain::Invalidate()
     m_ImageIndex = 0;
     m_FrameIndex = 0;
 
-    VkSwapchainCreateInfoKHR swapchainCreateInfo = {VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR};
-    swapchainCreateInfo.compositeAlpha           = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR;
-    swapchainCreateInfo.clipped                  = VK_TRUE;
-    swapchainCreateInfo.imageArrayLayers         = 1;
-    swapchainCreateInfo.surface                  = m_Surface;
+    VkSwapchainCreateInfoKHR swapchainCI = {
+        .sType            = VK_STRUCTURE_TYPE_SWAPCHAIN_CREATE_INFO_KHR,
+        .surface          = m_Surface,
+        .imageArrayLayers = 1,
+        .compositeAlpha   = VK_COMPOSITE_ALPHA_OPAQUE_BIT_KHR,
+        .clipped          = VK_TRUE,
+    };
 
     if (m_CurrentPresentMode == VK_PRESENT_MODE_FIFO_KHR &&
         m_PresentMode != EPresentMode::PRESENT_MODE_FIFO)  // Current present mode is not fifo, but we want to make it fifo.
@@ -334,19 +322,19 @@ void VulkanSwapchain::Invalidate()
     }
     else
     {
-        swapchainCreateInfo.oldSwapchain = oldSwapchain;
+        swapchainCI.oldSwapchain = oldSwapchain;
     }
 
-    const auto Details               = SwapchainSupportDetails::QuerySwapchainSupportDetails(physicalDevice, m_Surface);
-    swapchainCreateInfo.preTransform = Details.SurfaceCapabilities.currentTransform;
+    const auto details       = SwapchainUtils::SwapchainSupportDetails::QuerySwapchainSupportDetails(physicalDevice, m_Surface);
+    swapchainCI.preTransform = details.SurfaceCapabilities.currentTransform;
 
-    m_ImageFormat                       = Details.ChooseBestSurfaceFormat();
-    swapchainCreateInfo.imageColorSpace = m_ImageFormat.colorSpace;
-    swapchainCreateInfo.imageFormat     = m_ImageFormat.format;
+    m_ImageFormat               = details.ChooseBestSurfaceFormat();
+    swapchainCI.imageColorSpace = m_ImageFormat.colorSpace;
+    swapchainCI.imageFormat     = m_ImageFormat.format;
 
-    m_CurrentPresentMode            = Details.ChooseBestPresentMode(PathfinderPresentModeToVulkan(m_PresentMode));
-    swapchainCreateInfo.presentMode = m_CurrentPresentMode;
-    m_PresentMode                   = VulkanPresentModeToPathfinder(m_CurrentPresentMode);
+    swapchainCI.presentMode = m_CurrentPresentMode =
+        details.ChooseBestPresentMode(SwapchainUtils::PathfinderPresentModeToVulkan(m_PresentMode));
+    m_PresentMode = SwapchainUtils::VulkanPresentModeToPathfinder(m_CurrentPresentMode);
 
 #if PFR_DEBUG
     const char* presentModeStr = m_PresentMode == EPresentMode::PRESENT_MODE_FIFO        ? "FIFO"
@@ -356,33 +344,33 @@ void VulkanSwapchain::Invalidate()
     LOG_DEBUG("PresentMode: {}.", presentModeStr);
 #endif
 
-    PFR_ASSERT(Details.SurfaceCapabilities.maxImageCount > 0, "Swapchain max image count less than zero!");
-    uint32_t imageCount               = std::clamp(Details.SurfaceCapabilities.minImageCount + 1, Details.SurfaceCapabilities.minImageCount,
-                                                   Details.SurfaceCapabilities.maxImageCount);
-    swapchainCreateInfo.minImageCount = imageCount;
+    PFR_ASSERT(details.SurfaceCapabilities.maxImageCount > 0, "Swapchain max image count less than zero!");
+    uint32_t imageCount       = std::clamp(details.SurfaceCapabilities.minImageCount + 1, details.SurfaceCapabilities.minImageCount,
+                                           details.SurfaceCapabilities.maxImageCount);
+    swapchainCI.minImageCount = imageCount;
 
     if (m_SurfaceFullScreenExclusiveInfo.fullScreenExclusive == VK_FULL_SCREEN_EXCLUSIVE_APPLICATION_CONTROLLED_EXT)
-        m_ImageExtent = Details.SurfaceCapabilities.maxImageExtent;
+        m_ImageExtent = details.SurfaceCapabilities.maxImageExtent;
     else
-        m_ImageExtent = Details.ChooseBestExtent(static_cast<GLFWwindow*>(m_WindowHandle));
+        m_ImageExtent = details.ChooseBestExtent(static_cast<GLFWwindow*>(m_WindowHandle));
 
-    swapchainCreateInfo.imageExtent = m_ImageExtent;
+    swapchainCI.imageExtent = m_ImageExtent;
 
-    swapchainCreateInfo.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    if (Details.SurfaceCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
-        swapchainCreateInfo.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
+    swapchainCI.imageUsage = VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
+    if (details.SurfaceCapabilities.supportedUsageFlags & VK_IMAGE_USAGE_TRANSFER_DST_BIT)
+        swapchainCI.imageUsage |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
 
     if (context.GetDevice()->GetGraphicsFamily() != context.GetDevice()->GetPresentFamily())
     {
         PFR_ASSERT(false, "This shouldn't happen: GraphicsFamily != PresentFamily!");
-        const uint32_t indices[]                  = {context.GetDevice()->GetGraphicsFamily(), context.GetDevice()->GetPresentFamily()};
-        swapchainCreateInfo.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
-        swapchainCreateInfo.queueFamilyIndexCount = 2;
-        swapchainCreateInfo.pQueueFamilyIndices   = indices;
+        const uint32_t indices[]          = {context.GetDevice()->GetGraphicsFamily(), context.GetDevice()->GetPresentFamily()};
+        swapchainCI.imageSharingMode      = VK_SHARING_MODE_CONCURRENT;
+        swapchainCI.queueFamilyIndexCount = 2;
+        swapchainCI.pQueueFamilyIndices   = indices;
     }
     else
     {
-        swapchainCreateInfo.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
+        swapchainCI.imageSharingMode = VK_SHARING_MODE_EXCLUSIVE;
     }
 
     // Literally will be called only when constructing swapchain.
@@ -394,8 +382,8 @@ void VulkanSwapchain::Invalidate()
         m_LastHeight = m_ImageExtent.height;
     }
 
-    swapchainCreateInfo.pNext = &m_SurfaceFullScreenExclusiveInfo;
-    VK_CHECK(vkCreateSwapchainKHR(logicalDevice, &swapchainCreateInfo, nullptr, &m_Handle), "Failed to create vulkan swapchain!");
+    swapchainCI.pNext = &m_SurfaceFullScreenExclusiveInfo;
+    VK_CHECK(vkCreateSwapchainKHR(logicalDevice, &swapchainCI, nullptr, &m_Handle), "Failed to create vulkan swapchain!");
     if (oldSwapchain) vkDestroySwapchainKHR(logicalDevice, oldSwapchain, nullptr);
 
     VK_CHECK(vkGetSwapchainImagesKHR(logicalDevice, m_Handle, &imageCount, nullptr), "Failed to retrieve swapchain images !");
@@ -407,16 +395,14 @@ void VulkanSwapchain::Invalidate()
     m_ImageViews.resize(m_Images.size());
     for (uint32_t i = 0; i < m_ImageViews.size(); ++i)
     {
-        ImageUtils::CreateImageView(m_Images[i], m_ImageViews[i], m_ImageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, 1,
-                                    1);
+        ImageUtils::CreateImageView(m_Images[i], m_ImageViews[i], m_ImageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, 0,
+                                    1, 0, 1);
 
         std::string debugName = "Swapchain image[" + std::to_string(i) + "]";
         VK_SetDebugName(logicalDevice, m_Images[i], VK_OBJECT_TYPE_IMAGE, debugName.data());
         debugName = "Swapchain image view[" + std::to_string(i) + "]";
         VK_SetDebugName(logicalDevice, m_ImageViews[i], VK_OBJECT_TYPE_IMAGE_VIEW, debugName.data());
     }
-
-    Renderer::GetStats().ImageViewCount += m_ImageViews.size();
     m_ImageLayouts.assign(m_Images.size(), VK_IMAGE_LAYOUT_UNDEFINED);
 
     switch (m_WindowMode)
@@ -492,7 +478,7 @@ bool VulkanSwapchain::AcquireImage()
 void VulkanSwapchain::PresentImage()
 {
     bool bWasEverUsed = true;  // In case Renderer didn't use it, we should set waitSemaphore to imageAvaliable, otherwise renderSemaphore.
-    if (m_ImageLayouts[m_ImageIndex] != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+    if (m_ImageLayouts.at(m_ImageIndex) != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
     {
         const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
                                                    ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
@@ -501,7 +487,7 @@ void VulkanSwapchain::PresentImage()
         vulkanCommandBuffer->BeginRecording(true);
 
         const auto imageBarrier =
-            VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
+            VulkanUtility::GetImageMemoryBarrier(m_Images.at(m_ImageIndex), VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts.at(m_ImageIndex),
                                                  VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                                                  VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, 1, 0, 1, 0);
 
@@ -514,16 +500,17 @@ void VulkanSwapchain::PresentImage()
         bWasEverUsed = false;
     }
 
-    VkPresentInfoKHR presentInfo = {VK_STRUCTURE_TYPE_PRESENT_INFO_KHR};
-    presentInfo.pImageIndices    = &m_ImageIndex;
-    presentInfo.swapchainCount   = 1;
-    presentInfo.pSwapchains      = &m_Handle;
-
-    presentInfo.waitSemaphoreCount = 1;
-    presentInfo.pWaitSemaphores    = bWasEverUsed ? &m_RenderSemaphore[m_FrameIndex] : &m_ImageAcquiredSemaphore[m_FrameIndex];
+    const VkPresentInfoKHR pi = {
+        .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
+        .waitSemaphoreCount = 1,
+        .pWaitSemaphores    = bWasEverUsed ? &m_RenderSemaphore.at(m_FrameIndex) : &m_ImageAcquiredSemaphore.at(m_FrameIndex),
+        .swapchainCount     = 1,
+        .pSwapchains        = &m_Handle,
+        .pImageIndices      = &m_ImageIndex,
+    };
 
     Timer t                                   = {};
-    const auto result                         = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &presentInfo);
+    const auto result                         = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &pi);
     Renderer::GetStats().SwapchainPresentTime = t.GetElapsedMilliseconds();
 
     if (result == VK_SUCCESS)
@@ -612,9 +599,7 @@ void VulkanSwapchain::Recreate()
 #endif
 
     for (auto& resizeCallback : m_ResizeCallbacks)
-    {
-        resizeCallback(m_ImageExtent.width, m_ImageExtent.height);
-    }
+        resizeCallback({.Width = m_ImageExtent.width, .Height = m_ImageExtent.height});
 }
 
 void VulkanSwapchain::Destroy()
@@ -626,12 +611,7 @@ void VulkanSwapchain::Destroy()
     vkDestroySwapchainKHR(logicalDevice, m_Handle, nullptr);
     vkDestroySurfaceKHR(context.GetInstance(), m_Surface, nullptr);
 
-    std::ranges::for_each(m_ImageViews,
-                          [&](auto& imageView)
-                          {
-                              --Renderer::GetStats().ImageViewCount;
-                              vkDestroyImageView(logicalDevice, imageView, nullptr);
-                          });
+    std::ranges::for_each(m_ImageViews, [&](auto& imageView) { ImageUtils::DestroyImageView(imageView); });
     std::ranges::for_each(m_ImageAcquiredSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
     std::ranges::for_each(m_RenderSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
     std::ranges::for_each(m_RenderFence, [&](auto& fence) { vkDestroyFence(logicalDevice, fence, nullptr); });
@@ -641,23 +621,11 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
 {
     Shared<VulkanCommandBuffer> vulkanCommandBuffer = nullptr;
 
-    bool bFromRenderer = false;
-    const auto& rd     = Renderer::GetRendererData();
-    if (const auto& commandBuffer = rd->CurrentRenderCommandBuffer.lock())
-    {
-        vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
-        PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
+    const auto& rd = Renderer::GetRendererData();
 
-        bFromRenderer = true;
-    }
-    else
-    {
-        const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
-                                                   ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
-                                                   ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
-        vulkanCommandBuffer                     = MakeShared<VulkanCommandBuffer>(cbSpec);
-        vulkanCommandBuffer->BeginRecording(true);
-    }
+    const auto& commandBuffer = rd->RenderCommandBuffer.at(m_FrameIndex);
+    vulkanCommandBuffer       = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+    PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
 
     vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain", glm::vec3(0.9f, 0.1f, 0.1f));
 
@@ -714,12 +682,6 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
     }
 
     vulkanCommandBuffer->EndDebugLabel();
-
-    if (!bFromRenderer)
-    {
-        vulkanCommandBuffer->EndRecording();
-        vulkanCommandBuffer->Submit()->Wait();
-    }
 }
 
 }  // namespace Pathfinder

@@ -52,12 +52,12 @@ class Application : private Unmovable, private Uncopyable
 
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE const auto& GetWindow() const { return m_Window; }
+    //  NODISCARD FORCEINLINE const auto& GetUILayer() const { return m_UILayer; }
     NODISCARD FORCEINLINE static const auto& Get()
     {
         PFR_ASSERT(s_Instance, "Application instance is not valid!");
         return *s_Instance;
     }
-
 
   private:
     static inline Application* s_Instance = nullptr;

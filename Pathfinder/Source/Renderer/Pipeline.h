@@ -7,6 +7,7 @@
 
 #include "RendererCoreDefines.h"
 #include "Buffer.h"
+#include "Image.h"
 
 namespace Pathfinder
 {
@@ -49,12 +50,11 @@ enum class EPipelineType : uint8_t
 };
 
 class Shader;
-class Framebuffer;
 
 struct GraphicsPipelineOptions
 {
     std::vector<BufferLayout> InputBufferBindings = {};
-    Shared<Framebuffer> TargetFramebuffer         = nullptr;
+    std::vector<EImageFormat> Formats             = {};
 
     ECullMode CullMode                   = ECullMode::CULL_MODE_NONE;
     EFrontFace FrontFace                 = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
@@ -74,33 +74,32 @@ struct GraphicsPipelineOptions
 
     bool operator==(const GraphicsPipelineOptions& other) const
     {
-        if (InputBufferBindings.size() != other.InputBufferBindings.size() ||  //
-            TargetFramebuffer != other.TargetFramebuffer ||                    //
-            CullMode != other.CullMode ||                                      //
-            FrontFace != other.FrontFace ||                                    //
-            PrimitiveTopology != other.PrimitiveTopology ||                    //
-            bMeshShading != other.bMeshShading ||                              //
-            LineWidth != other.LineWidth ||                                    //
-            bBlendEnable != other.bBlendEnable ||                              //
-            BlendMode != other.BlendMode ||                                    //
-            bDynamicPolygonMode != other.bDynamicPolygonMode ||                //
-            PolygonMode != other.PolygonMode ||                                //
-            bDepthTest != other.bDepthTest ||                                  //
-            bDepthWrite != other.bDepthWrite ||                                //
-            DepthCompareOp != other.DepthCompareOp)
+        if (InputBufferBindings.size() != other.InputBufferBindings.size() || Formats.size() != other.Formats.size() ||
+            std::tie(CullMode, FrontFace, PrimitiveTopology, bMeshShading, LineWidth, bBlendEnable, BlendMode, bDynamicPolygonMode,
+                     PolygonMode, bDepthTest, bDepthWrite,
+                     DepthCompareOp) != std::tie(other.CullMode, other.FrontFace, other.PrimitiveTopology, other.bMeshShading,
+                                                 other.LineWidth, other.bBlendEnable, other.BlendMode, other.bDynamicPolygonMode,
+                                                 other.PolygonMode, other.bDepthTest, other.bDepthWrite, other.DepthCompareOp))
+        {
             return false;
+        }
+
+        for (const auto& format : Formats)
+        {
+            if (std::find(other.Formats.begin(), other.Formats.end(), format) == other.Formats.end()) return false;
+        }
 
         for (size_t i{}; i < InputBufferBindings.size(); ++i)
         {
             const auto& thisBufferElements  = InputBufferBindings[i].GetElements();
             const auto& otherBufferElements = other.InputBufferBindings[i].GetElements();
+
             if (thisBufferElements.size() != otherBufferElements.size()) return false;
 
-            for (size_t k{}; k < thisBufferElements.size(); ++k)
+            for (size_t k = 0; k < thisBufferElements.size(); ++k)
             {
-                if (thisBufferElements[k].Name != otherBufferElements[k].Name ||      //
-                    thisBufferElements[k].Offset != otherBufferElements[k].Offset ||  //
-                    thisBufferElements[k].Type != otherBufferElements[k].Type)
+                if (std::tie(thisBufferElements[k].Name, thisBufferElements[k].Offset, thisBufferElements[k].Type) !=
+                    std::tie(otherBufferElements[k].Name, otherBufferElements[k].Offset, otherBufferElements[k].Type))
                     return false;
             }
         }
@@ -124,6 +123,7 @@ struct RayTracingPipelineOptions
     }
 };
 
+// NOTE: All pipeline are bindless-compatible by default!
 struct PipelineSpecification
 {
     std::string DebugName = s_DEFAULT_STRING;
@@ -136,7 +136,6 @@ struct PipelineSpecification
 
     Shared<Pathfinder::Shader> Shader = nullptr;
     EPipelineType PipelineType        = EPipelineType::PIPELINE_TYPE_GRAPHICS;
-    bool bBindlessCompatible          = false;
     uint64_t Hash                     = 0;  // Cleared and assigned on stage pipeline builder, based on options.
 
     FORCEINLINE bool operator==(const PipelineSpecification& other) const { return Hash == other.Hash; }

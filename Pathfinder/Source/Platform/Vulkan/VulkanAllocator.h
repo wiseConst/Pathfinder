@@ -12,7 +12,7 @@ class VulkanDevice;
 class VulkanAllocator final : private Uncopyable, private Unmovable
 {
   public:
-    VulkanAllocator(const VkDevice& device, const VkPhysicalDevice& physicalDevice);
+    VulkanAllocator(const VkInstance& instance, const VkDevice& device, const VkPhysicalDevice& physicalDevice);
     ~VulkanAllocator();
 
     void CreateImage(const VkImageCreateInfo& imageCI, VkImage& image, VmaAllocation& allocation,

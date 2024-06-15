@@ -7,7 +7,7 @@ layout(location = 0) out vec2  outUV;
 layout(location = 1) out vec4  outColor;
 layout(location = 2) out flat uint outTextureIndex; 
 
-const vec3 vertices[6] = {
+const vec3 g_Vertices[6] = {
     vec3(-1.f, -1.f, 0.f),
     vec3(1.f,  -1.f, 0.f),
     vec3(1.f,   1.f, 0.f),  
@@ -16,7 +16,7 @@ const vec3 vertices[6] = {
     vec3(-1.f, -1.f, 0.f)
 };
 
-const vec2 texCoords[6] = {
+const vec2 g_TexCoords[6] = {
 	vec2( 0.f, 0.f ),
 	vec2( 1.f, 0.f ),
 	vec2( 1.f, 1.f ),
@@ -34,10 +34,10 @@ void main()
 {
     Sprite sprite = QuadDrawBuffer(u_PC.addr0).sprites[gl_InstanceIndex];
 
-    const vec3 worldPos = RotateByQuat(sprite.Scale * vertices[gl_VertexIndex], sprite.Orientation) + sprite.Translation;
+    const vec3 worldPos = RotateByQuat(sprite.Scale * g_Vertices[gl_VertexIndex], sprite.Orientation) + sprite.Translation;
     gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
     
-    outUV = texCoords[gl_VertexIndex];
-    outColor = UnpackU8Vec4ToVec4(sprite.Color);
+    outUV = g_TexCoords[gl_VertexIndex];
+    outColor = unpackUnorm4x8(sprite.Color);
     outTextureIndex = sprite.BindlessTextureIndex;
 }

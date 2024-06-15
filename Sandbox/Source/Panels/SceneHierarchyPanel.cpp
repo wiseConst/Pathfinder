@@ -344,7 +344,7 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
                                              bIsAnythingAdjusted = true;
 
                                          static constexpr auto DrawImage =
-                                             [](const Shared<Texture2D>& texture, const std::string_view& imageName)
+                                             [](const Shared<Texture>& texture, const std::string_view& imageName)
                                          {
                                              if (!texture) return;
 

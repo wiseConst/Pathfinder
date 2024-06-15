@@ -49,13 +49,13 @@ void Scene::OnUpdate(const float deltaTime)
     for (const auto entityID : m_Registry.view<IDComponent>())
     {
         Entity entity{entityID, this};
-        auto& tc = entity.GetComponent<TransformComponent>();
+        auto& tc                         = entity.GetComponent<TransformComponent>();
+        const auto quaternionOrientation = glm::quat{glm::radians(tc.Rotation)};
 
         if (entity.HasComponent<SpriteComponent>())
         {
             const auto& sc = entity.GetComponent<SpriteComponent>();
 
-            const auto quaternionOrientation = glm::quat{tc.Rotation};
             Renderer2D::DrawQuad(tc.Translation, tc.Scale,
                                  {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w},
                                  sc.Color, sc.Texture, sc.Layer);
@@ -63,8 +63,7 @@ void Scene::OnUpdate(const float deltaTime)
 
         if (entity.HasComponent<MeshComponent>())
         {
-            const auto& mc                   = entity.GetComponent<MeshComponent>();
-            const auto quaternionOrientation = glm::quat{tc.Rotation};
+            const auto& mc = entity.GetComponent<MeshComponent>();
             Renderer::SubmitMesh(mc.Mesh, tc.Translation, tc.Scale,
                                  {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w});
 
@@ -96,8 +95,6 @@ void Scene::OnUpdate(const float deltaTime)
                 tc.Translation           = glm::vec3(0.0f);
                 const glm::vec3 position = tc.Translation;
 
-                const auto quaternionOrientation = glm::quat{tc.Rotation};
-
                 //  DebugRenderer::DrawAABB(mc.Mesh, tc, glm::vec4(1, 1, 0, 1));
                 DebugRenderer::DrawSphere(
                     tc.Translation, tc.Scale,
@@ -118,6 +115,7 @@ void Scene::OnUpdate(const float deltaTime)
 
 void Scene::RebuildTLAS()
 {
+    PFR_ASSERT(false, "Not implemented!");
     std::scoped_lock<std::mutex> lock(m_SceneMutex);
     // NOTE: Temp, no TLAS rebuilding/updating for now.
     if (m_TLAS.Buffer && m_TLAS.Handle) return;
@@ -140,8 +138,8 @@ void Scene::RebuildTLAS()
     for (auto& blas : blases)
         RayTracingBuilder::DestroyAccelerationStructure(blas);
 
-    PipelineLibrary::Get(Renderer::GetRendererData()->RTPipelineHash)->GetSpecification().Shader->Set("u_SceneTLAS", m_TLAS);
-    PipelineLibrary::Get(Renderer::GetRendererData()->RTComputePipelineHash)->GetSpecification().Shader->Set("u_SceneTLAS", m_TLAS);
+    //  PipelineLibrary::Get(Renderer::GetRendererData()->RTPipelineHash)->GetSpecification().Shader->Set("u_SceneTLAS", m_TLAS);
+    //   PipelineLibrary::Get(Renderer::GetRendererData()->RTComputePipelineHash)->GetSpecification().Shader->Set("u_SceneTLAS", m_TLAS);
     LOG_DEBUG("Time taken to rebuild TLAS: %0.3f ms.", t.GetElapsedMilliseconds());
 }
 

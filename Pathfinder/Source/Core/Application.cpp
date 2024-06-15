@@ -5,7 +5,7 @@
 
 #include "Window.h"
 #include "Renderer/GraphicsContext.h"
-#include "Renderer/Texture2D.h"
+#include "Renderer/Texture.h"
 #include "Renderer/Renderer.h"
 #include "Renderer/Renderer2D.h"
 
@@ -98,7 +98,6 @@ void Application::Run()
             ss << "[cpu]: " << t.GetElapsedMilliseconds() << "ms ";
             ss << "[gpu]: " << Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime << "ms ";
             ss << "[present]: " << Renderer::GetStats().SwapchainPresentTime << "ms ";
-            ss << "[rhi]: " << Renderer::GetStats().RHITime << "ms ";
             ss << "[objects]: " << Renderer::GetStats().ObjectsDrawn;
             ss << " [tris]: " << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
             ss << " [2D quads]: " << Renderer2D::GetStats().QuadCount;
@@ -106,6 +105,7 @@ void Application::Run()
             ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
             ss << " [samplers]: " << SamplerStorage::GetSamplerCount();
             ss << " [barriers]: " << Renderer::GetStats().BarrierCount;
+            ss << " [barrier batches]: " << Renderer::GetStats().BarrierBatchCount;
             m_Window->SetWindowTitle(ss.str().data());
 
             accumulatedDelta = 0.0;

@@ -2,7 +2,6 @@
 #include "VulkanContext.h"
 
 #include "VulkanDevice.h"
-#include "VulkanDeviceManager.h"
 #include "VulkanAllocator.h"
 
 #include <Core/Application.h>
@@ -18,7 +17,7 @@ VulkanContext::VulkanContext() noexcept
     CreateInstance();
     CreateDebugMessenger();
 
-    m_Device = VulkanDeviceManager::ChooseBestFitDevice(m_VulkanInstance);
+    m_Device = MakeUnique<VulkanDevice>(m_VulkanInstance);
 }
 
 VulkanContext::~VulkanContext()
@@ -44,19 +43,18 @@ void VulkanContext::CreateInstance()
 #endif
     PFR_ASSERT(PFR_VK_API_VERSION <= supportedApiVersionFromDLL, "Desired VK version >= available VK version.");
 
-    const VkApplicationInfo applicationInfo = {VK_STRUCTURE_TYPE_APPLICATION_INFO,
-                                               nullptr,
-                                               Application::Get().GetSpecification().Title.data(),
-                                               VK_MAKE_API_VERSION(0, 1, 1, 0),
-                                               s_ENGINE_NAME.data(),
-                                               VK_MAKE_API_VERSION(0, 1, 1, 0),
-                                               supportedApiVersionFromDLL};
-    VkInstanceCreateInfo instanceCI         = {VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO};
-    instanceCI.pApplicationInfo             = &applicationInfo;
+    const VkApplicationInfo applicationInfo = {.sType              = VK_STRUCTURE_TYPE_APPLICATION_INFO,
+                                               .pApplicationName   = Application::Get().GetSpecification().Title.data(),
+                                               .applicationVersion = VK_MAKE_API_VERSION(0, 1, 1, 0),
+                                               .pEngineName        = s_ENGINE_NAME.data(),
+                                               .engineVersion      = VK_MAKE_API_VERSION(0, 1, 1, 0),
+                                               .apiVersion         = supportedApiVersionFromDLL};
 
     const auto enabledInstanceExtensions = GetRequiredExtensions();
-    instanceCI.enabledExtensionCount     = static_cast<uint32_t>(enabledInstanceExtensions.size());
-    instanceCI.ppEnabledExtensionNames   = enabledInstanceExtensions.data();
+    VkInstanceCreateInfo instanceCI      = {.sType                   = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO,
+                                            .pApplicationInfo        = &applicationInfo,
+                                            .enabledExtensionCount   = static_cast<uint32_t>(enabledInstanceExtensions.size()),
+                                            .ppEnabledExtensionNames = enabledInstanceExtensions.data()};
 
     if constexpr (VK_FORCE_VALIDATION || s_bEnableValidationLayers)
     {
@@ -65,10 +63,10 @@ void VulkanContext::CreateInstance()
     }
 
 #if VK_SHADER_DEBUG_PRINTF
-    VkValidationFeaturesEXT validationInfo                           = {VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT};
     constexpr VkValidationFeatureEnableEXT validationFeatureToEnable = VK_VALIDATION_FEATURE_ENABLE_DEBUG_PRINTF_EXT;
-    validationInfo.enabledValidationFeatureCount                     = 1;
-    validationInfo.pEnabledValidationFeatures                        = &validationFeatureToEnable;
+    VkValidationFeaturesEXT validationInfo                           = {.sType                         = VK_STRUCTURE_TYPE_VALIDATION_FEATURES_EXT,
+                                                                        .pEnabledValidationFeatures    = &validationFeatureToEnable,
+                                                                        .enabledValidationFeatureCount = 1};
 
     instanceCI.pNext = &validationInfo;
 #endif
@@ -96,15 +94,14 @@ void VulkanContext::CreateDebugMessenger()
     if constexpr (!s_bEnableValidationLayers && !VK_FORCE_VALIDATION) return;
 
     constexpr VkDebugUtilsMessengerCreateInfoEXT debugMessengerCI = {
-        VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
-        nullptr,
-        0,  //
-        VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
-            VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,  //
+        .sType           = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT,
+        .messageSeverity = VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_INFO_BIT_EXT |
+                           VK_DEBUG_UTILS_MESSAGE_SEVERITY_WARNING_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_SEVERITY_ERROR_BIT_EXT,
+        .messageType =  //
         VK_DEBUG_UTILS_MESSAGE_TYPE_GENERAL_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_VALIDATION_BIT_EXT |
-            VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,  //
-        &VK_DebugCallback,                                                                                                 //
-        nullptr                                                                                                            // pUserData
+        VK_DEBUG_UTILS_MESSAGE_TYPE_PERFORMANCE_BIT_EXT | VK_DEBUG_UTILS_MESSAGE_TYPE_DEVICE_ADDRESS_BINDING_BIT_EXT,  //
+        .pfnUserCallback = &VK_DebugCallback,                                                                          //
+        .pUserData       = nullptr                                                                                     // pUserData
     };
     VK_CHECK(vkCreateDebugUtilsMessengerEXT(m_VulkanInstance, &debugMessengerCI, nullptr, &m_DebugMessenger),
              "Failed to create debug messenger!");

@@ -14,11 +14,6 @@ namespace Pathfinder
 namespace ImageUtils
 {
 
-uint32_t CalculateMipCount(const uint32_t width, const uint32_t height)
-{
-    return static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;  // +1 for base mip level.
-}
-
 void* LoadRawImage(const std::filesystem::path& imagePath, bool bFlipOnLoad, int32_t* x, int32_t* y, int32_t* nChannels)
 {
     PFR_ASSERT(!imagePath.empty() && x && y && nChannels, "Invalid data passed into LoadRawImage()!");

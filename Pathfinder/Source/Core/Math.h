@@ -7,6 +7,8 @@
 namespace Pathfinder
 {
 
+// TODO: Replace with glm type packing.
+
 static constexpr auto s_PFR_SMALL_NUMBER = 10.E-9f;
 
 NODISCARD FORCEINLINE static bool IsNearlyZero(const double val)
@@ -27,24 +29,6 @@ NODISCARD FORCEINLINE static bool IsNearlyEqual(const double lhs, const double r
 NODISCARD FORCEINLINE static bool IsNearlyEqual(const float lhs, const float rhs)
 {
     return glm::abs(rhs - lhs) <= s_PFR_SMALL_NUMBER;
-}
-
-NODISCARD FORCEINLINE static uint32_t DivideToNextMultiple(const uint32_t dividend, const uint32_t divisor)
-{
-    PFR_ASSERT(divisor != 0, "Division by zero!");
-
-    return (dividend + divisor - 1) / divisor;
-}
-
-NODISCARD FORCEINLINE static glm::u8vec4 PackVec4ToU8Vec4(const glm::vec4& vec)
-{
-    // Normalize the components to [0, 255]
-    const uint8_t r = static_cast<uint8_t>(vec.r * 255.0f);
-    const uint8_t g = static_cast<uint8_t>(vec.g * 255.0f);
-    const uint8_t b = static_cast<uint8_t>(vec.b * 255.0f);
-    const uint8_t a = static_cast<uint8_t>(vec.a * 255.0f);
-
-    return glm::u8vec4(r, g, b, a);
 }
 
 NODISCARD FORCEINLINE static Plane ComputePlane(const glm::vec3& p0, const glm::vec3& normal)

@@ -1,12 +1,5 @@
 //#pragma once
 
-uint32_t DivideToNextMultiple(const uint32_t dividend, const uint32_t divisor)
-{
-    if(divisor == 0) return 0;
-
-    return (dividend + divisor - 1) / divisor;
-}
-
 mat3 QuatToRotMat3(const vec4 q) {
     const vec3 q2 = q.xyz * q.xyz;
     const vec3 qq2 = q.xyz * q2;
@@ -25,15 +18,8 @@ float saturate(float x)
     return clamp(x, 0.0, 1.0);
 }
 
-vec4 UnpackU8Vec4ToVec4(u8vec4 packed)
-{
-    const float invDivisor = 1 / 255.0f;
-    const float r          = invDivisor * packed.r;
-    const float g          = invDivisor * packed.g;
-    const float b          = invDivisor * packed.b;
-    const float a          = invDivisor * packed.a;
-
-    return vec4(r, g, b, a);
+vec4 unpackUnorm4x8(uint p) {
+	return vec4(p >> 24, p >> 16, p >> 8, p) * 0.0039215686274509803921568627451f;
 }
 
 // https://blog.molecular-matters.com/2013/05/24/a-faster-quaternion-vector-multiplication/

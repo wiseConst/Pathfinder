@@ -5,8 +5,7 @@
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
 
-#include "Renderer/Renderer.h"
-#include "VulkanBindlessRenderer.h"
+#include <Renderer/Renderer.h>
 
 namespace Pathfinder
 {
@@ -17,14 +16,12 @@ namespace BufferUtils
 void CreateBuffer(VkBuffer& buffer, VmaAllocation& allocation, const size_t size, const VkBufferUsageFlags bufferUsage,
                   VmaMemoryUsage memoryUsage)
 {
-    VkBufferCreateInfo bufferCI = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferCI.usage              = bufferUsage;
-    bufferCI.size               = size;
-
-    // NOTE: No sharing between queues
-    bufferCI.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
-    bufferCI.queueFamilyIndexCount = 0;
-    bufferCI.pQueueFamilyIndices   = nullptr;
+    const VkBufferCreateInfo bufferCI = {.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                                         .size                  = size,
+                                         .usage                 = bufferUsage,
+                                         .sharingMode           = VK_SHARING_MODE_EXCLUSIVE,
+                                         .queueFamilyIndexCount = 0,
+                                         .pQueueFamilyIndices   = nullptr};
 
     VulkanContext::Get().GetDevice()->GetAllocator()->CreateBuffer(bufferCI, buffer, allocation, memoryUsage);
 }
@@ -127,22 +124,18 @@ VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec, const void* da
                                   BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.UsageFlags),
                                   BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.UsageFlags));
         m_DescriptorInfo = {m_Handle, 0, m_Specification.Capacity};
+
+        if (m_Specification.DebugName != s_DEFAULT_STRING)
+            VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_BUFFER,
+                            m_Specification.DebugName.data());
     }
 
-    if (data && dataSize != 0)
-    {
-        SetData(data, dataSize);
-    }
+    if (data && dataSize != 0) SetData(data, dataSize);
 
     if (m_Specification.Capacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
     {
         void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
         m_bIsMapped  = true;
-    }
-
-    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
-    {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.Binding, m_Index);
     }
 }
 
@@ -174,6 +167,10 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
                                   BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.UsageFlags));
 
         m_DescriptorInfo = {m_Handle, 0, m_Specification.Capacity};
+
+        if (m_Specification.DebugName != s_DEFAULT_STRING)
+            VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_BUFFER,
+                            m_Specification.DebugName.data());
     }
 
     if (dataSize > m_Specification.Capacity) Resize(dataSize);
@@ -203,44 +200,42 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
     else
     {
         const auto& rd = Renderer::GetRendererData();
-        rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
+        rd->UploadHeap.at(rd->FrameIndex)->SetData(data, dataSize);
 
-#if TODO
-        if (auto commandBuffer = rd->CurrentTransferCommandBuffer.lock())
+#if 0
+        if (rd->bIsFrameBegin)
         {
-            auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
+            auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(rd->RenderCommandBuffer.at(rd->FrameIndex));
             PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
 
             const VkBufferCopy region = {0, 0, dataSize};
-            vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
+            vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap.at(rd->FrameIndex)->Get(), m_Handle, 1, &region);
         }
         else
-#endif
         {
-            const CommandBufferSpecification cbSpec = {ECommandBufferType::/*COMMAND_BUFFER_TYPE_GRAPHICS*/ COMMAND_BUFFER_TYPE_TRANSFER,
-                                                       ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
-                                                       Renderer::GetRendererData()->FrameIndex,
-                                                       ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
-            auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
-            vulkanCommandBuffer->BeginRecording(true);
+#endif
+        const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER,
+                                                   .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                   .FrameIndex = Renderer::GetRendererData()->FrameIndex,
+                                                   .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+        auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
+        vulkanCommandBuffer->BeginRecording(true);
 
-            const VkBufferCopy region = {0, 0, dataSize};
-            vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
+        const VkBufferCopy region = {0, 0, dataSize};
+        vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap.at(rd->FrameIndex)->Get(), m_Handle, 1, &region);
 
-            vulkanCommandBuffer->EndRecording();
-            vulkanCommandBuffer->Submit()->Wait();
-        }
+        vulkanCommandBuffer->EndRecording();
+        vulkanCommandBuffer->Submit()->Wait();
+#if 0
     }
-
-    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
-    {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&GetDescriptorInfo(), m_Specification.Binding, m_Index);
+#endif
     }
 }
 
 void VulkanBuffer::Resize(const size_t newBufferCapacity)
 {
     if (newBufferCapacity == m_Specification.Capacity) return;
+    PFR_ASSERT(newBufferCapacity != 0, "Zero buffer capacity!");
 
     Destroy();
     m_Specification.Capacity = newBufferCapacity;
@@ -249,15 +244,14 @@ void VulkanBuffer::Resize(const size_t newBufferCapacity)
                               BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.UsageFlags));
     m_DescriptorInfo = {m_Handle, 0, m_Specification.Capacity};
 
+    if (m_Specification.DebugName != s_DEFAULT_STRING)
+        VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_BUFFER,
+                        m_Specification.DebugName.data());
+
     if (m_Specification.Capacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
     {
         void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
         m_bIsMapped  = true;
-    }
-
-    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
-    {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.Binding, m_Index);
     }
 }
 
@@ -275,11 +269,6 @@ void VulkanBuffer::Destroy()
     m_Handle = VK_NULL_HANDLE;
 
     m_DescriptorInfo = {};
-
-    if (m_Index != UINT32_MAX && m_Specification.bBindlessUsage)
-    {
-        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index, m_Specification.Binding);
-    }
 }
 
 }  // namespace Pathfinder

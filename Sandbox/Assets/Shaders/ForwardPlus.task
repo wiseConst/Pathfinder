@@ -13,28 +13,24 @@ shared uint32_t passedMeshletCount;
 
 void main()
 {
-    const uint32_t mi = gl_WorkGroupID.x;
     const uint32_t lid = gl_LocalInvocationID.x;
+    const uint32_t gid = gl_GlobalInvocationID.x;
 
     if(lid == 0) 
     {
         passedMeshletCount = 0;
-        tp_TaskData.baseMeshletID = gl_WorkGroupID.x * MESHLET_LOCAL_GROUP_SIZE;
     }
 
-#ifdef __PFR_RENDER_OPAQUE_OBJECTS_
-        if(CulledMeshIDBufferOpaque(u_PC.addr0).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
-        MeshData md = s_GlobalMeshDataBufferOpaque.MeshesData[CulledMeshIDBufferOpaque(u_PC.addr0).CulledMeshIDs[gl_DrawID]];
-#endif
+    // Out-of-bounds #0
+    if(CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID]];
+   
+    // Out-of-bounds #1
+    if(gid >= md.meshletCount) return;
 
-#ifdef __PFR_RENDER_TRANSPARENT_OBJECTS_
-        if(CulledMeshIDBufferTransparent(u_PC.addr0).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
-        MeshData md = s_GlobalMeshDataBufferTransparent.MeshesData[CulledMeshIDBufferTransparent(u_PC.addr0).CulledMeshIDs[gl_DrawID]];
-#endif
-  
     barrier();
 
-    const Meshlet meshlet = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[tp_TaskData.baseMeshletID + lid];
+    const Meshlet meshlet = MeshletBuffer(md.meshletBufferBDA).meshlets[gid];
     const vec3 coneApex = RotateByQuat(meshlet.coneApex * md.scale, md.orientation) + md.translation;
     const vec3 coneAxis = RotateByQuat(meshlet.coneAxis, md.orientation);
 
@@ -45,13 +41,14 @@ void main()
     if (!IsConeBackfacing(CameraData(u_PC.CameraDataBuffer).Position, coneApex, coneAxis, meshlet.coneCutoff, sphere.Radius) && SphereInsideFrustum(sphere, CameraData(u_PC.CameraDataBuffer).ViewFrustum))
     {
        const uint32_t index = atomicAdd(passedMeshletCount, 1);
-       tp_TaskData.meshlets[index] = uint8_t(lid);
+       tp_TaskData.meshlets[index] = uint8_t(gid & 0x1F);
     }
 
     barrier();
     
     if (lid == 0 && passedMeshletCount != 0)
     {
+        tp_TaskData.baseMeshletID = gid;
         EmitMeshTasksEXT(passedMeshletCount, 1, 1);
     }
 }

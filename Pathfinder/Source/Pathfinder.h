@@ -11,7 +11,6 @@
 
 // MISC
 #include <Core/Math.h>
-#include <Core/Timer.h>
 #include <Core/Keys.h>
 #include <Core/Input.h>
 
@@ -26,7 +25,7 @@
 #include <Renderer/Swapchain.h>
 #include <Renderer/RendererAPI.h>
 #include <Renderer/Renderer2D.h>
-#include <Renderer/Texture2D.h>
+#include <Renderer/Texture.h>
 #include <Renderer/Image.h>
 #include <Renderer/Renderer.h>
 #include <Renderer/Camera/Camera.h>

@@ -28,7 +28,7 @@ class DebugRenderer
     FORCEINLINE static void DrawSphere(const glm::vec3& translation, const glm::vec3& scale, const glm::vec4& orientation,
                                        const glm::vec3& center, const float radius, const glm::vec4& color)
     {
-        s_DebugRendererData->DebugSpheres.emplace_back(translation, scale, orientation, center, radius, PackVec4ToU8Vec4(color));
+        s_DebugRendererData->DebugSpheres.emplace_back(translation, scale, orientation, center, radius, glm::packUnorm4x8(color));
     }
 
     static void Flush(Shared<CommandBuffer>& renderCommandBuffer);
@@ -38,10 +38,10 @@ class DebugRenderer
     {
         glm::vec3 Translation = glm::vec3(0.f);
         glm::vec3 Scale       = glm::vec3(1.f);
-        glm::vec4 Orientation = glm::vec4(0.f, 0.f, 0.f,1.f);
+        glm::vec4 Orientation = glm::vec4(0.f, 0.f, 0.f, 1.f);
         glm::vec3 Center      = glm::vec3(0.f);
         float Radius          = 0.f;
-        glm::u8vec4 Color     = glm::u8vec4(1);
+        uint32_t Color        = 0xFFFFFFFF;  // white by default
     };
 
     struct DebugRendererData

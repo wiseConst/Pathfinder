@@ -7,7 +7,7 @@ namespace Pathfinder
 {
 
 class Pipeline;
-class Texture2D;
+class Texture;
 
 // struct SpriteProxy
 //{
@@ -15,7 +15,7 @@ class Texture2D;
 //     glm::vec3 Scale           = glm::vec3(1.0f);
 //     glm::vec4 Orientation     = glm::vec4(1.0f, 0.f, 0.f, 0.f);
 //     glm::vec4 Color           = glm::vec4(1.0f);
-//     Shared<Texture2D> Texture = nullptr;
+//     Shared<Texture> Texture = nullptr;
 //     uint32_t Layer            = 0;  // Only for sorting.
 // };
 
@@ -29,7 +29,7 @@ class Renderer2D final : private Uncopyable, private Unmovable
     static void Flush(Shared<CommandBuffer>& renderCommandBuffer);
 
     static void DrawQuad(const glm::vec3& translation, const glm::vec3& scale, const glm::vec4& orientation,
-                         const glm::vec4& color = glm::vec4(1.0f), const Shared<Texture2D>& texture = nullptr, const uint32_t layer = 0);
+                         const glm::vec4& color = glm::vec4(1.0f), const Shared<Texture>& texture = nullptr, const uint32_t layer = 0);
 
     NODISCARD FORCEINLINE static auto& GetStats() { return s_Renderer2DStats; }
 

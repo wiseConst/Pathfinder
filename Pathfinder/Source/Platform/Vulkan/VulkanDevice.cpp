@@ -3,14 +3,346 @@
 
 #include "VulkanAllocator.h"
 #include "VulkanDescriptors.h"
-#include <Renderer/Renderer.h>
+
+#include "VulkanImage.h"
 #include <Core/Application.h>
 #include <Core/Window.h>
 
-#include <Core/CoreUtils.h>
-
 namespace Pathfinder
 {
+
+namespace DeviceUtils
+{
+
+struct QueueFamilyIndices
+{
+    FORCEINLINE bool IsComplete() const
+    {
+        return GraphicsFamily.has_value() && PresentFamily.has_value() && ComputeFamily.has_value() && TransferFamily.has_value();
+    }
+
+    static QueueFamilyIndices FindQueueFamilyIndices(const VkPhysicalDevice& physicalDevice)
+    {
+        QueueFamilyIndices indices = {};
+
+        uint32_t queueFamilyCount = 0;
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+        PFR_ASSERT(queueFamilyCount != 0, "Looks like your gpu doesn't have any queues to submit commands to.");
+
+        std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+        vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
+
+        uint32_t i = 0;
+        for (const auto& family : queueFamilies)
+        {
+            if (family.queueCount <= 0)
+            {
+                ++i;
+                continue;
+            }
+
+            if (family.queueFlags & VK_QUEUE_GRAPHICS_BIT && !indices.GraphicsFamily.has_value())
+            {
+                indices.GraphicsFamily = i;
+                PFR_ASSERT(family.timestampValidBits != 0, "Queue family doesn't support timestamp queries!");
+            }
+            else if (family.queueFlags & VK_QUEUE_COMPUTE_BIT && !indices.ComputeFamily.has_value())  // Dedicated async-compute queue
+            {
+                indices.ComputeFamily = i;
+                PFR_ASSERT(family.timestampValidBits != 0, "Queue family doesn't support timestamp queries!");
+            }
+
+            const bool bDMAQueue = (family.queueFlags & VK_QUEUE_TRANSFER_BIT) &&           //
+                                   !(family.queueFlags & VK_QUEUE_GRAPHICS_BIT) &&          //
+                                   !(family.queueFlags & VK_QUEUE_COMPUTE_BIT) &&           //
+                                   !(family.queueFlags & VK_QUEUE_VIDEO_DECODE_BIT_KHR) &&  //
+#ifdef VK_ENABLE_BETA_EXTENSIONS
+                                   !(family.queueFlags & VK_QUEUE_VIDEO_ENCODE_BIT_KHR) &&  //
+#endif
+                                   !(family.queueFlags & VK_QUEUE_OPTICAL_FLOW_BIT_NV);
+            if (bDMAQueue && !indices.TransferFamily.has_value())  // Dedicated transfer queue for DMA
+            {
+                LOG_TRACE("Found DMA queue!");
+                indices.TransferFamily = i;
+            }
+
+            if (indices.GraphicsFamily == i)
+            {
+                VkBool32 bPresentSupport{VK_FALSE};
+
+#if PFR_WINDOWS
+                bPresentSupport = vkGetPhysicalDeviceWin32PresentationSupportKHR(physicalDevice, i);
+#elif PFR_LINUX
+                PFR_ASSERT(false, "Not implemented!");
+                bPresentSupport = vkGetPhysicalDeviceWaylandPresentationSupportKHR(physicalDevice, i, glfwGetWaylandDisplay());
+#elif PFR_MACOS
+                // NOTE:
+                // On macOS, all physical devices and queue families must be capable of presentation with any layer.
+                // As a result there is no macOS-specific query for these capabilities.
+                bPresentSupport = true;
+#endif
+
+                if (bPresentSupport)
+                    indices.PresentFamily = indices.GraphicsFamily;
+                else
+                    PFR_ASSERT(false, "Present family should be the same as graphics family!");
+            }
+
+            if (indices.IsComplete()) break;
+            ++i;
+        }
+
+        // From vulkan-tutorial.com: Any queue family with VK_QUEUE_GRAPHICS_BIT or VK_QUEUE_COMPUTE_BIT capabilities already implicitly
+        // support VK_QUEUE_TRANSFER_BIT operations.
+        if (!indices.TransferFamily.has_value()) indices.TransferFamily = indices.GraphicsFamily;
+
+        // Rely on that graphics queue will be from first family, which contains everything.
+        if (!indices.ComputeFamily.has_value()) indices.ComputeFamily = indices.GraphicsFamily;
+
+        PFR_ASSERT(indices.IsComplete(), "QueueFamilyIndices wasn't setup correctly!");
+        return indices;
+    }
+
+    std::optional<uint32_t> GraphicsFamily = std::nullopt;
+    std::optional<uint32_t> PresentFamily  = std::nullopt;
+    std::optional<uint32_t> ComputeFamily  = std::nullopt;
+    std::optional<uint32_t> TransferFamily = std::nullopt;
+};
+
+struct GPUInfo
+{
+    VkPhysicalDeviceProperties Properties             = {};
+    VkPhysicalDeviceDriverProperties DriverProperties = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DRIVER_PROPERTIES};
+    VkPhysicalDeviceMemoryProperties MemoryProperties = {};
+    VkPhysicalDeviceFeatures Features                 = {};
+
+    VkPhysicalDeviceMeshShaderPropertiesEXT MSProperties = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_PROPERTIES_EXT};
+    VkPhysicalDeviceAccelerationStructurePropertiesKHR ASProperties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_PROPERTIES_KHR};
+    VkPhysicalDeviceRayTracingPipelinePropertiesKHR RTProperties = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_PROPERTIES_KHR};
+
+    DeviceUtils::QueueFamilyIndices QueueFamilyIndices = {};
+    VkPhysicalDevice PhysicalDevice                    = VK_NULL_HANDLE;
+};
+
+static bool CheckDeviceExtensionSupport(GPUInfo& gpuInfo)
+{
+    uint32_t extensionCount = 0;
+    VK_CHECK(vkEnumerateDeviceExtensionProperties(gpuInfo.PhysicalDevice, nullptr, &extensionCount, nullptr),
+             "Failed to retrieve available device extensions!");
+
+    std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+    VK_CHECK(vkEnumerateDeviceExtensionProperties(gpuInfo.PhysicalDevice, nullptr, &extensionCount, availableExtensions.data()),
+             "Failed to retrieve available device extensions!");
+
+#if VK_LOG_INFO
+    for (const auto& [extensionName, specVersion] : availableExtensions)
+    {
+        LOG_TRACE("{} ({}.{}.{}.{})", extensionName, VK_API_VERSION_VARIANT(specVersion), VK_API_VERSION_MAJOR(specVersion),
+                  VK_API_VERSION_MINOR(specVersion), VK_API_VERSION_PATCH(specVersion));
+    }
+#endif
+
+    for (const auto& requestedExt : s_DeviceExtensions)
+    {
+        bool bIsSupported = false;
+        for (const auto& availableExt : availableExtensions)
+        {
+            if (strcmp(requestedExt, availableExt.extensionName) == 0)
+            {
+                bIsSupported = true;
+                break;
+            }
+        }
+
+        if (!bIsSupported)
+        {
+            LOG_ERROR("Extension: {} is not supported!", requestedExt);
+            return false;
+        }
+    }
+
+    return true;
+}
+
+static bool IsDeviceSuitable(GPUInfo& gpuInfo)
+{
+    // Query GPU properties(device name, limits, etc..)
+    vkGetPhysicalDeviceProperties(gpuInfo.PhysicalDevice, &gpuInfo.Properties);
+
+    if (!CheckDeviceExtensionSupport(gpuInfo)) return false;
+
+    // Query GPU features(geometry shader support, multi-viewport support, etc..)
+    vkGetPhysicalDeviceFeatures(gpuInfo.PhysicalDevice, &gpuInfo.Features);
+
+    // Query GPU if it supports bindless rendering
+    VkPhysicalDeviceDescriptorIndexingFeatures descriptorIndexingFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_DESCRIPTOR_INDEXING_FEATURES};
+    VkPhysicalDeviceFeatures2 deviceFeatures2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2,
+                                                 .pNext = &descriptorIndexingFeatures};
+
+    void** ppDeviceFeaturesNext = &descriptorIndexingFeatures.pNext;
+
+    VkPhysicalDeviceRayQueryFeaturesKHR rayQueryFeatures = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR};
+
+    *ppDeviceFeaturesNext = &rayQueryFeatures;
+    ppDeviceFeaturesNext  = &rayQueryFeatures.pNext;
+
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR asFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
+
+    *ppDeviceFeaturesNext = &asFeatures;
+    ppDeviceFeaturesNext  = &asFeatures.pNext;
+
+    VkPhysicalDeviceRayTracingPipelineFeaturesKHR rtPipelineFeatures = {
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
+
+    *ppDeviceFeaturesNext = &rtPipelineFeatures;
+    ppDeviceFeaturesNext  = &rtPipelineFeatures.pNext;
+
+    VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeatures = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
+    *ppDeviceFeaturesNext                                    = &meshShaderFeatures;
+    ppDeviceFeaturesNext                                     = &meshShaderFeatures.pNext;
+    vkGetPhysicalDeviceFeatures2(gpuInfo.PhysicalDevice, &deviceFeatures2);
+
+    // Query GPU memory properties(heap sizes, etc..)
+    vkGetPhysicalDeviceMemoryProperties(gpuInfo.PhysicalDevice, &gpuInfo.MemoryProperties);
+
+    VkPhysicalDeviceProperties2 Properties2 = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PROPERTIES_2, .pNext = &gpuInfo.DriverProperties};
+    // Also query for RT pipeline properties
+    gpuInfo.DriverProperties.pNext = &gpuInfo.RTProperties;
+
+    // Query info about acceleration structures
+    gpuInfo.RTProperties.pNext = &gpuInfo.ASProperties;
+
+    // Query info about mesh shading
+    gpuInfo.ASProperties.pNext = &gpuInfo.MSProperties;
+    vkGetPhysicalDeviceProperties2(gpuInfo.PhysicalDevice, &Properties2);
+
+    PFR_ASSERT(gpuInfo.Properties.limits.timestampPeriod != 0, "Timestamp queries not supported!");
+    if (!descriptorIndexingFeatures.runtimeDescriptorArray || !descriptorIndexingFeatures.descriptorBindingPartiallyBound ||
+        !descriptorIndexingFeatures.descriptorBindingVariableDescriptorCount)
+    {
+        LOG_ERROR("Bindless descriptor management not supported!");
+        return false;
+    }
+
+    if (!rayQueryFeatures.rayQuery || !asFeatures.accelerationStructure || !rtPipelineFeatures.rayTracingPipeline)
+    {
+        LOG_ERROR("RTX not supported!");
+        return false;
+    }
+
+    if (!meshShaderFeatures.meshShader || !meshShaderFeatures.meshShaderQueries || !meshShaderFeatures.taskShader)
+    {
+        LOG_ERROR("Mesh-Shading not supported!");
+        return false;
+    }
+
+#if VK_LOG_INFO
+    LOG_INFO("GPU info:");
+    LOG_TRACE(" Renderer: {}", gpuInfo.Properties.deviceName);
+    LOG_TRACE(" Vendor: {}/{}", VulkanUtility::GetVendorNameCString(gpuInfo.Properties.vendorID), gpuInfo.Properties.vendorID);
+    LOG_TRACE(" {} {}", gpuInfo.DriverProperties.driverName, gpuInfo.DriverProperties.driverInfo);
+    LOG_TRACE(" API Version {}.{}.{}", VK_API_VERSION_MAJOR(gpuInfo.Properties.apiVersion),
+              VK_API_VERSION_MINOR(gpuInfo.Properties.apiVersion), VK_API_VERSION_PATCH(gpuInfo.Properties.apiVersion));
+    LOG_INFO(" Device Type: {}", VulkanUtility::GetDeviceTypeCString(gpuInfo.Properties.deviceType));
+    LOG_INFO(" Max Push Constants Size(depends on gpu): {}", gpuInfo.Properties.limits.maxPushConstantsSize);
+    LOG_INFO(" Max Sampler Anisotropy: {}", gpuInfo.Properties.limits.maxSamplerAnisotropy);
+    LOG_INFO(" Max Sampler Allocations: {}", gpuInfo.Properties.limits.maxSamplerAllocationCount);
+    LOG_INFO(" Min Uniform Buffer Offset Alignment: {}", gpuInfo.Properties.limits.minUniformBufferOffsetAlignment);
+    LOG_INFO(" Min Memory Map Alignment: {}", gpuInfo.Properties.limits.minMemoryMapAlignment);
+    LOG_INFO(" Min Storage Buffer Offset Alignment: {}", gpuInfo.Properties.limits.minStorageBufferOffsetAlignment);
+    LOG_INFO(" Max Memory Allocations: {}", gpuInfo.Properties.limits.maxMemoryAllocationCount);
+
+    LOG_INFO(" [RTX]: Max Ray Bounce: {}", gpuInfo.RTProperties.maxRayRecursionDepth);
+    LOG_INFO(" [RTX]: Shader Group Handle Size: {}", gpuInfo.RTProperties.shaderGroupHandleSize);
+    LOG_INFO(" [RTX]: Max Primitive Count: {}", gpuInfo.ASProperties.maxPrimitiveCount);
+    LOG_INFO(" [RTX]: Max Geometry Count: {}", gpuInfo.ASProperties.maxGeometryCount);
+    LOG_INFO(" [RTX]: Max Instance(BLAS) Count: {}", gpuInfo.ASProperties.maxInstanceCount);
+
+    LOG_INFO(" [MS]: Max Output Vertices: {}", gpuInfo.MSProperties.maxMeshOutputVertices);
+    LOG_INFO(" [MS]: Max Output Primitives: {}", gpuInfo.MSProperties.maxMeshOutputPrimitives);
+    LOG_INFO(" [MS]: Max Output Memory Size: {}", gpuInfo.MSProperties.maxMeshOutputMemorySize);
+    LOG_INFO(" [MS]: Max Mesh Work Group Count: (X, Y, Z) - ({}, {}, {})", gpuInfo.MSProperties.maxMeshWorkGroupCount[0],
+             gpuInfo.MSProperties.maxMeshWorkGroupCount[1], gpuInfo.MSProperties.maxMeshWorkGroupCount[2]);
+    LOG_INFO(" [MS]: Max Mesh Work Group Invocations: {}", gpuInfo.MSProperties.maxMeshWorkGroupInvocations);
+    LOG_INFO(" [MS]: Max Mesh Work Group Size: (X, Y, Z) - ({}, {}, {})", gpuInfo.MSProperties.maxMeshWorkGroupSize[0],
+             gpuInfo.MSProperties.maxMeshWorkGroupSize[1], gpuInfo.MSProperties.maxMeshWorkGroupSize[2]);
+    LOG_INFO(" [MS]: Max Mesh Work Group Total Count: {}", gpuInfo.MSProperties.maxMeshWorkGroupTotalCount);
+    LOG_WARN(" [MS]: Max Preferred Mesh Work Group Invocations: {}", gpuInfo.MSProperties.maxPreferredMeshWorkGroupInvocations);
+
+    // Task shader
+    LOG_INFO(" [TS]: Max Task Work Group Count: (X, Y, Z) - ({}, {}, {})", gpuInfo.MSProperties.maxTaskWorkGroupCount[0],
+             gpuInfo.MSProperties.maxTaskWorkGroupCount[1], gpuInfo.MSProperties.maxTaskWorkGroupCount[2]);
+    LOG_INFO(" [TS]: Max Task Work Group Invocations: {}", gpuInfo.MSProperties.maxTaskWorkGroupInvocations);
+    LOG_INFO(" [TS]: Max Task Work Group Size: (X, Y, Z) - ({}, {}, {})", gpuInfo.MSProperties.maxTaskWorkGroupSize[0],
+             gpuInfo.MSProperties.maxTaskWorkGroupSize[1], gpuInfo.MSProperties.maxTaskWorkGroupSize[2]);
+    LOG_INFO(" [TS]: Max Task Work Group Total Count: {}", gpuInfo.MSProperties.maxTaskWorkGroupTotalCount);
+    LOG_WARN(" [TS]: Max Preferred Task Work Group Invocations: {}", gpuInfo.MSProperties.maxPreferredTaskWorkGroupInvocations);
+    LOG_INFO(" [TS]: Max Task Payload Size: {}", gpuInfo.MSProperties.maxTaskPayloadSize);
+
+    LOG_WARN(" [MS]: Prefers Compact Primitive Output: {}", gpuInfo.MSProperties.prefersCompactPrimitiveOutput ? "TRUE" : "FALSE");
+    LOG_WARN(" [MS]: Prefers Compact Vertex Output: {}", gpuInfo.MSProperties.prefersCompactVertexOutput ? "TRUE" : "FALSE");
+#endif
+
+    gpuInfo.QueueFamilyIndices = QueueFamilyIndices::FindQueueFamilyIndices(gpuInfo.PhysicalDevice);
+    if (!gpuInfo.QueueFamilyIndices.IsComplete())
+    {
+        LOG_ERROR("Failed to find queue family indices!");
+        return false;
+    }
+
+    return gpuInfo.Features.samplerAnisotropy && gpuInfo.Features.fillModeNonSolid && gpuInfo.Features.pipelineStatisticsQuery &&  //
+           gpuInfo.Features.geometryShader && gpuInfo.Features.tessellationShader && gpuInfo.Features.shaderInt16 &&               //
+           gpuInfo.Features.multiDrawIndirect && gpuInfo.Features.wideLines && gpuInfo.Features.textureCompressionBC &&            //
+           gpuInfo.Features.shaderSampledImageArrayDynamicIndexing && gpuInfo.Features.shaderStorageBufferArrayDynamicIndexing &&  //
+           gpuInfo.Features.shaderStorageImageArrayDynamicIndexing && gpuInfo.Features.shaderInt64;
+}
+
+static uint32_t RateDeviceSuitability(GPUInfo& gpuInfo)
+{
+    if (!IsDeviceSuitable(gpuInfo))
+    {
+        LOG_WARN("GPU: \"{}\" is not suitable.", gpuInfo.Properties.deviceName);
+        return 0;
+    }
+
+    // Discrete GPUs have a significant performance advantage
+    uint32_t score = 0;
+    switch (gpuInfo.Properties.deviceType)
+    {
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER: score += 50; break;
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: score += 250; break;
+        case VK_PHYSICAL_DEVICE_TYPE_CPU: score += 400; break;
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: score += 800; break;
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: score += 2400; break;
+    }
+
+    // Maximum possible size of textures affects graphics quality
+    score += gpuInfo.Properties.limits.maxImageDimension2D;
+
+    score += gpuInfo.Properties.limits.maxViewports;
+    score += gpuInfo.Properties.limits.maxDescriptorSetSampledImages;
+
+    // Maximum size of fast(-accessible) uniform data in shaders.
+    score += gpuInfo.Properties.limits.maxPushConstantsSize;
+
+    // RTX part (although I'm not ray tracing rn, let it be here for now)
+    score += gpuInfo.RTProperties.maxRayRecursionDepth;
+    score += gpuInfo.ASProperties.maxPrimitiveCount;
+
+    // Mesh Shading part
+    score += gpuInfo.MSProperties.maxMeshOutputVertices;
+    score += gpuInfo.MSProperties.maxMeshOutputPrimitives;
+    score += gpuInfo.MSProperties.maxMeshWorkGroupInvocations;
+    score += gpuInfo.MSProperties.maxTaskWorkGroupInvocations;
+
+    return score;
+}
+
+}  // namespace DeviceUtils
 
 static VkCommandBufferLevel PathfinderCommandBufferLevelToVulkan(ECommandBufferLevel level)
 {
@@ -24,17 +356,9 @@ static VkCommandBufferLevel PathfinderCommandBufferLevelToVulkan(ECommandBufferL
     return VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 }
 
-VulkanDevice::VulkanDevice(const VkInstance& instance, const VulkanDeviceSpecification& vulkanDeviceSpec)
+VulkanDevice::VulkanDevice(const VkInstance& instance)
 {
-    m_PhysicalDevice = vulkanDeviceSpec.PhysicalDevice;
-    m_GraphicsFamily = vulkanDeviceSpec.GraphicsFamily;
-    m_PresentFamily  = vulkanDeviceSpec.PresentFamily;
-    m_ComputeFamily  = vulkanDeviceSpec.ComputeFamily;
-    m_TransferFamily = vulkanDeviceSpec.TransferFamily;
-    m_DeviceName     = vulkanDeviceSpec.DeviceName;
-    m_VendorID       = vulkanDeviceSpec.VendorID;
-    m_DeviceID       = vulkanDeviceSpec.DeviceID;
-    memcpy(m_PipelineCacheUUID, vulkanDeviceSpec.PipelineCacheUUID, sizeof(vulkanDeviceSpec.PipelineCacheUUID[0]) * VK_UUID_SIZE);
+    ChooseBestPhysicalDevice(instance);
 
     // Since all depth/stencil formats may be optional, we need to find a supported depth/stencil formats
     for (const std::vector<VkFormat> availableDepthStencilFormats = {VK_FORMAT_D32_SFLOAT_S8_UINT, VK_FORMAT_D32_SFLOAT,
@@ -47,35 +371,36 @@ VulkanDevice::VulkanDevice(const VkInstance& instance, const VulkanDeviceSpecifi
         if (formatProps.optimalTilingFeatures & VK_FORMAT_FEATURE_DEPTH_STENCIL_ATTACHMENT_BIT)
             m_SupportedDepthStencilFormats.emplace_back(format);
     }
-    PFR_ASSERT(!m_SupportedDepthStencilFormats.empty(), "No supported Depth-Stencil formats??");
+    PFR_ASSERT(!m_SupportedDepthStencilFormats.empty(), "No supported Depth-Stencil formats!");
 
-    CreateLogicalDevice(vulkanDeviceSpec.PhysicalDeviceFeatures);
+    CreateLogicalDevice();
 
     CreateCommandPools();
 
-    m_VMA = MakeUnique<VulkanAllocator>(m_LogicalDevice, m_PhysicalDevice);
+    m_VMA = MakeUnique<VulkanAllocator>(instance, m_LogicalDevice, m_PhysicalDevice);
     m_VDA = MakeUnique<VulkanDescriptorAllocator>(m_LogicalDevice);
 
-    const std::string logicalDeviceDebugName("[LogicalDevice]:" + std::string(vulkanDeviceSpec.DeviceName));
+    const std::string logicalDeviceDebugName("[LogicalDevice]:" + m_DeviceName);
     VK_SetDebugName(m_LogicalDevice, m_LogicalDevice, VK_OBJECT_TYPE_DEVICE, logicalDeviceDebugName.data());
-    const std::string physicalDeviceDebugName("[PhysicalDevice]:" + std::string(vulkanDeviceSpec.DeviceName));
+    const std::string physicalDeviceDebugName("[PhysicalDevice]:" + m_DeviceName);
     VK_SetDebugName(m_LogicalDevice, m_PhysicalDevice, VK_OBJECT_TYPE_PHYSICAL_DEVICE, physicalDeviceDebugName.data());
 
     LoadPipelineCache();
-    const std::string pipelineCacheDebugName("[PipelineCache]: " + std::string(s_ENGINE_NAME));
+    const std::string pipelineCacheDebugName("[PipelineCache]: " + std::string(s_ENGINE_NAME) + "_" + m_DeviceName);
     VK_SetDebugName(m_LogicalDevice, m_PipelineCache, VK_OBJECT_TYPE_PIPELINE_CACHE, pipelineCacheDebugName.data());
 }
 
 void VulkanDevice::CreateCommandPools()
 {
     // Allocating command pools per-frame -> per-thread for async deals
-    const VkCommandPoolCreateInfo graphicsCommandPoolCreateInfo = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, 0,
-                                                                   m_GraphicsFamily};
+    const VkCommandPoolCreateInfo graphicsCommandPoolCreateInfo = {.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                                                                   .queueFamilyIndex = m_GraphicsFamily};
 
-    const VkCommandPoolCreateInfo computeCommandPoolCreateInfo = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, 0, m_ComputeFamily};
+    const VkCommandPoolCreateInfo computeCommandPoolCreateInfo = {.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                                                                  .queueFamilyIndex = m_ComputeFamily};
 
-    const VkCommandPoolCreateInfo transferCommandPoolCreateInfo = {VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO, nullptr, 0,
-                                                                   m_TransferFamily};
+    const VkCommandPoolCreateInfo transferCommandPoolCreateInfo = {.sType            = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
+                                                                   .queueFamilyIndex = m_TransferFamily};
 
     for (uint8_t frameIndex{}; frameIndex < s_FRAMES_IN_FLIGHT; ++frameIndex)
     {
@@ -111,45 +436,43 @@ void VulkanDevice::CreateCommandPools()
 void VulkanDevice::SavePipelineCache()
 {
     const auto& appSpec           = Application::Get().GetSpecification();
-    const auto& assetsDir         = appSpec.AssetsDir;
-    const auto& cacheDir          = appSpec.CacheDir;
     const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
 
-    const auto pipelineCacheDirFilePath = workingDirFilePath / assetsDir / cacheDir / "Pipelines";
+    const auto pipelineCacheDirFilePath = workingDirFilePath / appSpec.AssetsDir / appSpec.CacheDir / "Pipelines";
     if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
 
     size_t cacheSize = 0;
     VK_CHECK(vkGetPipelineCacheData(m_LogicalDevice, m_PipelineCache, &cacheSize, nullptr), "Failed to retrieve pipeline cache data size!");
 
     std::vector<uint64_t> cacheData;
-    cacheData.resize(DivideToNextMultiple(cacheSize, sizeof(cacheData[0])));
+    cacheData.resize(std::ceil(cacheSize / sizeof(cacheData[0])));
     VK_CHECK(vkGetPipelineCacheData(m_LogicalDevice, m_PipelineCache, &cacheSize, cacheData.data()),
              "Failed to retrieve pipeline cache data!");
 
     const std::string cachePath = pipelineCacheDirFilePath.string() + "\\" + std::string(s_ENGINE_NAME) + "_PSO.cache";
-    if (!cacheData.data() || cacheSize <= 0)
+    if (!cacheData.data() || cacheSize == 0)
     {
         LOG_WARN("Invalid cache data or size! {}", cachePath);
         vkDestroyPipelineCache(m_LogicalDevice, m_PipelineCache, nullptr);
+        m_PipelineCache = VK_NULL_HANDLE;
         return;
     }
 
     SaveData(cachePath, cacheData.data(), cacheSize);
     vkDestroyPipelineCache(m_LogicalDevice, m_PipelineCache, nullptr);
+    m_PipelineCache = VK_NULL_HANDLE;
 }
 
 void VulkanDevice::LoadPipelineCache()
 {
     const auto& appSpec           = Application::Get().GetSpecification();
-    const auto& assetsDir         = appSpec.AssetsDir;
-    const auto& cacheDir          = appSpec.CacheDir;
     const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
 
     // Validate cache directories.
-    const auto pipelineCacheDirFilePath = workingDirFilePath / assetsDir / cacheDir / "Pipelines";
+    const auto pipelineCacheDirFilePath = workingDirFilePath / appSpec.AssetsDir / appSpec.CacheDir / "Pipelines";
     if (!std::filesystem::is_directory(pipelineCacheDirFilePath)) std::filesystem::create_directories(pipelineCacheDirFilePath);
 
-    VkPipelineCacheCreateInfo cacheCI = {VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO, nullptr, 0};
+    VkPipelineCacheCreateInfo cacheCI = {.sType = VK_STRUCTURE_TYPE_PIPELINE_CACHE_CREATE_INFO};
 
 #if !VK_FORCE_PIPELINE_COMPILATION
     const std::string cachePath = pipelineCacheDirFilePath.string() + "\\" + std::string(s_ENGINE_NAME) + "_PSO.cache";
@@ -159,17 +482,15 @@ void VulkanDevice::LoadPipelineCache()
     if (!cacheData.empty())
     {
         bool bSamePipelineUUID = true;
-        for (uint16_t i = 0; i < VK_UUID_SIZE; ++i)
+        for (uint16_t i = 0; i < VK_UUID_SIZE && bSamePipelineUUID; ++i)
             if (m_PipelineCacheUUID[i] != cacheData.at(16 + i)) bSamePipelineUUID = false;
 
         bool bSameVendorID = true;
         bool bSameDeviceID = true;
-        for (uint16_t i = 0; i < 4; ++i)
+        for (uint16_t i = 0; i < 4 && bSameDeviceID && bSameVendorID && bSamePipelineUUID; ++i)
         {
             if (cacheData.at(8 + i) != ((m_VendorID >> (8 * i)) & 0xff)) bSameVendorID = false;
             if (cacheData.at(12 + i) != ((m_DeviceID >> (8 * i)) & 0xff)) bSameDeviceID = false;
-
-            if (!bSameDeviceID || !bSameVendorID || !bSamePipelineUUID) break;
         }
 
         if (bSamePipelineUUID && bSameVendorID && bSameDeviceID)
@@ -222,7 +543,55 @@ void VulkanDevice::ResetCommandPools() const
     }
 }
 
-void VulkanDevice::CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalDeviceFeatures)
+NODISCARD bool VulkanDevice::IsDepthStencilFormatSupported(const EImageFormat imageFormat) const
+{
+    return std::find(m_SupportedDepthStencilFormats.begin(), m_SupportedDepthStencilFormats.end(),
+                     ImageUtils::PathfinderImageFormatToVulkan(imageFormat)) != m_SupportedDepthStencilFormats.end();
+}
+
+void VulkanDevice::ChooseBestPhysicalDevice(const VkInstance& instance)
+{
+    uint32_t GPUsCount = 0;
+    VK_CHECK(vkEnumeratePhysicalDevices(instance, &GPUsCount, nullptr), "Failed to retrieve GPU count!");
+
+    std::vector<VkPhysicalDevice> physicalDevices(GPUsCount, VK_NULL_HANDLE);
+    VK_CHECK(vkEnumeratePhysicalDevices(instance, &GPUsCount, physicalDevices.data()), "Failed to retrieve GPUs!");
+
+#if VK_LOG_INFO
+    LOG_INFO("Available GPUs: {}", GPUsCount);
+#endif
+
+    std::multimap<uint32_t, DeviceUtils::GPUInfo> candidates;
+    for (const auto& physicalDevice : physicalDevices)
+    {
+        DeviceUtils::GPUInfo currentGPU = {.PhysicalDevice = physicalDevice};
+
+        candidates.insert(std::make_pair(DeviceUtils::RateDeviceSuitability(currentGPU), currentGPU));
+    }
+
+    PFR_ASSERT(candidates.rbegin()->first > 0, "No suitable device found!");
+    const auto suitableGpu = candidates.rbegin()->second;
+
+    LOG_INFO("Renderer: {}", suitableGpu.Properties.deviceName);
+    LOG_INFO(" Vendor: {}", VulkanUtility::GetVendorNameCString(suitableGpu.Properties.vendorID));
+    LOG_INFO(" Driver: {} [{}]", suitableGpu.DriverProperties.driverName, suitableGpu.DriverProperties.driverInfo);
+    LOG_INFO(" Using Vulkan API Version: {}.{}.{}", VK_API_VERSION_MAJOR(suitableGpu.Properties.apiVersion),
+             VK_API_VERSION_MINOR(suitableGpu.Properties.apiVersion), VK_API_VERSION_PATCH(suitableGpu.Properties.apiVersion));
+
+    m_DeviceName      = suitableGpu.Properties.deviceName;
+    m_PhysicalDevice  = suitableGpu.PhysicalDevice;
+    m_TimestampPeriod = suitableGpu.Properties.limits.timestampPeriod;
+    m_GraphicsFamily  = suitableGpu.QueueFamilyIndices.GraphicsFamily.value();
+    m_ComputeFamily   = suitableGpu.QueueFamilyIndices.ComputeFamily.value();
+    m_TransferFamily  = suitableGpu.QueueFamilyIndices.TransferFamily.value();
+    m_PresentFamily   = suitableGpu.QueueFamilyIndices.PresentFamily.value();
+    m_VendorID        = suitableGpu.Properties.vendorID;
+    m_DeviceID        = suitableGpu.Properties.deviceID;
+    memcpy(m_PipelineCacheUUID, suitableGpu.Properties.pipelineCacheUUID,
+           sizeof(suitableGpu.Properties.pipelineCacheUUID[0]) * VK_UUID_SIZE);
+}
+
+void VulkanDevice::CreateLogicalDevice()
 {
     const float queuePriority                             = 1.0f;  // [0.0, 1.0]
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos = {};
@@ -232,20 +601,34 @@ void VulkanDevice::CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalD
         queueCreateInfos.emplace_back(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0, queueFamily, 1, &queuePriority);
     }
 
-    VkDeviceCreateInfo deviceCI   = {VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO};
-    deviceCI.pQueueCreateInfos    = queueCreateInfos.data();
-    deviceCI.queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size());
-    deviceCI.pEnabledFeatures     = &physicalDeviceFeatures;
+    // NOTE: This struct should contain only whatever I do check in IsDeviceSuitable()!!
+    constexpr VkPhysicalDeviceFeatures physicalDeviceFeatures = {.geometryShader                          = VK_TRUE,
+                                                                 .tessellationShader                      = VK_TRUE,
+                                                                 .multiDrawIndirect                       = VK_TRUE,
+                                                                 .fillModeNonSolid                        = VK_TRUE,
+                                                                 .wideLines                               = VK_TRUE,
+                                                                 .samplerAnisotropy                       = VK_TRUE,
+                                                                 .textureCompressionBC                    = VK_TRUE,
+                                                                 .pipelineStatisticsQuery                 = VK_TRUE,
+                                                                 .shaderSampledImageArrayDynamicIndexing  = VK_TRUE,
+                                                                 .shaderStorageBufferArrayDynamicIndexing = VK_TRUE,
+                                                                 .shaderStorageImageArrayDynamicIndexing  = VK_TRUE,
+                                                                 .shaderInt64                             = VK_TRUE,
+                                                                 .shaderInt16                             = VK_TRUE};
+    VkDeviceCreateInfo deviceCI                               = {.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+                                                                 .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+                                                                 .pQueueCreateInfos    = queueCreateInfos.data(),
+                                                                 .pEnabledFeatures     = &physicalDeviceFeatures};
 
-    VkPhysicalDeviceVulkan13Features vulkan13Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
-    vulkan13Features.dynamicRendering                 = VK_TRUE;
-    vulkan13Features.maintenance4                     = VK_TRUE;
-    vulkan13Features.synchronization2                 = VK_TRUE;
+    VkPhysicalDeviceVulkan13Features vulkan13Features = {.sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+                                                         .synchronization2 = VK_TRUE,
+                                                         .dynamicRendering = VK_TRUE,
+                                                         .maintenance4     = VK_TRUE};
 
     deviceCI.pNext = &vulkan13Features;
     void** ppNext  = &vulkan13Features.pNext;
 
-    VkPhysicalDeviceVulkan12Features vulkan12Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
+    VkPhysicalDeviceVulkan12Features vulkan12Features = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     vulkan12Features.hostQueryReset                   = VK_TRUE;
     // Async submits/waits feature, can be used instead of fence.
     vulkan12Features.timelineSemaphore = VK_TRUE;
@@ -277,53 +660,47 @@ void VulkanDevice::CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalD
 
     // Useful pipeline features that can be changed in real-time(for instance, polygon mode, primitive topology, etc..)
     VkPhysicalDeviceExtendedDynamicState3FeaturesEXT extendedDynamicState3FeaturesEXT = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT};
-    extendedDynamicState3FeaturesEXT.extendedDynamicState3PolygonMode = VK_TRUE;
-
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_EXTENDED_DYNAMIC_STATE_3_FEATURES_EXT, .extendedDynamicState3PolygonMode = VK_TRUE};
     *ppNext = &extendedDynamicState3FeaturesEXT;
     ppNext  = &extendedDynamicState3FeaturesEXT.pNext;
 
 #if !RENDERDOC_DEBUG
     VkPhysicalDeviceRayTracingPipelineFeaturesKHR enabledRayTracingPipelineFeatures = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR};
-    VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccelerationStructureFeatures = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR};
-    VkPhysicalDeviceRayQueryFeaturesKHR enabledRayQueryFeatures = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR};
-
-    enabledRayTracingPipelineFeatures.rayTracingPipeline = VK_TRUE;
-
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_TRACING_PIPELINE_FEATURES_KHR, .rayTracingPipeline = VK_TRUE};
     *ppNext = &enabledRayTracingPipelineFeatures;
     ppNext  = &enabledRayTracingPipelineFeatures.pNext;
 
-    enabledAccelerationStructureFeatures.accelerationStructure                                 = VK_TRUE;
-    enabledAccelerationStructureFeatures.descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE;
-
+    VkPhysicalDeviceAccelerationStructureFeaturesKHR enabledAccelerationStructureFeatures = {
+        .sType                                                 = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_ACCELERATION_STRUCTURE_FEATURES_KHR,
+        .accelerationStructure                                 = VK_TRUE,
+        .descriptorBindingAccelerationStructureUpdateAfterBind = VK_TRUE};
     *ppNext = &enabledAccelerationStructureFeatures;
     ppNext  = &enabledAccelerationStructureFeatures.pNext;
 
-    enabledRayQueryFeatures.rayQuery = VK_TRUE;
-
-    *ppNext = &enabledRayQueryFeatures;
-    ppNext  = &enabledRayQueryFeatures.pNext;
+    VkPhysicalDeviceRayQueryFeaturesKHR enabledRayQueryFeatures = {.sType    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_RAY_QUERY_FEATURES_KHR,
+                                                                   .rayQuery = VK_TRUE};
+    *ppNext                                                     = &enabledRayQueryFeatures;
+    ppNext                                                      = &enabledRayQueryFeatures.pNext;
 #endif
 
-    VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT};
-    meshShaderFeaturesEXT.meshShaderQueries                     = VK_TRUE;
-    meshShaderFeaturesEXT.meshShader                            = VK_TRUE;
-    meshShaderFeaturesEXT.taskShader                            = VK_TRUE;
+    VkPhysicalDeviceMeshShaderFeaturesEXT meshShaderFeaturesEXT = {.sType      = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_MESH_SHADER_FEATURES_EXT,
+                                                                   .taskShader = VK_TRUE,
+                                                                   .meshShader = VK_TRUE,
+                                                                   .meshShaderQueries = VK_TRUE};
+    *ppNext                                                     = &meshShaderFeaturesEXT;
+    ppNext                                                      = &meshShaderFeaturesEXT.pNext;
 
-    *ppNext = &meshShaderFeaturesEXT;
-    ppNext  = &meshShaderFeaturesEXT.pNext;
-
-    VkPhysicalDeviceVulkan11Features vulkan11Features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
-    vulkan11Features.storageBuffer16BitAccess         = VK_TRUE;
-    vulkan11Features.shaderDrawParameters             = VK_TRUE;  // Retrieve DrawCallID in vertex shader
+    VkPhysicalDeviceVulkan11Features vulkan11Features = {
+        .sType                    = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES,
+        .storageBuffer16BitAccess = VK_TRUE,
+        .shaderDrawParameters     = VK_TRUE,  // Retrieve DrawCallID in Vertex/Mesh/Task shader
+    };
 
     *ppNext = &vulkan11Features;
     ppNext  = &vulkan11Features.pNext;
 
     VkPhysicalDevicePageableDeviceLocalMemoryFeaturesEXT pageableDeviceLocalMemoryFeaturesEXT = {
-        VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT, nullptr, VK_TRUE};
+        .sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_PAGEABLE_DEVICE_LOCAL_MEMORY_FEATURES_EXT, .pageableDeviceLocalMemory = VK_TRUE};
 
     *ppNext = &pageableDeviceLocalMemoryFeaturesEXT;
     ppNext  = &pageableDeviceLocalMemoryFeaturesEXT.pNext;
@@ -359,38 +736,37 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, co
 {
     PFR_ASSERT(commandBufferSpec.ThreadID < s_WORKER_THREAD_COUNT, "Invalid threadID!");
 
-    VkCommandBufferAllocateInfo commandBufferAllocateInfo = {VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO};
-    commandBufferAllocateInfo.level                       = PathfinderCommandBufferLevelToVulkan(commandBufferSpec.Level);
-    commandBufferAllocateInfo.commandBufferCount          = 1;
+    VkCommandBufferAllocateInfo cbAI = {.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
+                                        .level              = PathfinderCommandBufferLevelToVulkan(commandBufferSpec.Level),
+                                        .commandBufferCount = 1};
 
-    std::string commandBufferTypeStr = s_DEFAULT_STRING;
+    std::string cbTypeStr = s_DEFAULT_STRING;
     switch (commandBufferSpec.Type)
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
         {
-            commandBufferTypeStr                  = "GRAPHICS";
-            commandBufferAllocateInfo.commandPool = m_GraphicsCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
+            cbTypeStr        = "GRAPHICS";
+            cbAI.commandPool = m_GraphicsCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
         {
-            commandBufferTypeStr                  = "COMPUTE";
-            commandBufferAllocateInfo.commandPool = m_ComputeCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
+            cbTypeStr        = "COMPUTE";
+            cbAI.commandPool = m_ComputeCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
         {
-            commandBufferTypeStr                  = "TRANSFER";
-            commandBufferAllocateInfo.commandPool = m_TransferCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
+            cbTypeStr        = "TRANSFER";
+            cbAI.commandPool = m_TransferCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
             break;
         }
         default: PFR_ASSERT(false, "Unknown command buffer type!");
     }
 
-    VK_CHECK(vkAllocateCommandBuffers(m_LogicalDevice, &commandBufferAllocateInfo, &inOutCommandBuffer),
-             "Failed to allocate command buffer!");
+    VK_CHECK(vkAllocateCommandBuffers(m_LogicalDevice, &cbAI, &inOutCommandBuffer), "Failed to allocate command buffer!");
 
-    const auto commandBufferNameStr = std::string("COMMAND_BUFFER_") + commandBufferTypeStr + "_FRAME_" +
+    const auto commandBufferNameStr = std::string("COMMAND_BUFFER_") + cbTypeStr + "_FRAME_" +
                                       std::to_string(commandBufferSpec.FrameIndex) + "_THREAD_" +
                                       std::to_string(commandBufferSpec.ThreadID);
     VK_SetDebugName(m_LogicalDevice, inOutCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER, commandBufferNameStr.data())

@@ -3,6 +3,8 @@
 #include "VulkanCore.h"
 #include <vector>
 
+#include <Renderer/DescriptorManager.h>
+
 namespace Pathfinder
 {
 
@@ -49,6 +51,41 @@ class VulkanDescriptorAllocator final : private Unmovable, private Uncopyable
     NODISCARD VkDescriptorPool CreatePool(const uint32_t count, VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0);
     void Destroy();
     VulkanDescriptorAllocator() = delete;
+};
+
+class VulkanDescriptorManager final : public DescriptorManager
+{
+  public:
+    VulkanDescriptorManager();
+    ~VulkanDescriptorManager() override { Destroy(); }
+
+    void Bind(const Shared<CommandBuffer>& commandBuffer,
+              const EPipelineStage overrideBindPoint = EPipelineStage::PIPELINE_STAGE_NONE) final override;
+
+    void LoadImage(const void* pImageInfo, uint32_t& outIndex) final override;
+    void LoadTexture(const void* pTextureInfo, uint32_t& outIndex) final override;
+
+    void FreeImage(uint32_t& imageIndex) final override;
+    void FreeTexture(uint32_t& textureIndex) final override;
+
+    NODISCARD FORCEINLINE const auto GetDescriptorSetLayouts() const
+    {
+        return std::vector<VkDescriptorSetLayout>{m_MegaDescriptorSetLayout};
+    }
+    NODISCARD FORCEINLINE const auto& GetPushConstantBlock() const { return m_PCBlock; }
+    NODISCARD FORCEINLINE const auto& GetPipelineLayout() const { return m_MegaPipelineLayout; }
+
+  private:
+    VulkanDescriptorPoolPerFrame m_MegaDescriptorPool;
+    VulkanDescriptorSetPerFrame m_MegaSet;
+
+    VkPushConstantRange m_PCBlock = {};
+
+    VkDescriptorSetLayout m_MegaDescriptorSetLayout = VK_NULL_HANDLE;
+    VkPipelineLayout m_MegaPipelineLayout           = VK_NULL_HANDLE;
+
+    void CreateDescriptorPools();
+    void Destroy() final override;
 };
 
 }  // namespace Pathfinder

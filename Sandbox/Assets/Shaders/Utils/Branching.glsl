@@ -36,9 +36,9 @@ vec4 or(vec4 a, vec4 b) {
   return min(a + b, 1.0);
 }
 
-vec4 xor(vec4 a, vec4 b) {
-  return (a + b) % 2.0;
-}
+//vec4 xor(vec4 a, vec4 b) {
+//  return (a + b) % 2.0;
+//}
 
 vec4 not(vec4 a) {
   return 1.0 - a;

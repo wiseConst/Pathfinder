@@ -30,7 +30,7 @@ layout(location = 0) in VertexInput
     vec4 Color;
     vec2 UV;
     vec3 WorldPos;
-    flat uint32_t MaterialBufferIndex;
+    flat uint64_t MaterialBufferBDA;
     mat3 TBNtoWorld;
 } i_VertexInput;
 
@@ -51,7 +51,7 @@ vec2 GetMetallicRoughnessMap(const PBRData mat)
 
 void main()
 {
-    const PBRData mat = s_GlobalMaterialBuffers[nonuniformEXT(i_VertexInput.MaterialBufferIndex)].mat;
+    const PBRData mat = MaterialBuffer(i_VertexInput.MaterialBufferBDA).mat;
 
     const vec3 N = normalize(i_VertexInput.TBNtoWorld * GetNormalFromNormalMap(mat));
     const vec3 V = normalize(CameraData(u_PC.CameraDataBuffer).Position - i_VertexInput.WorldPos);
@@ -96,7 +96,7 @@ void main()
             if (lightIndex >= LightData(u_PC.LightDataBuffer).PointLightCount) continue;
 
             PointLight pl = LightData(u_PC.LightDataBuffer).PointLights[lightIndex];
-         const float kShadow = 1.0f;
+            const float kShadow = 1.0f;
            // if(pl.bCastShadows > 0) kShadow = 1.f - PointShadowCalculation(u_PointShadowmap[lightIndex], i_VertexInput.WorldPos, u_PC.CameraDataBuffer.Position, pl, u_PC.pad0.x /* far plane for point light shadow maps */);
 
             #if PHONG

@@ -1,14 +1,22 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanDescriptors.h"
 
+#include "VulkanBuffer.h"
+#include "VulkanContext.h"
 #include "VulkanDevice.h"
+#include "VulkanCommandBuffer.h"
+#include "VulkanImage.h"
+#include "VulkanTexture.h"
 
-#include "Renderer/Renderer.h"
+#include <Core/Application.h>
+#include <Core/Window.h>
+
+#include <Renderer/Renderer.h>
 
 namespace Pathfinder
 {
 
- VulkanDescriptorAllocator::VulkanDescriptorAllocator(VkDevice& device) : m_LogicalDevice(device) {}
+VulkanDescriptorAllocator::VulkanDescriptorAllocator(VkDevice& device) : m_LogicalDevice(device) {}
 
 bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const VkDescriptorSetLayout& descriptorSetLayout)
 {
@@ -43,7 +51,7 @@ bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const 
     }
 
     // Try different pools.
-    for (size_t i = 0; i < m_Pools.size(); ++i)
+    for (size_t i{}; i < m_Pools.size(); ++i)
     {
         if (m_Pools[i] == m_CurrentPool) continue;  // Skip current cuz it's checked already.
 
@@ -143,6 +151,176 @@ void VulkanDescriptorAllocator::Destroy()
     m_CurrentPool               = VK_NULL_HANDLE;
     m_AllocatedDescriptorSets   = 0;
     m_CurrentPoolSizeMultiplier = m_BasePoolSizeMultiplier;
+}
+
+VulkanDescriptorManager::VulkanDescriptorManager()
+{
+    CreateDescriptorPools();
+    LOG_INFO("Vulkan Descriptor Manager created!");
+}
+
+void VulkanDescriptorManager::Bind(const Shared<CommandBuffer>& commandBuffer, const EPipelineStage overrideBindPoint)
+{
+    const auto currentFrame = Application::Get().GetWindow()->GetCurrentFrameIndex();
+
+    VkPipelineBindPoint pipelineBindPoint = commandBuffer->GetSpecification().Type == ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS
+                                                ? VK_PIPELINE_BIND_POINT_GRAPHICS
+                                                : VK_PIPELINE_BIND_POINT_COMPUTE;
+    if (overrideBindPoint != EPipelineStage::PIPELINE_STAGE_NONE)
+    {
+        if (overrideBindPoint == EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT)
+            pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
+        else if (overrideBindPoint == EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+            pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+        else if (overrideBindPoint == EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT)
+            pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
+        else
+            PFR_ASSERT(false, "Unknown pipeline stages to override pipeline bind point for descriptor sets!");
+    }
+
+    vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), pipelineBindPoint, m_MegaPipelineLayout, 0, 1, &m_MegaSet[currentFrame],
+                            0, nullptr);
+}
+
+void VulkanDescriptorManager::LoadImage(const void* pImageInfo, uint32_t& outIndex)
+{
+    const VkDescriptorImageInfo* vkImageInfo = (const VkDescriptorImageInfo*)pImageInfo;
+    PFR_ASSERT(pImageInfo && vkImageInfo->imageView, "VulkanDescriptorManager: Texture(Image) for loading is not valid!");
+
+    std::vector<VkWriteDescriptorSet> writes;
+
+    // Since on image creation index is UINT32_T::MAX
+    outIndex = m_StorageImageIDPool.Add(m_StorageImageIDPool.GetSize());
+    for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
+    {
+        const VkWriteDescriptorSet writeSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
+                                               nullptr,
+                                               m_MegaSet[frame],
+                                               STORAGE_IMAGE_BINDING,
+                                               outIndex,
+                                               1,
+                                               VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
+                                               vkImageInfo,
+                                               nullptr,
+                                               nullptr};
+
+        writes.emplace_back(writeSet);
+    }
+    vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
+                           nullptr);
+}
+
+void VulkanDescriptorManager::LoadTexture(const void* pTextureInfo, uint32_t& outIndex)
+{
+    const VkDescriptorImageInfo* vkTextureInfo = (const VkDescriptorImageInfo*)pTextureInfo;
+    PFR_ASSERT(pTextureInfo && vkTextureInfo->imageView, "VulkanDescriptorManager: Texture(Image) for loading is not valid!");
+
+    std::vector<VkWriteDescriptorSet> writes;
+
+    // Since on image creation index is UINT32_T::MAX
+    outIndex = m_TextureIDPool.Add(m_TextureIDPool.GetSize());
+    for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
+    {
+        const VkWriteDescriptorSet writeSet = {
+            VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,    nullptr,       m_MegaSet[frame], TEXTURE_BINDING, outIndex, 1,
+            VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, vkTextureInfo, nullptr,          nullptr};
+
+        writes.emplace_back(writeSet);
+    }
+    vkUpdateDescriptorSets(VulkanContext::Get().GetDevice()->GetLogicalDevice(), static_cast<uint32_t>(writes.size()), writes.data(), 0,
+                           nullptr);
+}
+
+void VulkanDescriptorManager::FreeImage(uint32_t& imageIndex)
+{
+    m_StorageImageIDPool.Release(imageIndex);
+    imageIndex = UINT32_MAX;
+}
+
+void VulkanDescriptorManager::FreeTexture(uint32_t& textureIndex)
+{
+    m_TextureIDPool.Release(textureIndex);
+    textureIndex = UINT32_MAX;
+}
+
+void VulkanDescriptorManager::CreateDescriptorPools()
+{
+    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+
+    {
+        constexpr VkDescriptorBindingFlags bindingFlag =
+            VK_DESCRIPTOR_BINDING_PARTIALLY_BOUND_BIT | VK_DESCRIPTOR_BINDING_UPDATE_AFTER_BIND_BIT;
+        constexpr VkDescriptorSetLayoutBinding textureBinding = {TEXTURE_BINDING, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, s_MAX_TEXTURES,
+                                                                 VK_SHADER_STAGE_ALL};
+
+        constexpr VkDescriptorSetLayoutBinding storageImageBinding = {STORAGE_IMAGE_BINDING, VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, s_MAX_IMAGES,
+                                                                      VK_SHADER_STAGE_ALL};
+
+        const std::vector<VkDescriptorSetLayoutBinding> bindings = {textureBinding, storageImageBinding};
+
+        const std::vector<VkDescriptorBindingFlags> bindingFlags(bindings.size(), bindingFlag);
+        const VkDescriptorSetLayoutBindingFlagsCreateInfo megaSetLayoutExtendedInfo = {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_BINDING_FLAGS_CREATE_INFO, nullptr, static_cast<uint32_t>(bindingFlags.size()),
+            bindingFlags.data()};
+
+        const VkDescriptorSetLayoutCreateInfo megaSetLayoutCI = {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO, &megaSetLayoutExtendedInfo,
+            VK_DESCRIPTOR_SET_LAYOUT_CREATE_UPDATE_AFTER_BIND_POOL_BIT, static_cast<uint32_t>(bindings.size()), bindings.data()};
+
+        VK_CHECK(vkCreateDescriptorSetLayout(logicalDevice, &megaSetLayoutCI, nullptr, &m_MegaDescriptorSetLayout),
+                 "Failed to create mega set layout!");
+        VK_SetDebugName(logicalDevice, m_MegaDescriptorSetLayout, VK_OBJECT_TYPE_DESCRIPTOR_SET_LAYOUT, "VK_BINDLESS_MEGA_SET_LAYOUT");
+    }
+
+    for (uint32_t frame = 0; frame < s_FRAMES_IN_FLIGHT; ++frame)
+    {
+        const std::vector<VkDescriptorPoolSize> megaDescriptorPoolSizes = {{VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, s_MAX_TEXTURES},
+                                                                           {VK_DESCRIPTOR_TYPE_STORAGE_IMAGE, s_MAX_IMAGES}};
+        const VkDescriptorPoolCreateInfo megaDescriptorPoolCI           = {
+            VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,         nullptr,
+            VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT,       1,
+            static_cast<uint32_t>(megaDescriptorPoolSizes.size()), megaDescriptorPoolSizes.data()};
+
+        VK_CHECK(vkCreateDescriptorPool(logicalDevice, &megaDescriptorPoolCI, nullptr, &m_MegaDescriptorPool[frame]),
+                 "Failed to create bindless mega descriptor pool!");
+        const std::string megaDescriptorPoolPoolDebugName = std::string("VK_BINDLESS_MEGA_DESCRIPTOR_POOL_") + std::to_string(frame);
+        VK_SetDebugName(logicalDevice, m_MegaDescriptorPool[frame], VK_OBJECT_TYPE_DESCRIPTOR_POOL, megaDescriptorPoolPoolDebugName.data());
+
+        const VkDescriptorSetAllocateInfo megaSetAI = {VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO, nullptr, m_MegaDescriptorPool[frame],
+                                                       1, &m_MegaDescriptorSetLayout};
+        VK_CHECK(vkAllocateDescriptorSets(logicalDevice, &megaSetAI, &m_MegaSet[frame]), "Failed to allocate mega set!");
+        const std::string megaSetDebugName = std::string("VK_BINDLESS_MEGA_SET_") + std::to_string(frame);
+        VK_SetDebugName(logicalDevice, m_MegaSet[frame], VK_OBJECT_TYPE_DESCRIPTOR_SET, megaSetDebugName.data());
+
+        Renderer::GetStats().DescriptorSetCount += 1;
+        Renderer::GetStats().DescriptorPoolCount += 1;
+    }
+
+    m_PCBlock.offset     = 0;
+    m_PCBlock.stageFlags = VK_SHADER_STAGE_ALL;
+    m_PCBlock.size       = sizeof(PushConstantBlock);
+    PFR_ASSERT(m_PCBlock.size <= 128, "Exceeding minimum limit of push constant block!");
+
+    const VkPipelineLayoutCreateInfo pipelineLayoutCI = {
+        VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO, nullptr, 0, 1, &m_MegaDescriptorSetLayout, 1, &m_PCBlock};
+    VK_CHECK(vkCreatePipelineLayout(logicalDevice, &pipelineLayoutCI, nullptr, &m_MegaPipelineLayout),
+             "Failed to create bindless pipeline layout!");
+    VK_SetDebugName(logicalDevice, m_MegaPipelineLayout, VK_OBJECT_TYPE_PIPELINE_LAYOUT, "VK_BINDLESS_PIPELINE_LAYOUT");
+}
+
+void VulkanDescriptorManager::Destroy()
+{
+    Renderer::GetStats().DescriptorSetCount -= s_FRAMES_IN_FLIGHT;
+    Renderer::GetStats().DescriptorPoolCount -= s_FRAMES_IN_FLIGHT;
+    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+
+    std::ranges::for_each(m_MegaDescriptorPool,
+                          [&](const VkDescriptorPool& pool) { vkDestroyDescriptorPool(logicalDevice, pool, nullptr); });
+    vkDestroyDescriptorSetLayout(logicalDevice, m_MegaDescriptorSetLayout, nullptr);
+
+    vkDestroyPipelineLayout(logicalDevice, m_MegaPipelineLayout, nullptr);
+
+    LOG_INFO("Vulkan Descriptor Manager destroyed!");
 }
 
 }  // namespace Pathfinder

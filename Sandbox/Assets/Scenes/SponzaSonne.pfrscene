@@ -6,7 +6,7 @@
       "TransformComponent": {
         "Translation": {
           "x": 0.0,
-          "y": 18.28959846496582,
+          "y": 11.986846923828125,
           "z": 0.0
         },
         "Rotation": {
@@ -42,9 +42,9 @@
           "z": -0.25
         },
         "Rotation": {
-          "x": -1.5499999523162842,
-          "y": 0.0,
-          "z": -1.0
+          "x": 45.0,
+          "y": 90.0,
+          "z": 0.0
         },
         "Scale": {
           "x": 1.0,
@@ -83,7 +83,7 @@
       },
       "MeshComponent": {
         "MeshSource": "flintlock_pistol/scene.gltf",
-        "bDrawBoundingSphere": true
+        "bDrawBoundingSphere": false
       }
     },
     "13884783760960104608": {
@@ -120,7 +120,7 @@
         },
         "Rotation": {
           "x": 0.0,
-          "y": 1.350000023841858,
+          "y": -45.0,
           "z": 0.0
         },
         "Scale": {

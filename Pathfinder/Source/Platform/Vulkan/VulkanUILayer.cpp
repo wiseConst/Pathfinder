@@ -1,8 +1,8 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanUILayer.h"
 
-#include "Events/Events.h"
-#include "Events/MouseEvent.h"
+#include <Events/Events.h>
+#include <Events/MouseEvent.h>
 
 #define IMGUI_IMPL_VULKAN_NO_PROTOTYPES
 #include <imgui.h>
@@ -13,13 +13,12 @@
 #include "VulkanContext.h"
 #include "VulkanCommandBuffer.h"
 #include "VulkanImage.h"
-#include "VulkanFramebuffer.h"
 
-#include "Renderer/Swapchain.h"
-#include "Renderer/Renderer.h"
+#include <Renderer/Swapchain.h>
+#include <Renderer/Renderer.h>
 
-#include "Core/Application.h"
-#include "Core/Window.h"
+#include <Core/Application.h>
+#include <Core/Window.h>
 
 namespace Pathfinder
 {
@@ -50,11 +49,12 @@ void VulkanUILayer::Init()
                                                   {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
                                                   {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}};
 
-    VkDescriptorPoolCreateInfo poolInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    poolInfo.flags                      = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.maxSets                    = 1000;
-    poolInfo.poolSizeCount              = (uint32_t)std::size(poolSizes);
-    poolInfo.pPoolSizes                 = poolSizes;
+    const VkDescriptorPoolCreateInfo poolInfo = {.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                                                 .pNext         = nullptr,
+                                                 .flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+                                                 .maxSets       = 1500,
+                                                 .poolSizeCount = (uint32_t)std::size(poolSizes),
+                                                 .pPoolSizes    = poolSizes};
     VK_CHECK(vkCreateDescriptorPool(device->GetLogicalDevice(), &poolInfo, nullptr, &m_ImGuiPool), "Failed to create ImGui Pool!");
 
     ImGui::CreateContext();
@@ -77,30 +77,33 @@ void VulkanUILayer::Init()
     const auto& window = Application::Get().GetWindow();
     ImGui_ImplGlfw_InitForVulkan((GLFWwindow*)window->Get(), true);
 
-    ImGui_ImplVulkan_InitInfo initInfo = {};
-    initInfo.Instance                  = context.GetInstance();
-    initInfo.PhysicalDevice            = device->GetPhysicalDevice();
-    initInfo.Device                    = device->GetLogicalDevice();
-    initInfo.Queue                     = device->GetGraphicsQueue();
-    initInfo.DescriptorPool            = m_ImGuiPool;
     const auto& swapchain              = window->GetSwapchain();
-    initInfo.MinImageCount = initInfo.ImageCount = swapchain->GetImageCount();
-    initInfo.MSAASamples                         = VK_SAMPLE_COUNT_1_BIT;
-    initInfo.CheckVkResultFn                     = [](VkResult err) { VK_CHECK(err, "ImGui issues!"); };
-
-    initInfo.UseDynamicRendering                              = true;
-    initInfo.PipelineRenderingCreateInfo                      = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
-    initInfo.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-
-    const auto vkImageFormat                                     = ImageUtils::PathfinderImageFormatToVulkan(swapchain->GetImageFormat());
-    initInfo.PipelineRenderingCreateInfo.pColorAttachmentFormats = &vkImageFormat;
+    const auto vkImageFormat           = ImageUtils::PathfinderImageFormatToVulkan(swapchain->GetImageFormat());
+    ImGui_ImplVulkan_InitInfo initInfo = {
+        .Instance                    = context.GetInstance(),
+        .PhysicalDevice              = device->GetPhysicalDevice(),
+        .Device                      = device->GetLogicalDevice(),
+        .QueueFamily                 = device->GetGraphicsFamily(),
+        .Queue                       = device->GetGraphicsQueue(),
+        .DescriptorPool              = m_ImGuiPool,
+        .RenderPass                  = VK_NULL_HANDLE,
+        .MinImageCount               = swapchain->GetImageCount(),
+        .ImageCount                  = swapchain->GetImageCount(),
+        .MSAASamples                 = VK_SAMPLE_COUNT_1_BIT,
+        .PipelineCache               = device->GetPipelineCache(),
+        .UseDynamicRendering         = true,
+        .PipelineRenderingCreateInfo = {.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                                        .colorAttachmentCount    = 1,
+                                        .pColorAttachmentFormats = &vkImageFormat},
+        .CheckVkResultFn             = [](VkResult err) { VK_CHECK(err, "ImGui issues!"); },
+    };
     ImGui_ImplVulkan_Init(&initInfo);
 
     // execute a gpu command to upload imgui font textures
     ImGui_ImplVulkan_CreateFontsTexture();
 
     window->AddResizeCallback(
-        [](uint32_t width, uint32_t height)
+        [](const WindowResizeData& resizeData)
         {
             for (auto& [uuid, textureID] : s_TextureIDMap)
             {
@@ -184,7 +187,6 @@ void VulkanUILayer::UpdateTextureIDs()
 
         const auto& textureID = s_TextureIDMap[uuid];
         ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
-        bIsActive = false;
         s_TextureIDMap.erase(uuid);
     }
 }
@@ -199,7 +201,7 @@ void UILayer::DrawImage(Shared<Image> image, const glm::vec2& imageSize, const g
     const auto& uuid = image->GetUUID();
     if (!s_TextureIDMap.contains(uuid))
     {
-        s_TextureIDMap.emplace(image->GetUUID(), nullptr);
+        s_TextureIDMap.emplace(uuid, nullptr);
         auto& textureID = s_TextureIDMap[uuid];
 
         textureID = ImGui_ImplVulkan_AddTexture(vulkanImage->GetSampler(), vulkanImage->GetView(),

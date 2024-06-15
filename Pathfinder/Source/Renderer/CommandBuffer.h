@@ -1,13 +1,53 @@
 #pragma once
 
-#include "Core/Core.h"
-#include "Core/Math.h"
+#include <Core/Core.h>
+#include <Core/Math.h>
 #include "Image.h"
 #include "RendererCoreDefines.h"
 #include "Shader.h"
 
 namespace Pathfinder
 {
+
+struct MemoryBarrier
+{
+    RendererTypeFlags srcStageMask  = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags srcAccessMask = EAccessFlags::ACCESS_NONE;
+    RendererTypeFlags dstStageMask  = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags dstAccessMask = EAccessFlags::ACCESS_NONE;
+};
+
+struct BufferMemoryBarrier
+{
+    Shared<Buffer> buffer{};
+    RendererTypeFlags srcStageMask{};
+    RendererTypeFlags srcAccessMask{};
+    RendererTypeFlags dstStageMask{};
+    RendererTypeFlags dstAccessMask{};
+    uint32_t srcQueueFamilyIndex = UINT32_MAX;
+    uint32_t dstQueueFamilyIndex = UINT32_MAX;
+};
+
+struct ImageMemoryBarrier
+{
+    RendererTypeFlags srcStageMask{};
+    RendererTypeFlags srcAccessMask{};
+    RendererTypeFlags dstStageMask{};
+    RendererTypeFlags dstAccessMask{};
+    EImageLayout oldLayout{};
+    EImageLayout newLayout{};
+    uint32_t srcQueueFamilyIndex = UINT32_MAX;
+    uint32_t dstQueueFamilyIndex = UINT32_MAX;
+    Shared<Image> image{};
+
+    struct
+    {
+        uint32_t baseMipLevel;
+        uint32_t levelCount;
+        uint32_t baseArrayLayer;
+        uint32_t layerCount;
+    } subresourceRange;
+};
 
 enum class ECommandBufferType : uint8_t
 {
@@ -18,8 +58,8 @@ enum class ECommandBufferType : uint8_t
 
 enum class ECommandBufferLevel : uint8_t
 {
-    COMMAND_BUFFER_LEVEL_PRIMARY   = 0,
-    COMMAND_BUFFER_LEVEL_SECONDARY = 1
+    COMMAND_BUFFER_LEVEL_PRIMARY = 0,
+    COMMAND_BUFFER_LEVEL_SECONDARY
 };
 
 struct CommandBufferSpecification
@@ -56,6 +96,7 @@ class SyncPoint : private Uncopyable, private Unmovable
 };
 
 class Pipeline;
+class Texture;
 class CommandBuffer : private Uncopyable, private Unmovable
 {
   public:
@@ -64,51 +105,34 @@ class CommandBuffer : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual void* Get() const = 0;
 
-    NODISCARD FORCEINLINE static const auto& GetPipelineStatisticsNames() { return s_PipelineStatisticsNames; }
-    NODISCARD FORCEINLINE const auto& GetPipelineStatisticsResults() const { return m_PipelineStatisticsResults; }
-    NODISCARD FORCEINLINE static const char* ConvertQueryPipelineStatisticToCString(const EQueryPipelineStatistic queryPipelineStatistic)
-    {
-        if (queryPipelineStatistic < EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT ||
-            queryPipelineStatistic > EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT)
-            return "";
-
-        return s_PipelineStatisticsNames[queryPipelineStatistic].data();
-    }
-
-    // Returns raw vector of ticks.
-    NODISCARD FORCEINLINE const auto& GetRawTimestampsResults() const { return m_TimestampsResults; }
-
-    // Returns vector of computed timestamps in milliseconds.
-    virtual const std::vector<float> GetTimestampsResults() = 0;
-
-    /* STATISTICS  */
-    virtual void BeginPipelineStatisticsQuery()     = 0;
-    virtual void EndPipelineStatisticsQuery() const = 0;
-
-    virtual void BeginTimestampQuery(const EPipelineStage pipelineStage = EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT)  = 0;
-    virtual void EndTimestampQuery(const EPipelineStage pipelineStage = EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) = 0;
-    /* STATISTICS  */
-
     /* DEBUG */
     FORCEINLINE void InsertDebugBarrier() const
     {
-        InsertExecutionBarrier(
-            EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT, EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT,
-            EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT, EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT);
+        if constexpr (PFR_DEBUG)
+        {
+            InsertBarriers({{.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             .srcAccessMask = EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT,
+                             .dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                             .dstAccessMask = EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT}});
+        }
     }
     virtual void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const = 0;
     virtual void EndDebugLabel() const                                                                   = 0;
     /* DEBUG */
 
     virtual void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = nullptr) = 0;
-    virtual void EndRecording()                                                                     = 0;
+    virtual void EndRecording() const                                                               = 0;
 
-    virtual void BindPipeline(Shared<Pipeline>& pipeline) const                                 = 0;
-    virtual void BindShaderData(Shared<Pipeline>& pipeline, const Shared<Shader>& shader) const = 0;
-    virtual void BindPushConstants(Shared<Pipeline> pipeline, const uint32_t pushConstantIndex, const uint32_t offset, const uint32_t size,
-                                   const void* data = nullptr) const                            = 0;
+    virtual void SetViewportAndScissor(const uint32_t width, const uint32_t height, const int32_t offsetX = 0,
+                                       const int32_t offsetY = 0) const                 = 0;
+    virtual void BindPipeline(Shared<Pipeline>& pipeline) const                         = 0;
+    virtual void BindPushConstants(Shared<Pipeline> pipeline, const uint32_t offset, const uint32_t size,
+                                   const void* data = nullptr) const                    = 0;
+    virtual void BeginRendering(const std::vector<Shared<Texture>>& attachments,
+                                const std::vector<RenderingInfo>& renderingInfos) const = 0;
+    virtual void EndRendering() const                                                   = 0;
 
-    FORCEINLINE virtual void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ = 1) = 0;
+    FORCEINLINE virtual void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY = 1, const uint32_t groupCountZ = 1) const = 0;
 
     FORCEINLINE virtual void DrawIndexed(const uint32_t indexCount, const uint32_t instanceCount = 1, const uint32_t firstIndex = 0,
                                          const int32_t vertexOffset = 0, const uint32_t firstInstance = 0) const = 0;
@@ -119,7 +143,7 @@ class CommandBuffer : private Uncopyable, private Unmovable
     FORCEINLINE virtual void Draw(const uint32_t vertexCount, const uint32_t instanceCount = 1, const uint32_t firstVertex = 0,
                                   const uint32_t firstInstance = 0) const = 0;
 
-    FORCEINLINE virtual void DrawMeshTasks(const uint32_t groupCountX, const uint32_t groupCountY,
+    FORCEINLINE virtual void DrawMeshTasks(const uint32_t groupCountX, const uint32_t groupCountY = 1,
                                            const uint32_t groupCountZ = 1) const = 0;
 
     FORCEINLINE virtual void DrawMeshTasksIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
@@ -135,49 +159,19 @@ class CommandBuffer : private Uncopyable, private Unmovable
                                    const uint32_t bindingCount = 1, const uint64_t* offsets = nullptr) const                   = 0;
     virtual void BindIndexBuffer(const Shared<Buffer>& indexBuffer, const uint64_t offset = 0, bool bIndexType32 = true) const = 0;
 
-    virtual void CopyImageToImage(const Shared<Image> srcImage, Shared<Image> dstImage) const = 0;
-    virtual void FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const          = 0;
+    virtual void FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const = 0;
 
-    virtual void InsertExecutionBarrier(const RendererTypeFlags srcPipelineStages, const RendererTypeFlags srcAccessFlags,
-                                        const RendererTypeFlags dstPipelineStages, const RendererTypeFlags dstAccessFlags) const = 0;
-    virtual void InsertBufferMemoryBarrier(const Shared<Buffer> buffer, const RendererTypeFlags srcPipelineStages,
-                                           const RendererTypeFlags dstPipelineStages, const RendererTypeFlags srcAccessFlags,
-                                           const RendererTypeFlags dstAccessFlags) const                                         = 0;
+    virtual void InsertBarriers(const std::vector<MemoryBarrier>& memoryBarriers,
+                                const std::vector<BufferMemoryBarrier>& bufferMemoryBarriers = {},
+                                const std::vector<ImageMemoryBarrier>& imageMemoryBarriers   = {}) const = 0;
 
     virtual Shared<SyncPoint> Submit(const std::vector<Shared<SyncPoint>>& waitPoints   = {},
                                      const std::vector<Shared<SyncPoint>>& signalPoints = {}, const void* signalFence = nullptr) = 0;
-    virtual void Reset()                                                                                                         = 0;
 
     static Shared<CommandBuffer> Create(const CommandBufferSpecification& commandBufferSpec);
 
   protected:
     CommandBufferSpecification m_Specification = {};
-
-    static constexpr uint32_t s_MAX_TIMESTAMPS          = 32;
-    static constexpr uint32_t s_MAX_PIPELINE_STATISITCS = 13;
-
-    std::array<uint64_t, s_MAX_TIMESTAMPS> m_TimestampsResults = {0};
-    std::array<std::pair<EQueryPipelineStatistic, uint64_t>, s_MAX_PIPELINE_STATISITCS> m_PipelineStatisticsResults;
-
-    static inline std::map<const EQueryPipelineStatistic, std::string_view> s_PipelineStatisticsNames = {
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT,
-         "Input assembly vertex count        "},  // IA vertex
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT,
-         "Input assembly primitives count    "},  // IA primitives
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT, "Vertex shader invocations          "},    // VS
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT, "Geometry shader invocations        "},  // GS
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT, "Geometry shader primitives         "},   //
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT, "Clipping stage primitives processed"},  // Clipping
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT, "Clipping stage primitives output   "},   //
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT, "Fragment shader invocations        "},  // FS
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT,
-         "Tess. Control shader invocations   "},  // TCS
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT,
-         "Tess. Evaluation shader invocations"},                                                                                    // TES
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT, "Compute shader invocations         "},  // CSCS
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT, "Task shader invocations            "},     // TS
-        {EQueryPipelineStatistic::QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT, "Mesh shader invocations            "}      // MS
-    };
 
     CommandBuffer(const CommandBufferSpecification& commandBufferSpec) : m_Specification(commandBufferSpec) {}
     CommandBuffer()        = delete;

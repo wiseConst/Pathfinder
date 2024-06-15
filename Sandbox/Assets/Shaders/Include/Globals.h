@@ -5,10 +5,8 @@
 #include "Lights.h"
 #include "Primitives.h"
 
-static constexpr uint32_t s_MAX_TEXTURES        = BIT(16);
-static constexpr uint32_t s_MAX_IMAGES          = BIT(16);
-static constexpr uint32_t s_MAX_STORAGE_BUFFERS = BIT(16);
-static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(20);
+static constexpr uint32_t s_MAX_TEXTURES = BIT(16);
+static constexpr uint32_t s_MAX_IMAGES   = BIT(16);
 
 #else
 
@@ -19,6 +17,7 @@ static constexpr uint32_t s_MAX_RENDER_OBJECTS  = BIT(20);
 #include "Include/Lights.h"
 #include "Include/Primitives.h"
 #include "Include/Math.glsl"
+#include "Utils/Branching.glsl"
 
 #endif
 
@@ -41,7 +40,7 @@ struct Sprite
     vec3 Translation;
     vec3 Scale;
     vec4 Orientation;
-    u8vec4 Color;
+    uint32_t Color;
     uint32_t BindlessTextureIndex;
 };
 
@@ -52,7 +51,7 @@ struct MeshPositionVertex
 
 struct MeshAttributeVertex
 {
-    u8vec4 Color;
+    uint32_t Color;
     vec3 Normal;
     vec3 Tangent;
 #ifdef __cplusplus
@@ -79,36 +78,24 @@ struct PBRData
 
 struct MeshData
 {
+    Sphere sphere;
+    uint32_t meshletCount;
     vec3 translation;
     vec3 scale;
     vec4 orientation;
-    Sphere sphere;
-    uint32_t vertexPosBufferIndex;
-    uint32_t vertexAttributeBufferIndex;
-    uint32_t indexBufferIndex;
-    uint32_t meshletVerticesBufferIndex;
-    uint32_t meshletTrianglesBufferIndex;
-    uint32_t meshletBufferIndex;
-    uint32_t materialBufferIndex;
+    uint64_t materialBufferBDA;
+    uint64_t indexBufferBDA;
+    uint64_t vertexPosBufferBDA;
+    uint64_t vertexAttributeBufferBDA;
+    uint64_t meshletBufferBDA;
+    uint64_t meshletVerticesBufferBDA;
+    uint64_t meshletTrianglesBufferBDA;
 };
 
 const uint32_t BINDLESS_MEGA_SET = 0;
 
 const uint32_t TEXTURE_BINDING       = 0;
 const uint32_t STORAGE_IMAGE_BINDING = 1;
-
-const uint32_t STORAGE_BUFFER_VERTEX_POS_BINDING            = 2;
-const uint32_t STORAGE_BUFFER_VERTEX_ATTRIB_BINDING         = 3;
-const uint32_t STORAGE_BUFFER_MESHLET_BINDING               = 4;
-const uint32_t STORAGE_BUFFER_MESHLET_VERTEX_BINDING        = 5;
-const uint32_t STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING      = 6;
-const uint32_t STORAGE_BUFFER_MESH_MATERIAL_BINDING         = 7;
-const uint32_t STORAGE_BUFFER_INDEX_BINDING                 = 8;
-const uint32_t STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING      = 9;
-const uint32_t STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING = 10;
-
-// NOTE: I'll have to offset manually in other shaders from this set.
-const uint32_t LAST_BINDLESS_SET = BINDLESS_MEGA_SET;
 
 #ifndef __cplusplus
 
@@ -124,59 +111,53 @@ layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, r32f) uniform i
 
 // NOTE: Every submesh has it's own storage buffer, where stored array of Positions, etc...
 
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_VERTEX_POS_BINDING, scalar) readonly buffer VertexPosBuffer
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer VertexPosBuffer
 {
-    MeshPositionVertex Positions[];
+    MeshPositionVertex positions[];
 }
-s_GlobalVertexPosBuffers[];
+s_VertexPosBuffersBDA;
 
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, scalar) readonly buffer VertexAttribBuffer
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer VertexAttribBuffer
 {
-    MeshAttributeVertex Attributes[];
+    MeshAttributeVertex attributes[];
 }
-s_GlobalVertexAttribBuffers[];
+s_VertexAttribBuffersBDA;
 
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESHLET_BINDING, scalar) readonly buffer MeshletBuffer
-{
-    Meshlet meshlets[];
-}
-s_GlobalMeshletBuffers[];
-
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESHLET_VERTEX_BINDING, scalar) readonly buffer MeshletVerticesBuffer
-{
-    uint32_t vertices[];
-}
-s_GlobalMeshletVerticesBuffers[];
-
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, scalar) readonly buffer MeshletTrianglesBuffer
-{
-    uint8_t triangles[];
-}
-s_GlobalMeshletTrianglesBuffers[];
-
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESH_MATERIAL_BINDING, scalar) readonly buffer MaterialBuffer
-{
-    PBRData mat;
-}
-s_GlobalMaterialBuffers[];
-
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_INDEX_BINDING, scalar) readonly buffer MeshIndexBuffer
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshIndexBuffer
 {
     uint32_t indices[];
 }
-s_GlobalIndexBuffers[];
+s_IndexBuffersBDA;
 
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESH_DATA_OPAQUE_BINDING, scalar) readonly buffer MeshDataBufferOpaque
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshletBuffer
 {
-    MeshData MeshesData[];
+    Meshlet meshlets[];
 }
-s_GlobalMeshDataBufferOpaque;
+s_MeshletBuffersBDA;
 
-layout(set = BINDLESS_MEGA_SET, binding = STORAGE_BUFFER_MESH_DATA_TRANSPARENT_BINDING, scalar) readonly buffer MeshDataBufferTransparent
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshletVerticesBuffer
 {
-    MeshData MeshesData[];
+    uint32_t vertices[];
 }
-s_GlobalMeshDataBufferTransparent;
+s_MeshletVerticesBuffersBDA;
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshletTrianglesBuffer
+{
+    uint8_t triangles[];
+}
+s_MeshletTrianglesBuffersBDA;
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MaterialBuffer
+{
+    PBRData mat;
+}
+s_MaterialBuffersBDA;
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshDataBuffer
+{
+    MeshData meshesData[];
+}
+s_MeshDataBufferBDA;
 
 #endif
 
@@ -244,17 +225,11 @@ layout(buffer_reference, buffer_reference_align = 1, scalar) buffer VisibleSpotL
 }
 s_VisibleSpotLightIndicesBufferBDA;  // Name unused, check u_PC
 
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CulledMeshIDBufferOpaque
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CulledMeshIDBuffer
 {
     uint32_t CulledMeshIDs[];
 }
-s_CulledMeshIDBufferOpaqueBDA;  // Name unused, check u_PC
-
-layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CulledMeshIDBufferTransparent
-{
-    uint32_t CulledMeshIDs[];
-}
-s_CulledMeshIDBufferTransparentBDA;  // Name unused, check u_PC
+s_CulledMeshIDBufferBDA;  // Name unused, check u_PC
 
 #endif
 

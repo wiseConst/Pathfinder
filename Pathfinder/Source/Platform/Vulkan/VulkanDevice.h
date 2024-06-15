@@ -2,33 +2,17 @@
 
 #include "VulkanCore.h"
 #include <Renderer/CommandBuffer.h>
-
-// TODO: Big renderer refactor, since I dropped default pipeline support, mesh-shading prior only.
+#include <Renderer/RendererCoreDefines.h>
 
 namespace Pathfinder
 {
-
-struct VulkanDeviceSpecification
-{
-    VkPhysicalDeviceFeatures PhysicalDeviceFeatures = {};
-    std::string DeviceName                          = s_DEFAULT_STRING;
-    VkPhysicalDevice PhysicalDevice                 = VK_NULL_HANDLE;
-    uint32_t GraphicsFamily                         = UINT32_MAX;
-    uint32_t PresentFamily                          = UINT32_MAX;
-    uint32_t ComputeFamily                          = UINT32_MAX;
-    uint32_t TransferFamily                         = UINT32_MAX;
-    float TimestampPeriod                           = 1.f;
-    uint32_t VendorID                               = 0;
-    uint32_t DeviceID                               = 0;
-    uint8_t PipelineCacheUUID[VK_UUID_SIZE]         = {0};
-};
 
 class VulkanAllocator;
 class VulkanDescriptorAllocator;
 class VulkanDevice final : private Uncopyable, private Unmovable
 {
   public:
-    explicit VulkanDevice(const VkInstance& instance, const VulkanDeviceSpecification& vulkanDeviceSpec);
+    explicit VulkanDevice(const VkInstance& instance);
     ~VulkanDevice();
 
     void AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, const CommandBufferSpecification& commandBufferSpec) const;
@@ -58,14 +42,14 @@ class VulkanDevice final : private Uncopyable, private Unmovable
 
     NODISCARD FORCEINLINE VkDeviceAddress GetAccelerationStructureAddress(const VkAccelerationStructureKHR& as) const
     {
-        const VkAccelerationStructureDeviceAddressInfoKHR asdaInfo = {VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR,
-                                                                      nullptr, as};
+        const VkAccelerationStructureDeviceAddressInfoKHR asdaInfo = {
+            .sType = VK_STRUCTURE_TYPE_ACCELERATION_STRUCTURE_DEVICE_ADDRESS_INFO_KHR, .accelerationStructure = as};
         return vkGetAccelerationStructureDeviceAddressKHR(m_LogicalDevice, &asdaInfo);
     }
 
     NODISCARD FORCEINLINE VkDeviceAddress GetBufferDeviceAddress(const VkBuffer& buffer) const
     {
-        const VkBufferDeviceAddressInfo bdaInfo = {VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, nullptr, buffer};
+        const VkBufferDeviceAddressInfo bdaInfo = {.sType = VK_STRUCTURE_TYPE_BUFFER_DEVICE_ADDRESS_INFO, .buffer = buffer};
         return vkGetBufferDeviceAddress(m_LogicalDevice, &bdaInfo);
     }
 
@@ -83,6 +67,8 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetPipelineCacheUUID() const { return m_PipelineCacheUUID; }
     NODISCARD FORCEINLINE const auto GetVendorID() const { return m_VendorID; }
     NODISCARD FORCEINLINE const auto GetDeviceID() const { return m_DeviceID; }
+
+    NODISCARD bool IsDepthStencilFormatSupported(const EImageFormat imageFormat) const;
 
   private:
     std::vector<VkFormat> m_SupportedDepthStencilFormats;
@@ -116,7 +102,8 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     Unique<VulkanDescriptorAllocator> m_VDA;
 
     VulkanDevice() = delete;
-    void CreateLogicalDevice(const VkPhysicalDeviceFeatures& physicalDeviceFeatures);
+    void ChooseBestPhysicalDevice(const VkInstance& instance);
+    void CreateLogicalDevice();
     void CreateCommandPools();
     void SavePipelineCache();
     void LoadPipelineCache();

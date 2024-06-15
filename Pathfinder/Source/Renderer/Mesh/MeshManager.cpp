@@ -10,7 +10,7 @@
 #include <Renderer/Buffer.h>
 #include <Renderer/Material.h>
 #include <Renderer/Image.h>
-#include <Renderer/Texture2D.h>
+#include <Renderer/Texture.h>
 #include <Renderer/Renderer.h>
 
 #include <fastgltf/glm_element_traits.hpp>
@@ -52,10 +52,10 @@ static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
 }
 }  // namespace FastGLTFUtils
 
-Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures,
+Shared<Texture> MeshManager::LoadTexture(std::unordered_map<std::string, Shared<Texture>>& loadedTextures,
                                            const std::string& meshAssetsDir, const fastgltf::Asset& asset,
                                            const fastgltf::Material& materialAccessor, const size_t textureIndex,
-                                           TextureSpecification& textureSpec, const bool bMetallicRoughness)
+                                           TextureSpecification& textureSpec, const bool bMetallicRoughness, const bool bFlipOnLoad)
 {
     const auto& fastgltfTexture = asset.textures[textureIndex];
     const auto imageIndex       = fastgltfTexture.imageIndex;
@@ -87,7 +87,7 @@ Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Share
         std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / appSpec.CacheDir / meshDir / "textures/";
     if (!std::filesystem::exists(currentMeshTextureCacheDir)) std::filesystem::create_directories(currentMeshTextureCacheDir);
 
-    Shared<Texture2D> texture = nullptr;
+    Shared<Texture> texture = nullptr;
     std::visit(
         fastgltf::visitor{
             [](auto& arg) {},
@@ -130,13 +130,13 @@ Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Share
                 {
                     std::vector<uint8_t> compressedImage;
                     TextureCompressor::LoadCompressed(textureCacheFilePath, textureSpec, compressedImage);
-                    texture = Texture2D::Create(textureSpec, compressedImage.data(), compressedImage.size());
+                    texture = Texture::Create(textureSpec, compressedImage.data(), compressedImage.size());
                 }
                 else
                 {
                     int32_t x = 1, y = 1, channels = 4;
                     const std::string texturePath   = meshAssetsDir + std::string(uri.uri.string());
-                    void* uncompressedData          = ImageUtils::LoadRawImage(texturePath, textureSpec.bFlipOnLoad, &x, &y, &channels);
+                    void* uncompressedData          = ImageUtils::LoadRawImage(texturePath, bFlipOnLoad, &x, &y, &channels);
                     const auto uncompressedDataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
                     textureSpec.Width               = x;
                     textureSpec.Height              = y;
@@ -199,7 +199,7 @@ Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Share
 
                     if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
                     {
-                        texture = Texture2D::Create(textureSpec, whatToCompress, whatToCompressSize);
+                        texture = Texture::Create(textureSpec, whatToCompress, whatToCompressSize);
                     }
                     else
                     {
@@ -209,7 +209,7 @@ Shared<Texture2D> MeshManager::LoadTexture(std::unordered_map<std::string, Share
                         TextureCompressor::Compress(textureSpec, srcImageFormat, whatToCompress, whatToCompressSize, &compressedData,
                                                     compressedDataSize);
 
-                        texture = Texture2D::Create(textureSpec, compressedData, compressedDataSize);
+                        texture = Texture::Create(textureSpec, compressedData, compressedDataSize);
                         TextureCompressor::SaveCompressed(textureCacheFilePath, textureSpec, compressedData, compressedDataSize);
                         free(compressedData);
                     }
@@ -252,7 +252,7 @@ void MeshManager::LoadMesh(std::vector<Shared<Submesh>>& submeshes, const std::f
 
     std::string currentMeshDir = meshFilePath.parent_path().string() + "/";
     PFR_ASSERT(!currentMeshDir.empty(), "Current mesh directory path invalid!");
-    std::unordered_map<std::string, Shared<Texture2D>> loadedTextures;
+    std::unordered_map<std::string, Shared<Texture>> loadedTextures;
     for (size_t meshIndex = 0; meshIndex < asset->meshes.size(); ++meshIndex)
     {
         LoadSubmeshes(submeshes, currentMeshDir, loadedTextures, asset.get(), meshIndex);
@@ -322,20 +322,20 @@ SurfaceMesh MeshManager::GenerateUVSphere(const uint32_t sectorCount, const uint
 
     SurfaceMesh mesh = {};
     {
-        constexpr BufferSpecification vbSpec = {EBufferUsage::BUFFER_USAGE_VERTEX};
-        mesh.VertexBuffer                    = Buffer::Create(vbSpec, vertices.data(), vertices.size() * sizeof(vertices[0]));
+        const BufferSpecification vbSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_VERTEX};
+        mesh.VertexBuffer                = Buffer::Create(vbSpec, vertices.data(), vertices.size() * sizeof(vertices[0]));
     }
 
     {
-        constexpr BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_INDEX};
-        mesh.IndexBuffer                     = Buffer::Create(ibSpec, indices.data(), indices.size() * sizeof(indices[0]));
+        const BufferSpecification ibSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_INDEX};
+        mesh.IndexBuffer                 = Buffer::Create(ibSpec, indices.data(), indices.size() * sizeof(indices[0]));
     }
 
     return mesh;
 }
 
 void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const std::string& meshDir,
-                                std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures, const fastgltf::Asset& asset,
+                                std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const fastgltf::Asset& asset,
                                 const size_t meshIndex)
 {
     fastgltf::Node fastGLTFnode = {};
@@ -408,7 +408,7 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         {
             fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[color_0_It->second],
                                                           [&](const glm::vec4& color, std::size_t idx)
-                                                          { meshoptimizeVertices[idx].Color = PackVec4ToU8Vec4(color); });
+                                                          { meshoptimizeVertices[idx].Color = glm::packUnorm4x8(color); });
         }
 
         // UV
@@ -430,42 +430,38 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
             const auto& materialAccessor = asset.materials[p.materialIndex.value()];
 
             // Assemble gathered textures.
-            PBRData pbrData   = {};
-            pbrData.BaseColor = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data());
+            PBRData pbrData   = {.BaseColor = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data())};
             pbrData.Metallic  = materialAccessor.pbrData.metallicFactor;
             pbrData.Roughness = materialAccessor.pbrData.roughnessFactor;
             pbrData.bIsOpaque = materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque;
 
-            Shared<Texture2D> albedo = nullptr;
+            Shared<Texture> albedo = nullptr;
             if (materialAccessor.pbrData.baseColorTexture.has_value())
             {
                 TextureSpecification albedoTextureSpec = {};
                 albedoTextureSpec.Format               = EImageFormat::FORMAT_BC7_UNORM;
-                albedoTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.pbrData.baseColorTexture.value();
                 albedo = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, albedoTextureSpec);
                 pbrData.AlbedoTextureIndex = albedo->GetBindlessIndex();
             }
 
-            Shared<Texture2D> normalMap = nullptr;
+            Shared<Texture> normalMap = nullptr;
             if (materialAccessor.normalTexture.has_value())
             {
                 TextureSpecification normalMapTextureSpec = {};
                 normalMapTextureSpec.Format               = EImageFormat::FORMAT_BC5_UNORM;
-                normalMapTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
                 normalMap = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, normalMapTextureSpec);
                 pbrData.NormalTextureIndex = normalMap->GetBindlessIndex();
             }
 
-            Shared<Texture2D> metallicRoughness = nullptr;
+            Shared<Texture> metallicRoughness = nullptr;
             if (materialAccessor.pbrData.metallicRoughnessTexture.has_value())
             {
                 TextureSpecification metallicRoughnessTextureSpec = {};
                 metallicRoughnessTextureSpec.Format               = EImageFormat::FORMAT_BC5_UNORM;
-                metallicRoughnessTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.pbrData.metallicRoughnessTexture.value();
                 metallicRoughness       = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
@@ -473,24 +469,22 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
                 pbrData.MetallicRoughnessTextureIndex = metallicRoughness->GetBindlessIndex();
             }
 
-            Shared<Texture2D> emissiveMap = nullptr;
+            Shared<Texture> emissiveMap = nullptr;
             if (materialAccessor.emissiveTexture.has_value())
             {
                 TextureSpecification emissiveTextureSpec = {};
                 emissiveTextureSpec.Format               = EImageFormat::FORMAT_BC7_UNORM;
-                emissiveTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.emissiveTexture.value();
                 emissiveMap = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, emissiveTextureSpec);
                 pbrData.EmissiveTextureIndex = emissiveMap->GetBindlessIndex();
             }
 
-            Shared<Texture2D> occlusionMap = nullptr;
+            Shared<Texture> occlusionMap = nullptr;
             if (materialAccessor.occlusionTexture.has_value())
             {
                 TextureSpecification occlusionTextureSpec = {};
                 occlusionTextureSpec.Format               = EImageFormat::FORMAT_BC4_UNORM;
-                occlusionTextureSpec.bBindlessUsage       = true;
 
                 const auto& textureInfo = materialAccessor.occlusionTexture.value();
                 occlusionMap =
@@ -524,10 +518,10 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         std::vector<MeshManager::MeshoptimizeVertex> finalVertices;
         MeshManager::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
 
-        BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_INDEX_BINDING, true};
-        ibSpec.UsageFlags |=
-            EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
-        submesh->m_IndexBuffer = Buffer::Create(ibSpec, finalIndices.data(), finalIndices.size() * sizeof(finalIndices[0]));
+        const BufferSpecification bufferSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
+                                                              EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY |
+                                                              EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+        submesh->m_IndexBuffer = Buffer::Create(bufferSpec, finalIndices.data(), finalIndices.size() * sizeof(finalIndices[0]));
 
         std::vector<MeshPositionVertex> vertexPositions(finalVertices.size());
         std::vector<MeshAttributeVertex> vertexAttributes(finalVertices.size());
@@ -545,17 +539,11 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         indices.clear();
         meshoptimizeVertices.clear();
 
-        BufferSpecification vbPosSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_VERTEX_POS_BINDING, true};
-        vbPosSpec.UsageFlags |=
-            EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         submesh->m_VertexPositionBuffer =
-            Buffer::Create(vbPosSpec, vertexPositions.data(), vertexPositions.size() * sizeof(vertexPositions[0]));
+            Buffer::Create(bufferSpec, vertexPositions.data(), vertexPositions.size() * sizeof(vertexPositions[0]));
 
-        BufferSpecification vbAttribSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_VERTEX_ATTRIB_BINDING, true};
-        vbAttribSpec.UsageFlags |=
-            EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS;
         submesh->m_VertexAttributeBuffer =
-            Buffer::Create(vbAttribSpec, vertexAttributes.data(), vertexAttributes.size() * sizeof(vertexAttributes[0]));
+            Buffer::Create(bufferSpec, vertexAttributes.data(), vertexAttributes.size() * sizeof(vertexAttributes[0]));
 
         submesh->m_BoundingSphere = MeshManager::GenerateBoundingSphere(vertexPositions);
 
@@ -564,16 +552,13 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         std::vector<Meshlet> meshlets;
         MeshManager::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
 
-        constexpr BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_BINDING, true};
-        submesh->m_MeshletBuffer             = Buffer::Create(mbSpec, meshlets.data(), meshlets.size() * sizeof(meshlets[0]));
-
-        constexpr BufferSpecification mbVertSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_VERTEX_BINDING, true};
+        const BufferSpecification meshletBufferSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
+                                                                     EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+        submesh->m_MeshletBuffer = Buffer::Create(meshletBufferSpec, meshlets.data(), meshlets.size() * sizeof(meshlets[0]));
         submesh->m_MeshletVerticesBuffer =
-            Buffer::Create(mbVertSpec, meshletVertices.data(), meshletVertices.size() * sizeof(meshletVertices[0]));
-
-        constexpr BufferSpecification mbTriSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESHLET_TRIANGLE_BINDING, true};
+            Buffer::Create(meshletBufferSpec, meshletVertices.data(), meshletVertices.size() * sizeof(meshletVertices[0]));
         submesh->m_MeshletTrianglesBuffer =
-            Buffer::Create(mbTriSpec, meshletTriangles.data(), meshletTriangles.size() * sizeof(meshletTriangles[0]));
+            Buffer::Create(meshletBufferSpec, meshletTriangles.data(), meshletTriangles.size() * sizeof(meshletTriangles[0]));
     }
 }
 

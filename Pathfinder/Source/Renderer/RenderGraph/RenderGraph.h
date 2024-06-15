@@ -1,60 +1,84 @@
 #pragma once
 
 #include <Core/Core.h>
-#include <Renderer/Buffer.h>
-#include <Renderer/Image.h>
-#include <Renderer/Texture2D.h>
+
+#include <Renderer/RendererCoreDefines.h>
+#include "RenderGraphPass.h"
+#include "RenderGraphBuilder.h"
+
+// NOTE: Heavily inspired by Yuri ODonnel, themaister, Adria-DX12, LegitEngine.
 
 namespace Pathfinder
 {
 
-enum class EPassType : uint8_t
-{
-    PASS_TYPE_GRAPHICS = 0,
-    PASS_TYPE_COMPUTE,
-    PASS_TYPE_RAY_TRACING,
-};
-
-using PassCallbackFn = std::function<void()>;
-class Pass final : private Uncopyable, private Unmovable
-{
-  public:
-    Pass(const std::string& debugName, const EPassType passType, const PassCallbackFn& executeCallback) noexcept
-        : m_DebugName(debugName), m_PassType(passType), m_ExecuteCallback(executeCallback)
-    {
-        LOG_DEBUG("Pass {} created!", debugName);
-    }
-    ~Pass() = default;
-
-  private:
-    std::string m_DebugName          = s_DEFAULT_STRING;
-    EPassType m_PassType             = EPassType::PASS_TYPE_GRAPHICS;
-    PassCallbackFn m_ExecuteCallback = {};
-
-    Pass() = delete;
-};
+class RenderGraphResourcePool;
+class CommandBuffer;
 
 class RenderGraph final : private Uncopyable, private Unmovable
 {
   public:
-    RenderGraph(const std::string_view& debugName) : m_DebugName(debugName) { LOG_INFO("RenderGraph {} created!", m_DebugName); }
+    explicit RenderGraph(const std::string& name, RenderGraphResourcePool& resourcePool) : m_Name(name), m_ResourcePool(resourcePool) {}
     ~RenderGraph() = default;
 
-    NODISCARD FORCEINLINE Unique<Pass>& AddPass(const std::string& name, const EPassType passType,
-                                                const PassCallbackFn& executeCallback) noexcept
+    template <typename TData, typename... Args>
+        requires std::is_constructible_v<RenderGraphPass<TData>, Args...>
+    [[maybe_unused]] decltype(auto) AddPass(Args&&... args)
     {
-        PFR_ASSERT(!name.empty(), "Pass name is empty!");
-        PFR_ASSERT(!m_PassNameToIndex.contains(name), "Pass already present!");
-
-        m_PassNameToIndex[name] = m_Passes.size();
-        return m_Passes.emplace_back(MakeUnique<Pass>(name, passType, executeCallback));
+        m_Passes.emplace_back(MakeUnique<RenderGraphPass<TData>>(std::forward<Args>(args)...));
+        Unique<RGPassBase>& pass = m_Passes.back();
+        pass->m_ID               = m_Passes.size() - 1;
+        RenderGraphBuilder builder(*this, *pass);
+        pass->Setup(builder);
+        return *dynamic_cast<RenderGraphPass<TData>*>(pass.get());
     }
 
-  private:
-    std::string m_DebugName = s_DEFAULT_STRING;
-    std::vector<Unique<Pass>> m_Passes;
-    std::unordered_map<std::string, std::uint32_t> m_PassNameToIndex;
+    void Build();
+    void Execute();
 
-    RenderGraph() = delete;
+    RGTextureID DeclareTexture(const std::string& name, const RGTextureSpecification& rgTextureSpec);
+    RGBufferID DeclareBuffer(const std::string& name, const RGBufferSpecification& rgBufferSpec);
+
+    FORCEINLINE NODISCARD RGTextureID GetTextureID(const std::string& name) const
+    {
+        PFR_ASSERT(name.empty(), "Invalid texture name!");
+        PFR_ASSERT(m_TextureNameIDMap.contains(name), "Texture isn't declared!");
+
+        return m_TextureNameIDMap.at(name);
+    }
+
+    FORCEINLINE NODISCARD RGBufferID GetBufferID(const std::string& name) const
+    {
+        PFR_ASSERT(name.empty(), "Invalid buffer name!");
+        PFR_ASSERT(m_BufferNameIDMap.contains(name), "Buffer isn't declared!");
+
+        return m_BufferNameIDMap.at(name);
+    }
+
+    Shared<Texture>& GetTexture(const RGTextureID resourceID) const;
+    Shared<Buffer>& GetBuffer(const RGBufferID resourceID) const;
+
+
+  private:
+    std::string m_Name = s_DEFAULT_STRING;
+    uint8_t m_CurrentFrameIndex{};
+    RenderGraphResourcePool& m_ResourcePool;
+
+    std::vector<Unique<RGPassBase>> m_Passes;
+    std::vector<Unique<RGTexture>> m_Textures;
+    std::vector<Unique<RGBuffer>> m_Buffers;
+
+    // TODO: Fill
+    std::vector<std::string> m_PerFrameResources;
+
+    std::vector<uint32_t> m_TopologicallySortedPasses;
+    std::vector<std::vector<uint32_t>> m_AdjdacencyLists;
+
+    std::unordered_map<std::string, RGTextureID> m_TextureNameIDMap;
+    std::unordered_map<std::string, RGBufferID> m_BufferNameIDMap;
+
+    void BuildAdjacencyLists();
+    void TopologicalSort();
+
+    void GraphVizDump();
 };
 }  // namespace Pathfinder

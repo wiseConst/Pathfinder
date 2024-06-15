@@ -1,31 +1,35 @@
 #include <PathfinderPCH.h>
-#include "Texture2D.h"
+#include "Texture.h"
 
 #include "RendererAPI.h"
-#include "Platform/Vulkan/VulkanTexture2D.h"
+#include "Platform/Vulkan/VulkanTexture.h"
 
 #include <compressonator.h>
 
 namespace Pathfinder
 {
 
-Shared<Texture2D> Texture2D::Create(const TextureSpecification& textureSpec, const void* data, const size_t dataSize)
+Shared<Texture> Texture::Create(const TextureSpecification& textureSpec, const void* data, const size_t dataSize)
 {
     switch (RendererAPI::Get())
     {
-        case ERendererAPI::RENDERER_API_VULKAN: return MakeShared<VulkanTexture2D>(textureSpec, data, dataSize);
+        case ERendererAPI::RENDERER_API_VULKAN: return MakeShared<VulkanTexture>(textureSpec, data, dataSize);
     }
 
     PFR_ASSERT(false, "Unknown Renderer API!");
     return nullptr;
 }
 
-void Texture2D::Invalidate(const void* data = nullptr, const size_t dataSize = 0)
+void Texture::Invalidate(const void* data = nullptr, const size_t dataSize = 0)
 {
-    ImageSpecification imageSpec = {m_Specification.Width, m_Specification.Height};
-    imageSpec.Format             = m_Specification.Format;
-    imageSpec.UsageFlags         = EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
-    imageSpec.Layers             = m_Specification.Layers;
+    if (data && dataSize > 0) m_Specification.UsageFlags |= EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT;
+
+    ImageSpecification imageSpec = {.DebugName  = m_Specification.DebugName,
+                                    .Width      = m_Specification.Width,
+                                    .Height     = m_Specification.Height,
+                                    .Format     = m_Specification.Format,
+                                    .UsageFlags = m_Specification.UsageFlags,
+                                    .Layers     = m_Specification.Layers};
     if (m_Specification.bGenerateMips)
     {
         imageSpec.Mips = ImageUtils::CalculateMipCount(m_Specification.Width, m_Specification.Height);
@@ -39,8 +43,11 @@ void Texture2D::Invalidate(const void* data = nullptr, const size_t dataSize = 0
         m_Image->SetData(data, dataSize);
     }
 
-    m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-    if (m_Specification.bGenerateMips) GenerateMipMaps();
+    if (!(m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT))
+    {
+        m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        if (m_Specification.bGenerateMips) GenerateMipMaps();
+    }
 }
 
 void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImageFormat srcImageFormat, const void* rawImageData,
@@ -165,7 +172,11 @@ void TextureCompressor::SaveCompressed(const std::filesystem::path& savePath, co
     }
 
     // Store texture specification and its data.
-    out.write(reinterpret_cast<const char*>(&textureSpec), sizeof(textureSpec));
+
+    const auto debugNameLength = textureSpec.DebugName.size();
+    out.write(reinterpret_cast<const char*>(&debugNameLength), sizeof(debugNameLength));
+    out.write(textureSpec.DebugName.data(), debugNameLength);
+    out.write(reinterpret_cast<const char*>(&textureSpec) + sizeof(std::string), sizeof(textureSpec) - sizeof(std::string));
     out.write(reinterpret_cast<const char*>(&imageSize), sizeof(imageSize));
     out.write(reinterpret_cast<const char*>(imageData), imageSize);
 
@@ -185,7 +196,13 @@ void TextureCompressor::LoadCompressed(const std::filesystem::path& loadPath, Te
     }
 
     // Load texture specification.
-    in.read(reinterpret_cast<char*>(&outTextureSpec), sizeof(outTextureSpec));
+    size_t debugNameLength = 0;
+    in.read(reinterpret_cast<char*>(&debugNameLength), sizeof(debugNameLength));
+
+    outTextureSpec.DebugName.resize(debugNameLength);
+    in.read(outTextureSpec.DebugName.data(), debugNameLength);
+
+    in.read(reinterpret_cast<char*>(&outTextureSpec) + sizeof(std::string), sizeof(outTextureSpec) - sizeof(std::string));
 
     // Load compressed image size.
     size_t dataSize = 0;

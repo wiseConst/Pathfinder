@@ -1,8 +1,8 @@
 #pragma once
 
-#include "Core/Core.h"
-#include "Core/Window.h"
-#include "Renderer/RendererCoreDefines.h"
+#include <Core/Core.h>
+#include <Core/Window.h>
+#include <Renderer/RendererCoreDefines.h>
 #include "Image.h"
 
 namespace Pathfinder

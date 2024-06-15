@@ -2,7 +2,7 @@
 
 #include "Core/Core.h"
 #include "Renderer/RendererCoreDefines.h"
-#include "Renderer/Texture2D.h"
+#include "Renderer/Texture.h"
 
 #include <meshoptimizer.h>
 
@@ -22,7 +22,7 @@ class MeshManager final
     struct MeshoptimizeVertex
     {
         glm::vec3 Position = glm::vec3(0.0f);
-        u8vec4 Color       = u8vec4(255);
+        uint32_t Color     = 0xFFFFFFFF;
         glm::vec3 Normal   = glm::vec3(0.0f);
         glm::vec3 Tangent  = glm::vec3(0.0f);
         glm::u16vec2 UV    = glm::u16vec2(0);
@@ -44,13 +44,14 @@ class MeshManager final
 
   private:
     static void LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const std::string& meshDir,
-                              std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures, const fastgltf::Asset& asset,
+                              std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const fastgltf::Asset& asset,
                               const size_t meshIndex);
 
-    static Shared<Texture2D> LoadTexture(std::unordered_map<std::string, Shared<Texture2D>>& loadedTextures,
+    static Shared<Texture> LoadTexture(std::unordered_map<std::string, Shared<Texture>>& loadedTextures,
                                          const std::string& meshAssetsDir, const fastgltf::Asset& asset,
                                          const fastgltf::Material& materialAccessor, const size_t textureIndex,
-                                         TextureSpecification& textureSpec, const bool bMetallicRoughness = false);
+                                         TextureSpecification& textureSpec, const bool bMetallicRoughness = false,
+                                         const bool bFlipOnLoad = false);
 
     MeshManager()  = delete;
     ~MeshManager() = default;

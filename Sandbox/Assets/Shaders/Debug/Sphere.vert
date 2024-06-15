@@ -14,7 +14,7 @@ struct DebugSphereData
     vec4 Orientation;
     vec3 Center;
     float Radius;
-    u8vec4 Color;
+    uint32_t Color;
 };
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) buffer DebugSphereDataBuffer
@@ -30,5 +30,5 @@ void main()
     const vec3 worldPos = RotateByQuat((inPosition * sphereData.Radius + sphereData.Center) * sphereData.Scale, sphereData.Orientation) + sphereData.Translation;
     gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
     
-    outColor = UnpackU8Vec4ToVec4(sphereData.Color);
+    outColor = unpackUnorm4x8(sphereData.Color);
 }

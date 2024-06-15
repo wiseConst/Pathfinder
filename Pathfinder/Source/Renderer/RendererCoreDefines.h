@@ -3,6 +3,8 @@
 #include <Core/Math.h>
 #include <array>
 #include <map>
+#include <optional>
+#include <variant>
 
 #include "Globals.h"
 
@@ -17,18 +19,23 @@ static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
 class CommandBuffer;
 using CommandBufferPerFrame = std::array<Shared<CommandBuffer>, s_FRAMES_IN_FLIGHT>;
 
-class Framebuffer;
-using FramebufferPerFrame = std::array<Shared<Framebuffer>, s_FRAMES_IN_FLIGHT>;
-
 class Buffer;
 using BufferPerFrame = std::array<Shared<Buffer>, s_FRAMES_IN_FLIGHT>;
 
-class Image;
-using ImagePerFrame = std::array<Shared<Image>, s_FRAMES_IN_FLIGHT>;
+using ColorClearValue = glm::vec4;
+
+struct DepthStencilClearValue
+{
+    DepthStencilClearValue(const float depth, const uint8_t stencil) : Depth(depth), Stencil(stencil) {}
+
+    float Depth;
+    uint8_t Stencil;
+};
+
+using ClearValue = std::variant<std::monostate, ColorClearValue, DepthStencilClearValue>;
 
 typedef uint64_t RendererTypeFlags;
 
-// Shader defines.
 enum EShaderStage : uint32_t
 {
     SHADER_STAGE_VERTEX                  = BIT(0),
@@ -49,7 +56,7 @@ enum EShaderStage : uint32_t
     SHADER_STAGE_MESH                    = BIT(15),
 };
 
-enum EPipelineStage : uint64_t
+enum EPipelineStage : RendererTypeFlags
 {
     PIPELINE_STAGE_NONE                                 = 0ULL,
     PIPELINE_STAGE_TOP_OF_PIPE_BIT                      = 0x00000001ULL,
@@ -87,7 +94,7 @@ enum EPipelineStage : uint64_t
     PIPELINE_STAGE_ACCELERATION_STRUCTURE_COPY_BIT      = 0x10000000ULL
 };
 
-enum EAccessFlags : uint64_t
+enum EAccessFlags : RendererTypeFlags
 {
     ACCESS_NONE                                      = 0ULL,
     ACCESS_INDIRECT_COMMAND_READ_BIT                 = 0x00000001ULL,
@@ -120,7 +127,7 @@ enum EAccessFlags : uint64_t
     ACCESS_SHADER_BINDING_TABLE_READ_BIT             = 0x10000000000ULL
 };
 
-enum class EQueryPipelineStatistic
+enum class EQueryPipelineStatistic : uint32_t
 {
     QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT                    = BIT(0),
     QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT                  = BIT(1),
@@ -135,6 +142,150 @@ enum class EQueryPipelineStatistic
     QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT                 = BIT(10),
     QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT                    = BIT(11),
     QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT                    = BIT(12)
+};
+
+enum class EImageFormat : uint8_t
+{
+    FORMAT_UNDEFINED = 0,
+
+    FORMAT_R8_UNORM,
+    FORMAT_RG8_UNORM,
+    FORMAT_RGB8_UNORM,
+    FORMAT_RGBA8_UNORM,
+    FORMAT_BGRA8_UNORM,  // Swapchain
+    FORMAT_A2R10G10B10_UNORM_PACK32,
+
+    FORMAT_R16_UNORM,
+    FORMAT_R16F,
+
+    FORMAT_R32F,
+    FORMAT_R64F,
+
+    FORMAT_RGB16_UNORM,
+    FORMAT_RGB16F,
+
+    FORMAT_RGBA16_UNORM,
+    FORMAT_RGBA16F,
+
+    FORMAT_RGB32F,
+    FORMAT_RGBA32F,
+
+    FORMAT_RGB64F,
+    FORMAT_RGBA64F,
+
+    // DEPTH
+    FORMAT_D16_UNORM,
+    FORMAT_D32F,
+    FORMAT_S8_UINT,
+    FORMAT_D16_UNORM_S8_UINT,
+    FORMAT_D24_UNORM_S8_UINT,
+    FORMAT_D32_SFLOAT_S8_UINT,
+
+    // BCn
+    FORMAT_BC1_RGB_UNORM,
+    FORMAT_BC1_RGB_SRGB,
+    FORMAT_BC1_RGBA_UNORM,
+    FORMAT_BC1_RGBA_SRGB,
+    FORMAT_BC2_UNORM,
+    FORMAT_BC2_SRGB,
+    FORMAT_BC3_UNORM,
+    FORMAT_BC3_SRGB,
+    FORMAT_BC4_UNORM,
+    FORMAT_BC4_SNORM,
+    FORMAT_BC5_UNORM,
+    FORMAT_BC5_SNORM,
+    FORMAT_BC6H_UFLOAT,
+    FORMAT_BC6H_SFLOAT,
+    FORMAT_BC7_UNORM,
+    FORMAT_BC7_SRGB,
+};
+
+enum class EImageLayout : uint8_t
+{
+    IMAGE_LAYOUT_UNDEFINED = 0,
+    IMAGE_LAYOUT_GENERAL,
+    IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
+    IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
+    IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
+    IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
+    IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
+    IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL,
+    IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL,
+    IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
+    IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
+    IMAGE_LAYOUT_PRESENT_SRC,
+    IMAGE_LAYOUT_SHARED_PRESENT,
+    IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL
+};
+
+using ImageUsageFlags = uint32_t;
+enum EImageUsage : ImageUsageFlags
+{
+    IMAGE_USAGE_TRANSFER_SRC_BIT                     = BIT(0),
+    IMAGE_USAGE_TRANSFER_DST_BIT                     = BIT(1),
+    IMAGE_USAGE_SAMPLED_BIT                          = BIT(2),
+    IMAGE_USAGE_STORAGE_BIT                          = BIT(3),
+    IMAGE_USAGE_COLOR_ATTACHMENT_BIT                 = BIT(4),
+    IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT         = BIT(5),
+    IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT             = BIT(6),
+    IMAGE_USAGE_INPUT_ATTACHMENT_BIT                 = BIT(7),
+    IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT = BIT(8),
+    IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT             = BIT(9),
+};
+
+using BufferUsageFlags = uint32_t;
+enum EBufferUsage : BufferUsageFlags
+{
+    BUFFER_USAGE_VERTEX                                       = BIT(0),
+    BUFFER_USAGE_INDEX                                        = BIT(1),
+    BUFFER_USAGE_STORAGE                                      = BIT(2),
+    BUFFER_USAGE_TRANSFER_SOURCE                              = BIT(3),  // NOTE: Mark as BUFFER_USAGE_TRANSFER_SOURCE to place in CPU only.
+    BUFFER_USAGE_TRANSFER_DESTINATION                         = BIT(4),
+    BUFFER_USAGE_UNIFORM                                      = BIT(5),
+    BUFFER_USAGE_SHADER_DEVICE_ADDRESS                        = BIT(6),
+    BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(7),
+    BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE               = BIT(8),
+    BUFFER_USAGE_SHADER_BINDING_TABLE                         = BIT(9),
+    BUFFER_USAGE_INDIRECT                                     = BIT(10),
+};
+
+enum class EOp : uint8_t
+{
+    CLEAR = 0,
+    LOAD,
+    STORE,
+    DONT_CARE
+};
+
+using ResourceStateFlags = uint32_t;
+enum EResourceState : ResourceStateFlags
+{
+    RESOURCE_STATE_COMMON                   = BIT(0),
+    RESOURCE_STATE_VERTEX_BUFFER            = BIT(1),
+    RESOURCE_STATE_STORAGE_BUFFER           = BIT(2),
+    RESOURCE_STATE_INDEX_BUFFER             = BIT(3),
+    RESOURCE_STATE_RENDER_TARGET            = BIT(4),
+    RESOURCE_STATE_STORAGE_IMAGE            = BIT(5),
+    RESOURCE_STATE_DEPTH_WRITE              = BIT(6),
+    RESOURCE_STATE_DEPTH_READ               = BIT(7),
+    RESOURCE_STATE_COMPUTE_SHADER_RESOURCE  = BIT(8),
+    RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE = BIT(9),
+    RESOURCE_STATE_INDIRECT_ARGUMENT        = BIT(10),
+    RESOURCE_STATE_COPY_DESTINATION         = BIT(11),
+    RESOURCE_STATE_COPY_SOURCE              = BIT(12),
+    RESOURCE_STATE_ACCELERATION_STRUCTURE   = BIT(13)
+};
+
+struct RenderingInfo
+{
+    Pathfinder::ClearValue ClearValue = std::monostate{};
+    EOp LoadOp                        = EOp::CLEAR;
+    EOp StoreOp                       = EOp::DONT_CARE;
 };
 
 enum class EPolygonMode : uint8_t
@@ -171,32 +322,18 @@ enum class ESamplerWrap : uint8_t
     SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE,
 };
 
-enum class EBlurType : uint8_t
-{
-    BLUR_TYPE_GAUSSIAN = 0,
-    BLUR_TYPE_MEDIAN,
-    BLUR_TYPE_BOX,
-};
-
-enum class EAmbientOcclusionType : uint8_t
-{
-    AMBIENT_OCCLUSION_TYPE_SSAO = 0,  // Default SSAO from learnopengl
-    AMBIENT_OCCLUSION_TYPE_HBAO,      // Default HBAO from NVidia
-    AMBIENT_OCCLUSION_TYPE_RTAO,
-};
-
 struct QuadVertex
 {
     glm::vec3 Position = glm::vec3(0.0f);
     glm::vec3 Normal   = glm::vec3(0.0f);
     glm::vec2 UV       = glm::vec2(0.0f);
-    glm::vec4 Color    = glm::vec4(1.0f);
+    uint32_t Color     = 0xFFFFFFFF;
 };
 
 struct LineVertex
 {
     glm::vec3 Position = glm::vec3(0.0f);
-    glm::vec4 Color    = glm::vec4(1.0f);
+    uint32_t Color     = 0xFFFFFFFF;
 };
 
 struct SurfaceMesh
