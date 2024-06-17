@@ -2,6 +2,7 @@
 
 #include <Core/Core.h>
 #include "RenderGraphResourceId.h"
+#include <unordered_set>
 
 namespace Pathfinder
 {
@@ -16,13 +17,13 @@ template <ERGResourceType ResourceType> struct RGResourceTraits;
 
 template <> struct RGResourceTraits<ERGResourceType::RGRESOURCE_TYPE_TEXTURE>
 {
-    using Resource     = Texture;
+    using Resource     = Shared<Texture>;
     using ResourceDesc = RGTextureSpecification;
 };
 
 template <> struct RGResourceTraits<ERGResourceType::RGRESOURCE_TYPE_BUFFER>
 {
-    using Resource     = Buffer;
+    using Resource     = Shared<Buffer>;
     using ResourceDesc = RGBufferSpecification;
 };
 
@@ -30,6 +31,10 @@ struct RenderGraphResource
 {
     RenderGraphResource(const uint64_t id, const std::string_view& name) : ID(id), Name(name) /*, Version(0), RefCounter(0) */ {}
 
+    std::unordered_set<uint32_t> WritePasses;
+    std::unordered_set<uint32_t> ReadPasses;
+
+    std::unordered_set<uint32_t> AlreadySyncedWith;
     EResourceState State = EResourceState::RESOURCE_STATE_COMMON;
     uint64_t ID{};
     // uint64_t Version{};
@@ -37,7 +42,7 @@ struct RenderGraphResource
 
     // std::optional<uint32_t> WriterPassIdx  = std::nullopt;
     // std::optional<uint32_t> LastUsedByPass = std::nullopt;
-    std::string_view Name = s_DEFAULT_STRING;
+    std::string Name = s_DEFAULT_STRING;
 };
 using RGResource = RenderGraphResource;
 
@@ -46,19 +51,12 @@ template <ERGResourceType ResourceType> struct TypedRenderGraphResource : Render
     using Resource     = RGResourceTraits<ResourceType>::Resource;
     using ResourceDesc = RGResourceTraits<ResourceType>::ResourceDesc;
 
-    // NOTE: Only for imported
-    TypedRenderGraphResource(const uint64_t id, Shared<Resource> resource, const std::string_view name = s_DEFAULT_STRING)
-        : RenderGraphResource(id, name), Handle(resource), Description(resource->GetSpecification())
-    {
-    }
-
-    // NOTE: Default use-case(in e.g. declaring)
-    TypedRenderGraphResource(const uint64_t id, const ResourceDesc& desc, const std::string_view name = s_DEFAULT_STRING)
+    TypedRenderGraphResource(const uint64_t id, const ResourceDesc& desc, const std::string_view& name = s_DEFAULT_STRING)
         : RenderGraphResource(id, name), Handle(nullptr), Description(desc)
     {
     }
 
-    Shared<Resource> Handle  = nullptr;
+    Resource Handle          = nullptr;
     ResourceDesc Description = {};
 };
 

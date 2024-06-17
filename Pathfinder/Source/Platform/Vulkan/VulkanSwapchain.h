@@ -6,7 +6,6 @@
 
 namespace Pathfinder
 {
-class VulkanCommandBuffer;
 
 class VulkanSwapchain final : public Swapchain
 {
@@ -50,6 +49,9 @@ class VulkanSwapchain final : public Swapchain
   private:
     VkSwapchainKHR m_Handle = VK_NULL_HANDLE;
     void* m_WindowHandle    = nullptr;
+
+    using VulkanSemaphorePerFrame = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>;
+    using VulkanFencePerFrame     = std::array<VkFence, s_FRAMES_IN_FLIGHT>;
 
     VulkanSemaphorePerFrame m_RenderSemaphore;
     VulkanFencePerFrame m_RenderFence;

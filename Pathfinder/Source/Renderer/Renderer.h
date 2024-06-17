@@ -21,6 +21,10 @@
 namespace Pathfinder
 {
 
+// TODO: Create samplers array for bindless usage, replace every cache thing with *ObjectKey
+// TODO: Introduce QueryManager -> VulkanQueryManager for runtime queries, instead of creating for each command buffer(sucks)
+
+class Buffer;
 class Texture;
 class Pipeline;
 class Camera;
@@ -29,13 +33,9 @@ class Submesh;
 class Mesh;
 class UILayer;
 
-// TODO: Introduce QueryManager -> VulkanQueryManager for runtime queries, instead of creating for each command buffer(sucks)
-class Renderer final : private Uncopyable, private Unmovable
+class Renderer final
 {
   public:
-    Renderer();
-    virtual ~Renderer();
-
     static void Init();
     static void Shutdown();
 
@@ -90,6 +90,9 @@ class Renderer final : private Uncopyable, private Unmovable
     }
 
   private:
+    Renderer()  = delete;
+    ~Renderer() = default;
+
     struct RenderObject
     {
         Shared<Submesh> submesh = nullptr;
@@ -112,7 +115,7 @@ class Renderer final : private Uncopyable, private Unmovable
         static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB
         uint8_t FrameIndex                                 = 0;
 
-        RenderGraphResourcePool ResourcePool;
+        RGResourcePool ResourcePool;
         Weak<Pipeline> LastBoundPipeline;
 
         // Rendering
@@ -147,8 +150,7 @@ class Renderer final : private Uncopyable, private Unmovable
 
         std::vector<RenderObject> OpaqueObjects;
         std::vector<RenderObject> TransparentObjects;
-        Shared<Texture> WhiteTexture = nullptr;
-
+        
         // Light-Culling
         uint64_t ComputeFrustumsPipelineHash = 0;
         uint64_t LightCullingPipelineHash    = 0;
@@ -186,6 +188,7 @@ class Renderer final : private Uncopyable, private Unmovable
 
     static inline RendererSettings s_RendererSettings;
 
+    // TODO: std::atomic<uint64_t>
     struct RendererStats
     {
         uint32_t TriangleCount;

@@ -27,7 +27,7 @@ void DepthPrePass::AddPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "DepthPre Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "DepthPrePass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             builder.DeclareTexture("DepthOpaque", {.DebugName  = "DepthOpaque",
@@ -41,9 +41,9 @@ void DepthPrePass::AddPass(Unique<RenderGraph>& rendergraph)
             builder.WriteDepthStencil("DepthOpaque", DepthStencilClearValue(0.f, 0), EOp::CLEAR, EOp::STORE);
 
             pd.CameraData         = builder.ReadBuffer("CameraData");
-            pd.MeshDataOpaque     = builder.ReadBuffer("MeshDataOpaque_V0");
-            pd.DrawBufferOpaque   = builder.ReadBuffer("DrawBufferOpaque_V0");
-            pd.CulledMeshesOpaque = builder.ReadBuffer("CulledMeshesOpaque_V0");
+            pd.MeshDataOpaque     = builder.ReadBuffer("MeshDataOpaque_V1");
+            pd.DrawBufferOpaque   = builder.ReadBuffer("DrawBufferOpaque_V1");
+            pd.CulledMeshesOpaque = builder.ReadBuffer("CulledMeshesOpaque_V1");
 
             builder.SetViewportScissor(m_Width, m_Height);
         },

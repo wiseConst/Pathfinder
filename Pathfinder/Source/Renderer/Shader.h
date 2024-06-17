@@ -87,7 +87,7 @@ class ShaderLibrary final : private Uncopyable, private Unmovable
             future.get();
 
 #if PFR_DEBUG
-        LOG_INFO("Time took to create ({}) shaders: {:.2f}ms", s_ShaderFutures.size(), t.GetElapsedMilliseconds());
+        LOG_INFO("Time taken to create ({}) shaders: {:.2f}ms", s_ShaderFutures.size(), t.GetElapsedMilliseconds());
 #endif
 
         s_ShaderFutures.clear();

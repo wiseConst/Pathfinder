@@ -15,38 +15,22 @@ class VulkanBuffer final : public Buffer
     ~VulkanBuffer() override { Destroy(); }
 
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
-    NODISCARD FORCEINLINE const auto& GetDescriptorInfo() const { return m_DescriptorInfo; }
-    NODISCARD FORCEINLINE void* GetMapped() const final override;
-    uint64_t GetBDA() const final override;
+    NODISCARD FORCEINLINE const auto GetDescriptorInfo() const
+    {
+        return VkDescriptorBufferInfo{.buffer = m_Handle, .offset = 0, .range = m_Specification.Capacity};
+    }
 
     void SetData(const void* data, const size_t dataSize) final override;
     void Resize(const size_t newBufferCapacity) final override;
 
+    void SetDebugName(const std::string& name) final override;
+
   private:
-    VkDescriptorBufferInfo m_DescriptorInfo = {};
-    VkBuffer m_Handle                       = VK_NULL_HANDLE;
-    VmaAllocation m_Allocation              = VK_NULL_HANDLE;
-    bool m_bIsMapped                        = false;
+    VkBuffer m_Handle          = VK_NULL_HANDLE;
+    VmaAllocation m_Allocation = VK_NULL_HANDLE;
 
     void Destroy() final override;
     VulkanBuffer() = delete;
 };
 
-namespace BufferUtils
-{
-
-void CreateBuffer(VkBuffer& buffer, VmaAllocation& allocation, const size_t size, const VkBufferUsageFlags bufferUsage,
-                  VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY);
-
-VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUsage);
-
-VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUsage);
-
-bool IsMappable(const VmaAllocation& allocation);
-
-void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation);
-
-}  // namespace BufferUtils
-
 }  // namespace Pathfinder
-

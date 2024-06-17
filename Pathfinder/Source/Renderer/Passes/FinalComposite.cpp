@@ -32,7 +32,7 @@ void FinalCompositePass::AddFinalPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "FinalComposite Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "FinalCompositePass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             builder.DeclareTexture("FinalTexture",
@@ -79,7 +79,7 @@ void FinalCompositePass::AddSwapchainBlitPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "SwapchainBlit Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "SwapchainBlitPass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder) { pd.FinalTexture = builder.ReadTexture("FinalTexture"); },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
         {

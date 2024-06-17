@@ -24,8 +24,8 @@ struct RGTextureSpecification
 struct RGBufferSpecification
 {
     std::string DebugName       = s_DEFAULT_STRING;
+    BufferFlags ExtraFlags      = 0;
     BufferUsageFlags UsageFlags = 0;
-    bool bMapPersistent         = false;  // In case it's HOST_VISIBLE, or I force it to be it.
     const bool bPerFrame        = false;
     size_t Capacity             = 0;
 };
@@ -40,15 +40,13 @@ struct RenderGraphResourceID
 {
     RenderGraphResourceID()                             = default;
     RenderGraphResourceID(const RenderGraphResourceID&) = default;
-    RenderGraphResourceID(const uint64_t id, const bool bIsPerFrame) : m_ID(static_cast<uint32_t>(id)), bPerFramed(bIsPerFrame) {}
+    RenderGraphResourceID(const uint64_t id) : m_ID(static_cast<uint32_t>(id)) {}
 
     FORCEINLINE void Invalidate() { m_ID = std::nullopt; }
-    FORCEINLINE auto IsPerFrame() const noexcept { return bPerFramed; }
     FORCEINLINE auto IsValid() const noexcept { return m_ID.has_value(); }
     auto operator<=>(const RenderGraphResourceID&) const = default;
 
     std::optional<uint32_t> m_ID = std::nullopt;
-    bool bPerFramed              = false;
 };
 using RGResourceID = RenderGraphResourceID;
 
@@ -66,12 +64,12 @@ namespace std
 {
 template <> struct hash<Pathfinder::RGTextureID>
 {
-    uint64_t operator()(const Pathfinder::RGTextureID& h) const { return hash<decltype(h.m_ID)>()(h.m_ID); }
+    uint64_t operator()(const Pathfinder::RGTextureID& h) const { return hash<uint32_t>()(h.m_ID.value()); }
 };
 
 template <> struct hash<Pathfinder::RGBufferID>
 {
-    uint64_t operator()(const Pathfinder::RGBufferID& h) const { return hash<decltype(h.m_ID)>()(h.m_ID); }
+    uint64_t operator()(const Pathfinder::RGBufferID& h) const { return hash<uint32_t>()(h.m_ID.value()); }
 };
 
 }  // namespace std

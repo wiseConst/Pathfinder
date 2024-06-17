@@ -38,7 +38,9 @@ void DebugRenderer::Init()
     std::ranges::for_each(s_DebugRendererData->LineVertexBuffer,
                           [](auto& vertexBuffer)
                           {
-                              const BufferSpecification vbSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_VERTEX,
+                              const BufferSpecification vbSpec = {.DebugName  = "LineVertexBuffer",
+                                                                  .ExtraFlags = EBufferFlag::BUFFER_FLAG_MAPPED,
+                                                                  .UsageFlags = EBufferUsage::BUFFER_USAGE_VERTEX,
                                                                   .Capacity   = s_DebugRendererData->s_MAX_VERTEX_BUFFER_SIZE};
                               vertexBuffer                     = Buffer::Create(vbSpec);
                           });
@@ -53,8 +55,9 @@ void DebugRenderer::Init()
     std::ranges::for_each(s_DebugRendererData->DebugSphereSSBO,
                           [](auto& debugSphereSSBO)
                           {
-                              const BufferSpecification dsiSSBO = {.UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
-                                                                                 EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS |
+                              const BufferSpecification dsiSSBO = {.DebugName  = "DebugSphereSSBO",
+                                                                   .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                                   .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
                                                                                  EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE};
                               debugSphereSSBO                   = Buffer::Create(dsiSSBO);
                           });
@@ -106,7 +109,7 @@ void DebugRenderer::Init()
     s_DebugRendererData->LinePipelineHash  = PipelineLibrary::Push(linePipelineSpec);
 
     PipelineLibrary::Compile();
-    LOG_TRACE("DEBUG_RENDERER: DebugRenderer created!");
+    LOG_TRACE("{}", __FUNCTION__);
     s_bDebugRendererInit = true;
 }
 
@@ -116,7 +119,7 @@ void DebugRenderer::Shutdown()
     {
         s_DebugRendererData.reset();
         s_bDebugRendererInit = false;
-        LOG_TRACE("DEBUG_RENDERER: DebugRenderer destroyed!");
+        LOG_TRACE("{}", __FUNCTION__);
     }
 }
 

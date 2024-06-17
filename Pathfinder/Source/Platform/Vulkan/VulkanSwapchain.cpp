@@ -195,9 +195,9 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
         if (m_ImageLayouts[m_ImageIndex] != VK_IMAGE_LAYOUT_GENERAL)
         {
             const auto imageBarrier =
-                VulkanUtility::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
-                                                     VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE,
-                                                     VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
+                VulkanUtils::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
+                                                   VK_IMAGE_LAYOUT_GENERAL, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE,
+                                                   VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, 1, 0, 1, 0);
             m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_GENERAL;
 
             vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_PIPELINE_STAGE_2_TRANSFER_BIT,
@@ -213,7 +213,7 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
 
     {
         const auto dstPipelineStages = VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT | VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-        const auto imageBarrier      = VulkanUtility::GetImageMemoryBarrier(
+        const auto imageBarrier      = VulkanUtils::GetImageMemoryBarrier(
             m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             VK_PIPELINE_STAGE_2_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT, dstPipelineStages, VK_ACCESS_2_NONE, 1, 0, 1, 0);
         m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
@@ -480,16 +480,17 @@ void VulkanSwapchain::PresentImage()
     bool bWasEverUsed = true;  // In case Renderer didn't use it, we should set waitSemaphore to imageAvaliable, otherwise renderSemaphore.
     if (m_ImageLayouts.at(m_ImageIndex) != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
     {
-        const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
-                                                   ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, static_cast<uint8_t>(m_FrameIndex),
-                                                   ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+        const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
+                                                   .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                   .FrameIndex = static_cast<uint8_t>(m_FrameIndex),
+                                                   .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
         auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
         const auto imageBarrier =
-            VulkanUtility::GetImageMemoryBarrier(m_Images.at(m_ImageIndex), VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts.at(m_ImageIndex),
-                                                 VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
-                                                 VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, 1, 0, 1, 0);
+            VulkanUtils::GetImageMemoryBarrier(m_Images.at(m_ImageIndex), VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts.at(m_ImageIndex),
+                                               VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
+                                               VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, 1, 0, 1, 0);
 
         vulkanCommandBuffer->InsertBarrier(VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT,
                                            VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageBarrier);
@@ -533,7 +534,7 @@ void VulkanSwapchain::BeginPass(const Shared<CommandBuffer>& commandBuffer, cons
     const auto srcPipelineStages = bPreserveContents ? VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT |
                                                            VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT
                                                      : VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-    const auto imageBarrier      = VulkanUtility::GetImageMemoryBarrier(
+    const auto imageBarrier      = VulkanUtils::GetImageMemoryBarrier(
         m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex], VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
         srcPipelineStages, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
         bPreserveContents ? VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT
@@ -545,18 +546,18 @@ void VulkanSwapchain::BeginPass(const Shared<CommandBuffer>& commandBuffer, cons
 
     m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
-    VkRenderingAttachmentInfo attachmentInfo = {VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO};
-    attachmentInfo.imageView                 = m_ImageViews[m_ImageIndex];
-    attachmentInfo.loadOp                    = bPreserveContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR;
-    attachmentInfo.storeOp                   = VK_ATTACHMENT_STORE_OP_STORE;
-    attachmentInfo.imageLayout               = m_ImageLayouts[m_ImageIndex];
+    const VkRenderingAttachmentInfo attachmentInfo = {.sType       = VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO,
+                                                      .imageView   = m_ImageViews[m_ImageIndex],
+                                                      .imageLayout = m_ImageLayouts[m_ImageIndex],
+                                                      .loadOp =
+                                                          bPreserveContents ? VK_ATTACHMENT_LOAD_OP_LOAD : VK_ATTACHMENT_LOAD_OP_CLEAR,
+                                                      .storeOp = VK_ATTACHMENT_STORE_OP_STORE};
 
-    VkRenderingInfo renderingInfo      = {VK_STRUCTURE_TYPE_RENDERING_INFO};
-    renderingInfo.colorAttachmentCount = 1;
-    renderingInfo.layerCount           = 1;
-    renderingInfo.pColorAttachments    = &attachmentInfo;
-    renderingInfo.renderArea           = {{0, 0}, {m_ImageExtent}};
-
+    const VkRenderingInfo renderingInfo = {.sType                = VK_STRUCTURE_TYPE_RENDERING_INFO,
+                                           .renderArea           = {{0, 0}, {m_ImageExtent}},
+                                           .layerCount           = 1,
+                                           .colorAttachmentCount = 1,
+                                           .pColorAttachments    = &attachmentInfo};
     vulkanCommandBuffer->BeginRendering(&renderingInfo);
 }
 
@@ -569,7 +570,7 @@ void VulkanSwapchain::EndPass(const Shared<CommandBuffer>& commandBuffer)
 
     const auto srcPipelineStages =
         VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT | VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    const auto imageBarrier = VulkanUtility::GetImageMemoryBarrier(
+    const auto imageBarrier = VulkanUtils::GetImageMemoryBarrier(
         m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex], VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, srcPipelineStages,
         VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT,
         VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT, VK_ACCESS_2_NONE, 1, 0, 1, 0);
@@ -630,13 +631,13 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
     vulkanCommandBuffer->BeginDebugLabel("CopyToSwapchain", glm::vec3(0.9f, 0.1f, 0.1f));
 
     {
-        const auto srcImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+        const auto srcImageBarrier = VulkanUtils::GetImageMemoryBarrier(
             (VkImage)image->Get(),
             ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
             ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
             1, 0, 1, 0);
-        const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+        const auto dstImageBarrier = VulkanUtils::GetImageMemoryBarrier(
             m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_UNDEFINED, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
             VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
             1, 0, 1, 0);
@@ -662,13 +663,13 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
 
     {
-        const auto dstImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+        const auto dstImageBarrier = VulkanUtils::GetImageMemoryBarrier(
             m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, VK_IMAGE_LAYOUT_PRESENT_SRC_KHR,
             VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_WRITE_BIT,
             VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_NONE, 1, 0, 1, 0);
         m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
-        const auto srcImageBarrier = VulkanUtility::GetImageMemoryBarrier(
+        const auto srcImageBarrier = VulkanUtils::GetImageMemoryBarrier(
             (VkImage)image->Get(),
             ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
             VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout),

@@ -3,6 +3,7 @@
 
 #include "RendererAPI.h"
 #include <Platform/Vulkan/VulkanPipeline.h>
+#include "Shader.h"
 
 namespace Pathfinder
 {
@@ -20,14 +21,14 @@ Shared<Pipeline> Pipeline::Create(const PipelineSpecification& pipelineSpec)
 
 void PipelineBuilder::Init()
 {
-    LOG_INFO("Pipeline builder created!");
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void PipelineBuilder::Shutdown()
 {
     std::scoped_lock lock(s_PipelineBuilderMutex);
-    LOG_INFO("Pipeline builder destroyed!");
     s_PipelinesToBuild.clear();
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void PipelineBuilder::Build()
@@ -65,13 +66,13 @@ void PipelineBuilder::Build()
 void PipelineLibrary::Init()
 {
     PipelineBuilder::Init();
-    LOG_INFO("Pipeline library created!");
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void PipelineLibrary::Shutdown()
 {
     std::scoped_lock lock(s_PipelineLibraryMutex);
-    LOG_INFO("Pipeline library destroyed!");
+    LOG_TRACE("{}", __FUNCTION__);
     s_PipelineStorage.clear();
 
     PipelineBuilder::Shutdown();

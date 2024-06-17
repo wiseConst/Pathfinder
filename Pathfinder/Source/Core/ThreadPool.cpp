@@ -66,7 +66,7 @@ void ThreadPool::Init()
                               SetThreadName(worker, workerDebugName);
                           });
 
-    LOG_TRACE("ThreadPool created!");
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void ThreadPool::Shutdown()
@@ -76,7 +76,7 @@ void ThreadPool::Shutdown()
         s_bShutdownRequested = true;
     }
     s_Cv.notify_all();
-    LOG_TRACE("ThreadPool destroyed!");
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 }  // namespace Pathfinder

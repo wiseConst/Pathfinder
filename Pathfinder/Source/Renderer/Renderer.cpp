@@ -29,32 +29,27 @@
 namespace Pathfinder
 {
 
-Renderer::Renderer()  = default;
-Renderer::~Renderer() = default;
-
 void Renderer::Init()
 {
     s_RendererData              = MakeUnique<RendererData>();
     s_RendererSettings.bVSync   = Application::Get().GetWindow()->IsVSync();
     s_RendererData->LightStruct = MakeUnique<LightData>();
 
+    std::ranges::for_each(s_RendererData->UploadHeap,
+                          [](auto& uploadHeap)
+                          {
+                              const BufferSpecification uploadHeapSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_MAPPED,
+                                                                          .UsageFlags = EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE,
+                                                                          .Capacity   = s_RendererData->s_MAX_UPLOAD_HEAP_CAPACITY};
+
+                              uploadHeap = Buffer::Create(uploadHeapSpec);
+                          });
+
     s_DescriptorManager = DescriptorManager::Create();
-
-    const auto& windowSpec = Application::Get().GetWindow()->GetSpecification();
-
-    s_RendererData->FramePreparePass   = {};
-    s_RendererData->DepthPrePass       = DepthPrePass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->LightCullingPass   = LightCullingPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->SSSPass            = ScreenSpaceShadowsPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->SSAOPass           = SSAOPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->AOBlurPass         = AOBlurPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->GBufferPass        = GBufferPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->BloomPass          = BloomPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->FinalCompositePass = FinalCompositePass(windowSpec.Width, windowSpec.Height);
-
+    SamplerStorage::Init();
+    TextureManager::Init();
     ShaderLibrary::Init();
     PipelineLibrary::Init();
-    SamplerStorage::Init();
     RayTracingBuilder::Init();
 
     ShaderLibrary::Load({{"DepthPrePass"},
@@ -71,36 +66,21 @@ void Renderer::Init()
                          {"Post/BoxBlur"},
                          /*{"RayTrace"}*/});
 
-    std::ranges::for_each(s_RendererData->UploadHeap,
-                          [](auto& uploadHeap)
-                          {
-                              const BufferSpecification uploadHeapSpec = {.UsageFlags     = EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE,
-                                                                          .bMapPersistent = true,
-                                                                          .Capacity       = s_RendererData->s_MAX_UPLOAD_HEAP_CAPACITY};
-
-                              uploadHeap = Buffer::Create(uploadHeapSpec);
-                          });
-
     for (uint8_t frameIndex{}; frameIndex < s_FRAMES_IN_FLIGHT; ++frameIndex)
     {
-        CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+        CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
                                              .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                                              .FrameIndex = frameIndex,
                                              .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
 
-        cbSpec.Type                                        = ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS;
+        cbSpec.Type                                        = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL;
         s_RendererData->RenderCommandBuffer.at(frameIndex) = CommandBuffer::Create(cbSpec);
 
-        cbSpec.Type                                         = ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE;
+        cbSpec.Type                                         = ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE_ASYNC;
         s_RendererData->ComputeCommandBuffer.at(frameIndex) = CommandBuffer::Create(cbSpec);
 
-        cbSpec.Type                                          = ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER;
+        cbSpec.Type                                          = ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC;
         s_RendererData->TransferCommandBuffer.at(frameIndex) = CommandBuffer::Create(cbSpec);
-    }
-
-    {
-        constexpr uint32_t whiteColor = 0xFFFFFFFF;
-        s_RendererData->WhiteTexture  = Texture::Create({.Width = 1, .Height = 1}, &whiteColor, sizeof(whiteColor));
     }
 
     ShaderLibrary::WaitUntilShadersLoaded();
@@ -133,11 +113,12 @@ void Renderer::Init()
         void* rgbaImageData   = ImageUtils::ConvertRgbToRgba(rawImageData, x, y);
 
         const TextureSpecification aoNoiseTS{
-            .Width  = static_cast<uint32_t>(x),
-            .Height = static_cast<uint32_t>(y),
-            .Wrap   = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-            .Filter = ESamplerFilter::SAMPLER_FILTER_NEAREST,
-            .Format = EImageFormat::FORMAT_RGBA32F,
+            .DebugName = "Default_NoiseAO",
+            .Width     = static_cast<uint32_t>(x),
+            .Height    = static_cast<uint32_t>(y),
+            .Wrap      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+            .Filter    = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+            .Format    = EImageFormat::FORMAT_RGBA32F,
         };
         s_RendererData->AONoiseTexture = Texture::Create(aoNoiseTS, rgbaImageData, x * y * sizeof(glm::vec4));
 
@@ -146,7 +127,20 @@ void Renderer::Init()
     }
 
     PipelineLibrary::Compile();
-    LOG_TRACE("Renderer3D created!");
+    LOG_TRACE("{}", __FUNCTION__);
+
+    const auto& windowSpec = Application::Get().GetWindow()->GetSpecification();
+
+    s_RendererData->FramePreparePass   = {};
+    s_RendererData->ObjectCullingPass  = {};
+    s_RendererData->DepthPrePass       = DepthPrePass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->LightCullingPass   = LightCullingPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->SSSPass            = ScreenSpaceShadowsPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->SSAOPass           = SSAOPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->AOBlurPass         = AOBlurPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->GBufferPass        = GBufferPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->BloomPass          = BloomPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->FinalCompositePass = FinalCompositePass(windowSpec.Width, windowSpec.Height);
 }
 
 void Renderer::Shutdown()
@@ -159,18 +153,21 @@ void Renderer::Shutdown()
     ShaderLibrary::Shutdown();
     PipelineLibrary::Shutdown();
     RayTracingBuilder::Shutdown();
+    TextureManager::Shutdown();
 
     s_RendererData.reset();
     s_DescriptorManager.reset();
 
     SamplerStorage::Shutdown();
-    LOG_TRACE("Renderer3D destroyed!");
+
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void Renderer::Begin()
 {
-    ShaderLibrary::DestroyGarbageIfNeeded();
     s_RendererData->bIsFrameBegin = true;
+    ShaderLibrary::DestroyGarbageIfNeeded();
+    TextureManager::LinkLoadedTexturesWithMeshes();
 
     // Update VSync state.
     auto& window = Application::Get().GetWindow();
@@ -183,6 +180,8 @@ void Renderer::Begin()
     s_RendererData->LastBoundPipeline.reset();
     s_RendererData->PassStats.clear();
     s_RendererData->PipelineStats.clear();
+    s_RendererData->OpaqueObjects.clear();
+    s_RendererData->TransparentObjects.clear();
 
     s_RendererData->FrameIndex = window->GetCurrentFrameIndex();
 
@@ -224,65 +223,23 @@ void Renderer::Begin()
 
 void Renderer::Flush(const Unique<UILayer>& uiLayer)
 {
-    auto rg                     = MakeUnique<RenderGraph>(std::string(s_ENGINE_NAME), s_RendererData->ResourcePool);
-    const uint32_t renderWidth  = s_RendererData->CameraStruct.FullResolution.x;
-    const uint32_t renderHeight = s_RendererData->CameraStruct.FullResolution.y;
+    auto rg = MakeUnique<RenderGraph>(s_RendererData->FrameIndex, std::string(s_ENGINE_NAME), s_RendererData->ResourcePool);
 
+    s_RendererData->FramePreparePass.AddPass(rg);   // Set camera data, light data, etc..
+    s_RendererData->ObjectCullingPass.AddPass(rg);  // Cull objects in compute, fill indirect arg buffers.
     s_RendererData->DepthPrePass.AddPass(rg);
-    s_RendererData->GBufferPass.AddPass(rg);
-    s_RendererData->AOBlurPass.AddPass(rg);
-    s_RendererData->SSAOPass.AddPass(rg);
-    s_RendererData->LightCullingPass.AddPass(rg);
-    s_RendererData->ObjectCullingPass.AddPass(rg);
-    s_RendererData->FramePreparePass.AddPass(rg);
-    s_RendererData->SSSPass.AddPass(rg);
-    s_RendererData->BloomPass.AddPass(rg);
-    s_RendererData->AOBlurPass.AddPass(rg);
-    s_RendererData->FinalCompositePass.AddPass(rg);
+    s_RendererData->LightCullingPass.AddPass(rg);  // Cull lights, fill buffers with culled indices.
+    s_RendererData->SSSPass.AddPass(rg);           // ScreenSpace shadows
+    s_RendererData->SSAOPass.AddPass(rg);          // ssao-depth-reconstruction
+    s_RendererData->AOBlurPass.AddPass(rg);        // box-blur-ssao
+    s_RendererData->GBufferPass.AddPass(rg);       // Forward+ opaque, transparent
+    // TODO: Renderer2D Pass
+    s_RendererData->BloomPass.AddPass(rg);  // Horizontal+Vertical non pbr bloom
+    // TODO: DebugRenderer Pass
+    s_RendererData->FinalCompositePass.AddPass(rg);  // Assemble bloom, albedo and blit into swapchain.
 
     rg->Build();
     rg->Execute();
-
-#if TODO_RENDER_GRAPH
-    s_RendererData->LightsSSBO[s_RendererData->FrameIndex]->SetData(s_RendererData->LightStruct.get(), sizeof(LightData));
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertBufferMemoryBarrier(
-        s_RendererData->LightsSSBO[s_RendererData->FrameIndex], EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT,
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT | PIPELINE_STAGE_FRAGMENT_SHADER_BIT | PIPELINE_STAGE_RAY_TRACING_SHADER_BIT,
-        EAccessFlags::ACCESS_TRANSFER_WRITE_BIT, EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT);
-
-    ObjectCullingPass();
-    RayTracingPass();
-
-    DepthPrePass();
-    ScreenSpaceShadowsPass();
-
-    AtmosphericScatteringPass();
-
-    switch (s_RendererSettings.AOType)
-    {
-        case EAmbientOcclusionType::AMBIENT_OCCLUSION_TYPE_SSAO: SSAOPass(); break;
-        case EAmbientOcclusionType::AMBIENT_OCCLUSION_TYPE_HBAO: HBAOPass(); break;
-    }
-
-    BlurAOPass();
-
-    s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]->InsertExecutionBarrier(
-        EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT, EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT,
-        EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT, EAccessFlags::ACCESS_SHADER_READ_BIT);
-    ComputeFrustumsPass();
-    LightCullingPass();
-
-    GeometryPass();
-
-    Renderer2D::Flush(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-    BloomPass();
-
-#if PFR_DEBUG
-    DebugRenderer::Flush(s_RendererData->RenderCommandBuffer[s_RendererData->FrameIndex]);
-#endif
-
-    CompositePass();
-#endif
 
     s_RendererData->ComputeCommandBuffer.at(s_RendererData->FrameIndex)->EndRecording();
 
@@ -302,9 +259,6 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex)
         ->Submit({transferSyncPoint, computeSyncPoint, swapchainImageAvailableSyncPoint}, {swapchainRenderFinishedSyncPoint},
                  swapchain->GetRenderFence());
-
-    s_RendererData->OpaqueObjects.clear();
-    s_RendererData->TransparentObjects.clear();
     s_RendererData->bIsFrameBegin = false;
 }
 
@@ -358,7 +312,6 @@ void Renderer::AddDirectionalLight(const DirectionalLight& dl)
     }
 
     s_RendererData->bAnybodyCastsShadows = s_RendererData->bAnybodyCastsShadows || dl.bCastShadows;
-
     s_RendererData->LightStruct->DirectionalLights[s_RendererData->LightStruct->DirectionalLightCount++] = dl;
 }
 
@@ -371,7 +324,6 @@ void Renderer::AddPointLight(const PointLight& pl)
     }
 
     s_RendererData->bAnybodyCastsShadows = s_RendererData->bAnybodyCastsShadows || pl.bCastShadows;
-
     s_RendererData->LightStruct->PointLights[s_RendererData->LightStruct->PointLightCount++] = pl;
 }
 
@@ -384,7 +336,6 @@ void Renderer::AddSpotLight(const SpotLight& sl)
     }
 
     s_RendererData->bAnybodyCastsShadows = s_RendererData->bAnybodyCastsShadows || sl.bCastShadows;
-
     s_RendererData->LightStruct->SpotLights[s_RendererData->LightStruct->SpotLightCount++] = sl;
 }
 
@@ -548,6 +499,7 @@ void Renderer::CreatePipelines()
 
 const std::map<std::string, Shared<Image>> Renderer::GetRenderTargetList()
 {
+    return {};
     PFR_ASSERT(false, "NOT IMPLEMENTED!");
     PFR_ASSERT(s_RendererData, "RendererData is not valid!");
     std::map<std::string, Shared<Image>> renderTargetList;

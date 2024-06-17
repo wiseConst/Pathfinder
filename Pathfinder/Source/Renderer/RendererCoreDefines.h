@@ -8,6 +8,8 @@
 
 #include "Globals.h"
 
+// TODO: CLEAN IT
+
 namespace Pathfinder
 {
 
@@ -33,6 +35,20 @@ struct DepthStencilClearValue
 };
 
 using ClearValue = std::variant<std::monostate, ColorClearValue, DepthStencilClearValue>;
+
+struct ImageSubresourceRange
+{
+    FORCEINLINE bool operator<(const ImageSubresourceRange& other) const
+    {
+        return std::tie(baseMipLevel, mipCount, baseArrayLayer, layerCount) <
+               std::tie(other.baseMipLevel, other.mipCount, other.baseArrayLayer, other.layerCount);
+    }
+
+    uint32_t baseMipLevel{};
+    uint32_t mipCount{};
+    uint32_t baseArrayLayer{};
+    uint32_t layerCount{};
+};
 
 typedef uint64_t RendererTypeFlags;
 
@@ -206,20 +222,10 @@ enum class EImageLayout : uint8_t
     IMAGE_LAYOUT_GENERAL,
     IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
     IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL,
     IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
     IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
     IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_ATTACHMENT_OPTIMAL,
     IMAGE_LAYOUT_PRESENT_SRC,
-    IMAGE_LAYOUT_SHARED_PRESENT,
     IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL
 };
 
@@ -232,10 +238,16 @@ enum EImageUsage : ImageUsageFlags
     IMAGE_USAGE_STORAGE_BIT                          = BIT(3),
     IMAGE_USAGE_COLOR_ATTACHMENT_BIT                 = BIT(4),
     IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT         = BIT(5),
-    IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT             = BIT(6),
-    IMAGE_USAGE_INPUT_ATTACHMENT_BIT                 = BIT(7),
-    IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT = BIT(8),
-    IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT             = BIT(9),
+    IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT = BIT(6),
+};
+
+// NOTE: Implies persistent mapping.
+using BufferFlags = uint32_t;
+enum EBufferFlag : BufferFlags
+{
+    BUFFER_FLAG_ADDRESSABLE  = BIT(0),
+    BUFFER_FLAG_DEVICE_LOCAL = BIT(1) | BUFFER_FLAG_ADDRESSABLE,
+    BUFFER_FLAG_MAPPED       = BIT(2),
 };
 
 using BufferUsageFlags = uint32_t;
@@ -247,11 +259,10 @@ enum EBufferUsage : BufferUsageFlags
     BUFFER_USAGE_TRANSFER_SOURCE                              = BIT(3),  // NOTE: Mark as BUFFER_USAGE_TRANSFER_SOURCE to place in CPU only.
     BUFFER_USAGE_TRANSFER_DESTINATION                         = BIT(4),
     BUFFER_USAGE_UNIFORM                                      = BIT(5),
-    BUFFER_USAGE_SHADER_DEVICE_ADDRESS                        = BIT(6),
-    BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(7),
-    BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE               = BIT(8),
-    BUFFER_USAGE_SHADER_BINDING_TABLE                         = BIT(9),
-    BUFFER_USAGE_INDIRECT                                     = BIT(10),
+    BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(6),
+    BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE               = BIT(7),
+    BUFFER_USAGE_SHADER_BINDING_TABLE                         = BIT(8),
+    BUFFER_USAGE_INDIRECT                                     = BIT(9),
 };
 
 enum class EOp : uint8_t
@@ -270,15 +281,16 @@ enum EResourceState : ResourceStateFlags
     RESOURCE_STATE_STORAGE_BUFFER           = BIT(2),
     RESOURCE_STATE_INDEX_BUFFER             = BIT(3),
     RESOURCE_STATE_RENDER_TARGET            = BIT(4),
-    RESOURCE_STATE_STORAGE_IMAGE            = BIT(5),
-    RESOURCE_STATE_DEPTH_WRITE              = BIT(6),
-    RESOURCE_STATE_DEPTH_READ               = BIT(7),
-    RESOURCE_STATE_COMPUTE_SHADER_RESOURCE  = BIT(8),
-    RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE = BIT(9),
-    RESOURCE_STATE_INDIRECT_ARGUMENT        = BIT(10),
-    RESOURCE_STATE_COPY_DESTINATION         = BIT(11),
-    RESOURCE_STATE_COPY_SOURCE              = BIT(12),
-    RESOURCE_STATE_ACCELERATION_STRUCTURE   = BIT(13)
+    RESOURCE_STATE_TEXTURE                  = BIT(5),
+    RESOURCE_STATE_STORAGE_IMAGE            = BIT(6),
+    RESOURCE_STATE_DEPTH_WRITE              = BIT(7),
+    RESOURCE_STATE_DEPTH_READ               = BIT(8),
+    RESOURCE_STATE_COMPUTE_SHADER_RESOURCE  = BIT(9),
+    RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE = BIT(10),
+    RESOURCE_STATE_INDIRECT_ARGUMENT        = BIT(11),
+    RESOURCE_STATE_COPY_DESTINATION         = BIT(12),
+    RESOURCE_STATE_COPY_SOURCE              = BIT(13),
+    RESOURCE_STATE_ACCELERATION_STRUCTURE   = BIT(14)
 };
 
 struct RenderingInfo

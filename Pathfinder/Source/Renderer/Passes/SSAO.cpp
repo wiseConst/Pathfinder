@@ -22,7 +22,7 @@ void SSAOPass::AddPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "SSAO Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "SSAOPass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             builder.DeclareTexture("SSAOTexture",

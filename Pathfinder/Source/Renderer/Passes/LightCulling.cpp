@@ -34,7 +34,7 @@ void LightCullingPass::AddLightCullingPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "LightCulling Pass", ERGPassType::RGPASS_TYPE_COMPUTE,
+        "LightCullingPass", ERGPassType::RGPASS_TYPE_COMPUTE,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             pd.CameraData        = builder.ReadBuffer("CameraData");
@@ -69,17 +69,17 @@ void LightCullingPass::AddLightCullingPass(Unique<RenderGraph>& rendergraph)
             const uint32_t adjustedTiledHeight = glm::ceil((float)m_Height / LIGHT_CULLING_TILE_SIZE);
 
             const size_t cplibSize = MAX_POINT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * adjustedTiledWidth * adjustedTiledHeight;
-            builder.DeclareBuffer("CulledPointLightIndices",
-                                  {.DebugName  = "CulledPointLightIndices",
-                                   .UsageFlags = EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS | EBufferUsage::BUFFER_USAGE_STORAGE,
-                                   .Capacity   = cplibSize});
+            builder.DeclareBuffer("CulledPointLightIndices", {.DebugName  = "CulledPointLightIndices",
+                                                              .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                              .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE,
+                                                              .Capacity   = cplibSize});
             pd.CulledPointLightIndices = builder.WriteBuffer("CulledPointLightIndices");
 
             const size_t csplibSize = MAX_SPOT_LIGHTS * sizeof(LIGHT_INDEX_TYPE) * adjustedTiledWidth * adjustedTiledHeight;
-            builder.DeclareBuffer("CulledSpotLightIndices",
-                                  {.DebugName  = "CulledSpotLightIndices",
-                                   .UsageFlags = EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS | EBufferUsage::BUFFER_USAGE_STORAGE,
-                                   .Capacity   = csplibSize});
+            builder.DeclareBuffer("CulledSpotLightIndices", {.DebugName  = "CulledSpotLightIndices",
+                                                             .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                             .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE,
+                                                             .Capacity   = csplibSize});
             pd.CulledSpotLightIndices = builder.WriteBuffer("CulledSpotLightIndices");
         },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
@@ -124,16 +124,16 @@ void LightCullingPass::AddComputeLightCullingFrustumsPass(Unique<RenderGraph>& r
     };
 
     rendergraph->AddPass<PassData>(
-        "ComputeFrustums Pass", ERGPassType::RGPASS_TYPE_COMPUTE,
+        "ComputeFrustumsPass", ERGPassType::RGPASS_TYPE_COMPUTE,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             const uint32_t adjustedTiledWidth  = glm::ceil((float)m_Width / LIGHT_CULLING_TILE_SIZE);
             const uint32_t adjustedTiledHeight = glm::ceil((float)m_Height / LIGHT_CULLING_TILE_SIZE);
 
-            builder.DeclareBuffer("LightCullFrustums",
-                                  {.DebugName  = "LightCullFrustums",
-                                   .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS,
-                                   .Capacity   = sizeof(TileFrustum) * adjustedTiledWidth * adjustedTiledHeight});
+            builder.DeclareBuffer("LightCullFrustums", {.DebugName  = "LightCullFrustums",
+                                                        .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                        .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE,
+                                                        .Capacity   = sizeof(TileFrustum) * adjustedTiledWidth * adjustedTiledHeight});
             pd.LightCullFrustums = builder.WriteBuffer("LightCullFrustums");
 
             pd.CameraData = builder.ReadBuffer("CameraData");

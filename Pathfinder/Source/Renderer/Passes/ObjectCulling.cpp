@@ -26,7 +26,7 @@ void ObjectCullingPass::AddPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "ObjectCulling Pass", ERGPassType::RGPASS_TYPE_COMPUTE,
+        "ObjectCullingPass", ERGPassType::RGPASS_TYPE_COMPUTE,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             pd.CameraData = builder.ReadBuffer("CameraData");

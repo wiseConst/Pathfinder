@@ -7,31 +7,24 @@
 namespace Pathfinder
 {
 
-class VulkanDevice;
-
 class VulkanAllocator final : private Uncopyable, private Unmovable
 {
   public:
     VulkanAllocator(const VkInstance& instance, const VkDevice& device, const VkPhysicalDevice& physicalDevice);
     ~VulkanAllocator();
 
+    void CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer& buffer, VmaAllocation& allocation, const BufferFlags extraFlags);
     void CreateImage(const VkImageCreateInfo& imageCI, VkImage& image, VmaAllocation& allocation,
                      VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY);
-
-    void CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer& buffer, VmaAllocation& allocation,
-                      VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_GPU_ONLY);
 
     void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation);
     void DestroyImage(VkImage& image, VmaAllocation& allocation);
 
-    bool IsMappable(const VmaAllocation& allocation);
-
-    void SetCurrentFrameIndex(const uint32_t frameIndex);
-
-    NODISCARD void* GetMapped(const VmaAllocation& allocation) const;
+    bool IsAllocationMappable(const VmaAllocation& allocation) const;
     NODISCARD void* Map(VmaAllocation& allocation);
     void Unmap(VmaAllocation& allocation);
 
+    void SetCurrentFrameIndex(const uint32_t frameIndex);
     void FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudgets) const;
 
   private:

@@ -221,13 +221,13 @@ std::vector<uint32_t> Shader::CompileOrRetrieveCached(const std::string& shaderN
 
 void ShaderLibrary::Init()
 {
-    LOG_INFO("ShaderLibrary created!");
+    LOG_INFO("{}", __FUNCTION__);
 }
 
 void ShaderLibrary::Shutdown()
 {
     s_Shaders.clear();
-    LOG_INFO("ShaderLibrary destroyed!");
+    LOG_INFO("{}", __FUNCTION__);
 }
 
 void ShaderLibrary::Load(const ShaderSpecification& shaderSpec)

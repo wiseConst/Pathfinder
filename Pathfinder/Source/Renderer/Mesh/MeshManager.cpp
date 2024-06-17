@@ -52,10 +52,10 @@ static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
 }
 }  // namespace FastGLTFUtils
 
-Shared<Texture> MeshManager::LoadTexture(std::unordered_map<std::string, Shared<Texture>>& loadedTextures,
-                                           const std::string& meshAssetsDir, const fastgltf::Asset& asset,
-                                           const fastgltf::Material& materialAccessor, const size_t textureIndex,
-                                           TextureSpecification& textureSpec, const bool bMetallicRoughness, const bool bFlipOnLoad)
+Shared<Texture> MeshManager::LoadTexture(std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const std::string& meshAssetsDir,
+                                         const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor,
+                                         const size_t textureIndex, TextureSpecification& textureSpec, const bool bMetallicRoughness,
+                                         const bool bFlipOnLoad)
 {
     const auto& fastgltfTexture = asset.textures[textureIndex];
     const auto imageIndex       = fastgltfTexture.imageIndex;
@@ -322,12 +322,16 @@ SurfaceMesh MeshManager::GenerateUVSphere(const uint32_t sectorCount, const uint
 
     SurfaceMesh mesh = {};
     {
-        const BufferSpecification vbSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_VERTEX};
+        const BufferSpecification vbSpec = {.DebugName  = "UVSphere_VertexBuffer",
+                                            .ExtraFlags = EBufferFlag::BUFFER_FLAG_MAPPED | EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                            .UsageFlags = EBufferUsage::BUFFER_USAGE_VERTEX};
         mesh.VertexBuffer                = Buffer::Create(vbSpec, vertices.data(), vertices.size() * sizeof(vertices[0]));
     }
 
     {
-        const BufferSpecification ibSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_INDEX};
+        const BufferSpecification ibSpec = {.DebugName  = "UVSphere_IndexBuffer",
+                                            .ExtraFlags = EBufferFlag::BUFFER_FLAG_MAPPED | EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                            .UsageFlags = EBufferUsage::BUFFER_USAGE_INDEX};
         mesh.IndexBuffer                 = Buffer::Create(ibSpec, indices.data(), indices.size() * sizeof(indices[0]));
     }
 
@@ -408,7 +412,9 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         {
             fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[color_0_It->second],
                                                           [&](const glm::vec4& color, std::size_t idx)
-                                                          { meshoptimizeVertices[idx].Color = glm::packUnorm4x8(color); });
+                                                          {
+                                                              meshoptimizeVertices[idx].Color = color;  // glm::packUnorm4x8(color);
+                                                          });
         }
 
         // UV
@@ -518,9 +524,9 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         std::vector<MeshManager::MeshoptimizeVertex> finalVertices;
         MeshManager::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
 
-        const BufferSpecification bufferSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
-                                                              EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY |
-                                                              EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+        const BufferSpecification bufferSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
+                                                              EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY};
         submesh->m_IndexBuffer = Buffer::Create(bufferSpec, finalIndices.data(), finalIndices.size() * sizeof(finalIndices[0]));
 
         std::vector<MeshPositionVertex> vertexPositions(finalVertices.size());
@@ -552,8 +558,8 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         std::vector<Meshlet> meshlets;
         MeshManager::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
 
-        const BufferSpecification meshletBufferSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
-                                                                     EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+        const BufferSpecification meshletBufferSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                       .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE};
         submesh->m_MeshletBuffer = Buffer::Create(meshletBufferSpec, meshlets.data(), meshlets.size() * sizeof(meshlets[0]));
         submesh->m_MeshletVerticesBuffer =
             Buffer::Create(meshletBufferSpec, meshletVertices.data(), meshletVertices.size() * sizeof(meshletVertices[0]));
@@ -744,6 +750,7 @@ void MeshManager::OptimizeMesh(const std::vector<uint32_t>& srcIndices, const st
                                 sizeof(outVertices[0]));
 }
 
+// TODO: Check meshopt comms at backface culling.
 void MeshManager::BuildMeshlets(const std::vector<uint32_t>& indices, const std::vector<MeshPositionVertex>& vertexPositions,
                                 std::vector<Meshlet>& outMeshlets, std::vector<uint32_t>& outMeshletVertices,
                                 std::vector<uint8_t>& outMeshletTriangles)

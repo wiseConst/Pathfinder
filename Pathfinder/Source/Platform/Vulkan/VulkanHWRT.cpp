@@ -117,7 +117,7 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
     VkDeviceSize batchSize{0};
     constexpr VkDeviceSize batchLimit{256'000'000};  // 256 MB
 
-    BufferSpecification sbSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS | EBufferUsage::BUFFER_USAGE_STORAGE};
+    BufferSpecification sbSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL, .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE};
     sbSpec.Capacity            = batchLimit;
     auto scratchBuffer         = Buffer::Create(sbSpec);
 
@@ -130,7 +130,7 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
         if (batchSize >= batchLimit || i == nbBlas - 1)
         {
             const CommandBufferSpecification cbSpec = {
-                ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                 Renderer::GetRendererData()->FrameIndex, ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
             auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(cbSpec);
             vkCmdBuf->BeginRecording(true);
@@ -149,8 +149,8 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
                     asCI.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
                     asCI.size = buildAs[idx].sizeInfo.accelerationStructureSize;  // Will be used to allocate memory.
 
-                    BufferSpecification abSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE |
-                                                                EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+                    BufferSpecification abSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                  .UsageFlags = EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE};
                     abSpec.Capacity            = asCI.size;
                     buildAs[idx].as.Buffer     = Buffer::Create(abSpec);
 
@@ -193,7 +193,7 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
             if (queryPool)
             {
                 const CommandBufferSpecification cbSpec = {
-                    ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                    ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                     Renderer::GetRendererData()->FrameIndex, ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
                 auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(cbSpec);
                 vkCmdBuf->BeginRecording(true);
@@ -217,8 +217,8 @@ std::vector<AccelerationStructure> VulkanRayTracingBuilder::BuildBLASesImpl(cons
                     asCI.size = buildAs[idx].sizeInfo.accelerationStructureSize;
                     asCI.type = VK_ACCELERATION_STRUCTURE_TYPE_BOTTOM_LEVEL_KHR;
 
-                    BufferSpecification abSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE |
-                                                                EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+                    BufferSpecification abSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                  .UsageFlags = EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE};
                     abSpec.Capacity            = asCI.size;
                     buildAs[idx].as.Buffer     = Buffer::Create(abSpec);
 
@@ -308,13 +308,13 @@ AccelerationStructure VulkanRayTracingBuilder::BuildTLASImpl(const std::vector<A
         uint32_t countInstance = static_cast<uint32_t>(instances.size());
 
         const CommandBufferSpecification cbSpec = {
-            ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+            ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
             Renderer::GetRendererData()->FrameIndex, ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
         auto vkCmdBuf = MakeShared<VulkanCommandBuffer>(cbSpec);
         vkCmdBuf->BeginRecording(true);
 
-        BufferSpecification ibSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS |
-                                                    EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY |
+        BufferSpecification ibSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                      .UsageFlags = EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY |
                                                     EBufferUsage::BUFFER_USAGE_TRANSFER_DESTINATION};
         // Create a buffer holding the actual instance data (matrices++) for use by the AS builder
         auto instancesBuffer = Buffer::Create(
@@ -360,8 +360,8 @@ AccelerationStructure VulkanRayTracingBuilder::BuildTLASImpl(const std::vector<A
         asCI.type = VK_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL_KHR;
         asCI.size = sizeInfo.accelerationStructureSize;
 
-        BufferSpecification abSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE |
-                                                    EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+        BufferSpecification abSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                      .UsageFlags = EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_STORAGE};
         abSpec.Capacity            = asCI.size;
         builtTLAS.Buffer           = Buffer::Create(abSpec);
 
@@ -369,8 +369,8 @@ AccelerationStructure VulkanRayTracingBuilder::BuildTLASImpl(const std::vector<A
         VK_CHECK(vkCreateAccelerationStructureKHR(logicalDevice, &asCI, nullptr, (VkAccelerationStructureKHR*)&builtTLAS.Handle),
                  "Failed to create acceleration structure!");
 
-        BufferSpecification tlasSbSpec = {.UsageFlags =
-                                              EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+        BufferSpecification tlasSbSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                          .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE};
         tlasSbSpec.Capacity            = sizeInfo.buildScratchSize;
         auto tlasScratchBuffer         = Buffer::Create(tlasSbSpec);
 

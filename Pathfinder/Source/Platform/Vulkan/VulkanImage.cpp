@@ -16,7 +16,34 @@ namespace Pathfinder
 namespace ImageUtils
 {
 
-VkImageUsageFlags PathfinderImageUsageFlagsToVulkan(const ImageUsageFlags usageFlags)
+NODISCARD FORCEINLINE static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)
+{
+    switch (filter)
+    {
+        case ESamplerFilter::SAMPLER_FILTER_NEAREST: return VK_FILTER_NEAREST;
+        case ESamplerFilter::SAMPLER_FILTER_LINEAR: return VK_FILTER_LINEAR;
+    }
+
+    PFR_ASSERT(false, "Unknown sampler filter!");
+    return VK_FILTER_LINEAR;
+}
+
+NODISCARD FORCEINLINE static VkSamplerAddressMode PathfinderSamplerWrapToVulkan(const ESamplerWrap wrap)
+{
+    switch (wrap)
+    {
+        case ESamplerWrap::SAMPLER_WRAP_REPEAT: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        case ESamplerWrap::SAMPLER_WRAP_MIRRORED_REPEAT: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+        case ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_BORDER: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        case ESamplerWrap::SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+    }
+
+    PFR_ASSERT(false, "Unknown sampler wrap!");
+    return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+}
+
+NODISCARD VkImageUsageFlags PathfinderImageUsageFlagsToVulkan(const ImageUsageFlags usageFlags)
 {
     VkImageUsageFlags vkUsageFlags = 0;
 
@@ -25,18 +52,15 @@ VkImageUsageFlags PathfinderImageUsageFlagsToVulkan(const ImageUsageFlags usageF
     if (usageFlags & EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT) vkUsageFlags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if (usageFlags & EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT) vkUsageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     if (usageFlags & EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) vkUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    if (usageFlags & EImageUsage::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) vkUsageFlags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-    if (usageFlags & EImageUsage::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) vkUsageFlags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
     if (usageFlags & EImageUsage::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) vkUsageFlags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     if (usageFlags & EImageUsage::IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT)
         vkUsageFlags |= VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
-    if (usageFlags & EImageUsage::IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT) vkUsageFlags |= VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT;
 
     PFR_ASSERT(vkUsageFlags > 0, "Image should have any usage!");
     return vkUsageFlags;
 }
 
-VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
+NODISCARD VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
 {
     switch (imageFormat)
     {
@@ -89,15 +113,14 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
     return VK_FORMAT_UNDEFINED;
 }
 
-// NOTE: MultiGPU feature gonna require that device creates images
-// VK_IMAGE_TILING_LINEAR should never be used and will never be faster
+// NOTE: VK_IMAGE_TILING_LINEAR should never be used and will never be faster.
 void CreateImage(VkImage& outImage, VmaAllocation& outAllocation, const VkFormat format, const VkImageUsageFlags imageUsage,
                  const VkExtent3D& extent, const VkImageType imageType, const uint32_t mipLevels, const uint32_t layerCount,
-                 const std::vector<uint32_t>& queueFamilyIndices, const VkImageLayout initialLayout, const VkImageTiling imageTiling,
-                 const VkSampleCountFlagBits samples)
+                 const VkImageLayout initialLayout, const VkImageTiling imageTiling, const VkSampleCountFlagBits samples)
 {
+    const auto& device                        = VulkanContext::Get().GetDevice();
+    auto& queueFamilyIndices                  = device->GetQueueFamilyIndices();
     const VkImageCreateFlags imageCreateFlags = layerCount == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
-    const auto sharingMode                    = queueFamilyIndices.empty() ? VK_SHARING_MODE_EXCLUSIVE : VK_SHARING_MODE_CONCURRENT;
     const VkImageCreateInfo imageCI           = {.sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
                                                  .flags                 = imageCreateFlags,
                                                  .imageType             = imageType,
@@ -108,12 +131,12 @@ void CreateImage(VkImage& outImage, VmaAllocation& outAllocation, const VkFormat
                                                  .samples               = samples,
                                                  .tiling                = imageTiling,
                                                  .usage                 = imageUsage,
-                                                 .sharingMode           = sharingMode,
+                                                 .sharingMode           = VK_SHARING_MODE_CONCURRENT,
                                                  .queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size()),
                                                  .pQueueFamilyIndices   = queueFamilyIndices.data(),
                                                  .initialLayout         = initialLayout};
 
-    VulkanContext::Get().GetDevice()->GetAllocator()->CreateImage(imageCI, outImage, outAllocation);
+    device->GetAllocator()->CreateImage(imageCI, outImage, outAllocation);
 }
 
 // TODO: ImageViewCache from LegitEngine
@@ -127,8 +150,11 @@ void CreateImageView(const VkImage& image, VkImageView& imageView, const VkForma
         .viewType         = imageViewType,
         .format           = format,
         .components       = {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A},
-        .subresourceRange = {
-            .aspectMask = aspectFlags, .baseMipLevel = 0, .levelCount = mipLevels, .baseArrayLayer = 0, .layerCount = layerCount}};
+        .subresourceRange = {.aspectMask     = aspectFlags,
+                             .baseMipLevel   = baseMipLevel,
+                             .levelCount     = mipLevels,
+                             .baseArrayLayer = baseArrayLayer,
+                             .layerCount     = layerCount}};
 
     VK_CHECK(vkCreateImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &imageViewCI, nullptr, &imageView),
              "Failed to create an image view!");
@@ -136,9 +162,10 @@ void CreateImageView(const VkImage& image, VkImageView& imageView, const VkForma
     ++Renderer::GetStats().ImageViewCount;
 }
 
-void DestroyImageView(const VkImageView& imageView)
+void DestroyImageView(VkImageView& imageView)
 {
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), imageView, nullptr);
+    imageView = VK_NULL_HANDLE;
     --Renderer::GetStats().ImageViewCount;
 }
 
@@ -147,7 +174,7 @@ void DestroyImage(VkImage& image, VmaAllocation& allocation)
     VulkanContext::Get().GetDevice()->GetAllocator()->DestroyImage(image, allocation);
 }
 
-VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout)
+NODISCARD VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout)
 {
     switch (imageLayout)
     {
@@ -155,22 +182,10 @@ VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout)
         case EImageLayout::IMAGE_LAYOUT_GENERAL: return VK_IMAGE_LAYOUT_GENERAL;
         case EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
-            return VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
-            return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_PRESENT_SRC: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        case EImageLayout::IMAGE_LAYOUT_SHARED_PRESENT: return VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR;
         case EImageLayout::IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL:
             return VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR;
     }
@@ -192,11 +207,11 @@ VulkanImage::VulkanImage(const ImageSpecification& imageSpec) : Image(imageSpec)
     Invalidate();
 }
 
-void VulkanImage::SetLayout(const EImageLayout newLayout)
+void VulkanImage::SetLayout(const EImageLayout newLayout, const bool bImmediate)
 {
-    if (!Renderer::GetRendererData()->bIsFrameBegin)
+    if (bImmediate)
     {
-        const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+        const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
                                                    .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                                                    .FrameIndex = Renderer::GetRendererData()->FrameIndex,
                                                    .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
@@ -224,7 +239,7 @@ void VulkanImage::SetLayout(const EImageLayout newLayout)
 
 void VulkanImage::SetData(const void* data, size_t dataSize)
 {
-    SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true);
 
     const auto& rd = Renderer::GetRendererData();
     rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
@@ -256,7 +271,7 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
 #endif
     {
         const CommandBufferSpecification cbSpec = {.Type =
-                                                       ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS /*COMMAND_BUFFER_TYPE_TRANSFER*/,
+                                                       ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL /*COMMAND_BUFFER_TYPE_TRANSFER_ASYNC*/,
                                                    .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                                                    .FrameIndex = Renderer::GetRendererData()->FrameIndex,
                                                    .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
@@ -304,7 +319,7 @@ void VulkanImage::Invalidate()
             m_Specification.Layout == EImageLayout::IMAGE_LAYOUT_UNDEFINED ? EImageLayout::IMAGE_LAYOUT_GENERAL : m_Specification.Layout;
 
         m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
-        SetLayout(newLayout);
+        SetLayout(newLayout, true);
         m_Specification.Layout = newLayout;
     }
 
@@ -314,9 +329,9 @@ void VulkanImage::Invalidate()
 
     if (m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT && !m_BindlessIndex.has_value())
     {
-        SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
+        SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL, true);
         const auto& vkImageInfo = GetDescriptorInfo();
-        Renderer::GetDescriptorManager()->LoadImage(&vkImageInfo, m_BindlessIndex.value());
+        Renderer::GetDescriptorManager()->LoadImage(&vkImageInfo, m_BindlessIndex);
     }
 
     if (m_Specification.DebugName != s_DEFAULT_STRING)
@@ -341,7 +356,7 @@ void VulkanImage::Destroy()
     m_DescriptorInfo = {};
 
     if (m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT && m_BindlessIndex.has_value())
-        Renderer::GetDescriptorManager()->FreeImage(m_BindlessIndex.value());
+        Renderer::GetDescriptorManager()->FreeImage(m_BindlessIndex);
 }
 
 void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const glm::vec4& color) const
@@ -375,6 +390,12 @@ void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const g
 
     vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkNewLayout, vkOldLayout, imageAspectMask, m_Specification.Layers, 0,
                                                m_Specification.Mips, 0);
+}
+
+void VulkanImage::SetDebugName(const std::string& name)
+{
+    m_Specification.DebugName = name;
+    VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_IMAGE, m_Specification.DebugName.data());
 }
 
 NODISCARD static ESamplerFilter VulkanSamplerFilterToPathfinder(const VkFilter filter)
@@ -424,9 +445,9 @@ NODISCARD static ECompareOp VulkanCompareOpToPathfinder(const VkCompareOp compar
 
 void* VulkanSamplerStorage::CreateSamplerImpl(const SamplerSpecification& samplerSpec)
 {
-    VkSamplerCreateInfo samplerCI     = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
+    VkSamplerCreateInfo samplerCI     = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
     samplerCI.unnormalizedCoordinates = VK_FALSE;
-    samplerCI.addressModeU            = VulkanUtility::PathfinderSamplerWrapToVulkan(samplerSpec.Wrap);
+    samplerCI.addressModeU            = ImageUtils::PathfinderSamplerWrapToVulkan(samplerSpec.Wrap);
     samplerCI.addressModeV            = samplerCI.addressModeU;
     samplerCI.addressModeW            = samplerCI.addressModeU;
 
@@ -434,7 +455,7 @@ void* VulkanSamplerStorage::CreateSamplerImpl(const SamplerSpecification& sample
     samplerCI.maxLod     = IsNearlyEqual(samplerSpec.MaxLod, .0f) ? VK_LOD_CLAMP_NONE : samplerSpec.MaxLod;
     samplerCI.mipLodBias = samplerSpec.MipLodBias;
 
-    samplerCI.minFilter = samplerCI.magFilter = VulkanUtility::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
+    samplerCI.minFilter = samplerCI.magFilter = ImageUtils::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
 
     samplerCI.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;  // VK_BORDER_COLOR_INT_OPAQUE_BLACK;  // TODO: configurable??
     samplerCI.mipmapMode  = samplerCI.magFilter == VK_FILTER_NEAREST ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;

@@ -20,41 +20,62 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
     {
         RGBufferID LightData;
         RGBufferID CameraData;
-        RGBufferID MeshDataOpaquePrepared;
-        RGBufferID MeshDataTransparentPrepared;
-        RGBufferID DrawBufferOpaquePrepared;
-        RGBufferID DrawBufferTransparentPrepared;
-        RGBufferID CulledMeshesOpaquePrepared;
-        RGBufferID CulledMeshesTransparentPrepared;
+        RGBufferID MeshDataOpaque;
+        RGBufferID MeshDataTransparent;
+        RGBufferID DrawBufferOpaque;
+        RGBufferID DrawBufferTransparent;
+        RGBufferID CulledMeshesOpaque;
+        RGBufferID CulledMeshesTransparent;
     };
 
     rendergraph->AddPass<PassData>(
-        "FramePrepare Pass", ERGPassType::RGPASS_TYPE_TRANSFER,
+        "FramePreparePass", ERGPassType::RGPASS_TYPE_TRANSFER,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             RGBufferSpecification perFrameBS = {
-                .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS, .bPerFrame = true};
+                .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL, .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE, .bPerFrame = true};
+
+            perFrameBS.DebugName = "MeshDataOpaque_V0";
             builder.DeclareBuffer("MeshDataOpaque_V0", perFrameBS);
+            pd.MeshDataOpaque = builder.WriteBuffer("MeshDataOpaque_V0");
+
+            perFrameBS.DebugName = "MeshDataTransparent_V0";
             builder.DeclareBuffer("MeshDataTransparent_V0", perFrameBS);
+            pd.MeshDataTransparent = builder.WriteBuffer("MeshDataTransparent_V0");
 
-            perFrameBS.Capacity = sizeof(LightData);
+            perFrameBS.Capacity  = sizeof(LightData);
+            perFrameBS.DebugName = "LightData";
             builder.DeclareBuffer("LightData", perFrameBS);
+            pd.LightData = builder.WriteBuffer("LightData");
 
-            perFrameBS.Capacity = sizeof(CameraData);
+            perFrameBS.Capacity  = sizeof(CameraData);
+            perFrameBS.DebugName = "CameraData";
             builder.DeclareBuffer("CameraData", perFrameBS);
+            pd.CameraData = builder.WriteBuffer("CameraData");
 
-            const RGBufferSpecification drawBufferBS = {
-                .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE |
-                              EBufferUsage::BUFFER_USAGE_INDIRECT | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS,
-                .bMapPersistent = true};
+            RGBufferSpecification drawBufferBS = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_ADDRESSABLE | EBufferFlag::BUFFER_FLAG_MAPPED,
+                                                  .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
+                                                                EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE |
+                                                                EBufferUsage::BUFFER_USAGE_INDIRECT};
 
+            drawBufferBS.DebugName = "DrawBufferOpaque_V0";
             builder.DeclareBuffer("DrawBufferOpaque_V0", drawBufferBS);
-            builder.DeclareBuffer("DrawBufferTransparent_V0", drawBufferBS);
+            pd.DrawBufferOpaque = builder.WriteBuffer("DrawBufferOpaque_V0");
 
-            const RGBufferSpecification culledMeshesBS = {.UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
-                                                                        EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+            drawBufferBS.DebugName = "DrawBufferTransparent_V0";
+            builder.DeclareBuffer("DrawBufferTransparent_V0", drawBufferBS);
+            pd.DrawBufferTransparent = builder.WriteBuffer("DrawBufferTransparent_V0");
+
+            RGBufferSpecification culledMeshesBS = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                                    .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE};
+
+            culledMeshesBS.DebugName = "CulledMeshesOpaque_V0";
             builder.DeclareBuffer("CulledMeshesOpaque_V0", culledMeshesBS);
+            pd.CulledMeshesOpaque = builder.WriteBuffer("CulledMeshesOpaque_V0");
+
+            culledMeshesBS.DebugName = "CulledMeshesTransparent_V0";
             builder.DeclareBuffer("CulledMeshesTransparent_V0", culledMeshesBS);
+            pd.CulledMeshesTransparent = builder.WriteBuffer("CulledMeshesTransparent_V0");
         },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
         {
@@ -88,9 +109,9 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
                           return lhsDist > rhsDist;  // Back to front drawing(preserve blending)
                       });
 
-            auto& meshDataOpaqueBuffer     = context.GetBuffer(pd.MeshDataOpaquePrepared);
-            auto& drawBufferOpaque         = context.GetBuffer(pd.DrawBufferOpaquePrepared);
-            auto& culledMeshesBufferOpaque = context.GetBuffer(pd.CulledMeshesOpaquePrepared);
+            auto& meshDataOpaqueBuffer     = context.GetBuffer(pd.MeshDataOpaque);
+            auto& drawBufferOpaque         = context.GetBuffer(pd.DrawBufferOpaque);
+            auto& culledMeshesBufferOpaque = context.GetBuffer(pd.CulledMeshesOpaque);
 
             meshDataOpaqueBuffer->Resize(rd->OpaqueObjects.size() * sizeof(MeshData));
             drawBufferOpaque->Resize(sizeof(uint32_t) + rd->OpaqueObjects.size() * sizeof(DrawMeshTasksIndirectCommand));
@@ -118,9 +139,9 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
             if (!opaqueMeshesData.empty())
                 meshDataOpaqueBuffer->SetData(opaqueMeshesData.data(), opaqueMeshesData.size() * sizeof(opaqueMeshesData[0]));
 
-            auto& meshDataTransparentBuffer     = context.GetBuffer(pd.MeshDataTransparentPrepared);
-            auto& drawBufferTransparent         = context.GetBuffer(pd.DrawBufferTransparentPrepared);
-            auto& culledMeshesBufferTransparent = context.GetBuffer(pd.CulledMeshesTransparentPrepared);
+            auto& meshDataTransparentBuffer     = context.GetBuffer(pd.MeshDataTransparent);
+            auto& drawBufferTransparent         = context.GetBuffer(pd.DrawBufferTransparent);
+            auto& culledMeshesBufferTransparent = context.GetBuffer(pd.CulledMeshesTransparent);
 
             meshDataTransparentBuffer->Resize(rd->TransparentObjects.size() * sizeof(MeshData));
             drawBufferTransparent->Resize(sizeof(uint32_t) + rd->TransparentObjects.size() * sizeof(DrawMeshTasksIndirectCommand));

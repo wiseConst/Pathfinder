@@ -19,41 +19,34 @@ struct MemoryBarrier
 
 struct BufferMemoryBarrier
 {
-    Shared<Buffer> buffer{};
-    RendererTypeFlags srcStageMask{};
-    RendererTypeFlags srcAccessMask{};
-    RendererTypeFlags dstStageMask{};
-    RendererTypeFlags dstAccessMask{};
-    uint32_t srcQueueFamilyIndex = UINT32_MAX;
-    uint32_t dstQueueFamilyIndex = UINT32_MAX;
+    Shared<Buffer> buffer                       = nullptr;
+    RendererTypeFlags srcStageMask              = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags srcAccessMask             = EAccessFlags::ACCESS_NONE;
+    RendererTypeFlags dstStageMask              = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags dstAccessMask             = EAccessFlags::ACCESS_NONE;
+    std::optional<uint32_t> srcQueueFamilyIndex = std::nullopt;
+    std::optional<uint32_t> dstQueueFamilyIndex = std::nullopt;
 };
 
 struct ImageMemoryBarrier
 {
-    RendererTypeFlags srcStageMask{};
-    RendererTypeFlags srcAccessMask{};
-    RendererTypeFlags dstStageMask{};
-    RendererTypeFlags dstAccessMask{};
-    EImageLayout oldLayout{};
-    EImageLayout newLayout{};
-    uint32_t srcQueueFamilyIndex = UINT32_MAX;
-    uint32_t dstQueueFamilyIndex = UINT32_MAX;
-    Shared<Image> image{};
-
-    struct
-    {
-        uint32_t baseMipLevel;
-        uint32_t levelCount;
-        uint32_t baseArrayLayer;
-        uint32_t layerCount;
-    } subresourceRange;
+    RendererTypeFlags srcStageMask              = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags srcAccessMask             = EAccessFlags::ACCESS_NONE;
+    RendererTypeFlags dstStageMask              = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags dstAccessMask             = EAccessFlags::ACCESS_NONE;
+    EImageLayout oldLayout                      = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+    EImageLayout newLayout                      = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+    std::optional<uint32_t> srcQueueFamilyIndex = std::nullopt;
+    std::optional<uint32_t> dstQueueFamilyIndex = std::nullopt;
+    Shared<Image> image                         = nullptr;
+    ImageSubresourceRange subresourceRange{};
 };
 
 enum class ECommandBufferType : uint8_t
 {
-    COMMAND_BUFFER_TYPE_GRAPHICS = 0,
-    COMMAND_BUFFER_TYPE_COMPUTE,
-    COMMAND_BUFFER_TYPE_TRANSFER
+    COMMAND_BUFFER_TYPE_GENERAL = 0,
+    COMMAND_BUFFER_TYPE_COMPUTE_ASYNC,
+    COMMAND_BUFFER_TYPE_TRANSFER_ASYNC
 };
 
 enum class ECommandBufferLevel : uint8_t
@@ -64,7 +57,7 @@ enum class ECommandBufferLevel : uint8_t
 
 struct CommandBufferSpecification
 {
-    ECommandBufferType Type   = ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS;
+    ECommandBufferType Type   = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL;
     ECommandBufferLevel Level = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY;
     uint8_t FrameIndex        = 0;
     uint8_t ThreadID          = 0;
@@ -108,13 +101,12 @@ class CommandBuffer : private Uncopyable, private Unmovable
     /* DEBUG */
     FORCEINLINE void InsertDebugBarrier() const
     {
-        if constexpr (PFR_DEBUG)
-        {
-            InsertBarriers({{.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                             .srcAccessMask = EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT,
-                             .dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT,
-                             .dstAccessMask = EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT}});
-        }
+#if PFR_DEBUG
+        InsertBarriers({{.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                         .srcAccessMask = EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT,
+                         .dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT,
+                         .dstAccessMask = EAccessFlags::ACCESS_MEMORY_READ_BIT | EAccessFlags::ACCESS_MEMORY_WRITE_BIT}});
+#endif
     }
     virtual void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const = 0;
     virtual void EndDebugLabel() const                                                                   = 0;

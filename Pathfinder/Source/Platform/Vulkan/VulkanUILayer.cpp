@@ -22,6 +22,7 @@
 
 namespace Pathfinder
 {
+
 VulkanUILayer::VulkanUILayer()
 {
     Init();

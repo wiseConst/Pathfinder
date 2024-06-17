@@ -3,6 +3,8 @@
 
 #include "RendererAPI.h"
 #include "Platform/Vulkan/VulkanTexture.h"
+#include <Renderer/Renderer.h>
+#include <Renderer/DescriptorManager.h>
 
 #include <compressonator.h>
 
@@ -45,7 +47,7 @@ void Texture::Invalidate(const void* data = nullptr, const size_t dataSize = 0)
 
     if (!(m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT))
     {
-        m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true);
         if (m_Specification.bGenerateMips) GenerateMipMaps();
     }
 }
@@ -63,37 +65,25 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
     switch (srcImageFormat)
     {
         case EImageFormat::FORMAT_R8_UNORM:
-        {
             srcTexture.format  = CMP_FORMAT_R_8;
             srcTexture.dwPitch = srcTexture.dwWidth * 1;
             break;
-        }
         case EImageFormat::FORMAT_RG8_UNORM:
-        {
             srcTexture.format  = CMP_FORMAT_RG_8;
             srcTexture.dwPitch = srcTexture.dwWidth * 2;
             break;
-        }
         case EImageFormat::FORMAT_RGBA8_UNORM:
-        {
             srcTexture.format  = CMP_FORMAT_RGBA_8888;
             srcTexture.dwPitch = srcTexture.dwWidth * 4;
             break;
-        }
-        default:
-        {
-            PFR_ASSERT(false, "Other src image formats currently not implemented! TODO!");
-            break;
-        }
+        default: PFR_ASSERT(false, "Other src image formats currently not implemented! TODO!"); break;
     }
     srcTexture.dwDataSize = rawImageSize;
     srcTexture.pData      = (CMP_BYTE*)rawImageData;
 
-    CMP_Texture dstTexture = {};
+    CMP_Texture dstTexture = {.dwWidth = srcTexture.dwWidth, .dwHeight = srcTexture.dwHeight, .dwPitch = 0};
     dstTexture.dwSize      = sizeof(dstTexture);
-    dstTexture.dwWidth     = srcTexture.dwWidth;
-    dstTexture.dwHeight    = srcTexture.dwHeight;
-    dstTexture.dwPitch     = 0;
+
     switch (textureSpec.Format)
     {
         case EImageFormat::FORMAT_BC1_RGB_UNORM:
@@ -129,7 +119,7 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
 #endif
 
     const auto CMP_PrintInfoStr         = [](const char* InfoStr) { LOG_INFO("AMD_Compressonator: {}", InfoStr); };
-    CMP_CompressOptions compressOptions = {0};
+    CMP_CompressOptions compressOptions = {};
     compressOptions.dwSize              = sizeof(compressOptions);
     compressOptions.m_PrintInfoStr      = CMP_PrintInfoStr;
     compressOptions.fquality            = 0.05f;  // 0.88f;
@@ -214,5 +204,23 @@ void TextureCompressor::LoadCompressed(const std::filesystem::path& loadPath, Te
 
     in.close();
 }
+
+void TextureManager::Init()
+{
+    {
+        constexpr uint32_t whiteColor = 0xFFFFFFFF;
+        s_WhiteTexture = Texture::Create({.DebugName = "Default_WhiteTexture", .Width = 1, .Height = 1}, &whiteColor, sizeof(whiteColor));
+    }
+
+    LOG_TRACE("{}", __FUNCTION__);
+}
+
+void TextureManager::Shutdown()
+{
+    s_WhiteTexture.reset();
+    LOG_TRACE("{}", __FUNCTION__);
+}
+
+void TextureManager::LinkLoadedTexturesWithMeshes() {}
 
 }  // namespace Pathfinder

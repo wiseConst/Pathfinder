@@ -13,7 +13,136 @@
 namespace Pathfinder
 {
 
-static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const RendererTypeFlags shaderStageFlags)
+namespace CommandBufferUtils
+{
+
+NODISCARD static VkAccessFlags2 PathfinderAccessFlagsToVulkan(const RendererTypeFlags accessFlags)
+{
+    VkAccessFlags2 vkAccessFlags2 = VK_ACCESS_2_NONE;
+
+    if (accessFlags & EAccessFlags::ACCESS_NONE) vkAccessFlags2 |= VK_ACCESS_2_NONE;
+    if (accessFlags & EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_INDEX_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INDEX_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_VERTEX_ATTRIBUTE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_UNIFORM_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_UNIFORM_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_INPUT_ATTACHMENT_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_TRANSFER_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_TRANSFER_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_TRANSFER_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_TRANSFER_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_HOST_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_HOST_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_HOST_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_HOST_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_MEMORY_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_MEMORY_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_MEMORY_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_MEMORY_WRITE_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
+    if (accessFlags & EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
+
+    if (accessFlags & EAccessFlags::ACCESS_VIDEO_DECODE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_DECODE_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_VIDEO_DECODE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR;
+
+    if (accessFlags & EAccessFlags::ACCESS_VIDEO_ENCODE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_ENCODE_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_VIDEO_ENCODE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_ENCODE_WRITE_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_READ_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
+    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT)
+        vkAccessFlags2 |= VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR;
+
+    return vkAccessFlags2;
+}
+
+NODISCARD static VkPipelineStageFlags2 PathfinderPipelineStageToVulkan(const RendererTypeFlags pipelineStage)
+{
+    VkPipelineStageFlags2 vkPipelineStageFlags2 = 0;
+
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_NONE) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_NONE;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_INPUT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TRANSFER_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_HOST_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_HOST_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
+
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COPY_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COPY_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_RESOLVE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_RESOLVE_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_BLIT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_BLIT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_CLEAR_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_CLEAR_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_INDEX_INPUT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_ATTRIBUTE_INPUT_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_PRE_RASTERIZATION_SHADERS_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VIDEO_DECODE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VIDEO_ENCODE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VIDEO_ENCODE_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
+    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_COPY_BIT)
+        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR;
+
+    return vkPipelineStageFlags2;
+}
+
+NODISCARD FORCEINLINE static VkAttachmentLoadOp PathfinderLoadOpToVulkan(const EOp loadOp)
+{
+    switch (loadOp)
+    {
+        case EOp::DONT_CARE: return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+        case EOp::CLEAR: return VK_ATTACHMENT_LOAD_OP_CLEAR;
+        case EOp::LOAD: return VK_ATTACHMENT_LOAD_OP_LOAD;
+    }
+
+    PFR_ASSERT(false, "Unknown load op!");
+    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+}
+
+NODISCARD FORCEINLINE static VkAttachmentStoreOp PathfinderStoreOpToVulkan(const EOp storeOp)
+{
+    switch (storeOp)
+    {
+        case EOp::DONT_CARE: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+        case EOp::STORE: return VK_ATTACHMENT_STORE_OP_STORE;
+    }
+
+    PFR_ASSERT(false, "Unknown store op!");
+    return VK_ATTACHMENT_STORE_OP_DONT_CARE;
+}
+
+NODISCARD FORCEINLINE static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const RendererTypeFlags shaderStageFlags)
 {
     VkShaderStageFlags vkShaderStageFlags = 0;
 
@@ -38,6 +167,8 @@ static VkShaderStageFlags PathfinderShaderStageFlagsToVulkan(const RendererTypeF
     PFR_ASSERT(vkShaderStageFlags > 0, "Shader stage flags can't be zero!");
     return vkShaderStageFlags;
 }
+
+}  // namespace CommandBufferUtils
 
 VulkanSyncPoint::VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages)
     : SyncPoint(timelineSemaphoreHandle, value, pipelineStages)
@@ -64,9 +195,9 @@ VulkanCommandBuffer::VulkanCommandBuffer(const CommandBufferSpecification& comma
     std::string commandBufferTypeStr;
     switch (m_Specification.Type)
     {
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS: commandBufferTypeStr = "GRAPHICS"; break;
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE: commandBufferTypeStr = "COMPUTE"; break;
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER: commandBufferTypeStr = "TRANSFER"; break;
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL: commandBufferTypeStr = "GRAPHICS"; break;
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE_ASYNC: commandBufferTypeStr = "COMPUTE"; break;
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC: commandBufferTypeStr = "TRANSFER"; break;
     }
 
     constexpr VkSemaphoreTypeCreateInfo semaphoreTypeCI = {
@@ -116,7 +247,7 @@ Shared<SyncPoint> VulkanCommandBuffer::Submit(const std::vector<Shared<SyncPoint
         waitSemaphoreInfos[i].sType       = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
         waitSemaphoreInfos[i].semaphore   = (VkSemaphore)waitPoints[i]->GetTimelineSemaphore();
         waitSemaphoreInfos[i].value       = waitPoints[i]->GetValue();
-        waitSemaphoreInfos[i].stageMask   = VulkanUtility::PathfinderPipelineStageToVulkan(waitPoints[i]->GetPipelineStages());
+        waitSemaphoreInfos[i].stageMask   = CommandBufferUtils::PathfinderPipelineStageToVulkan(waitPoints[i]->GetPipelineStages());
         waitSemaphoreInfos[i].deviceIndex = 0;
     }
     submitInfo2.pWaitSemaphoreInfos    = waitSemaphoreInfos.data();
@@ -127,20 +258,20 @@ Shared<SyncPoint> VulkanCommandBuffer::Submit(const std::vector<Shared<SyncPoint
     RendererTypeFlags pipelineStages = EPipelineStage::PIPELINE_STAGE_NONE;
     switch (m_Specification.Type)
     {
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL:
         {
             queue = context.GetDevice()->GetGraphicsQueue();
             pipelineStages |= EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT | EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT |
                               EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             break;
         }
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE_ASYNC:
         {
             queue = context.GetDevice()->GetComputeQueue();
             pipelineStages |= EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT | EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             break;
         }
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC:
         {
             queue = context.GetDevice()->GetTransferQueue();
             pipelineStages |= EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
@@ -155,7 +286,7 @@ Shared<SyncPoint> VulkanCommandBuffer::Submit(const std::vector<Shared<SyncPoint
     signalSemaphoreInfos[signalPoints.size()].semaphore = (VkSemaphore)currentSyncPoint->GetTimelineSemaphore();
     signalSemaphoreInfos[signalPoints.size()].value     = currentSyncPoint->GetValue();
     signalSemaphoreInfos[signalPoints.size()].stageMask =
-        VulkanUtility::PathfinderPipelineStageToVulkan(currentSyncPoint->GetPipelineStages());
+        CommandBufferUtils::PathfinderPipelineStageToVulkan(currentSyncPoint->GetPipelineStages());
     signalSemaphoreInfos[signalPoints.size()].deviceIndex = 0;
 
     for (size_t i{}; i < signalPoints.size(); ++i)
@@ -163,7 +294,7 @@ Shared<SyncPoint> VulkanCommandBuffer::Submit(const std::vector<Shared<SyncPoint
         signalSemaphoreInfos[i].sType       = VK_STRUCTURE_TYPE_SEMAPHORE_SUBMIT_INFO;
         signalSemaphoreInfos[i].semaphore   = (VkSemaphore)signalPoints[i]->GetTimelineSemaphore();
         signalSemaphoreInfos[i].value       = signalPoints[i]->GetValue();
-        signalSemaphoreInfos[i].stageMask   = VulkanUtility::PathfinderPipelineStageToVulkan(signalPoints[i]->GetPipelineStages());
+        signalSemaphoreInfos[i].stageMask   = CommandBufferUtils::PathfinderPipelineStageToVulkan(signalPoints[i]->GetPipelineStages());
         signalSemaphoreInfos[i].deviceIndex = 0;
     }
     submitInfo2.pSignalSemaphoreInfos    = signalSemaphoreInfos.data();
@@ -282,12 +413,13 @@ void VulkanCommandBuffer::TransitionImageLayout(const VkImage& image, const VkIm
         default: PFR_ASSERT(false, "New layout is not supported!");
     }
 
-    const auto vkSrcPipelineStages = VulkanUtility::PathfinderPipelineStageToVulkan(srcStageMask);
-    const auto vkDstPipelineStages = VulkanUtility::PathfinderPipelineStageToVulkan(dstStageMask);
+    const auto vkSrcPipelineStages = CommandBufferUtils::PathfinderPipelineStageToVulkan(srcStageMask);
+    const auto vkDstPipelineStages = CommandBufferUtils::PathfinderPipelineStageToVulkan(dstStageMask);
 
-    const auto imageMemoryBarrier2 = VulkanUtility::GetImageMemoryBarrier(
-        image, aspectMask, oldLayout, newLayout, vkSrcPipelineStages, VulkanUtility::PathfinderAccessFlagsToVulkan(srcAccessMask),
-        vkDstPipelineStages, VulkanUtility::PathfinderAccessFlagsToVulkan(dstAccessMask), layerCount, baseLayer, mipLevels, baseMipLevel);
+    const auto imageMemoryBarrier2 = VulkanUtils::GetImageMemoryBarrier(
+        image, aspectMask, oldLayout, newLayout, vkSrcPipelineStages, CommandBufferUtils::PathfinderAccessFlagsToVulkan(srcAccessMask),
+        vkDstPipelineStages, CommandBufferUtils::PathfinderAccessFlagsToVulkan(dstAccessMask), layerCount, baseLayer, mipLevels,
+        baseMipLevel);
 
     InsertBarrier(vkSrcPipelineStages, vkDstPipelineStages, VK_DEPENDENCY_BY_REGION_BIT, 0, nullptr, 0, nullptr, 1, &imageMemoryBarrier2);
 }
@@ -321,8 +453,8 @@ void VulkanCommandBuffer::BeginRendering(const std::vector<Shared<Texture>>& att
 
             depthAttachment.imageView               = vulkanImage->GetView();
             depthAttachment.imageLayout             = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            depthAttachment.storeOp                 = VulkanUtility::PathfinderStoreOpToVulkan(renderingInfos.at(i).StoreOp);
-            depthAttachment.loadOp                  = VulkanUtility::PathfinderLoadOpToVulkan(renderingInfos.at(i).LoadOp);
+            depthAttachment.loadOp                  = CommandBufferUtils::PathfinderLoadOpToVulkan(renderingInfos.at(i).LoadOp);
+            depthAttachment.storeOp                 = CommandBufferUtils::PathfinderStoreOpToVulkan(renderingInfos.at(i).StoreOp);
             depthAttachment.clearValue.depthStencil = {color->Depth, color->Stencil};
         }
         else
@@ -333,8 +465,8 @@ void VulkanCommandBuffer::BeginRendering(const std::vector<Shared<Texture>>& att
             auto& attachment            = colorAttachments.emplace_back(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO);
             attachment.imageView        = vulkanImage->GetView();
             attachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            attachment.storeOp          = VulkanUtility::PathfinderStoreOpToVulkan(renderingInfos.at(i).StoreOp);
-            attachment.loadOp           = VulkanUtility::PathfinderLoadOpToVulkan(renderingInfos.at(i).LoadOp);
+            attachment.loadOp           = CommandBufferUtils::PathfinderLoadOpToVulkan(renderingInfos.at(i).LoadOp);
+            attachment.storeOp          = CommandBufferUtils::PathfinderStoreOpToVulkan(renderingInfos.at(i).StoreOp);
             attachment.clearValue.color = {color->x, color->y, color->z, color->w};
         }
     }
@@ -412,7 +544,7 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
     if (const auto* graphicsPipelineOptions = pipeline->GetPipelineOptions<GraphicsPipelineOptions>())
     {
         if (graphicsPipelineOptions->bDynamicPolygonMode)
-            vkCmdSetPolygonModeEXT(m_Handle, VulkanUtility::PathfinderPolygonModeToVulkan(graphicsPipelineOptions->PolygonMode));
+            vkCmdSetPolygonModeEXT(m_Handle, VulkanUtils::PathfinderPolygonModeToVulkan(graphicsPipelineOptions->PolygonMode));
     }
 
     VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -428,6 +560,14 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
         vkCmdSetLineWidth(m_Handle, graphicsPipelineOptions->LineWidth);
 
     vkCmdBindPipeline(m_Handle, pipelineBindPoint, (VkPipeline)pipeline->Get());
+}
+
+FORCEINLINE void VulkanCommandBuffer::DrawIndexedIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
+                                                          const uint32_t stride) const
+{
+    PFR_ASSERT(drawBuffer && drawBuffer->Get(), "Invalid draw buffer!");
+
+    vkCmdDrawIndexedIndirect(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
 }
 
 void VulkanCommandBuffer::BindVertexBuffers(const std::vector<Shared<Buffer>>& vertexBuffers, const uint32_t firstBinding,
@@ -455,13 +595,29 @@ void VulkanCommandBuffer::BindIndexBuffer(const Shared<Buffer>& indexBuffer, con
     vkCmdBindIndexBuffer(m_Handle, (VkBuffer)vulkanIndexBuffer->Get(), offset, bIndexType32 ? VK_INDEX_TYPE_UINT32 : VK_INDEX_TYPE_UINT16);
 }
 
+void VulkanCommandBuffer::DrawMeshTasksIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
+                                                const uint32_t stride) const
+{
+    PFR_ASSERT(drawBuffer && drawBuffer->Get(), "Invalid draw buffer!");
+    vkCmdDrawMeshTasksIndirectEXT(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
+}
+
+void VulkanCommandBuffer::DrawMeshTasksMultiIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset,
+                                                     const Shared<Buffer>& countBuffer, const uint64_t countBufferOffset,
+                                                     const uint32_t maxDrawCount, const uint32_t stride) const
+{
+    PFR_ASSERT(drawBuffer && drawBuffer->Get() && countBuffer && countBuffer->Get(), "Invalid draw/count buffer!");
+    vkCmdDrawMeshTasksIndirectCountEXT(m_Handle, (VkBuffer)drawBuffer->Get(), offset, (VkBuffer)countBuffer->Get(), countBufferOffset,
+                                       maxDrawCount, stride);
+}
+
 void VulkanCommandBuffer::FillBuffer(const Shared<Buffer>& buffer, const uint32_t data) const
 {
     const auto vulkanBuffer = std::static_pointer_cast<VulkanBuffer>(buffer);
     PFR_ASSERT(vulkanBuffer, "Failed to cast Buffer to VulkanBuffer!");
 
-    vkCmdFillBuffer(m_Handle, (VkBuffer)vulkanBuffer->Get(), vulkanBuffer->GetDescriptorInfo().offset,
-                    vulkanBuffer->GetDescriptorInfo().range, data);
+    const auto descriptorInfo = vulkanBuffer->GetDescriptorInfo();
+    vkCmdFillBuffer(m_Handle, (VkBuffer)vulkanBuffer->Get(), descriptorInfo.offset, descriptorInfo.range, data);
 }
 
 void VulkanCommandBuffer::InsertBarriers(const std::vector<MemoryBarrier>& memoryBarriers,
@@ -476,10 +632,10 @@ void VulkanCommandBuffer::InsertBarriers(const std::vector<MemoryBarrier>& memor
     {
         auto& memoryBarrier    = memoryBarriers.at(i);
         memoryBarriersVK.at(i) = {.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                                  .srcStageMask  = VulkanUtility::PathfinderPipelineStageToVulkan(memoryBarrier.srcStageMask),
-                                  .srcAccessMask = VulkanUtility::PathfinderAccessFlagsToVulkan(memoryBarrier.srcAccessMask),
-                                  .dstStageMask  = VulkanUtility::PathfinderPipelineStageToVulkan(memoryBarrier.dstStageMask),
-                                  .dstAccessMask = VulkanUtility::PathfinderAccessFlagsToVulkan(memoryBarrier.dstAccessMask)};
+                                  .srcStageMask  = CommandBufferUtils::PathfinderPipelineStageToVulkan(memoryBarrier.srcStageMask),
+                                  .srcAccessMask = CommandBufferUtils::PathfinderAccessFlagsToVulkan(memoryBarrier.srcAccessMask),
+                                  .dstStageMask  = CommandBufferUtils::PathfinderPipelineStageToVulkan(memoryBarrier.dstStageMask),
+                                  .dstAccessMask = CommandBufferUtils::PathfinderAccessFlagsToVulkan(memoryBarrier.dstAccessMask)};
     }
 
     std::vector<VkBufferMemoryBarrier2> bufferMemoryBarriersVK(bufferMemoryBarriers.size());
@@ -487,18 +643,18 @@ void VulkanCommandBuffer::InsertBarriers(const std::vector<MemoryBarrier>& memor
     {
         auto& bufferMemoryBarrier    = bufferMemoryBarriers.at(i);
         bufferMemoryBarriersVK.at(i) = {
-            .sType         = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
-            .srcStageMask  = VulkanUtility::PathfinderPipelineStageToVulkan(bufferMemoryBarrier.srcStageMask),
-            .srcAccessMask = VulkanUtility::PathfinderAccessFlagsToVulkan(bufferMemoryBarrier.srcAccessMask),
-            .dstStageMask  = VulkanUtility::PathfinderPipelineStageToVulkan(bufferMemoryBarrier.dstStageMask),
-            .dstAccessMask = VulkanUtility::PathfinderAccessFlagsToVulkan(bufferMemoryBarrier.dstAccessMask),
-            .srcQueueFamilyIndex =
-                bufferMemoryBarrier.srcQueueFamilyIndex == UINT32_MAX ? VK_QUEUE_FAMILY_IGNORED : bufferMemoryBarrier.srcQueueFamilyIndex,
-            .dstQueueFamilyIndex =
-                bufferMemoryBarrier.dstQueueFamilyIndex == UINT32_MAX ? VK_QUEUE_FAMILY_IGNORED : bufferMemoryBarrier.dstQueueFamilyIndex,
-            .buffer = (VkBuffer)bufferMemoryBarrier.buffer->Get(),
-            .offset = 0,
-            .size   = bufferMemoryBarrier.buffer->GetSpecification().Capacity};
+            .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
+            .srcStageMask        = CommandBufferUtils::PathfinderPipelineStageToVulkan(bufferMemoryBarrier.srcStageMask),
+            .srcAccessMask       = CommandBufferUtils::PathfinderAccessFlagsToVulkan(bufferMemoryBarrier.srcAccessMask),
+            .dstStageMask        = CommandBufferUtils::PathfinderPipelineStageToVulkan(bufferMemoryBarrier.dstStageMask),
+            .dstAccessMask       = CommandBufferUtils::PathfinderAccessFlagsToVulkan(bufferMemoryBarrier.dstAccessMask),
+            .srcQueueFamilyIndex = bufferMemoryBarrier.srcQueueFamilyIndex.has_value() ? bufferMemoryBarrier.srcQueueFamilyIndex.value()
+                                                                                       : VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = bufferMemoryBarrier.dstQueueFamilyIndex.has_value() ? bufferMemoryBarrier.dstQueueFamilyIndex.value()
+                                                                                       : VK_QUEUE_FAMILY_IGNORED,
+            .buffer              = (VkBuffer)bufferMemoryBarrier.buffer->Get(),
+            .offset              = 0,
+            .size                = bufferMemoryBarrier.buffer->GetSpecification().Capacity};
     }
 
     std::vector<VkImageMemoryBarrier2> imageMemoryBarriersVK(imageMemoryBarriers.size());
@@ -516,23 +672,23 @@ void VulkanCommandBuffer::InsertBarriers(const std::vector<MemoryBarrier>& memor
             aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
         imageMemoryBarriersVK.at(i) = {
-            .sType         = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
-            .srcStageMask  = VulkanUtility::PathfinderPipelineStageToVulkan(imageMemoryBarrier.srcStageMask),
-            .srcAccessMask = VulkanUtility::PathfinderAccessFlagsToVulkan(imageMemoryBarrier.srcAccessMask),
-            .dstStageMask  = VulkanUtility::PathfinderPipelineStageToVulkan(imageMemoryBarrier.dstStageMask),
-            .dstAccessMask = VulkanUtility::PathfinderAccessFlagsToVulkan(imageMemoryBarrier.dstAccessMask),
-            .oldLayout     = ImageUtils::PathfinderImageLayoutToVulkan(imageMemoryBarrier.oldLayout),
-            .newLayout     = ImageUtils::PathfinderImageLayoutToVulkan(imageMemoryBarrier.newLayout),
-            .srcQueueFamilyIndex =
-                imageMemoryBarrier.srcQueueFamilyIndex == UINT32_MAX ? VK_QUEUE_FAMILY_IGNORED : imageMemoryBarrier.srcQueueFamilyIndex,
-            .dstQueueFamilyIndex =
-                imageMemoryBarrier.dstQueueFamilyIndex == UINT32_MAX ? VK_QUEUE_FAMILY_IGNORED : imageMemoryBarrier.dstQueueFamilyIndex,
-            .image            = (VkImage)imageMemoryBarrier.image->Get(),
-            .subresourceRange = {.aspectMask     = aspectMask,
-                                 .baseMipLevel   = imageMemoryBarrier.subresourceRange.baseMipLevel,
-                                 .levelCount     = imageMemoryBarrier.subresourceRange.levelCount,
-                                 .baseArrayLayer = imageMemoryBarrier.subresourceRange.baseArrayLayer,
-                                 .layerCount     = imageMemoryBarrier.subresourceRange.layerCount}};
+            .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
+            .srcStageMask        = CommandBufferUtils::PathfinderPipelineStageToVulkan(imageMemoryBarrier.srcStageMask),
+            .srcAccessMask       = CommandBufferUtils::PathfinderAccessFlagsToVulkan(imageMemoryBarrier.srcAccessMask),
+            .dstStageMask        = CommandBufferUtils::PathfinderPipelineStageToVulkan(imageMemoryBarrier.dstStageMask),
+            .dstAccessMask       = CommandBufferUtils::PathfinderAccessFlagsToVulkan(imageMemoryBarrier.dstAccessMask),
+            .oldLayout           = ImageUtils::PathfinderImageLayoutToVulkan(imageMemoryBarrier.oldLayout),
+            .newLayout           = ImageUtils::PathfinderImageLayoutToVulkan(imageMemoryBarrier.newLayout),
+            .srcQueueFamilyIndex = imageMemoryBarrier.srcQueueFamilyIndex.has_value() ? imageMemoryBarrier.srcQueueFamilyIndex.value()
+                                                                                      : VK_QUEUE_FAMILY_IGNORED,
+            .dstQueueFamilyIndex = imageMemoryBarrier.dstQueueFamilyIndex.has_value() ? imageMemoryBarrier.dstQueueFamilyIndex.value()
+                                                                                      : VK_QUEUE_FAMILY_IGNORED,
+            .image               = (VkImage)imageMemoryBarrier.image->Get(),
+            .subresourceRange    = {.aspectMask     = aspectMask,
+                                    .baseMipLevel   = imageMemoryBarrier.subresourceRange.baseMipLevel,
+                                    .levelCount     = imageMemoryBarrier.subresourceRange.mipCount,
+                                    .baseArrayLayer = imageMemoryBarrier.subresourceRange.baseArrayLayer,
+                                    .layerCount     = imageMemoryBarrier.subresourceRange.layerCount}};
     }
 
     const VkDependencyInfo dependencyInfo = {.sType                    = VK_STRUCTURE_TYPE_DEPENDENCY_INFO,

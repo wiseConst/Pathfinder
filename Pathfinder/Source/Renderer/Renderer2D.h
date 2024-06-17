@@ -19,6 +19,7 @@ class Texture;
 //     uint32_t Layer            = 0;  // Only for sorting.
 // };
 
+// NOTE: Make it variable of Renderer's class.
 class Renderer2D final : private Uncopyable, private Unmovable
 {
   public:

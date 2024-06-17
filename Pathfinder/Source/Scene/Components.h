@@ -123,13 +123,13 @@ struct MeshComponent
 
 struct SpriteComponent
 {
-    glm::vec4 Color           = glm::vec4(1.0f);
-    uint32_t Layer            = 0;
-    Shared<Texture> Texture = nullptr;
+    glm::vec4 Color                     = glm::vec4(1.0f);
+    uint32_t Layer                      = 0;
+    Shared<Pathfinder::Texture> Texture = nullptr;
 
     SpriteComponent()                       = default;
     SpriteComponent(const SpriteComponent&) = default;
-    SpriteComponent(const glm::vec4& color, const Shared<Texture>& texture, const uint32_t layer)
+    SpriteComponent(const glm::vec4& color, const Shared<Pathfinder::Texture>& texture, const uint32_t layer)
         : Color(color), Texture(texture), Layer(layer)
     {
     }

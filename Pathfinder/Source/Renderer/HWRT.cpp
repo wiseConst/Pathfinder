@@ -6,6 +6,7 @@
 
 namespace Pathfinder
 {
+
 void RayTracingBuilder::Init()
 {
 
@@ -25,13 +26,14 @@ void RayTracingBuilder::Init()
             PFR_ASSERT(false, "Unknown RendererAPI!");
         }
     }
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void RayTracingBuilder::Shutdown()
 {
     delete s_Instance;
     s_Instance = nullptr;
-    LOG_INFO("RayTracingBuilder destroyed!");
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 }  // namespace Pathfinder

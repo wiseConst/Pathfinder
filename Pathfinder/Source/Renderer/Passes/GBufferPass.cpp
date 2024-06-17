@@ -38,7 +38,7 @@ void GBufferPass::AddForwardPlusOpaquePass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "ForwardPlusOpaque Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "ForwardPlusOpaquePass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             builder.WriteDepthStencil("DepthOpaque_V0", {0.f, 0}, EOp::LOAD, EOp::STORE, EOp::DONT_CARE, EOp::DONT_CARE, "DepthOpaque");
@@ -125,7 +125,7 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
     };
 
     rendergraph->AddPass<PassData>(
-        "ForwardPlusOpaque Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "ForwardPlusTransparentPass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             builder.WriteDepthStencil("DepthOpaque_V1", {0.f, 0}, EOp::LOAD, EOp::STORE, EOp::DONT_CARE, EOp::DONT_CARE, "DepthOpaque_V0");

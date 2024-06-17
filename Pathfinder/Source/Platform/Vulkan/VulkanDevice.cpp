@@ -14,6 +14,37 @@ namespace Pathfinder
 namespace DeviceUtils
 {
 
+NODISCARD FORCEINLINE static const char* GetVendorNameCString(const uint32_t vendorID)
+{
+    switch (vendorID)
+    {
+        case 0x10DE: return "NVIDIA";
+        case 0x1002: return "AMD";
+        case 0x8086: return "INTEL";
+        case 0x13B5: return "ARM";
+        case 0x5143: return "Qualcomm";
+        case 0x1010: return "ImgTec";
+    }
+
+    PFR_ASSERT(false, "Unknown vendor!");
+    return s_DEFAULT_STRING;
+}
+
+NODISCARD FORCEINLINE static const char* GetDeviceTypeCString(const VkPhysicalDeviceType deviceType)
+{
+    switch (deviceType)
+    {
+        case VK_PHYSICAL_DEVICE_TYPE_OTHER: return "OTHER";
+        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "INTEGRATED_GPU";
+        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return "DISCRETE_GPU";
+        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return "VIRTUAL_GPU";
+        case VK_PHYSICAL_DEVICE_TYPE_CPU: return "CPU";
+    }
+
+    PFR_ASSERT(false, "Unknown device type!");
+    return nullptr;
+}
+
 struct QueueFamilyIndices
 {
     FORCEINLINE bool IsComplete() const
@@ -243,11 +274,11 @@ static bool IsDeviceSuitable(GPUInfo& gpuInfo)
 #if VK_LOG_INFO
     LOG_INFO("GPU info:");
     LOG_TRACE(" Renderer: {}", gpuInfo.Properties.deviceName);
-    LOG_TRACE(" Vendor: {}/{}", VulkanUtility::GetVendorNameCString(gpuInfo.Properties.vendorID), gpuInfo.Properties.vendorID);
+    LOG_TRACE(" Vendor: {}/{}", DeviceUtils::GetVendorNameCString(gpuInfo.Properties.vendorID), gpuInfo.Properties.vendorID);
     LOG_TRACE(" {} {}", gpuInfo.DriverProperties.driverName, gpuInfo.DriverProperties.driverInfo);
     LOG_TRACE(" API Version {}.{}.{}", VK_API_VERSION_MAJOR(gpuInfo.Properties.apiVersion),
               VK_API_VERSION_MINOR(gpuInfo.Properties.apiVersion), VK_API_VERSION_PATCH(gpuInfo.Properties.apiVersion));
-    LOG_INFO(" Device Type: {}", VulkanUtility::GetDeviceTypeCString(gpuInfo.Properties.deviceType));
+    LOG_INFO(" Device Type: {}", DeviceUtils::GetDeviceTypeCString(gpuInfo.Properties.deviceType));
     LOG_INFO(" Max Push Constants Size(depends on gpu): {}", gpuInfo.Properties.limits.maxPushConstantsSize);
     LOG_INFO(" Max Sampler Anisotropy: {}", gpuInfo.Properties.limits.maxSamplerAnisotropy);
     LOG_INFO(" Max Sampler Allocations: {}", gpuInfo.Properties.limits.maxSamplerAllocationCount);
@@ -342,9 +373,7 @@ static uint32_t RateDeviceSuitability(GPUInfo& gpuInfo)
     return score;
 }
 
-}  // namespace DeviceUtils
-
-static VkCommandBufferLevel PathfinderCommandBufferLevelToVulkan(ECommandBufferLevel level)
+NODISCARD FORCEINLINE static VkCommandBufferLevel PathfinderCommandBufferLevelToVulkan(const ECommandBufferLevel level)
 {
     switch (level)
     {
@@ -355,6 +384,8 @@ static VkCommandBufferLevel PathfinderCommandBufferLevelToVulkan(ECommandBufferL
     PFR_ASSERT(false, "Unknown command buffer level!");
     return VK_COMMAND_BUFFER_LEVEL_PRIMARY;
 }
+
+}  // namespace DeviceUtils
 
 VulkanDevice::VulkanDevice(const VkInstance& instance)
 {
@@ -374,7 +405,6 @@ VulkanDevice::VulkanDevice(const VkInstance& instance)
     PFR_ASSERT(!m_SupportedDepthStencilFormats.empty(), "No supported Depth-Stencil formats!");
 
     CreateLogicalDevice();
-
     CreateCommandPools();
 
     m_VMA = MakeUnique<VulkanAllocator>(instance, m_LogicalDevice, m_PhysicalDevice);
@@ -497,7 +527,7 @@ void VulkanDevice::LoadPipelineCache()
         {
             cacheCI.initialDataSize = cacheData.size();
             cacheCI.pInitialData    = cacheData.data();
-            LOG_INFO("Found valid pipeline cache \"{}\", get ready!", s_ENGINE_NAME);
+            LOG_INFO("Found valid pipeline cache \"{}\"!", s_ENGINE_NAME);
         }
         else
         {
@@ -573,7 +603,7 @@ void VulkanDevice::ChooseBestPhysicalDevice(const VkInstance& instance)
     const auto suitableGpu = candidates.rbegin()->second;
 
     LOG_INFO("Renderer: {}", suitableGpu.Properties.deviceName);
-    LOG_INFO(" Vendor: {}", VulkanUtility::GetVendorNameCString(suitableGpu.Properties.vendorID));
+    LOG_INFO(" Vendor: {}", DeviceUtils::GetVendorNameCString(suitableGpu.Properties.vendorID));
     LOG_INFO(" Driver: {} [{}]", suitableGpu.DriverProperties.driverName, suitableGpu.DriverProperties.driverInfo);
     LOG_INFO(" Using Vulkan API Version: {}.{}.{}", VK_API_VERSION_MAJOR(suitableGpu.Properties.apiVersion),
              VK_API_VERSION_MINOR(suitableGpu.Properties.apiVersion), VK_API_VERSION_PATCH(suitableGpu.Properties.apiVersion));
@@ -597,9 +627,9 @@ void VulkanDevice::CreateLogicalDevice()
     std::vector<VkDeviceQueueCreateInfo> queueCreateInfos = {};
     const std::set<uint32_t> uniqueQueueFamilies{m_GraphicsFamily, m_PresentFamily, m_TransferFamily, m_ComputeFamily};
     for (const auto queueFamily : uniqueQueueFamilies)
-    {
         queueCreateInfos.emplace_back(VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO, nullptr, 0, queueFamily, 1, &queuePriority);
-    }
+
+    m_QueueFamilyIndices.insert(m_QueueFamilyIndices.end(), uniqueQueueFamilies.begin(), uniqueQueueFamilies.end());
 
     // NOTE: This struct should contain only whatever I do check in IsDeviceSuitable()!!
     constexpr VkPhysicalDeviceFeatures physicalDeviceFeatures = {.geometryShader                          = VK_TRUE,
@@ -651,8 +681,7 @@ void VulkanDevice::CreateLogicalDevice()
     vulkan12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
 
     // Shader type alignment
-    vulkan12Features.scalarBlockLayout = VK_TRUE;
-
+    vulkan12Features.scalarBlockLayout   = VK_TRUE;
     vulkan12Features.bufferDeviceAddress = VK_TRUE;
 
     *ppNext = &vulkan12Features;
@@ -737,25 +766,25 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, co
     PFR_ASSERT(commandBufferSpec.ThreadID < s_WORKER_THREAD_COUNT, "Invalid threadID!");
 
     VkCommandBufferAllocateInfo cbAI = {.sType              = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO,
-                                        .level              = PathfinderCommandBufferLevelToVulkan(commandBufferSpec.Level),
+                                        .level              = DeviceUtils::PathfinderCommandBufferLevelToVulkan(commandBufferSpec.Level),
                                         .commandBufferCount = 1};
 
     std::string cbTypeStr = s_DEFAULT_STRING;
     switch (commandBufferSpec.Type)
     {
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL:
         {
             cbTypeStr        = "GRAPHICS";
             cbAI.commandPool = m_GraphicsCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
             break;
         }
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE_ASYNC:
         {
             cbTypeStr        = "COMPUTE";
             cbAI.commandPool = m_ComputeCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
             break;
         }
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC:
         {
             cbTypeStr        = "TRANSFER";
             cbAI.commandPool = m_TransferCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
@@ -778,19 +807,19 @@ void VulkanDevice::FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const
 
     switch (commandBufferSpec.Type)
     {
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL:
         {
             vkFreeCommandBuffers(m_LogicalDevice, m_GraphicsCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID), 1,
                                  &commandBuffer);
             break;
         }
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE_ASYNC:
         {
             vkFreeCommandBuffers(m_LogicalDevice, m_ComputeCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID), 1,
                                  &commandBuffer);
             break;
         }
-        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER:
+        case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC:
         {
             vkFreeCommandBuffers(m_LogicalDevice, m_TransferCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID), 1,
                                  &commandBuffer);

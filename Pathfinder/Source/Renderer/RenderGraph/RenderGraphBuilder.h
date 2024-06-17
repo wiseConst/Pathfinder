@@ -5,7 +5,6 @@
 
 #include "RenderGraphPass.h"
 #include "RenderGraphContext.h"
-#include "RenderGraphResourcePool.h"
 
 namespace Pathfinder
 {

@@ -26,13 +26,14 @@ void ScreenSpaceShadowsPass::AddPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "ScreenSpaceShadows Pass", ERGPassType::RGPASS_TYPE_COMPUTE,
+        "ScreenSpaceShadowsPass", ERGPassType::RGPASS_TYPE_COMPUTE,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             pd.DepthOpaque             = builder.ReadTexture("DepthOpaque");
             pd.CameraData              = builder.ReadBuffer("CameraData");
             pd.CulledPointLightIndices = builder.ReadBuffer("CulledPointLightIndices");
             pd.CulledSpotLightIndices  = builder.ReadBuffer("CulledSpotLightIndices");
+            pd.LightData               = builder.ReadBuffer("LightData");
 
             builder.DeclareTexture("SSSTexture",
                                    {.DebugName  = "SSSTexture",

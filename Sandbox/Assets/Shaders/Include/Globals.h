@@ -49,9 +49,11 @@ struct MeshPositionVertex
     vec3 Position;
 };
 
+// TODO: Fix color packing.
 struct MeshAttributeVertex
 {
-    uint32_t Color;
+    vec4 Color;
+    // uint32_t Color;
     vec3 Normal;
     vec3 Tangent;
 #ifdef __cplusplus

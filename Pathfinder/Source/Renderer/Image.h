@@ -6,7 +6,6 @@
 namespace Pathfinder
 {
 
-
 // NOTE: Bindless by default, once and forever.
 struct ImageSpecification
 {
@@ -36,18 +35,19 @@ class Image : private Uncopyable, private Unmovable
     }
 
     virtual void Resize(const uint32_t width, const uint32_t height)                                  = 0;
-    virtual void SetLayout(const EImageLayout newLayout)                                              = 0;
+    virtual void SetLayout(const EImageLayout newLayout, const bool bImmediate = false)               = 0;
     virtual void SetData(const void* data, size_t dataSize)                                           = 0;
     virtual void ClearColor(const Shared<CommandBuffer>& commandBuffer, const glm::vec4& color) const = 0;
 
     static Shared<Image> Create(const ImageSpecification& imageSpec);
 
     const auto& GetUUID() const { return m_UUID; }
+    virtual void SetDebugName(const std::string& name) = 0;
 
   protected:
-    ImageSpecification m_Specification      = {};
-    UUID m_UUID                             = {};
-    std::optional<uint32_t> m_BindlessIndex = std::nullopt;
+    ImageSpecification m_Specification = {};
+    UUID m_UUID                        = {};
+    Optional<uint32_t> m_BindlessIndex = std::nullopt;
 
     Image(const ImageSpecification& imageSpec) : m_Specification(imageSpec) {}
     Image() = delete;
@@ -103,6 +103,7 @@ class SamplerStorage : private Uncopyable, private Unmovable
 
         delete s_Instance;
         s_Instance = nullptr;
+        LOG_TRACE("{}", __FUNCTION__);
     }
 
     NODISCARD FORCEINLINE static uint32_t GetSamplerCount() { return static_cast<uint32_t>(s_Samplers.size()); }

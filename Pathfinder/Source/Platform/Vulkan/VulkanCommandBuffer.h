@@ -20,6 +20,7 @@ class VulkanSyncPoint final : public SyncPoint
 
 class VulkanPipeline;
 class Pipeline;
+class Buffer;
 
 class VulkanCommandBuffer final : public CommandBuffer
 {
@@ -86,12 +87,7 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     FORCEINLINE void DrawIndexedIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
-                                         const uint32_t stride) const final override
-    {
-        PFR_ASSERT(drawBuffer && drawBuffer->Get(), "Invalid draw buffer!");
-
-        vkCmdDrawIndexedIndirect(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
-    }
+                                         const uint32_t stride) const final override;
 
     FORCEINLINE void Draw(const uint32_t vertexCount, const uint32_t instanceCount = 1, const uint32_t firstVertex = 0,
                           const uint32_t firstInstance = 0) const final override
@@ -111,20 +107,11 @@ class VulkanCommandBuffer final : public CommandBuffer
     }
 
     FORCEINLINE void DrawMeshTasksIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const uint32_t drawCount,
-                                           const uint32_t stride) const final override
-    {
-        PFR_ASSERT(drawBuffer && drawBuffer->Get(), "Invalid draw buffer!");
-        vkCmdDrawMeshTasksIndirectEXT(m_Handle, (VkBuffer)drawBuffer->Get(), offset, drawCount, stride);
-    }
+                                           const uint32_t stride) const final override;
 
     FORCEINLINE void DrawMeshTasksMultiIndirect(const Shared<Buffer>& drawBuffer, const uint64_t offset, const Shared<Buffer>& countBuffer,
                                                 const uint64_t countBufferOffset, const uint32_t maxDrawCount,
-                                                const uint32_t stride) const final override
-    {
-        PFR_ASSERT(drawBuffer && drawBuffer->Get() && countBuffer && countBuffer->Get(), "Invalid draw/count buffer!");
-        vkCmdDrawMeshTasksIndirectCountEXT(m_Handle, (VkBuffer)drawBuffer->Get(), offset, (VkBuffer)countBuffer->Get(), countBufferOffset,
-                                           maxDrawCount, stride);
-    }
+                                                const uint32_t stride) const final override;
 
     // COMPUTE
     FORCEINLINE void Dispatch(const uint32_t groupCountX, const uint32_t groupCountY, const uint32_t groupCountZ) const final override

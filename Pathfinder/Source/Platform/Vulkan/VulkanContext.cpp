@@ -18,11 +18,13 @@ VulkanContext::VulkanContext() noexcept
     CreateDebugMessenger();
 
     m_Device = MakeUnique<VulkanDevice>(m_VulkanInstance);
+    LOG_INFO("{}", __FUNCTION__);
 }
 
 VulkanContext::~VulkanContext()
 {
     Destroy();
+    LOG_INFO("{}", __FUNCTION__);
 }
 
 void VulkanContext::CreateInstance()

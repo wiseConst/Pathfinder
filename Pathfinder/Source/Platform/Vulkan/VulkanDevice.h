@@ -67,6 +67,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetPipelineCacheUUID() const { return m_PipelineCacheUUID; }
     NODISCARD FORCEINLINE const auto GetVendorID() const { return m_VendorID; }
     NODISCARD FORCEINLINE const auto GetDeviceID() const { return m_DeviceID; }
+    NODISCARD FORCEINLINE const auto& GetQueueFamilyIndices() const { return m_QueueFamilyIndices; }
 
     NODISCARD bool IsDepthStencilFormatSupported(const EImageFormat imageFormat) const;
 
@@ -87,6 +88,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     VkQueue m_TransferQueue = VK_NULL_HANDLE;
     VkQueue m_ComputeQueue  = VK_NULL_HANDLE;
 
+    std::vector<uint32_t> m_QueueFamilyIndices;
     uint32_t m_GraphicsFamily = UINT32_MAX;
     uint32_t m_PresentFamily  = UINT32_MAX;
     uint32_t m_ComputeFamily  = UINT32_MAX;

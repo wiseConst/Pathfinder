@@ -17,10 +17,20 @@ class VulkanTexture final : public Texture
 
     void Resize(const uint32_t width, const uint32_t height)
     {
+        if (m_Specification.Width == width && m_Specification.Height == height) return;
+
         m_Specification.Width  = width;
         m_Specification.Height = height;
-        m_Image->Resize(width, height);
-        m_DescriptorInfo = GetDescriptorInfo();
+        Invalidate(nullptr, 0);
+
+        //  m_Image->Resize(width, height);
+        //  m_DescriptorInfo = GetDescriptorInfo();
+    }
+
+    void SetDebugName(const std::string& name) final override
+    {
+        m_Specification.DebugName = name;
+        m_Image->SetDebugName(name);
     }
 
   private:

@@ -8,8 +8,8 @@ namespace Pathfinder
 
 Material::Material(const PBRData& pbrData) : m_MaterialData(pbrData)
 {
-    const BufferSpecification mbSpec = {.UsageFlags =
-                                            EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS};
+    const BufferSpecification mbSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_ADDRESSABLE | EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                        .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE};
     m_MaterialBuffer                 = Buffer::Create(mbSpec, &m_MaterialData, sizeof(pbrData));
 }
 

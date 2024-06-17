@@ -17,7 +17,80 @@ namespace Pathfinder
 namespace PipelineUtils
 {
 
-static VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
+NODISCARD FORCEINLINE static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
+{
+    switch (compareOp)
+    {
+        case ECompareOp::COMPARE_OP_LESS: return VK_COMPARE_OP_LESS;
+        case ECompareOp::COMPARE_OP_EQUAL: return VK_COMPARE_OP_EQUAL;
+        case ECompareOp::COMPARE_OP_NEVER: return VK_COMPARE_OP_NEVER;
+        case ECompareOp::COMPARE_OP_ALWAYS: return VK_COMPARE_OP_ALWAYS;
+        case ECompareOp::COMPARE_OP_GREATER: return VK_COMPARE_OP_GREATER;
+        case ECompareOp::COMPARE_OP_NOT_EQUAL: return VK_COMPARE_OP_NOT_EQUAL;
+        case ECompareOp::COMPARE_OP_LESS_OR_EQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case ECompareOp::COMPARE_OP_GREATER_OR_EQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
+    }
+
+    PFR_ASSERT(false, "Unknown compare op!");
+    return VK_COMPARE_OP_NEVER;
+}
+
+NODISCARD FORCEINLINE static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
+{
+    switch (shaderStage)
+    {
+        case EShaderStage::SHADER_STAGE_VERTEX: return VK_SHADER_STAGE_VERTEX_BIT;
+        case EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+        case EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+        case EShaderStage::SHADER_STAGE_GEOMETRY: return VK_SHADER_STAGE_GEOMETRY_BIT;
+        case EShaderStage::SHADER_STAGE_FRAGMENT: return VK_SHADER_STAGE_FRAGMENT_BIT;
+        case EShaderStage::SHADER_STAGE_COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
+        case EShaderStage::SHADER_STAGE_ALL_GRAPHICS: return VK_SHADER_STAGE_ALL_GRAPHICS;
+        case EShaderStage::SHADER_STAGE_ALL: return VK_SHADER_STAGE_ALL;
+        case EShaderStage::SHADER_STAGE_RAYGEN: return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_ANY_HIT: return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_CLOSEST_HIT: return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_MISS: return VK_SHADER_STAGE_MISS_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_INTERSECTION: return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_CALLABLE: return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+        case EShaderStage::SHADER_STAGE_TASK: return VK_SHADER_STAGE_TASK_BIT_EXT;
+        case EShaderStage::SHADER_STAGE_MESH: return VK_SHADER_STAGE_MESH_BIT_EXT;
+    }
+
+    PFR_ASSERT(false, "Unknown shader stage!");
+    return VK_SHADER_STAGE_VERTEX_BIT;
+}
+
+NODISCARD FORCEINLINE static VkFormat PathfinderShaderElementFormatToVulkan(const EShaderBufferElementType type)
+{
+    switch (type)
+    {
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_INT: return VK_FORMAT_R32_SINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UINT: return VK_FORMAT_R32_UINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_FLOAT: return VK_FORMAT_R32_SFLOAT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DOUBLE: return VK_FORMAT_R64_SFLOAT;
+
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC2: return VK_FORMAT_R32G32_SINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC2: return VK_FORMAT_R32G32_UINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2: return VK_FORMAT_R32G32_SFLOAT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC2: return VK_FORMAT_R64G64_SFLOAT;
+
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC3: return VK_FORMAT_R32G32B32_SINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC3: return VK_FORMAT_R32G32B32_UINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3: return VK_FORMAT_R32G32B32_SFLOAT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC3: return VK_FORMAT_R64G64B64_SFLOAT;
+
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC4: return VK_FORMAT_R32G32B32A32_SINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC4: return VK_FORMAT_R32G32B32A32_UINT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4: return VK_FORMAT_R32G32B32A32_SFLOAT;
+        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC4: return VK_FORMAT_R64G64B64A64_SFLOAT;
+    }
+
+    PFR_ASSERT(false, "Unknown shader input element format!");
+    return VK_FORMAT_UNDEFINED;
+}
+
+NODISCARD FORCEINLINE static VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
 {
     switch (frontFace)
     {
@@ -28,7 +101,7 @@ static VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
     return VK_FRONT_FACE_CLOCKWISE;
 }
 
-static VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveTopology primitiveTopology)
+NODISCARD FORCEINLINE static VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveTopology primitiveTopology)
 {
     switch (primitiveTopology)
     {
@@ -44,7 +117,7 @@ static VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveT
     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 }
 
-static VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode)
+NODISCARD FORCEINLINE static VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode)
 {
     switch (cullMode)
     {
@@ -162,7 +235,7 @@ void VulkanPipeline::Invalidate()
 
                     auto& shaderStage =
                         shaderStages.emplace_back(VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
-                                                  VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
+                                                  PipelineUtils::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
                                                   shaderDescriptions[i].Module, shaderDescriptions[i].EntrypointName.data());
 
                     if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
@@ -189,7 +262,7 @@ void VulkanPipeline::Invalidate()
                 {
                     auto& shaderStage =
                         shaderStages.emplace_back(VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
-                                                  VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
+                                                  PipelineUtils::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
                                                   shaderDescriptions[i].Module, shaderDescriptions[i].EntrypointName.data());
 
                     if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
@@ -221,7 +294,7 @@ void VulkanPipeline::Invalidate()
                 {
                     auto& shaderStage =
                         shaderStages.emplace_back(VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO, nullptr, 0,
-                                                  VulkanUtility::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
+                                                  PipelineUtils::PathfinderShaderStageToVulkan(shaderDescriptions[i].Stage),
                                                   shaderDescriptions[i].Module, shaderDescriptions[i].EntrypointName.data());
 
                     if (m_Specification.ShaderConstantsMap.contains(shaderDescriptions[i].Stage))
@@ -289,7 +362,7 @@ void VulkanPipeline::Invalidate()
                         PFR_ASSERT(inputVarOffset + inputVarIndex < inputVars.size(), "Incorrect input var index!");
                         PFR_ASSERT(
                             inputVars[inputVarOffset + inputVarIndex].Description.format ==
-                                VulkanUtility::PathfinderShaderElementFormatToVulkan(currentVertexStream.GetElements()[inputVarIndex].Type),
+                                PipelineUtils::PathfinderShaderElementFormatToVulkan(currentVertexStream.GetElements()[inputVarIndex].Type),
                             "Shader and renderer code input buffer element mismatch!");
 
                         auto& vertexAttribute    = vertexAttributeDescriptions.emplace_back();
@@ -319,7 +392,7 @@ void VulkanPipeline::Invalidate()
                 .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
                 .depthClampEnable        = VK_FALSE,  // TODO: Make it configurable?
                 .rasterizerDiscardEnable = VK_FALSE,
-                .polygonMode             = VulkanUtility::PathfinderPolygonModeToVulkan(graphicsPO->PolygonMode),
+                .polygonMode             = VulkanUtils::PathfinderPolygonModeToVulkan(graphicsPO->PolygonMode),
                 .cullMode                = PipelineUtils::PathfinderCullModeToVulkan(graphicsPO->CullMode),
                 .frontFace               = PipelineUtils::PathfinderFrontFaceToVulkan(graphicsPO->FrontFace),
                 .depthBiasEnable         = VK_FALSE,  // TODO: Make it configurable?
@@ -397,7 +470,7 @@ void VulkanPipeline::Invalidate()
                 .depthTestEnable  = graphicsPO->bDepthTest ? VK_TRUE : VK_FALSE,
                 .depthWriteEnable = graphicsPO->bDepthWrite ? VK_TRUE : VK_FALSE,
                 .depthCompareOp =
-                    graphicsPO->bDepthTest ? VulkanUtility::PathfinderCompareOpToVulkan(graphicsPO->DepthCompareOp) : VK_COMPARE_OP_ALWAYS,
+                    graphicsPO->bDepthTest ? PipelineUtils::PathfinderCompareOpToVulkan(graphicsPO->DepthCompareOp) : VK_COMPARE_OP_ALWAYS,
                 .depthBoundsTestEnable = VK_FALSE,  // TODO: Make it configurable?
                 .stencilTestEnable     = VK_FALSE,  // TODO: Make it configurable?
                 .minDepthBounds        = 0.f,

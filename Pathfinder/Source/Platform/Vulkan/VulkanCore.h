@@ -1,10 +1,8 @@
 ﻿#pragma once
 
 #include <volk/volk.h>
-#include <Renderer/RendererCoreDefines.h>
-#include <Renderer/Buffer.h>
-#include <Renderer/Shader.h>
 #include "Globals.h"
+#include <Renderer/RendererCoreDefines.h>
 
 namespace Pathfinder
 {
@@ -17,9 +15,9 @@ namespace Pathfinder
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
 #define VK_FORCE_VALIDATION 1
-#define VK_FORCE_SHADER_COMPILATION 1
+#define VK_FORCE_SHADER_COMPILATION 0
 #define VK_FORCE_PIPELINE_COMPILATION 0
-#define VK_FORCE_DRIVER_PIPELINE_CACHE 1
+#define VK_FORCE_DRIVER_PIPELINE_CACHE 0
 
 #define VK_LOG_VMA_ALLOCATIONS 0
 #define VK_LOG_INFO 0
@@ -82,15 +80,7 @@ static const std::vector<const char*> s_DeviceExtensions = {
 #endif
 };
 
-class VulkanCommandBuffer;
-using VulkanCommandBufferPerFrame = std::array<Shared<VulkanCommandBuffer>, s_FRAMES_IN_FLIGHT>;
-
-using VulkanSemaphorePerFrame      = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>;
-using VulkanFencePerFrame          = std::array<VkFence, s_FRAMES_IN_FLIGHT>;
-using VulkanDescriptorPoolPerFrame = std::array<VkDescriptorPool, s_FRAMES_IN_FLIGHT>;
-using VulkanDescriptorSetPerFrame  = std::array<VkDescriptorSet, s_FRAMES_IN_FLIGHT>;
-
-static std::string VK_GetResultString(const VkResult result)
+NODISCARD static std::string VK_GetResultString(const VkResult result)
 {
     const char* resultString = "Unknown";
 
@@ -199,39 +189,8 @@ static VkBool32 VK_DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageS
     return VK_FALSE;
 }
 
-namespace VulkanUtility
+namespace VulkanUtils
 {
-
-FORCEINLINE static const char* GetVendorNameCString(const uint32_t vendorID)
-{
-    switch (vendorID)
-    {
-        case 0x10DE: return "NVIDIA";
-        case 0x1002: return "AMD";
-        case 0x8086: return "INTEL";
-        case 0x13B5: return "ARM";
-        case 0x5143: return "Qualcomm";
-        case 0x1010: return "ImgTec";
-    }
-
-    PFR_ASSERT(false, "Unknown vendor!");
-    return s_DEFAULT_STRING;
-}
-
-FORCEINLINE static const char* GetDeviceTypeCString(const VkPhysicalDeviceType deviceType)
-{
-    switch (deviceType)
-    {
-        case VK_PHYSICAL_DEVICE_TYPE_OTHER: return "OTHER";
-        case VK_PHYSICAL_DEVICE_TYPE_INTEGRATED_GPU: return "INTEGRATED_GPU";
-        case VK_PHYSICAL_DEVICE_TYPE_DISCRETE_GPU: return "DISCRETE_GPU";
-        case VK_PHYSICAL_DEVICE_TYPE_VIRTUAL_GPU: return "VIRTUAL_GPU";
-        case VK_PHYSICAL_DEVICE_TYPE_CPU: return "CPU";
-    }
-
-    PFR_ASSERT(false, "Unknown device type!");
-    return nullptr;
-}
 
 NODISCARD FORCEINLINE static VkImageMemoryBarrier2 GetImageMemoryBarrier(
     const VkImage& image, const VkImageAspectFlags aspectMask, const VkImageLayout oldLayout, const VkImageLayout newLayout,
@@ -257,6 +216,7 @@ NODISCARD FORCEINLINE static VkImageMemoryBarrier2 GetImageMemoryBarrier(
                                                          .baseArrayLayer = baseArrayLayer,
                                                          .layerCount     = layerCount}};
 }
+
 NODISCARD FORCEINLINE static VkBufferMemoryBarrier2 GetBufferMemoryBarrier(
     const VkBuffer& buffer, const VkDeviceSize size, const VkDeviceSize offset, const VkPipelineStageFlags2 srcStageMask,
     const VkAccessFlags2 srcAccessMask, const VkPipelineStageFlags2 dstStageMask, const VkAccessFlags2 dstAccessMask,
@@ -274,87 +234,6 @@ NODISCARD FORCEINLINE static VkBufferMemoryBarrier2 GetBufferMemoryBarrier(
                                   .buffer              = buffer,
                                   .offset              = offset,
                                   .size                = size};
-}
-
-NODISCARD static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
-{
-    switch (compareOp)
-    {
-        case ECompareOp::COMPARE_OP_LESS: return VK_COMPARE_OP_LESS;
-        case ECompareOp::COMPARE_OP_EQUAL: return VK_COMPARE_OP_EQUAL;
-        case ECompareOp::COMPARE_OP_NEVER: return VK_COMPARE_OP_NEVER;
-        case ECompareOp::COMPARE_OP_ALWAYS: return VK_COMPARE_OP_ALWAYS;
-        case ECompareOp::COMPARE_OP_GREATER: return VK_COMPARE_OP_GREATER;
-        case ECompareOp::COMPARE_OP_NOT_EQUAL: return VK_COMPARE_OP_NOT_EQUAL;
-        case ECompareOp::COMPARE_OP_LESS_OR_EQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
-        case ECompareOp::COMPARE_OP_GREATER_OR_EQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
-    }
-
-    PFR_ASSERT(false, "Unknown compare op!");
-    return VK_COMPARE_OP_NEVER;
-}
-
-NODISCARD static VkFormat PathfinderShaderElementFormatToVulkan(const EShaderBufferElementType type)
-{
-    switch (type)
-    {
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_INT: return VK_FORMAT_R32_SINT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UINT: return VK_FORMAT_R32_UINT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_FLOAT: return VK_FORMAT_R32_SFLOAT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DOUBLE: return VK_FORMAT_R64_SFLOAT;
-
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC2: return VK_FORMAT_R32G32_SINT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC2: return VK_FORMAT_R32G32_UINT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2: return VK_FORMAT_R32G32_SFLOAT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC2: return VK_FORMAT_R64G64_SFLOAT;
-
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC3: return VK_FORMAT_R32G32B32_SINT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC3: return VK_FORMAT_R32G32B32_UINT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3: return VK_FORMAT_R32G32B32_SFLOAT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC3: return VK_FORMAT_R64G64B64_SFLOAT;
-
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_IVEC4: return VK_FORMAT_R32G32B32A32_SINT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UVEC4: return VK_FORMAT_R32G32B32A32_UINT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4: return VK_FORMAT_R32G32B32A32_SFLOAT;
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_DVEC4: return VK_FORMAT_R64G64B64A64_SFLOAT;
-
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_MAT2:
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_MAT3:
-        case EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_MAT4:
-        {
-            PFR_ASSERT(false, "Unknown shader input element format!");
-            return VK_FORMAT_UNDEFINED;
-        }
-    }
-
-    PFR_ASSERT(false, "Unknown shader input element format!");
-    return VK_FORMAT_UNDEFINED;
-}
-
-NODISCARD static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
-{
-    switch (shaderStage)
-    {
-        case EShaderStage::SHADER_STAGE_VERTEX: return VK_SHADER_STAGE_VERTEX_BIT;
-        case EShaderStage::SHADER_STAGE_TESSELLATION_CONTROL: return VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
-        case EShaderStage::SHADER_STAGE_TESSELLATION_EVALUATION: return VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
-        case EShaderStage::SHADER_STAGE_GEOMETRY: return VK_SHADER_STAGE_GEOMETRY_BIT;
-        case EShaderStage::SHADER_STAGE_FRAGMENT: return VK_SHADER_STAGE_FRAGMENT_BIT;
-        case EShaderStage::SHADER_STAGE_COMPUTE: return VK_SHADER_STAGE_COMPUTE_BIT;
-        case EShaderStage::SHADER_STAGE_ALL_GRAPHICS: return VK_SHADER_STAGE_ALL_GRAPHICS;
-        case EShaderStage::SHADER_STAGE_ALL: return VK_SHADER_STAGE_ALL;
-        case EShaderStage::SHADER_STAGE_RAYGEN: return VK_SHADER_STAGE_RAYGEN_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_ANY_HIT: return VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_CLOSEST_HIT: return VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_MISS: return VK_SHADER_STAGE_MISS_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_INTERSECTION: return VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_CALLABLE: return VK_SHADER_STAGE_CALLABLE_BIT_KHR;
-        case EShaderStage::SHADER_STAGE_TASK: return VK_SHADER_STAGE_TASK_BIT_EXT;
-        case EShaderStage::SHADER_STAGE_MESH: return VK_SHADER_STAGE_MESH_BIT_EXT;
-    }
-
-    PFR_ASSERT(false, "Unknown shader stage!");
-    return VK_SHADER_STAGE_VERTEX_BIT;
 }
 
 NODISCARD FORCEINLINE static VkDescriptorSetAllocateInfo GetDescriptorSetAllocateInfo(const VkDescriptorPool& descriptorPool,
@@ -400,159 +279,6 @@ NODISCARD FORCEINLINE static VkPolygonMode PathfinderPolygonModeToVulkan(const E
     return VK_POLYGON_MODE_FILL;
 }
 
-NODISCARD static VkAccessFlags2 PathfinderAccessFlagsToVulkan(const RendererTypeFlags accessFlags)
-{
-    VkAccessFlags2 vkAccessFlags2 = VK_ACCESS_2_NONE;
-
-    if (accessFlags & EAccessFlags::ACCESS_NONE) vkAccessFlags2 |= VK_ACCESS_2_NONE;
-    if (accessFlags & EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INDIRECT_COMMAND_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_INDEX_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INDEX_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_VERTEX_ATTRIBUTE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VERTEX_ATTRIBUTE_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_UNIFORM_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_UNIFORM_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_INPUT_ATTACHMENT_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_INPUT_ATTACHMENT_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_SHADER_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_SHADER_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_WRITE_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_COLOR_ATTACHMENT_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_COLOR_ATTACHMENT_WRITE_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT)
-        vkAccessFlags2 |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT)
-        vkAccessFlags2 |= VK_ACCESS_2_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_TRANSFER_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_TRANSFER_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_TRANSFER_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_TRANSFER_WRITE_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_HOST_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_HOST_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_HOST_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_HOST_WRITE_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_MEMORY_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_MEMORY_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_MEMORY_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_MEMORY_WRITE_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_SAMPLED_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_SHADER_STORAGE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_STORAGE_READ_BIT;
-    if (accessFlags & EAccessFlags::ACCESS_SHADER_STORAGE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_SHADER_STORAGE_WRITE_BIT;
-
-    if (accessFlags & EAccessFlags::ACCESS_VIDEO_DECODE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_DECODE_READ_BIT_KHR;
-    if (accessFlags & EAccessFlags::ACCESS_VIDEO_DECODE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_DECODE_WRITE_BIT_KHR;
-
-    if (accessFlags & EAccessFlags::ACCESS_VIDEO_ENCODE_READ_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_ENCODE_READ_BIT_KHR;
-    if (accessFlags & EAccessFlags::ACCESS_VIDEO_ENCODE_WRITE_BIT) vkAccessFlags2 |= VK_ACCESS_2_VIDEO_ENCODE_WRITE_BIT_KHR;
-    if (accessFlags & EAccessFlags::ACCESS_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT)
-        vkAccessFlags2 |= VK_ACCESS_2_FRAGMENT_SHADING_RATE_ATTACHMENT_READ_BIT_KHR;
-    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_READ_BIT)
-        vkAccessFlags2 |= VK_ACCESS_2_ACCELERATION_STRUCTURE_READ_BIT_KHR;
-    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT)
-        vkAccessFlags2 |= VK_ACCESS_2_ACCELERATION_STRUCTURE_WRITE_BIT_KHR;
-    if (accessFlags & EAccessFlags::ACCESS_ACCELERATION_STRUCTURE_WRITE_BIT)
-        vkAccessFlags2 |= VK_ACCESS_2_SHADER_BINDING_TABLE_READ_BIT_KHR;
-
-    return vkAccessFlags2;
-}
-
-NODISCARD static VkPipelineStageFlags2 PathfinderPipelineStageToVulkan(const RendererTypeFlags pipelineStage)
-{
-    VkPipelineStageFlags2 vkPipelineStageFlags2 = 0;
-
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_NONE) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_NONE;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TOP_OF_PIPE_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_DRAW_INDIRECT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_INPUT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_INPUT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TESSELLATION_CONTROL_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TESSELLATION_EVALUATION_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_GEOMETRY_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_EARLY_FRAGMENT_TESTS_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_LATE_FRAGMENT_TESTS_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TRANSFER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TRANSFER_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_HOST_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_HOST_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_GRAPHICS_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ALL_COMMANDS_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ALL_COMMANDS_BIT;
-
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_COPY_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_COPY_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_RESOLVE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_RESOLVE_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_BLIT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_BLIT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_CLEAR_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_CLEAR_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_INDEX_INPUT_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_INDEX_INPUT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VERTEX_ATTRIBUTE_INPUT_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VERTEX_ATTRIBUTE_INPUT_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_PRE_RASTERIZATION_SHADERS_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_PRE_RASTERIZATION_SHADERS_BIT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VIDEO_DECODE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VIDEO_DECODE_BIT_KHR;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_VIDEO_ENCODE_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_VIDEO_ENCODE_BIT_KHR;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_BUILD_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_BUILD_BIT_KHR;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_RAY_TRACING_SHADER_BIT_KHR;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_TASK_SHADER_BIT_EXT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT) vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_MESH_SHADER_BIT_EXT;
-    if (pipelineStage & EPipelineStage::PIPELINE_STAGE_ACCELERATION_STRUCTURE_COPY_BIT)
-        vkPipelineStageFlags2 |= VK_PIPELINE_STAGE_2_ACCELERATION_STRUCTURE_COPY_BIT_KHR;
-
-    return vkPipelineStageFlags2;
-}
-
-NODISCARD FORCEINLINE static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)
-{
-    switch (filter)
-    {
-        case ESamplerFilter::SAMPLER_FILTER_NEAREST: return VK_FILTER_NEAREST;
-        case ESamplerFilter::SAMPLER_FILTER_LINEAR: return VK_FILTER_LINEAR;
-    }
-
-    PFR_ASSERT(false, "Unknown sampler filter!");
-    return VK_FILTER_LINEAR;
-}
-
-NODISCARD FORCEINLINE static VkSamplerAddressMode PathfinderSamplerWrapToVulkan(const ESamplerWrap wrap)
-{
-    switch (wrap)
-    {
-        case ESamplerWrap::SAMPLER_WRAP_REPEAT: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-        case ESamplerWrap::SAMPLER_WRAP_MIRRORED_REPEAT: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
-        case ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
-        case ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_BORDER: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
-        case ESamplerWrap::SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
-    }
-
-    PFR_ASSERT(false, "Unknown sampler wrap!");
-    return VK_SAMPLER_ADDRESS_MODE_REPEAT;
-}
-
-NODISCARD FORCEINLINE static VkAttachmentLoadOp PathfinderLoadOpToVulkan(const EOp loadOp)
-{
-    switch (loadOp)
-    {
-        case EOp::DONT_CARE: return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-        case EOp::CLEAR: return VK_ATTACHMENT_LOAD_OP_CLEAR;
-        case EOp::LOAD: return VK_ATTACHMENT_LOAD_OP_LOAD;
-    }
-
-    PFR_ASSERT(false, "Unknown load op!");
-    return VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-}
-
-NODISCARD FORCEINLINE static VkAttachmentStoreOp PathfinderStoreOpToVulkan(const EOp storeOp)
-{
-    switch (storeOp)
-    {
-        case EOp::DONT_CARE: return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-        case EOp::STORE: return VK_ATTACHMENT_STORE_OP_STORE;
-    }
-
-    PFR_ASSERT(false, "Unknown store op!");
-    return VK_ATTACHMENT_STORE_OP_DONT_CARE;
-}
-
-}  // namespace VulkanUtility
+}  // namespace VulkanUtils
 
 }  // namespace Pathfinder

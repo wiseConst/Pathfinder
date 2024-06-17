@@ -19,13 +19,15 @@ class Submesh;
 class MeshManager final
 {
   public:
+    // TODO: Fix color packing
     struct MeshoptimizeVertex
     {
         glm::vec3 Position = glm::vec3(0.0f);
-        uint32_t Color     = 0xFFFFFFFF;
-        glm::vec3 Normal   = glm::vec3(0.0f);
-        glm::vec3 Tangent  = glm::vec3(0.0f);
-        glm::u16vec2 UV    = glm::u16vec2(0);
+        glm::vec4 Color    = glm::vec4(1.f);
+        //    uint32_t Color     = 0xFFFFFFFF;
+        glm::vec3 Normal  = glm::vec3(0.0f);
+        glm::vec3 Tangent = glm::vec3(0.0f);
+        glm::u16vec2 UV   = glm::u16vec2(0);
     };
 
     static AABB GenerateAABB(const std::vector<MeshPositionVertex>& points);
@@ -47,11 +49,10 @@ class MeshManager final
                               std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const fastgltf::Asset& asset,
                               const size_t meshIndex);
 
-    static Shared<Texture> LoadTexture(std::unordered_map<std::string, Shared<Texture>>& loadedTextures,
-                                         const std::string& meshAssetsDir, const fastgltf::Asset& asset,
-                                         const fastgltf::Material& materialAccessor, const size_t textureIndex,
-                                         TextureSpecification& textureSpec, const bool bMetallicRoughness = false,
-                                         const bool bFlipOnLoad = false);
+    static Shared<Texture> LoadTexture(std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const std::string& meshAssetsDir,
+                                       const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor, const size_t textureIndex,
+                                       TextureSpecification& textureSpec, const bool bMetallicRoughness = false,
+                                       const bool bFlipOnLoad = false);
 
     MeshManager()  = delete;
     ~MeshManager() = default;

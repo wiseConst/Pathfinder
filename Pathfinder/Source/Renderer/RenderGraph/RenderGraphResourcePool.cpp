@@ -8,31 +8,29 @@ namespace Pathfinder
 
 namespace RGUtils
 {
-// NOTE: Here the only thing we neglect is dimensions of specification: width, height, size.
-
-FORCEINLINE bool AreBufferSpecificationsCompatible(const BufferSpecification& lhs, const BufferSpecification& rhs)
+FORCEINLINE bool AreTextureSpecsCompatible(const TextureSpecification& lhs, const TextureSpecification& rhs)
 {
-    return std::tie(lhs.bMapPersistent, lhs.UsageFlags) == std::tie(rhs.bMapPersistent, rhs.UsageFlags);
+    return std::tie(lhs.bGenerateMips, lhs.Wrap, lhs.Filter, lhs.Format, lhs.UsageFlags, lhs.Layers) ==
+           std::tie(rhs.bGenerateMips, rhs.Wrap, rhs.Filter, rhs.Format, rhs.UsageFlags, rhs.Layers);
 }
 
-FORCEINLINE bool AreTextureSpecificationsCompatible(const TextureSpecification& lhs, const TextureSpecification& rhs)
+FORCEINLINE bool AreBufferSpecsCompatible(const BufferSpecification& lhs, const BufferSpecification& rhs)
 {
-    return std::tie(lhs.Format, lhs.Wrap, lhs.Filter, lhs.UsageFlags, lhs.Layers, lhs.bGenerateMips) ==
-           std::tie(rhs.Format, rhs.Wrap, rhs.Filter, rhs.UsageFlags, rhs.Layers, rhs.bGenerateMips);
+    return std::tie(lhs.UsageFlags, lhs.ExtraFlags) == std::tie(rhs.UsageFlags, rhs.ExtraFlags);
 }
 
 }  // namespace RGUtils
 
 void RenderGraphResourcePool::Tick()
 {
-
-    // constexpr auto checkTextureActivity = []() {};
+    ++m_FrameNumber;
+    const auto currentFifIndex = m_FrameNumber % s_FRAMES_IN_FLIGHT;
 
     for (uint64_t i{}; i < m_TexturePool.size();)
     {
         PooledTexture& resource = m_TexturePool[i].first;
         bool bIsActive          = m_TexturePool[i].second;
-        if (!resource.LastUsedFrame.has_value() || !bIsActive && resource.LastUsedFrame.value() < m_FrameIndex)
+        if (!bIsActive && resource.LastUsedFrame.value() < m_FrameNumber)
         {
             std::swap(m_TexturePool[i], m_TexturePool.back());
             m_TexturePool.pop_back();
@@ -41,125 +39,160 @@ void RenderGraphResourcePool::Tick()
             ++i;
     }
 
-    for (auto& texturePool : m_PerFrameTexturePool)
+    auto& currentFrameTexturePool = m_PerFrameTexturePool.at(currentFifIndex);
+    for (uint64_t i{}; i < currentFrameTexturePool.size();)
     {
-        for (uint64_t i{}; i < texturePool.size();)
+        PooledTexture& resource = currentFrameTexturePool[i].first;
+        bool bIsActive          = currentFrameTexturePool[i].second;
+        if (!bIsActive && resource.LastUsedFrame.value() + 1 < m_FrameNumber)
         {
-            PooledTexture& resource = texturePool[i].first;
-            bool bIsActive          = texturePool[i].second;
-            if (!resource.LastUsedFrame.has_value() || !bIsActive && resource.LastUsedFrame.value() + s_FRAMES_IN_FLIGHT < m_FrameIndex)
-            {
-                std::swap(texturePool[i], texturePool.back());
-                texturePool.pop_back();
-            }
-            else
-                ++i;
+            std::swap(currentFrameTexturePool[i], currentFrameTexturePool.back());
+            currentFrameTexturePool.pop_back();
         }
+        else
+            ++i;
     }
 
-    ++m_FrameIndex;
+    for (uint64_t i{}; i < m_BufferPool.size();)
+    {
+        PooledBuffer& resource = m_BufferPool[i].first;
+        bool bIsActive         = m_BufferPool[i].second;
+        if (!bIsActive && resource.LastUsedFrame.value() < m_FrameNumber)
+        {
+            std::swap(m_BufferPool[i], m_BufferPool.back());
+            m_BufferPool.pop_back();
+        }
+        else
+            ++i;
+    }
+
+    auto& currentFrameBufferPool = m_PerFrameBufferPool.at(currentFifIndex);
+    for (uint64_t i{}; i < currentFrameBufferPool.size();)
+    {
+        PooledBuffer& resource = currentFrameBufferPool[i].first;
+        bool bIsActive         = currentFrameBufferPool[i].second;
+        if (!bIsActive && resource.LastUsedFrame.value() + 1 < m_FrameNumber)
+        {
+            std::swap(currentFrameBufferPool[i], currentFrameBufferPool.back());
+            currentFrameBufferPool.pop_back();
+        }
+        else
+            ++i;
+    }
 }
 
-NODISCARD Shared<Texture> RenderGraphResourcePool::AllocateTexture(const RGTextureSpecification& rgTextureSpec)
+Shared<Texture> RenderGraphResourcePool::AllocateTexture(const RGTextureSpecification& spec)
 {
-    const auto textureSpec = TextureSpecification{.DebugName     = rgTextureSpec.DebugName,
-                                                  .Width         = rgTextureSpec.Width,
-                                                  .Height        = rgTextureSpec.Height,
-                                                  .bGenerateMips = rgTextureSpec.bGenerateMips,
-                                                  .Wrap          = rgTextureSpec.Wrap,
-                                                  .Filter        = rgTextureSpec.Filter,
-                                                  .Format        = rgTextureSpec.Format,
-                                                  .UsageFlags    = rgTextureSpec.UsageFlags,
-                                                  .Layers        = rgTextureSpec.Layers};
+    const TextureSpecification textureSpec = {.DebugName     = spec.DebugName,
+                                              .Width         = spec.Width,
+                                              .Height        = spec.Height,
+                                              .bGenerateMips = spec.bGenerateMips,
+                                              .Wrap          = spec.Wrap,
+                                              .Filter        = spec.Filter,
+                                              .Format        = spec.Format,
+                                              .UsageFlags    = spec.UsageFlags,
+                                              .Layers        = spec.Layers};
 
-    if (rgTextureSpec.bPerFrame)
+    if (spec.bPerFrame)
     {
-        for (auto& texturePool : m_PerFrameTexturePool)
+        const auto currentFifIndex  = m_FrameNumber % s_FRAMES_IN_FLIGHT;
+        auto& currentFifTexturePool = m_PerFrameTexturePool.at(currentFifIndex);
+
+        for (auto& [poolTexture, bIsActive] : currentFifTexturePool)
         {
-            for (auto& [poolTexture, bIsActive] : texturePool)
+            const auto& currentTextureSpec = poolTexture.Handle->GetSpecification();
+            if (poolTexture.LastUsedFrame.value() != m_FrameNumber ||
+                !bIsActive && RGUtils::AreTextureSpecsCompatible(currentTextureSpec, textureSpec))
             {
-                const auto& poolTextureSpec = poolTexture.Handle->GetSpecification();
-                if (!bIsActive && RGUtils::AreTextureSpecificationsCompatible(poolTextureSpec, textureSpec))
-                {
-                    poolTexture.LastUsedFrame = m_FrameIndex;
-                    bIsActive                 = true;
-                    if (poolTextureSpec.Width != textureSpec.Width || poolTextureSpec.Height != textureSpec.Height)
-                        poolTexture.Handle->Resize(textureSpec.Width, textureSpec.Height);
+                bIsActive                 = true;
+                poolTexture.LastUsedFrame = m_FrameNumber;
+                if (currentTextureSpec.Width != textureSpec.Width || currentTextureSpec.Height != textureSpec.Height)
+                    poolTexture.Handle->Resize(textureSpec.Width, textureSpec.Height);
 
-                    return poolTexture.Handle;
-                }
+                if (currentTextureSpec.DebugName != textureSpec.DebugName) poolTexture.Handle->SetDebugName(textureSpec.DebugName);
+
+                return poolTexture.Handle;
             }
-            auto& texture = texturePool.emplace_back(
-                std::pair{PooledTexture{.Handle = MakeShared<Texture>(textureSpec), .LastUsedFrame = m_FrameIndex}, true});
-
-            return texture.first.Handle;
         }
+
+        PooledTexture poolTexture = {.Handle = Texture::Create(textureSpec), .LastUsedFrame = m_FrameNumber};
+        auto& texture             = currentFifTexturePool.emplace_back(std::pair{poolTexture, true}).first;
+        return texture.Handle;
     }
 
     for (auto& [poolTexture, bIsActive] : m_TexturePool)
     {
-        const auto& poolTextureSpec = poolTexture.Handle->GetSpecification();
-        if (!bIsActive && RGUtils::AreTextureSpecificationsCompatible(poolTextureSpec, textureSpec))
+        const auto& currentTextureSpec = poolTexture.Handle->GetSpecification();
+        if (poolTexture.LastUsedFrame.value() != m_FrameNumber ||
+            !bIsActive && RGUtils::AreTextureSpecsCompatible(currentTextureSpec, textureSpec))
         {
-            poolTexture.LastUsedFrame = m_FrameIndex;
             bIsActive                 = true;
-
-            if (poolTextureSpec.Width != textureSpec.Width || poolTextureSpec.Height != textureSpec.Height)
+            poolTexture.LastUsedFrame = m_FrameNumber;
+            if (currentTextureSpec.Width != textureSpec.Width || currentTextureSpec.Height != textureSpec.Height)
                 poolTexture.Handle->Resize(textureSpec.Width, textureSpec.Height);
+
+            if (currentTextureSpec.DebugName != textureSpec.DebugName) poolTexture.Handle->SetDebugName(textureSpec.DebugName);
 
             return poolTexture.Handle;
         }
     }
-    auto& texture = m_TexturePool.emplace_back(
-        std::pair{PooledTexture{.Handle = MakeShared<Texture>(textureSpec), .LastUsedFrame = m_FrameIndex}, true});
-    return texture.first.Handle;
+
+    PooledTexture poolTexture = {.Handle = Texture::Create(textureSpec), .LastUsedFrame = m_FrameNumber};
+    auto& texture             = m_TexturePool.emplace_back(std::pair{poolTexture, true}).first;
+    return texture.Handle;
 }
 
-void RenderGraphResourcePool::ReleaseTexture(Shared<Texture> texture)
+Shared<Buffer> RenderGraphResourcePool::AllocateBuffer(const RGBufferSpecification& spec)
 {
-    for (auto& [poolTexture, bIsActive] : m_TexturePool)
-        if (bIsActive && poolTexture.Handle == texture) bIsActive = false;
+    const BufferSpecification bufferSpec = {
+        .DebugName = spec.DebugName, .ExtraFlags = spec.ExtraFlags, .UsageFlags = spec.UsageFlags, .Capacity = spec.Capacity};
 
-    for (auto& texturePool : m_PerFrameTexturePool)
+    if (spec.bPerFrame)
     {
-        for (auto& [poolTexture, bIsActive] : texturePool)
-            if (bIsActive && poolTexture.Handle == texture) bIsActive = false;
+        const auto currentFifIndex = m_FrameNumber % s_FRAMES_IN_FLIGHT;
+        auto& currentFifBufferPool = m_PerFrameBufferPool.at(currentFifIndex);
+
+        for (auto& [poolBuffer, bIsActive] : currentFifBufferPool)
+        {
+            const auto& currentBufferSpec = poolBuffer.Handle->GetSpecification();
+            if (poolBuffer.LastUsedFrame.value() != m_FrameNumber ||
+                !bIsActive && RGUtils::AreBufferSpecsCompatible(currentBufferSpec, bufferSpec))
+            {
+                bIsActive                = true;
+                poolBuffer.LastUsedFrame = m_FrameNumber;
+                if (currentBufferSpec.Capacity != bufferSpec.Capacity && bufferSpec.Capacity != 0)
+                    poolBuffer.Handle->Resize(bufferSpec.Capacity);
+
+                if (currentBufferSpec.DebugName != bufferSpec.DebugName) poolBuffer.Handle->SetDebugName(bufferSpec.DebugName);
+
+                return poolBuffer.Handle;
+            }
+        }
+
+        PooledBuffer poolBuffer = {.Handle = Buffer::Create(bufferSpec), .LastUsedFrame = m_FrameNumber};
+        auto& buffer            = currentFifBufferPool.emplace_back(std::pair{poolBuffer, true}).first;
+        return buffer.Handle;
     }
-}
-
-NODISCARD Shared<Buffer> RenderGraphResourcePool::AllocateBuffer(const RGBufferSpecification& rgBufferSpec)
-{
-    const auto bufferSpec = BufferSpecification{.DebugName      = rgBufferSpec.DebugName,
-                                                .UsageFlags     = rgBufferSpec.UsageFlags,
-                                                .bMapPersistent = rgBufferSpec.bMapPersistent,
-                                                .Capacity       = rgBufferSpec.Capacity};
-
-    // TODO: if (rgBufferSpec.bPerFrame)
 
     for (auto& [poolBuffer, bIsActive] : m_BufferPool)
     {
-        if (!bIsActive && RGUtils::AreBufferSpecificationsCompatible(poolBuffer.Handle->GetSpecification(), bufferSpec))
+        const auto& currentBufferSpec = poolBuffer.Handle->GetSpecification();
+        if (poolBuffer.LastUsedFrame.value() != m_FrameNumber ||
+            !bIsActive && RGUtils::AreBufferSpecsCompatible(currentBufferSpec, bufferSpec))
         {
-            poolBuffer.LastUsedFrame = m_FrameIndex;
             bIsActive                = true;
+            poolBuffer.LastUsedFrame = m_FrameNumber;
+            if (currentBufferSpec.Capacity != bufferSpec.Capacity && bufferSpec.Capacity != 0)
+                poolBuffer.Handle->Resize(bufferSpec.Capacity);
+
+            if (currentBufferSpec.DebugName != bufferSpec.DebugName) poolBuffer.Handle->SetDebugName(bufferSpec.DebugName);
+
             return poolBuffer.Handle;
         }
     }
-    auto& buffer =
-        m_BufferPool.emplace_back(std::pair{PooledBuffer{.Handle = MakeShared<Buffer>(bufferSpec), .LastUsedFrame = m_FrameIndex}, true});
-    return buffer.first.Handle;
+
+    PooledBuffer poolBuffer = {.Handle = Buffer::Create(bufferSpec), .LastUsedFrame = m_FrameNumber};
+    auto& buffer            = m_BufferPool.emplace_back(std::pair{poolBuffer, true}).first;
+    return buffer.Handle;
 }
-
-void RenderGraphResourcePool::ReleaseBuffer(Shared<Buffer> buffer)
-{
-    for (auto& [poolBuffer, bIsActive] : m_BufferPool)
-        if (bIsActive && poolBuffer.Handle == buffer) bIsActive = false;
-
-    for (auto& bufferPool : m_PerFrameBufferPool)
-    {
-        for (auto& [poolBuffer, bIsActive] : bufferPool)
-            if (bIsActive && poolBuffer.Handle == buffer) bIsActive = false;
-    }
-}
-
 }  // namespace Pathfinder

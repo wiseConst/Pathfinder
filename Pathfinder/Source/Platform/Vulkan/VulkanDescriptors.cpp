@@ -39,7 +39,7 @@ bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const 
     // Try to allocate the descriptor set with current.
     VkResult allocResult = VK_RESULT_MAX_ENUM;
     {
-        const auto currentDescriptorSetAllocateInfo = VulkanUtility::GetDescriptorSetAllocateInfo(m_CurrentPool, 1, &descriptorSetLayout);
+        const auto currentDescriptorSetAllocateInfo = VulkanUtils::GetDescriptorSetAllocateInfo(m_CurrentPool, 1, &descriptorSetLayout);
         allocResult = vkAllocateDescriptorSets(m_LogicalDevice, &currentDescriptorSetAllocateInfo, &outDescriptorSet.second);
         if (allocResult == VK_SUCCESS)
         {
@@ -56,7 +56,7 @@ bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const 
         if (m_Pools[i] == m_CurrentPool) continue;  // Skip current cuz it's checked already.
 
         // Try to allocate the descriptor set with new pool.
-        const auto newDescriptorSetAllocateInfo = VulkanUtility::GetDescriptorSetAllocateInfo(m_Pools[i], 1, &descriptorSetLayout);
+        const auto newDescriptorSetAllocateInfo = VulkanUtils::GetDescriptorSetAllocateInfo(m_Pools[i], 1, &descriptorSetLayout);
         allocResult = vkAllocateDescriptorSets(m_LogicalDevice, &newDescriptorSetAllocateInfo, &outDescriptorSet.second);
         if (allocResult == VK_SUCCESS)
         {
@@ -75,7 +75,7 @@ bool VulkanDescriptorAllocator::Allocate(DescriptorSet& outDescriptorSet, const 
         m_CurrentPoolSizeMultiplier = static_cast<uint32_t>(m_CurrentPoolSizeMultiplier * 1.3f);
 
         // If it still fails then we have big issues.
-        const auto newDescriptorSetAllocateInfo = VulkanUtility::GetDescriptorSetAllocateInfo(m_CurrentPool, 1, &descriptorSetLayout);
+        const auto newDescriptorSetAllocateInfo = VulkanUtils::GetDescriptorSetAllocateInfo(m_CurrentPool, 1, &descriptorSetLayout);
         allocResult = vkAllocateDescriptorSets(m_LogicalDevice, &newDescriptorSetAllocateInfo, &outDescriptorSet.second);
         if (allocResult == VK_SUCCESS)
         {
@@ -127,7 +127,7 @@ VkDescriptorPool VulkanDescriptorAllocator::CreatePool(const uint32_t count, VkD
         }
     }
 
-    const auto descriptorPoolCreateInfo = VulkanUtility::GetDescriptorPoolCreateInfo(
+    const auto descriptorPoolCreateInfo = VulkanUtils::GetDescriptorPoolCreateInfo(
         static_cast<uint32_t>(poolSizes.size()), count, poolSizes.data(),
         VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT | VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT | descriptorPoolCreateFlags);
 
@@ -163,7 +163,7 @@ void VulkanDescriptorManager::Bind(const Shared<CommandBuffer>& commandBuffer, c
 {
     const auto currentFrame = Application::Get().GetWindow()->GetCurrentFrameIndex();
 
-    VkPipelineBindPoint pipelineBindPoint = commandBuffer->GetSpecification().Type == ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS
+    VkPipelineBindPoint pipelineBindPoint = commandBuffer->GetSpecification().Type == ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL
                                                 ? VK_PIPELINE_BIND_POINT_GRAPHICS
                                                 : VK_PIPELINE_BIND_POINT_COMPUTE;
     if (overrideBindPoint != EPipelineStage::PIPELINE_STAGE_NONE)
@@ -182,7 +182,7 @@ void VulkanDescriptorManager::Bind(const Shared<CommandBuffer>& commandBuffer, c
                             0, nullptr);
 }
 
-void VulkanDescriptorManager::LoadImage(const void* pImageInfo, uint32_t& outIndex)
+void VulkanDescriptorManager::LoadImage(const void* pImageInfo, Optional<uint32_t>& outIndex)
 {
     const VkDescriptorImageInfo* vkImageInfo = (const VkDescriptorImageInfo*)pImageInfo;
     PFR_ASSERT(pImageInfo && vkImageInfo->imageView, "VulkanDescriptorManager: Texture(Image) for loading is not valid!");
@@ -190,14 +190,14 @@ void VulkanDescriptorManager::LoadImage(const void* pImageInfo, uint32_t& outInd
     std::vector<VkWriteDescriptorSet> writes;
 
     // Since on image creation index is UINT32_T::MAX
-    outIndex = m_StorageImageIDPool.Add(m_StorageImageIDPool.GetSize());
+    outIndex = MakeOptional<uint32_t>(static_cast<uint32_t>(m_StorageImageIDPool.Add(m_StorageImageIDPool.GetSize())));
     for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
         const VkWriteDescriptorSet writeSet = {VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
                                                nullptr,
                                                m_MegaSet[frame],
                                                STORAGE_IMAGE_BINDING,
-                                               outIndex,
+                                               outIndex.value(),
                                                1,
                                                VK_DESCRIPTOR_TYPE_STORAGE_IMAGE,
                                                vkImageInfo,
@@ -210,7 +210,7 @@ void VulkanDescriptorManager::LoadImage(const void* pImageInfo, uint32_t& outInd
                            nullptr);
 }
 
-void VulkanDescriptorManager::LoadTexture(const void* pTextureInfo, uint32_t& outIndex)
+void VulkanDescriptorManager::LoadTexture(const void* pTextureInfo, Optional<uint32_t>& outIndex)
 {
     const VkDescriptorImageInfo* vkTextureInfo = (const VkDescriptorImageInfo*)pTextureInfo;
     PFR_ASSERT(pTextureInfo && vkTextureInfo->imageView, "VulkanDescriptorManager: Texture(Image) for loading is not valid!");
@@ -218,11 +218,11 @@ void VulkanDescriptorManager::LoadTexture(const void* pTextureInfo, uint32_t& ou
     std::vector<VkWriteDescriptorSet> writes;
 
     // Since on image creation index is UINT32_T::MAX
-    outIndex = m_TextureIDPool.Add(m_TextureIDPool.GetSize());
+    outIndex = MakeOptional<uint32_t>(static_cast<uint32_t>(m_TextureIDPool.Add(m_TextureIDPool.GetSize())));
     for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
         const VkWriteDescriptorSet writeSet = {
-            VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,    nullptr,       m_MegaSet[frame], TEXTURE_BINDING, outIndex, 1,
+            VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,    nullptr,       m_MegaSet[frame], TEXTURE_BINDING, outIndex.value(), 1,
             VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER, vkTextureInfo, nullptr,          nullptr};
 
         writes.emplace_back(writeSet);
@@ -231,16 +231,16 @@ void VulkanDescriptorManager::LoadTexture(const void* pTextureInfo, uint32_t& ou
                            nullptr);
 }
 
-void VulkanDescriptorManager::FreeImage(uint32_t& imageIndex)
+void VulkanDescriptorManager::FreeImage(Optional<uint32_t>& imageIndex)
 {
-    m_StorageImageIDPool.Release(imageIndex);
-    imageIndex = UINT32_MAX;
+    m_StorageImageIDPool.Release(imageIndex.value());
+    imageIndex = std::nullopt;
 }
 
-void VulkanDescriptorManager::FreeTexture(uint32_t& textureIndex)
+void VulkanDescriptorManager::FreeTexture(Optional<uint32_t>& textureIndex)
 {
-    m_TextureIDPool.Release(textureIndex);
-    textureIndex = UINT32_MAX;
+    m_TextureIDPool.Release(textureIndex.value());
+    textureIndex = std::nullopt;
 }
 
 void VulkanDescriptorManager::CreateDescriptorPools()

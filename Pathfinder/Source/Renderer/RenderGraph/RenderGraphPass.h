@@ -71,19 +71,16 @@ class RenderGraphPassBase : private Uncopyable, private Unmovable
         uint32_t OffsetY{};
     };
 
-    // Read-Modify-Write resources.
-    std::unordered_map<std::string, std::string> m_ResourceAliasMap;
-
     std::unordered_set<RGTextureID> m_TextureCreates;
     std::unordered_set<RGTextureID> m_TextureReads;
     std::unordered_set<RGTextureID> m_TextureWrites;
-    std::unordered_set<RGTextureID> m_TextureDestroys;  // In case pass culled.
+    //  std::unordered_set<RGTextureID> m_TextureDestroys;  // In case pass culled.
     std::unordered_map<RGTextureID, ResourceStateFlags> m_TextureStateMap;
 
     std::unordered_set<RGBufferID> m_BufferCreates;
     std::unordered_set<RGBufferID> m_BufferReads;
     std::unordered_set<RGBufferID> m_BufferWrites;
-    std::unordered_set<RGBufferID> m_BufferDestroys;  // In case pass culled.
+    // std::unordered_set<RGBufferID> m_BufferDestroys;  // In case pass culled.
     std::unordered_map<RGBufferID, ResourceStateFlags> m_BufferStateMap;
 
     std::vector<RenderTargetInfo> m_RenderTargetsInfo;

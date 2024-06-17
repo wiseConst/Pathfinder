@@ -153,6 +153,7 @@ void SamplerStorage::Init()
         }
         default: PFR_ASSERT(false, "Unknown RendererAPI!");
     }
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 }  // namespace Pathfinder

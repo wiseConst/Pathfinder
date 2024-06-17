@@ -37,7 +37,7 @@ void VulkanTexture::Destroy()
 {
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
-    if (m_BindlessIndex.has_value()) Renderer::GetDescriptorManager()->FreeTexture(m_BindlessIndex.value());
+    if (m_BindlessIndex.has_value()) Renderer::GetDescriptorManager()->FreeTexture(m_BindlessIndex);
 
     const SamplerSpecification samplerSpec = {m_Specification.Filter, m_Specification.Wrap};
     SamplerStorage::DestroySampler(samplerSpec);
@@ -52,9 +52,9 @@ void VulkanTexture::Invalidate(const void* data, const size_t dataSize)
 
     Texture::Invalidate(data, dataSize);
 
-    m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+    m_Image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true);
     const auto& vkTextureInfo = GetDescriptorInfo();
-    Renderer::GetDescriptorManager()->LoadTexture(&vkTextureInfo, m_BindlessIndex.value());
+    Renderer::GetDescriptorManager()->LoadTexture(&vkTextureInfo, m_BindlessIndex);
 }
 
 void VulkanTexture::GenerateMipMaps()
@@ -71,7 +71,7 @@ void VulkanTexture::GenerateMipMaps()
     auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Image);
     PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
 
-    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
+    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
                                                ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, Renderer::GetRendererData()->FrameIndex,
                                                ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
     auto vulkanCommandBuffer =

@@ -29,7 +29,7 @@ void BloomPass::AddHorizontalPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "BloomHorizontal Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "BloomHorizontalPass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             builder.DeclareTexture("BloomTextureHoriz",
@@ -73,7 +73,7 @@ void BloomPass::AddVerticalPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "BloomVertical Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "BloomVerticalPass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             builder.DeclareTexture("BloomTexture",

@@ -8,6 +8,8 @@ namespace Pathfinder
 
 class CommandBuffer;
 
+// TODO: Samplers for bindless usage?
+
 class DescriptorManager : private Uncopyable, private Unmovable
 {
   public:
@@ -21,11 +23,11 @@ class DescriptorManager : private Uncopyable, private Unmovable
     virtual void Bind(const Shared<CommandBuffer>& commandBuffer,
                       const EPipelineStage overrideBindPoint = EPipelineStage::PIPELINE_STAGE_NONE) = 0;
 
-    virtual void LoadImage(const void* pImageInfo, uint32_t& outIndex)     = 0;
-    virtual void LoadTexture(const void* pTextureInfo, uint32_t& outIndex) = 0;
+    virtual void LoadImage(const void* pImageInfo, Optional<uint32_t>& outIndex)     = 0;
+    virtual void LoadTexture(const void* pTextureInfo, Optional<uint32_t>& outIndex) = 0;
 
-    virtual void FreeImage(uint32_t& imageIndex)     = 0;
-    virtual void FreeTexture(uint32_t& textureIndex) = 0;
+    virtual void FreeImage(Optional<uint32_t>& imageIndex)     = 0;
+    virtual void FreeTexture(Optional<uint32_t>& textureIndex) = 0;
 
     NODISCARD static Shared<DescriptorManager> Create();
 

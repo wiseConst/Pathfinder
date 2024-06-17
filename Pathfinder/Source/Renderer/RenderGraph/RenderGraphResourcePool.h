@@ -1,22 +1,33 @@
 #pragma once
 
+#include <Core/Core.h>
 #include <Renderer/RendererCoreDefines.h>
-#include <array>
 #include "RenderGraphResourceID.h"
 
 namespace Pathfinder
 {
 
-// TODO: how does it work??
-class Texture;
 class Buffer;
+class Texture;
 
+// TODO: Refactor, do I need bIsActive? since I have LastUsedFrame..
 class RenderGraphResourcePool final : private Uncopyable, private Unmovable
 {
+  public:
+    RenderGraphResourcePool()  = default;
+    ~RenderGraphResourcePool() = default;
+
+    void Tick();
+
+    Shared<Texture> AllocateTexture(const RGTextureSpecification& spec);
+    Shared<Buffer> AllocateBuffer(const RGBufferSpecification& spec);
+
   private:
+    uint64_t m_FrameNumber = 0;
+
     struct PooledTexture
     {
-        Shared<Texture> Handle              = nullptr;
+        Shared<Texture> Handle                = nullptr;
         std::optional<uint64_t> LastUsedFrame = std::nullopt;
     };
 
@@ -26,29 +37,14 @@ class RenderGraphResourcePool final : private Uncopyable, private Unmovable
         std::optional<uint64_t> LastUsedFrame = std::nullopt;
     };
 
-  public:
-    RenderGraphResourcePool()  = default;
-    ~RenderGraphResourcePool() = default;
+    using VectorTexturePool = std::vector<std::pair<PooledTexture, bool>>;
+    using VectorBufferPool  = std::vector<std::pair<PooledBuffer, bool>>;
 
-    void Tick();
+    VectorTexturePool m_TexturePool;
+    VectorBufferPool m_BufferPool;
 
-    NODISCARD Shared<Texture> AllocateTexture(const RGTextureSpecification& rgTextureSpec);
-    void ReleaseTexture(Shared<Texture> texture);
-
-    NODISCARD Shared<Buffer> AllocateBuffer(const RGBufferSpecification& rgBufferSpec);
-    FORCEINLINE void ReleaseBuffer(Shared<Buffer> buffer);
-
-  private:
-    uint64_t m_FrameIndex = 0;
-
-    using PooledTextureVector = std::vector<std::pair<PooledTexture, bool>>;
-    PooledTextureVector m_TexturePool;
-
-    using PooledBufferVector = std::vector<std::pair<PooledBuffer, bool>>;
-    PooledBufferVector m_BufferPool;
-
-    std::array<PooledTextureVector, s_FRAMES_IN_FLIGHT> m_PerFrameTexturePool;
-    std::array<PooledBufferVector, s_FRAMES_IN_FLIGHT> m_PerFrameBufferPool;
+    std::array<VectorTexturePool, s_FRAMES_IN_FLIGHT> m_PerFrameTexturePool;
+    std::array<VectorBufferPool, s_FRAMES_IN_FLIGHT> m_PerFrameBufferPool;
 };
 using RGResourcePool = RenderGraphResourcePool;
 

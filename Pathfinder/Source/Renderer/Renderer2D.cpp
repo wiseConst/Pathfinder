@@ -21,10 +21,9 @@ void Renderer2D::Init()
     std::ranges::for_each(s_RendererData2D->SpriteSSBO,
                           [](auto& spriteSSBO)
                           {
-                              spriteSSBO = Buffer::Create({.UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
-                                                                         EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE |
-                                                                         EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS,
-                                                           .bMapPersistent = true});
+                              spriteSSBO = Buffer::Create(
+                                  {.ExtraFlags = EBufferFlag::BUFFER_FLAG_MAPPED | EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                   .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE});
                           });
 
     ShaderLibrary::WaitUntilShadersLoaded();
@@ -51,13 +50,13 @@ void Renderer2D::Init()
     s_RendererData2D->QuadPipelineHash     = PipelineLibrary::Push(quadPipelineSpec);
 
     PipelineLibrary::Compile();
-    LOG_TRACE("RENDERER_2D: Renderer2D created!");
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void Renderer2D::Shutdown()
 {
     s_RendererData2D.reset();
-    LOG_TRACE("RENDERER_2D: Renderer2D destroyed!");
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void Renderer2D::Begin()
@@ -109,7 +108,7 @@ void Renderer2D::DrawQuad(const glm::vec3& translation, const glm::vec3& scale, 
         return;
     }
 
-    const uint32_t defaultBindlessTextureIndex                      = Renderer::GetRendererData()->WhiteTexture->GetBindlessIndex();
+    const uint32_t defaultBindlessTextureIndex                      = TextureManager::GetWhiteTexture()->GetBindlessIndex();
     s_RendererData2D->Sprites[s_RendererData2D->CurrentSpriteCount] = Sprite(
         translation, scale, orientation, glm::packUnorm4x8(color), texture ? texture->GetBindlessIndex() : defaultBindlessTextureIndex);
 

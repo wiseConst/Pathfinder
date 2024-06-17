@@ -62,11 +62,11 @@ class VulkanDescriptorManager final : public DescriptorManager
     void Bind(const Shared<CommandBuffer>& commandBuffer,
               const EPipelineStage overrideBindPoint = EPipelineStage::PIPELINE_STAGE_NONE) final override;
 
-    void LoadImage(const void* pImageInfo, uint32_t& outIndex) final override;
-    void LoadTexture(const void* pTextureInfo, uint32_t& outIndex) final override;
+    void LoadImage(const void* pImageInfo, Optional<uint32_t>& outIndex) final override;
+    void LoadTexture(const void* pTextureInfo, Optional<uint32_t>& outIndex) final override;
 
-    void FreeImage(uint32_t& imageIndex) final override;
-    void FreeTexture(uint32_t& textureIndex) final override;
+    void FreeImage(Optional<uint32_t>& imageIndex) final override;
+    void FreeTexture(Optional<uint32_t>& textureIndex) final override;
 
     NODISCARD FORCEINLINE const auto GetDescriptorSetLayouts() const
     {
@@ -76,6 +76,9 @@ class VulkanDescriptorManager final : public DescriptorManager
     NODISCARD FORCEINLINE const auto& GetPipelineLayout() const { return m_MegaPipelineLayout; }
 
   private:
+    using VulkanDescriptorPoolPerFrame = std::array<VkDescriptorPool, s_FRAMES_IN_FLIGHT>;
+    using VulkanDescriptorSetPerFrame  = std::array<VkDescriptorSet, s_FRAMES_IN_FLIGHT>;
+
     VulkanDescriptorPoolPerFrame m_MegaDescriptorPool;
     VulkanDescriptorSetPerFrame m_MegaSet;
 

@@ -23,7 +23,7 @@ void AOBlurPass::AddPass(Unique<RenderGraph>& rendergraph)
     };
 
     rendergraph->AddPass<PassData>(
-        "AOBlur Pass", ERGPassType::RGPASS_TYPE_GRAPHICS,
+        "AOBlurPass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             pd.CameraData  = builder.ReadBuffer("CameraData");

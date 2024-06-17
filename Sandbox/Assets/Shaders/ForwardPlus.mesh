@@ -65,7 +65,7 @@ void main()
         gl_MeshVerticesEXT[i].gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
         o_VertexOutput[i].WorldPos = worldPos;
 
-        o_VertexOutput[i].Color = unpackUnorm4x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Color);
+        o_VertexOutput[i].Color = VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Color;//unpackUnorm4x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Color);
         #if DEBUG_MESHLETS
               o_VertexOutput[i].Color = vec4(mcolor, 1.0);
         #endif

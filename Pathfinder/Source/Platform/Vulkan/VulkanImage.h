@@ -12,15 +12,14 @@ namespace ImageUtils
 
 void CreateImage(VkImage& outImage, VmaAllocation& outAllocation, const VkFormat format, const VkImageUsageFlags imageUsage,
                  const VkExtent3D& extent, const VkImageType imageType = VK_IMAGE_TYPE_2D, const uint32_t mipLevels = 1,
-                 const uint32_t layerCount = 1, const std::vector<uint32_t>& queueFamilyIndices = {},
-                 const VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED, const VkImageTiling imageTiling = VK_IMAGE_TILING_OPTIMAL,
-                 const VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
+                 const uint32_t layerCount = 1, const VkImageLayout initialLayout = VK_IMAGE_LAYOUT_UNDEFINED,
+                 const VkImageTiling imageTiling = VK_IMAGE_TILING_OPTIMAL, const VkSampleCountFlagBits samples = VK_SAMPLE_COUNT_1_BIT);
 
 void CreateImageView(const VkImage& image, VkImageView& imageView, VkFormat format, const VkImageAspectFlags aspectFlags,
                      const VkImageViewType imageViewType = VK_IMAGE_VIEW_TYPE_2D, const uint32_t baseMipLevel = 0,
                      const uint32_t mipLevels = 1, const uint32_t baseArrayLayer = 0, const uint32_t layerCount = 1);
 
-void DestroyImageView(const VkImageView& imageView);
+void DestroyImageView(VkImageView& imageView);
 void DestroyImage(VkImage& image, VmaAllocation& allocation);
 
 VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout);
@@ -51,9 +50,10 @@ class VulkanImage final : public Image
         return m_DescriptorInfo.sampler;
     }
 
-    void SetLayout(const EImageLayout newLayout) final override;
+    void SetLayout(const EImageLayout newLayout, const bool bImmediate = false) final override;
     void SetData(const void* data, size_t dataSize) final override;
     void ClearColor(const Shared<CommandBuffer>& commandBuffer, const glm::vec4& color) const final override;
+    void SetDebugName(const std::string& name) final override;
 
     FORCEINLINE void Resize(const uint32_t width, const uint32_t height) final override
     {
@@ -70,7 +70,7 @@ class VulkanImage final : public Image
     VmaAllocation m_Allocation             = VK_NULL_HANDLE;
     VkImageView m_View                     = VK_NULL_HANDLE;
     VkDescriptorImageInfo m_DescriptorInfo = {};
-    uint32_t m_LastUsedQueueFamilyIndex    = UINT32_MAX;  // UNUSED
+    std::vector<VkImageView> m_ViewMips;  // TODO:
 
     VulkanImage() = delete;
     void Invalidate() final override;

@@ -133,11 +133,10 @@ ShaderBindingTable VulkanShader::CreateSBT(const Shared<Pipeline>& rtPipeline) c
 
     // Allocate a buffer for storing the SBT.
     const VkDeviceSize sbtBufferSize        = sbt.RgenRegion.size + sbt.MissRegion.size + sbt.HitRegion.size + sbt.CallRegion.size;
-    const BufferSpecification sbtBufferSpec = {.UsageFlags = EBufferUsage::BUFFER_USAGE_SHADER_BINDING_TABLE |
-                                                             EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE |
-                                                             EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS,
-                                               .bMapPersistent = true,
-                                               .Capacity       = sbtBufferSize};
+    const BufferSpecification sbtBufferSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL | EBufferFlag::BUFFER_FLAG_MAPPED,
+                                               .UsageFlags = EBufferUsage::BUFFER_USAGE_SHADER_BINDING_TABLE |
+                                                             EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE,
+                                               .Capacity = sbtBufferSize};
 
     auto sbtBuffer = Buffer::Create(sbtBufferSpec);
 

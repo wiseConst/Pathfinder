@@ -33,15 +33,15 @@ class Texture : private Uncopyable, private Unmovable
     }
     NODISCARD FORCEINLINE const auto& GetImage() const { return m_Image; }
 
-    NODISCARD static Shared<Texture> Create(const TextureSpecification& textureSpec, const void* data = nullptr,
-                                              const size_t dataSize = 0);
+    NODISCARD static Shared<Texture> Create(const TextureSpecification& textureSpec, const void* data = nullptr, const size_t dataSize = 0);
 
     virtual void Resize(const uint32_t width, const uint32_t height) = 0;
+    virtual void SetDebugName(const std::string& name)               = 0;
 
   protected:
-    Shared<Image> m_Image                   = nullptr;
-    TextureSpecification m_Specification    = {};
-    std::optional<uint32_t> m_BindlessIndex = std::nullopt;
+    Shared<Image> m_Image                = nullptr;
+    TextureSpecification m_Specification = {};
+    Optional<uint32_t> m_BindlessIndex   = std::nullopt;
 
     Texture(const TextureSpecification& textureSpec) : m_Specification(textureSpec) {}
     Texture() = delete;
@@ -51,7 +51,7 @@ class Texture : private Uncopyable, private Unmovable
     virtual void GenerateMipMaps() = 0;
 };
 
-class TextureCompressor final : private Uncopyable, private Unmovable
+class TextureCompressor final
 {
   public:
     // NOTE:
@@ -66,8 +66,28 @@ class TextureCompressor final : private Uncopyable, private Unmovable
     static void LoadCompressed(const std::filesystem::path& loadPath, TextureSpecification& outTextureSpec, std::vector<uint8_t>& outData);
 
   private:
-    TextureCompressor()  = default;
+    TextureCompressor()  = delete;
     ~TextureCompressor() = default;
+};
+
+// TODO: Parallel texture loading/compressing.
+class TextureManager final
+{
+  public:
+    static void Init();
+    static void Shutdown();
+
+    NODISCARD FORCEINLINE static const auto& GetWhiteTexture() { return s_WhiteTexture; }
+
+    // NOTE: Checks if any texture is loaded and blocks frame, until texture(or index) is assigned to mesh.
+    static void LinkLoadedTexturesWithMeshes();
+
+  private:
+    static inline Shared<Texture> s_WhiteTexture = nullptr;
+    static inline Pool<Shared<Texture>> s_TexturePool;
+
+    TextureManager()  = delete;
+    ~TextureManager() = default;
 };
 
 }  // namespace Pathfinder
