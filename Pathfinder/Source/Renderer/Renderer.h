@@ -120,9 +120,6 @@ class Renderer final
 
         // Rendering
         CommandBufferPerFrame RenderCommandBuffer;
-        CommandBufferPerFrame ComputeCommandBuffer;
-        CommandBufferPerFrame TransferCommandBuffer;
-
         Pathfinder::FramePreparePass FramePreparePass;
 
         // Final
@@ -150,7 +147,7 @@ class Renderer final
 
         std::vector<RenderObject> OpaqueObjects;
         std::vector<RenderObject> TransparentObjects;
-        
+
         // Light-Culling
         uint64_t ComputeFrustumsPipelineHash = 0;
         uint64_t LightCullingPipelineHash    = 0;

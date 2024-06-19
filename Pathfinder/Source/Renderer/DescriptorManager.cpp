@@ -2,7 +2,7 @@
 #include "DescriptorManager.h"
 
 #include "RendererAPI.h"
-#include <Platform/Vulkan/VulkanDescriptors.h>
+#include <Platform/Vulkan/VulkanDescriptorManager.h>
 
 namespace Pathfinder
 {

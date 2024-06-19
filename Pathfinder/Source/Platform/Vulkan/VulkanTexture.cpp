@@ -7,7 +7,7 @@
 #include "VulkanCommandBuffer.h"
 
 #include "Renderer/Renderer.h"
-#include "VulkanDescriptors.h"
+#include "VulkanDescriptorManager.h"
 
 namespace Pathfinder
 {

@@ -5,7 +5,7 @@
 #include "VulkanDevice.h"
 #include "VulkanShader.h"
 #include "VulkanImage.h"
-#include "VulkanDescriptors.h"
+#include "VulkanDescriptorManager.h"
 
 #include <Renderer/Renderer.h>
 #include <Core/Application.h>

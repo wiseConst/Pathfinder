@@ -42,8 +42,8 @@ void BloomPass::AddHorizontalPass(Unique<RenderGraph>& rendergraph)
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteRenderTarget("BloomTextureHoriz", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
 
-            pd.HDRTexture = builder.ReadTexture("HDRTexture_V1");
-            pd.CameraData = builder.ReadBuffer("CameraData");
+            pd.HDRTexture = builder.ReadTexture("HDRTexture_V1", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.CameraData = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
         },
@@ -86,8 +86,8 @@ void BloomPass::AddVerticalPass(Unique<RenderGraph>& rendergraph)
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteRenderTarget("BloomTexture", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
 
-            pd.BloomTextureHoriz = builder.ReadTexture("BloomTextureHoriz");
-            pd.CameraData        = builder.ReadBuffer("CameraData");
+            pd.BloomTextureHoriz = builder.ReadTexture("BloomTextureHoriz", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.CameraData        = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
         },

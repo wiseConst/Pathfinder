@@ -26,8 +26,8 @@ void AOBlurPass::AddPass(Unique<RenderGraph>& rendergraph)
         "AOBlurPass", ERGPassType::RGPASS_TYPE_GRAPHICS,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
-            pd.CameraData  = builder.ReadBuffer("CameraData");
-            pd.SSAOTexture = builder.ReadTexture("SSAOTexture");
+            pd.CameraData  = builder.ReadBuffer("CameraData",EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.SSAOTexture = builder.ReadTexture("SSAOTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.DeclareTexture("AOBlurTexture",
                                    {.DebugName  = "AOBlurTexture",

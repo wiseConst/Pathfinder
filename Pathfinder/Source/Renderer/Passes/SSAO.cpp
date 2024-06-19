@@ -29,13 +29,13 @@ void SSAOPass::AddPass(Unique<RenderGraph>& rendergraph)
                                    {.DebugName  = "SSAOTexture",
                                     .Width      = m_Width,
                                     .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_MIRRORED_REPEAT,
+                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
                                     .Filter     = ESamplerFilter::SAMPLER_FILTER_LINEAR,
                                     .Format     = EImageFormat::FORMAT_R8_UNORM,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteRenderTarget("SSAOTexture", ColorClearValue{1.f}, EOp::CLEAR, EOp::STORE);
-            pd.CameraData  = builder.ReadBuffer("CameraData");
-            pd.DepthOpaque = builder.ReadTexture("DepthOpaque");
+            pd.CameraData  = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE);
+            pd.DepthOpaque = builder.ReadTexture("DepthOpaque", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
         },

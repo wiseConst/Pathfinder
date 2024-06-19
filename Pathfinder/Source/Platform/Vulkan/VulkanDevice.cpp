@@ -2,7 +2,6 @@
 #include "VulkanDevice.h"
 
 #include "VulkanAllocator.h"
-#include "VulkanDescriptors.h"
 
 #include "VulkanImage.h"
 #include <Core/Application.h>
@@ -408,7 +407,6 @@ VulkanDevice::VulkanDevice(const VkInstance& instance)
     CreateCommandPools();
 
     m_VMA = MakeUnique<VulkanAllocator>(instance, m_LogicalDevice, m_PhysicalDevice);
-    m_VDA = MakeUnique<VulkanDescriptorAllocator>(m_LogicalDevice);
 
     const std::string logicalDeviceDebugName("[LogicalDevice]:" + m_DeviceName);
     VK_SetDebugName(m_LogicalDevice, m_LogicalDevice, VK_OBJECT_TYPE_DEVICE, logicalDeviceDebugName.data());
@@ -545,7 +543,6 @@ VulkanDevice::~VulkanDevice()
     SavePipelineCache();
 
     m_VMA.reset();
-    m_VDA.reset();
 
     for (uint8_t frameIndex{}; frameIndex < s_FRAMES_IN_FLIGHT; ++frameIndex)
     {
@@ -672,9 +669,8 @@ void VulkanDevice::CreateLogicalDevice()
 
     // Bindless
     vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
-    vulkan12Features.runtimeDescriptorArray          = VK_TRUE;  // to have descriptor array in e.g. (uniform sampler2D u_GlobalTextures[])
-    vulkan12Features.descriptorIndexing              = VK_TRUE;  //
-    vulkan12Features.descriptorBindingPartiallyBound = VK_TRUE;  // allow "holes" in the descriptor array
+    vulkan12Features.runtimeDescriptorArray = VK_TRUE;  // to have descriptor array in e.g. (uniform sampler2D u_GlobalTextures[])
+    vulkan12Features.descriptorIndexing     = VK_TRUE;  //
     vulkan12Features.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE;
     vulkan12Features.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
     vulkan12Features.descriptorBindingStorageImageUpdateAfterBind  = VK_TRUE;

@@ -11,6 +11,9 @@
 namespace Pathfinder
 {
 
+#define RG_LOG_DEBUG_INFO 0
+#define RG_LOG_TOPSORT_RESULT 0
+
 namespace RGUtils
 {
 
@@ -84,24 +87,26 @@ void RenderGraph::Execute()
         return glm::vec3(x, y, z);
     };
 
-    // TODO: Instead of aliasing, create new rgtexture and set its handle
-    // TODO: THING ABOVE DONE, but how do I retrieve the actual handle which we get on texture creation?(simply get by aliasmap)
-
-    std::vector<uint32_t> syncedPasses;
+    std::unordered_set<uint32_t> runPasses;
     for (auto currPassIdx : m_TopologicallySortedPasses)
     {
-        Timer t        = {};
-        auto& currPass = m_Passes.at(currPassIdx);
-        //        LOG_INFO("Running {}", currPass->m_Name);
+        Timer t           = {};
+        auto& currentPass = m_Passes.at(currPassIdx);
 
-        for (auto textureID : currPass->m_TextureCreates)
+#if RG_LOG_DEBUG_INFO
+        LOG_INFO("Running {}", currentPass->m_Name);
+#endif
+
+        runPasses.insert(currPassIdx);
+
+        for (auto textureID : currentPass->m_TextureCreates)
         {
             PFR_ASSERT(textureID.m_ID.has_value(), "TextureID doesn't have id!");
             auto& rgTexture   = GetRGTexture(textureID);
             rgTexture->Handle = m_ResourcePool.AllocateTexture(rgTexture->Description);
         }
 
-        for (auto bufferID : currPass->m_BufferCreates)
+        for (auto bufferID : currentPass->m_BufferCreates)
         {
             PFR_ASSERT(bufferID.m_ID.has_value(), "BufferID doesn't have id!");
             auto& rgBuffer   = GetRGBuffer(bufferID);
@@ -109,7 +114,7 @@ void RenderGraph::Execute()
         }
 
         Shared<CommandBuffer> cb = nullptr;
-        switch (currPass->m_Type)
+        switch (currentPass->m_Type)
         {
             case ERGPassType::RGPASS_TYPE_GRAPHICS:
             case ERGPassType::RGPASS_TYPE_TRANSFER:
@@ -117,453 +122,49 @@ void RenderGraph::Execute()
         }
         PFR_ASSERT(cb, "Command buffer is not valid!");
 
-        cb->BeginDebugLabel(currPass->m_Name.data(), stringToVec3(currPass->m_Name));
         std::vector<BufferMemoryBarrier> bufferMemoryBarriers;
 
-        // We want to write, so sync it with prev write/read.
-        // TODO:
-        for (const auto resourceID : currPass->m_BufferWrites)
-        {
-            auto& buffer = m_Buffers.at(resourceID.m_ID.value());
-            if (!buffer->Handle)  // Means it's alias
-            {
-                const auto sourceBufferID = GetBufferID(m_AliasMap[buffer->Name]);
-                buffer->Handle            = m_Buffers.at(sourceBufferID.m_ID.value())->Handle;
-            }
+        const auto bufferRAWBarriers = BuildBufferRAWBarriers(currentPass, runPasses);
+        bufferMemoryBarriers.insert(bufferMemoryBarriers.end(), bufferRAWBarriers.begin(), bufferRAWBarriers.end());
 
-            if (buffer->Handle->GetSpecification().Capacity == 0) continue;
+        const auto bufferWARBarriers = BuildBufferWARBarriers(currentPass, runPasses);
+        bufferMemoryBarriers.insert(bufferMemoryBarriers.end(), bufferWARBarriers.begin(), bufferWARBarriers.end());
 
-            Optional<uint32_t> prevPassIdx = std::nullopt;
-            for (const auto writePassIdx : buffer->WritePasses)
-            {
-                if (buffer->AlreadySyncedWith.contains(writePassIdx)) continue;
-
-                buffer->AlreadySyncedWith.insert(writePassIdx);
-                prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
-                break;
-            }
-
-            if (!prevPassIdx.has_value()) continue;
-
-            auto& bufferBarrier  = bufferMemoryBarriers.emplace_back(buffer->Handle);
-            const auto& prevPass = m_Passes.at(prevPassIdx.value());
-
-            switch (prevPass->m_Type)
-            {
-                case ERGPassType::RGPASS_TYPE_GRAPHICS:
-                {
-                    PFR_ASSERT(false, "Write to storage buffer from graphics stages??");
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_COMPUTE:
-                {
-                    bufferBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                    bufferBarrier.srcAccessMask = EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_TRANSFER:
-                {
-                    bufferBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
-                    bufferBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;
-                    break;
-                }
-            }
-
-            //     const auto currResourceState = currPass->m_BufferStateMap[resourceID.m_ID.value()];
-            switch (currPass->m_Type)
-            {
-                case ERGPassType::RGPASS_TYPE_GRAPHICS:
-                {
-                    const auto& bufferUsage = buffer->Handle->GetSpecification().UsageFlags;
-
-                    // if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_INDIRECT_ARGUMENT))
-                    if (RGUtils::BufferUsageContains(bufferUsage, EBufferUsage::BUFFER_USAGE_INDIRECT))
-                    {
-                        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT;
-                        bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-                    }
-
-                    if (RGUtils::BufferUsageContains(bufferUsage, EBufferUsage::BUFFER_USAGE_VERTEX))
-                    {  // what if i don't actually use it as vertex?(pvp)
-
-                        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-                        bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT;
-                    }
-
-                    if (RGUtils::BufferUsageContains(bufferUsage, EBufferUsage::BUFFER_USAGE_INDEX))
-                        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_INDEX_READ_BIT;
-
-                    if (RGUtils::BufferUsageContains(bufferUsage, EBufferUsage::BUFFER_USAGE_STORAGE))
-                        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT;
-
-                    // NOTE: Can be tightly corrected via resource state.
-                    bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-                                                  EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT |
-                                                  EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT;
-
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_COMPUTE:
-                {
-                    bufferBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                    bufferBarrier.dstAccessMask = EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_TRANSFER:
-                {
-                    bufferBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
-                    bufferBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;
-                    break;
-                }
-            }
-        }
-
-        // We want to read, so sync it with previous write.
-        for (const auto resourceID : currPass->m_BufferReads)
-        {
-            auto& buffer = m_Buffers.at(resourceID.m_ID.value());
-            if (!buffer->Handle)  // Means it's alias
-            {
-                const auto sourceBufferID = GetBufferID(m_AliasMap[buffer->Name]);
-                buffer->Handle            = m_Buffers.at(sourceBufferID.m_ID.value())->Handle;
-            }
-
-            if (buffer->Handle->GetSpecification().Capacity == 0) continue;
-            Optional<uint32_t> prevPassIdx = std::nullopt;
-            for (const auto writePassIdx : buffer->WritePasses)
-            {
-                if (buffer->AlreadySyncedWith.contains(writePassIdx)) continue;
-
-                buffer->AlreadySyncedWith.insert(writePassIdx);
-                prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
-                break;
-            }
-
-            if (!prevPassIdx.has_value()) continue;
-
-            auto& bufferBarrier  = bufferMemoryBarriers.emplace_back(buffer->Handle);
-            const auto& prevPass = m_Passes.at(prevPassIdx.value());
-
-            switch (prevPass->m_Type)
-            {
-                case ERGPassType::RGPASS_TYPE_GRAPHICS:
-                {
-                    PFR_ASSERT(false, "Write to storage buffer from graphics stages??");
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_COMPUTE:
-                {
-                    bufferBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                    bufferBarrier.srcAccessMask = EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_TRANSFER:
-                {
-                    bufferBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
-                    bufferBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;
-                    break;
-                }
-            }
-
-            //     const auto currResourceState = currPass->m_BufferStateMap[resourceID.m_ID.value()];
-            switch (currPass->m_Type)
-            {
-                case ERGPassType::RGPASS_TYPE_GRAPHICS:
-                {
-                    const auto& bufferUsage = buffer->Handle->GetSpecification().UsageFlags;
-
-                    // if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_INDIRECT_ARGUMENT))
-                    if (RGUtils::BufferUsageContains(bufferUsage, EBufferUsage::BUFFER_USAGE_INDIRECT))
-                    {
-                        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT;
-                        bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT;
-                    }
-
-                    if (RGUtils::BufferUsageContains(bufferUsage, EBufferUsage::BUFFER_USAGE_VERTEX))
-                    {  // what if i don't actually use it as vertex?(pvp)
-
-                        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_VERTEX_ATTRIBUTE_READ_BIT;
-                        bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT;
-                    }
-
-                    if (RGUtils::BufferUsageContains(bufferUsage, EBufferUsage::BUFFER_USAGE_INDEX))
-                        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_INDEX_READ_BIT;
-
-                    if (RGUtils::BufferUsageContains(bufferUsage, EBufferUsage::BUFFER_USAGE_STORAGE))
-                        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT;
-
-                    // NOTE: Can be tightly corrected via resource state.
-                    bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT |
-                                                  EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT |
-                                                  EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT;
-
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_COMPUTE:
-                {
-                    bufferBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                    bufferBarrier.dstAccessMask = EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_TRANSFER:
-                {
-                    bufferBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
-                    bufferBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;
-                    break;
-                }
-            }
-        }
+        const auto bufferWAWBarriers = BuildBufferWAWBarriers(currentPass, runPasses);
+        bufferMemoryBarriers.insert(bufferMemoryBarriers.end(), bufferWAWBarriers.begin(), bufferWAWBarriers.end());
 
         std::vector<ImageMemoryBarrier> imageMemoryBarriers;
 
-        // Prepare for sampling from.
-        for (const auto resourceID : currPass->m_TextureReads)
-        {
-            auto& texture = m_Textures.at(resourceID.m_ID.value());
-            if (!texture->Handle)  // Means it's alias
-            {
-                const auto sourceTextureID = GetTextureID(m_AliasMap[texture->Name]);
-                texture->Handle            = m_Textures.at(sourceTextureID.m_ID.value())->Handle;
-            }
+        const auto textureRAWBarriers = BuildTextureRAWBarriers(currentPass, runPasses);
+        imageMemoryBarriers.insert(imageMemoryBarriers.end(), textureRAWBarriers.begin(), textureRAWBarriers.end());
 
-            Optional<uint32_t> prevPassIdx = std::nullopt;
-            for (const auto writePassIdx : texture->WritePasses)
-            {
-                if (texture->AlreadySyncedWith.contains(writePassIdx)) continue;
+        const auto textureWARBarriers = BuildTextureWARBarriers(currentPass, runPasses);
+        imageMemoryBarriers.insert(imageMemoryBarriers.end(), textureWARBarriers.begin(), textureWARBarriers.end());
 
-                texture->AlreadySyncedWith.insert(writePassIdx);
-                prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
-                break;
-            }
+        const auto textureWAWBarriers = BuildTextureWAWBarriers(currentPass, runPasses);
+        imageMemoryBarriers.insert(imageMemoryBarriers.end(), textureWAWBarriers.begin(), textureWAWBarriers.end());
 
-            if (!prevPassIdx.has_value()) continue;
-
-            // if Write->Write continue(will be synced later)
-            if (currPass->m_TextureWrites.contains(resourceID)) continue;
-
-            auto& imageBarrier = imageMemoryBarriers.emplace_back();
-            imageBarrier.image = texture->Handle->GetImage();
-
-            const auto& imageSpec  = imageBarrier.image->GetSpecification();
-            imageBarrier.oldLayout = imageSpec.Layout;
-
-            imageBarrier.subresourceRange = {
-                .baseMipLevel   = 0,
-                .mipCount       = imageSpec.Mips,
-                .baseArrayLayer = 0,
-                .layerCount     = imageSpec.Layers,
-            };
-
-            const auto& prevPass = m_Passes.at(prevPassIdx.value());
-            switch (prevPass->m_Type)
-            {
-                case ERGPassType::RGPASS_TYPE_GRAPHICS:
-                {
-
-                    if (ImageUtils::IsDepthFormat(imageSpec.Format))
-                    {
-                        imageBarrier.srcStageMask = EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                                                    EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-
-                        imageBarrier.srcAccessMask = EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-                                                     EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-                    }
-                    else
-                    {
-                        imageBarrier.srcStageMask = EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                        imageBarrier.srcAccessMask =
-                            EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
-                    }
-
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_COMPUTE:
-                {
-                    imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                    imageBarrier.srcAccessMask = EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_TRANSFER:
-                {
-                    imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
-                    imageBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;
-                    break;
-                }
-            }
-
-            switch (currPass->m_Type)
-            {
-                case ERGPassType::RGPASS_TYPE_GRAPHICS:
-                {
-                    imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
-                    imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-                    imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
-                    imageBarrier.dstAccessMask = EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT;
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_COMPUTE:
-                {
-                    imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
-                    imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_GENERAL;
-                    imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                    imageBarrier.dstAccessMask = EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_TRANSFER:
-                {
-                    imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-                    imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                    imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
-                    imageBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;
-                    break;
-                }
-            }
-        }
-
-        // Prepare for rendering/writing in compute.
-        for (const auto resourceID : currPass->m_TextureWrites)
-        {
-            auto& texture = m_Textures.at(resourceID.m_ID.value());
-            if (!texture->Handle)  // Means it's alias
-            {
-                const auto sourceTextureID = GetTextureID(m_AliasMap[texture->Name]);
-                texture->Handle            = m_Textures.at(sourceTextureID.m_ID.value())->Handle;
-            }
-
-            Optional<uint32_t> prevPassIdx = std::nullopt;
-            for (const auto writePassIdx : texture->WritePasses)
-            {
-                if (texture->AlreadySyncedWith.contains(writePassIdx)) continue;
-
-                texture->AlreadySyncedWith.insert(writePassIdx);
-                prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
-                break;
-            }
-
-            if (!prevPassIdx.has_value()) continue;
-
-            auto& imageBarrier = imageMemoryBarriers.emplace_back();
-            imageBarrier.image = texture->Handle->GetImage();
-
-            const auto& imageSpec       = imageBarrier.image->GetSpecification();
-            const bool bTextureCreation = currPass->m_TextureCreates.contains(resourceID);
-            imageBarrier.oldLayout      = bTextureCreation ? EImageLayout::IMAGE_LAYOUT_UNDEFINED : imageSpec.Layout;
-
-            imageBarrier.subresourceRange = {
-                .baseMipLevel   = 0,
-                .mipCount       = imageSpec.Mips,
-                .baseArrayLayer = 0,
-                .layerCount     = imageSpec.Layers,
-            };
-
-            const auto& prevPass = m_Passes.at(prevPassIdx.value());
-
-            if (bTextureCreation)
-            {
-                imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT;
-                imageBarrier.srcAccessMask = EAccessFlags::ACCESS_NONE;
-            }
-            else
-            {
-                switch (prevPass->m_Type)
-                {
-                    case ERGPassType::RGPASS_TYPE_GRAPHICS:
-                    {
-                        if (ImageUtils::IsDepthFormat(imageSpec.Format))
-                        {
-                            imageBarrier.srcStageMask = EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                                                        EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-
-                            imageBarrier.srcAccessMask = EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-                                                         EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-                        }
-                        else
-                        {
-                            imageBarrier.srcStageMask = EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                            imageBarrier.srcAccessMask =
-                                EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
-                        }
-
-                        break;
-                    }
-                    case ERGPassType::RGPASS_TYPE_COMPUTE:
-                    {
-                        imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                        imageBarrier.srcAccessMask = EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
-                        break;
-                    }
-                    case ERGPassType::RGPASS_TYPE_TRANSFER:
-                    {
-                        imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
-                        imageBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;
-                        break;
-                    }
-                }
-            }
-
-            switch (currPass->m_Type)
-            {
-                case ERGPassType::RGPASS_TYPE_GRAPHICS:
-                {
-                    if (ImageUtils::IsDepthFormat(imageSpec.Format))
-                    {
-                        imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
-                        imageBarrier.newLayout    = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-                        imageBarrier.dstStageMask = EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT |
-                                                    EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
-
-                        imageBarrier.dstAccessMask = EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT |
-                                                     EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
-                    }
-                    else
-                    {
-                        imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
-                        imageBarrier.newLayout    = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-                        imageBarrier.dstStageMask = EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-                        imageBarrier.dstAccessMask =
-                            EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
-                    }
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_COMPUTE:
-                {
-                    imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
-                    imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_GENERAL;
-                    imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
-                    imageBarrier.dstAccessMask = EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
-                    break;
-                }
-                case ERGPassType::RGPASS_TYPE_TRANSFER:
-                {
-                    imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
-                    imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-                    imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
-                    imageBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;
-                    break;
-                }
-            }
-        }
-
+        cb->BeginDebugLabel(currentPass->m_Name.data(), stringToVec3(currentPass->m_Name));
         if (!bufferMemoryBarriers.empty() || !imageMemoryBarriers.empty())
             cb->InsertBarriers({}, bufferMemoryBarriers, imageMemoryBarriers);
 
-        if (currPass->m_Type == ERGPassType::RGPASS_TYPE_GRAPHICS &&
-            (!currPass->m_RenderTargetsInfo.empty() || currPass->m_DepthStencil.has_value()))
+        if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_GRAPHICS &&
+            (!currentPass->m_RenderTargetsInfo.empty() || currentPass->m_DepthStencil.has_value()))
         {
-            PFR_ASSERT(currPass->m_ViewportScissorInfo.has_value(), "RenderPass viewport size is invalid!");
+            PFR_ASSERT(currentPass->m_ViewportScissorInfo.has_value(), "RenderPass viewport size is invalid!");
 
             std::vector<Shared<Texture>> attachments;
             std::vector<RenderingInfo> renderingInfos;
-            for (auto& renderTargetInfo : currPass->m_RenderTargetsInfo)
+            for (auto& renderTargetInfo : currentPass->m_RenderTargetsInfo)
             {
                 attachments.emplace_back(GetRGTexture(renderTargetInfo.RenderTargetHandle)->Handle);
                 auto& renderingInfo =
                     renderingInfos.emplace_back(renderTargetInfo.ClearValue, renderTargetInfo.LoadOp, renderTargetInfo.StoreOp);
             }
 
-            if (currPass->m_DepthStencil.has_value())
+            if (currentPass->m_DepthStencil.has_value())
             {
-                auto& depthStencilInfo = currPass->m_DepthStencil.value();
+                auto& depthStencilInfo = currentPass->m_DepthStencil.value();
                 attachments.emplace_back(GetRGTexture(depthStencilInfo.DepthStencilHandle)->Handle);
 
                 // TODO: Stencil
@@ -572,15 +173,15 @@ void RenderGraph::Execute()
 
             cb->BeginRendering(attachments, renderingInfos);
 
-            auto& vs = currPass->m_ViewportScissorInfo.value();
+            auto& vs = currentPass->m_ViewportScissorInfo.value();
             cb->SetViewportAndScissor(vs.Width, vs.Height, vs.OffsetX, vs.OffsetY);
         }
 
-        RenderGraphContext context(*this, *currPass);
-        currPass->Execute(context, cb);
+        RenderGraphContext context(*this, *currentPass);
+        currentPass->Execute(context, cb);
 
-        if (currPass->m_Type == ERGPassType::RGPASS_TYPE_GRAPHICS &&
-            (!currPass->m_RenderTargetsInfo.empty() || currPass->m_DepthStencil.has_value()))
+        if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_GRAPHICS &&
+            (!currentPass->m_RenderTargetsInfo.empty() || currentPass->m_DepthStencil.has_value()))
             cb->EndRendering();
         // LOG_INFO("Pass - {}, taken {:.3f}ms CPU time.", currPass->m_Name, t.GetElapsedMilliseconds());
 
@@ -610,11 +211,11 @@ RGBufferID RenderGraph::DeclareBuffer(const std::string& name, const RGBufferSpe
 
 RGTextureID RenderGraph::AliasTexture(const std::string& name, const std::string& source)
 {
-    PFR_ASSERT(m_TextureNameIDMap.find(source) != m_TextureNameIDMap.end(), "Texture with source name isn't declared");
-    const auto& srcRGTexture = m_Textures.at(m_TextureNameIDMap.at(source).m_ID.value());
-
     PFR_ASSERT(!m_AliasMap.contains(name), "Alias with this name to source texture already contains!");
-    m_AliasMap[name] = source;
+    PFR_ASSERT(m_TextureNameIDMap.find(source) != m_TextureNameIDMap.end(), "Texture with source name isn't declared");
+
+    const auto& srcRGTexture = m_Textures.at(m_TextureNameIDMap.at(source).m_ID.value());
+    m_AliasMap[name]         = source;
 
     auto newDesc      = srcRGTexture->Description;
     newDesc.DebugName = name;
@@ -627,11 +228,11 @@ RGTextureID RenderGraph::AliasTexture(const std::string& name, const std::string
 
 RGBufferID RenderGraph::AliasBuffer(const std::string& name, const std::string& source)
 {
-    PFR_ASSERT(m_BufferNameIDMap.find(source) != m_BufferNameIDMap.end(), "Texture with source name isn't declared");
-    const auto& srcRGBuffer = m_Buffers.at(m_BufferNameIDMap.at(source).m_ID.value());
-
     PFR_ASSERT(!m_AliasMap.contains(name), "Alias with this name to source buffer already contains!");
-    m_AliasMap[name] = source;
+    PFR_ASSERT(m_BufferNameIDMap.find(source) != m_BufferNameIDMap.end(), "Texture with source name isn't declared");
+
+    const auto& srcRGBuffer = m_Buffers.at(m_BufferNameIDMap.at(source).m_ID.value());
+    m_AliasMap[name]        = source;
 
     auto newDesc      = srcRGBuffer->Description;
     newDesc.DebugName = name;
@@ -709,11 +310,706 @@ void RenderGraph::TopologicalSort()
     }
     std::ranges::reverse(m_TopologicallySortedPasses);
 
-    /*LOG_INFO("After TopologicalSort:");
+#if RG_LOG_TOPSORT_RESULT
+    LOG_INFO("After TopologicalSort:");
     for (const auto passIdx : m_TopologicallySortedPasses)
     {
         LOG_INFO("Pass - {}", m_Passes.at(passIdx)->m_Name);
-    }*/
+    }
+#endif
+}
+
+std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferRAWBarriers(const Unique<RGPassBase>& currentPass,
+                                                                     const std::unordered_set<uint32_t>& runPasses)
+{
+    std::vector<BufferMemoryBarrier> bufferMemoryBarriers;
+
+#if RG_LOG_DEBUG_INFO
+    LOG_INFO("\t{}:", __FUNCTION__);
+#endif
+    for (const auto resourceID : currentPass->m_BufferReads)
+    {
+        auto& buffer = m_Buffers.at(resourceID.m_ID.value());
+        if (!buffer->Handle)  // Means it's alias
+        {
+            const auto sourceBufferID = GetBufferID(m_AliasMap[buffer->Name]);
+            buffer->Handle            = m_Buffers.at(sourceBufferID.m_ID.value())->Handle;
+        }
+
+        if (buffer->Handle->GetSpecification().Capacity == 0) continue;
+
+        // TODO: Maybe insert AlreadySyncedWith in the end?
+        Optional<uint32_t> prevPassIdx = std::nullopt;
+        for (const auto writePassIdx : buffer->WritePasses)
+        {
+            if (!runPasses.contains(writePassIdx) || buffer->AlreadySyncedWith.contains(writePassIdx) &&!m_AliasMap.contains(buffer->Name)) continue;
+
+            buffer->AlreadySyncedWith.insert(writePassIdx);
+            prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
+            break;
+        }
+
+        if (!prevPassIdx.has_value()) continue;
+#if RG_LOG_DEBUG_INFO
+        LOG_INFO("\t\t{}", buffer->Handle->GetSpecification().DebugName);
+#endif
+
+        auto& bufferBarrier  = bufferMemoryBarriers.emplace_back(buffer->Handle);
+        const auto& prevPass = m_Passes.at(prevPassIdx.value());
+
+        // Retrieving hard in case resource is aliased.
+        const auto prevResourceState = prevPass->m_BufferStateMap.contains(resourceID.m_ID.value())
+                                           ? prevPass->m_BufferStateMap[resourceID.m_ID.value()]
+                                           : prevPass->m_BufferStateMap[GetBufferID(m_AliasMap[buffer->Name]).m_ID.value()];
+        PFR_ASSERT(prevResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        // NOTE: Nothing to do with this.
+        // if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_STORAGE_BUFFER)) {  }
+
+        // TODO:
+        // if (RGUtils::ResourceStateContains(prevResourceState,EResourceState::RESOURCE_STATE_ACCELERATION_STRUCTURE))
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE))
+        {
+            bufferBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            bufferBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (prevPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            bufferBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            bufferBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
+        }
+
+        const auto currResourceState = currentPass->m_BufferStateMap[resourceID.m_ID.value()];
+        PFR_ASSERT(currResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_INDIRECT_ARGUMENT))
+        {
+            bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+            bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE))
+        {
+            bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                          EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT | EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT |
+                                          EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT |
+                                          EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT |
+                                          EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+            bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE))
+        {
+            bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE))
+        {
+            bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            bufferBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            bufferBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_READ_BIT;  // Maybe RW?
+        }
+    }
+
+    return bufferMemoryBarriers;
+}
+
+std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferWARBarriers(const Unique<RGPassBase>& currentPass,
+                                                                     const std::unordered_set<uint32_t>& runPasses)
+{
+    std::vector<BufferMemoryBarrier> bufferMemoryBarriers;
+#if RG_LOG_DEBUG_INFO
+    LOG_INFO("\t{}:", __FUNCTION__);
+#endif
+    for (const auto resourceID : currentPass->m_BufferWrites)
+    {
+        auto& buffer = m_Buffers.at(resourceID.m_ID.value());
+        if (!buffer->Handle)  // Means it's alias
+        {
+            const auto sourceBufferID = GetBufferID(m_AliasMap[buffer->Name]);
+            buffer->Handle            = m_Buffers.at(sourceBufferID.m_ID.value())->Handle;
+        }
+
+        if (buffer->Handle->GetSpecification().Capacity == 0) continue;
+      //  if (currentPass->m_BufferReads.contains(resourceID)) continue;  // In case it's RMW buffer
+
+        // TODO: Maybe insert AlreadySyncedWith in the end?
+        Optional<uint32_t> prevPassIdx = std::nullopt;
+        for (const auto readPassIdx : buffer->ReadPasses)
+        {
+            if (!runPasses.contains(readPassIdx) || buffer->AlreadySyncedWith.contains(readPassIdx)) continue;
+
+            buffer->AlreadySyncedWith.insert(readPassIdx);
+            prevPassIdx = MakeOptional<uint32_t>(readPassIdx);
+            break;
+        }
+
+        if (!prevPassIdx.has_value()) continue;
+#if RG_LOG_DEBUG_INFO
+        LOG_INFO("\t\t{}", buffer->Handle->GetSpecification().DebugName);
+#endif
+
+        auto& bufferBarrier  = bufferMemoryBarriers.emplace_back(buffer->Handle);
+        const auto& prevPass = m_Passes.at(prevPassIdx.value());
+
+        // Retrieving hard in case resource is aliased.
+        const auto prevResourceState = prevPass->m_BufferStateMap.contains(resourceID.m_ID.value())
+                                           ? prevPass->m_BufferStateMap[resourceID.m_ID.value()]
+                                           : prevPass->m_BufferStateMap[GetBufferID(m_AliasMap[buffer->Name]).m_ID.value()];
+        PFR_ASSERT(prevResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        // NOTE: Nothing to do with this.
+        // if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_STORAGE_BUFFER)) {  }
+
+        // TODO:
+        // if (RGUtils::ResourceStateContains(prevResourceState,EResourceState::RESOURCE_STATE_ACCELERATION_STRUCTURE))
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_INDIRECT_ARGUMENT))
+        {
+            bufferBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_DRAW_INDIRECT_BIT;
+            bufferBarrier.srcAccessMask |= EAccessFlags::ACCESS_INDIRECT_COMMAND_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE))
+        {
+            bufferBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT |
+                                          EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT | EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT |
+                                          EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT |
+                                          EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT |
+                                          EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+            bufferBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE))
+        {
+            bufferBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            bufferBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE))
+        {
+            bufferBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            bufferBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (prevPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            bufferBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            bufferBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_READ_BIT;  // Maybe RW?
+        }
+
+        const auto currResourceState = currentPass->m_BufferStateMap[resourceID.m_ID.value()];
+        PFR_ASSERT(currResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+        bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
+
+        if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            bufferBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            bufferBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
+        }
+    }
+    return bufferMemoryBarriers;
+}
+
+std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferWAWBarriers(const Unique<RGPassBase>& currentPass,
+                                                                     const std::unordered_set<uint32_t>& runPasses)
+{
+    std::vector<BufferMemoryBarrier> bufferMemoryBarriers;
+#if RG_LOG_DEBUG_INFO
+    LOG_INFO("\t{}:", __FUNCTION__);
+#endif
+    for (const auto resourceID : currentPass->m_BufferWrites)
+    {
+        auto& buffer = m_Buffers.at(resourceID.m_ID.value());
+        if (!buffer->Handle)  // Means it's alias
+        {
+            const auto sourceBufferID = GetBufferID(m_AliasMap[buffer->Name]);
+            buffer->Handle            = m_Buffers.at(sourceBufferID.m_ID.value())->Handle;
+        }
+
+        if (buffer->Handle->GetSpecification().Capacity == 0) continue;
+
+        // TODO: Maybe insert AlreadySyncedWith in the end?
+        Optional<uint32_t> prevPassIdx = std::nullopt;
+        for (const auto writePassIdx : buffer->WritePasses)
+        {
+            if (!runPasses.contains(writePassIdx) || buffer->AlreadySyncedWith.contains(writePassIdx)) continue;
+
+            buffer->AlreadySyncedWith.insert(writePassIdx);
+            prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
+            break;
+        }
+
+        if (!prevPassIdx.has_value()) continue;
+#if RG_LOG_DEBUG_INFO
+        LOG_INFO("\t\t{}", buffer->Handle->GetSpecification().DebugName);
+#endif
+
+        auto& bufferBarrier  = bufferMemoryBarriers.emplace_back(buffer->Handle);
+        const auto& prevPass = m_Passes.at(prevPassIdx.value());
+
+        // Retrieving hard in case resource is aliased.
+        const auto prevResourceState = prevPass->m_BufferStateMap.contains(resourceID.m_ID.value())
+                                           ? prevPass->m_BufferStateMap[resourceID.m_ID.value()]
+                                           : prevPass->m_BufferStateMap[GetBufferID(m_AliasMap[buffer->Name]).m_ID.value()];
+        PFR_ASSERT(prevResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        // NOTE: Nothing to do with this.
+        // if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_STORAGE_BUFFER)) {  }
+
+        // TODO:
+        // if (RGUtils::ResourceStateContains(prevResourceState,EResourceState::RESOURCE_STATE_ACCELERATION_STRUCTURE))
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE))
+        {
+            bufferBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            bufferBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (prevPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            bufferBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            bufferBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
+        }
+
+        const auto currResourceState = currentPass->m_BufferStateMap[resourceID.m_ID.value()];
+        PFR_ASSERT(currResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE))
+        {
+            bufferBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            bufferBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            bufferBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            bufferBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
+        }
+    }
+
+    return bufferMemoryBarriers;
+}
+
+std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureRAWBarriers(const Unique<RGPassBase>& currentPass,
+                                                                     const std::unordered_set<uint32_t>& runPasses)
+{
+    std::vector<ImageMemoryBarrier> imageMemoryBarriers;
+#if RG_LOG_DEBUG_INFO
+    LOG_INFO("\t{}:", __FUNCTION__);
+#endif
+    for (const auto resourceID : currentPass->m_TextureReads)
+    {
+        auto& texture = m_Textures.at(resourceID.m_ID.value());
+        if (!texture->Handle)  // Means it's alias
+        {
+            const auto sourceTextureID = GetTextureID(m_AliasMap[texture->Name]);
+            texture->Handle            = m_Textures.at(sourceTextureID.m_ID.value())->Handle;
+        }
+
+        if (currentPass->m_Type != ERGPassType::RGPASS_TYPE_TRANSFER &&
+            texture->Handle->GetImage()->GetSpecification().Layout == EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            continue;
+
+        // TODO: Maybe insert AlreadySyncedWith in the end?
+        Optional<uint32_t> prevPassIdx = std::nullopt;
+        for (const auto writePassIdx : texture->WritePasses)
+        {
+            if (!runPasses.contains(writePassIdx) || texture->AlreadySyncedWith.contains(writePassIdx)) continue;
+
+            texture->AlreadySyncedWith.insert(writePassIdx);
+            prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
+            break;
+        }
+
+        if (!prevPassIdx.has_value()) continue;
+#if RG_LOG_DEBUG_INFO
+        LOG_INFO("\t\t{}", texture->Handle->GetSpecification().DebugName);
+#endif
+
+        // if Write->Write continue(will be synced later)
+        if (currentPass->m_TextureWrites.contains(resourceID)) continue;
+
+        auto& imageBarrier = imageMemoryBarriers.emplace_back();
+        imageBarrier.image = texture->Handle->GetImage();
+
+        const auto& imageSpec = imageBarrier.image->GetSpecification();
+
+        imageBarrier.subresourceRange = {
+            .baseMipLevel   = 0,
+            .mipCount       = imageSpec.Mips,
+            .baseArrayLayer = 0,
+            .layerCount     = imageSpec.Layers,
+        };
+
+        const auto& prevPass = m_Passes.at(prevPassIdx.value());
+        // Retrieving hard in case resource is aliased.
+        const auto prevResourceState = prevPass->m_TextureStateMap.contains(resourceID.m_ID.value())
+                                           ? prevPass->m_TextureStateMap[resourceID.m_ID.value()]
+                                           : prevPass->m_TextureStateMap[GetTextureID(m_AliasMap[texture->Name]).m_ID.value()];
+        PFR_ASSERT(prevResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        // NOTE: Maybe remove storage image usage?
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE) ||
+            RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_STORAGE_IMAGE))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_GENERAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            imageBarrier.srcStageMask |=
+                EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            imageBarrier.srcAccessMask |=
+                EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT;
+        }
+
+        if (prevPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            imageBarrier.oldLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            imageBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
+        }
+
+        const auto currResourceState = currentPass->m_TextureStateMap[resourceID.m_ID.value()];
+        PFR_ASSERT(currResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE))
+        {
+            imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_VERTEX_SHADER_BIT | EPipelineStage::PIPELINE_STAGE_TASK_SHADER_BIT |
+                                         EPipelineStage::PIPELINE_STAGE_MESH_SHADER_BIT |
+                                         EPipelineStage::PIPELINE_STAGE_GEOMETRY_SHADER_BIT |
+                                         EPipelineStage::PIPELINE_STAGE_TESSELLATION_CONTROL_SHADER_BIT |
+                                         EPipelineStage::PIPELINE_STAGE_TESSELLATION_EVALUATION_SHADER_BIT;
+            imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE))
+        {
+            imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE))
+        {
+            imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT;
+        }
+
+        if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            imageBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_READ_BIT;  // Maybe RW?
+        }
+    }
+
+    return imageMemoryBarriers;
+}
+
+std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWARBarriers(const Unique<RGPassBase>& currentPass,
+                                                                     const std::unordered_set<uint32_t>& runPasses)
+{
+    std::vector<ImageMemoryBarrier> imageMemoryBarriers;
+#if RG_LOG_DEBUG_INFO
+    LOG_INFO("\t{}:", __FUNCTION__);
+#endif
+    for (const auto resourceID : currentPass->m_TextureWrites)
+    {
+        // NOTE: First resource creation will be handled in BuildTextureWAWBarriers()
+        if (currentPass->m_TextureCreates.contains(resourceID)) continue;
+
+        auto& texture = m_Textures.at(resourceID.m_ID.value());
+        if (!texture->Handle)  // Means it's alias
+        {
+            const auto sourceTextureID = GetTextureID(m_AliasMap[texture->Name]);
+            texture->Handle            = m_Textures.at(sourceTextureID.m_ID.value())->Handle;
+        }
+
+        // Means aliased, will be handled at BuildTextureWAWBarriers()
+        if (texture->Name != texture->Handle->GetSpecification().DebugName) continue;
+
+        // TODO: Maybe insert AlreadySyncedWith in the end?
+        Optional<uint32_t> prevPassIdx = std::nullopt;
+        for (const auto readPassIdx : texture->ReadPasses)
+        {
+            if (!runPasses.contains(readPassIdx) || texture->AlreadySyncedWith.contains(readPassIdx)) continue;
+
+            texture->AlreadySyncedWith.insert(readPassIdx);
+            prevPassIdx = MakeOptional<uint32_t>(readPassIdx);
+            break;
+        }
+
+        if (!prevPassIdx.has_value()) continue;
+#if RG_LOG_DEBUG_INFO
+        LOG_INFO("\t\t{}", texture->Handle->GetSpecification().DebugName);
+#endif
+        auto& imageBarrier = imageMemoryBarriers.emplace_back();
+        imageBarrier.image = texture->Handle->GetImage();
+
+        const auto& imageSpec         = imageBarrier.image->GetSpecification();
+        imageBarrier.subresourceRange = {
+            .baseMipLevel   = 0,
+            .mipCount       = imageSpec.Mips,
+            .baseArrayLayer = 0,
+            .layerCount     = imageSpec.Layers,
+        };
+
+        const auto& prevPass = m_Passes.at(prevPassIdx.value());
+        // Retrieving hard in case resource is aliased.
+        const auto prevResourceState = prevPass->m_TextureStateMap.contains(resourceID.m_ID.value())
+                                           ? prevPass->m_TextureStateMap[resourceID.m_ID.value()]
+                                           : prevPass->m_TextureStateMap[GetTextureID(m_AliasMap[texture->Name]).m_ID.value()];
+        PFR_ASSERT(prevResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        // NOTE: Maybe remove storage image usage?
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE) ||
+            RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_STORAGE_IMAGE))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_GENERAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            imageBarrier.srcStageMask |=
+                EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT;
+        }
+
+        if (prevPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            imageBarrier.oldLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
+            imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            imageBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_READ_BIT;  // Maybe RW?
+        }
+
+        const auto currResourceState = currentPass->m_TextureStateMap[resourceID.m_ID.value()];
+        PFR_ASSERT(currResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET))
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET))
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+            imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            imageBarrier.dstStageMask |=
+                EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            imageBarrier.dstAccessMask |=
+                EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE) ||
+            RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_STORAGE_IMAGE))
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
+            imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_GENERAL;
+            imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_WRITE_BIT;
+        }
+
+        if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            imageBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
+        }
+    }
+
+    return imageMemoryBarriers;
+}
+
+std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWAWBarriers(const Unique<RGPassBase>& currentPass,
+                                                                     const std::unordered_set<uint32_t>& runPasses)
+{
+    std::vector<ImageMemoryBarrier> imageMemoryBarriers;
+#if RG_LOG_DEBUG_INFO
+    LOG_INFO("\t{}:", __FUNCTION__);
+#endif
+    for (const auto resourceID : currentPass->m_TextureWrites)
+    {
+        auto& texture = m_Textures.at(resourceID.m_ID.value());
+        if (!texture->Handle)  // Means it's alias
+        {
+            const auto sourceTextureID = GetTextureID(m_AliasMap[texture->Name]);
+            texture->Handle            = m_Textures.at(sourceTextureID.m_ID.value())->Handle;
+        }
+
+        // TODO: Maybe insert AlreadySyncedWith in the end?
+        Optional<uint32_t> prevPassIdx = std::nullopt;
+        for (const auto writePassIdx : texture->WritePasses)
+        {
+            if (!runPasses.contains(writePassIdx) || texture->AlreadySyncedWith.contains(writePassIdx)) continue;
+
+            texture->AlreadySyncedWith.insert(writePassIdx);
+            prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
+            break;
+        }
+
+        if (!prevPassIdx.has_value()) continue;
+#if RG_LOG_DEBUG_INFO
+        LOG_INFO("\t\t{}", texture->Handle->GetSpecification().DebugName);
+#endif
+
+        auto& imageBarrier = imageMemoryBarriers.emplace_back();
+        imageBarrier.image = texture->Handle->GetImage();
+
+        const auto& imageSpec       = imageBarrier.image->GetSpecification();
+        const bool bTextureCreation = currentPass->m_TextureCreates.contains(resourceID);
+
+        imageBarrier.subresourceRange = {
+            .baseMipLevel   = 0,
+            .mipCount       = imageSpec.Mips,
+            .baseArrayLayer = 0,
+            .layerCount     = imageSpec.Layers,
+        };
+
+        const auto& prevPass = m_Passes.at(prevPassIdx.value());
+        // Retrieving hard in case resource is aliased.
+        const auto prevResourceState = prevPass->m_TextureStateMap.contains(resourceID.m_ID.value())
+                                           ? prevPass->m_TextureStateMap[resourceID.m_ID.value()]
+                                           : prevPass->m_TextureStateMap[GetTextureID(m_AliasMap[texture->Name]).m_ID.value()];
+        PFR_ASSERT(prevResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+
+        // NOTE: Maybe remove storage image usage?
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE) ||
+            RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_STORAGE_IMAGE))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_GENERAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_WRITE_BIT | EAccessFlags::ACCESS_SHADER_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(prevResourceState, EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET))
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            imageBarrier.srcStageMask |=
+                EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            imageBarrier.srcAccessMask |=
+                EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+        }
+
+        if (prevPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            imageBarrier.oldLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            imageBarrier.srcAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
+        }
+
+        if (bTextureCreation)
+        {
+            imageBarrier.oldLayout     = bTextureCreation ? EImageLayout::IMAGE_LAYOUT_UNDEFINED : imageSpec.Layout;
+            imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT;
+            imageBarrier.srcAccessMask = EAccessFlags::ACCESS_NONE;
+        }
+
+        // NOTE: Since I drop all the things from other Build*Barriers() here:
+        if (imageSpec.Layout == EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        {
+            imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+            imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+            imageBarrier.srcAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_SAMPLED_READ_BIT;
+        }
+
+        const auto currResourceState = currentPass->m_TextureStateMap[resourceID.m_ID.value()];
+        PFR_ASSERT(currResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET))
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+            imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+            imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET))
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+            imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
+            imageBarrier.dstStageMask |=
+                EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
+            imageBarrier.dstAccessMask |=
+                EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_DEPTH_STENCIL_ATTACHMENT_READ_BIT;
+        }
+
+        if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE) ||
+            RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_STORAGE_IMAGE))
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
+            imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_GENERAL;
+            imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
+            imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_WRITE_BIT;
+        }
+
+        if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
+        {
+            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
+            imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
+            imageBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
+        }
+    }
+
+    return imageMemoryBarriers;
 }
 
 void RenderGraph::GraphVizDump()

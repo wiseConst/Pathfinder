@@ -63,15 +63,18 @@ void GBufferPass::AddForwardPlusOpaquePass(Unique<RenderGraph>& rendergraph)
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteRenderTarget("HDRTexture_V0", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
 
-            pd.CameraData              = builder.ReadBuffer("CameraData");
-            pd.LightData               = builder.ReadBuffer("LightData");
-            pd.MeshData                = builder.ReadBuffer("MeshDataOpaque_V1");
-            pd.DrawBuffer              = builder.ReadBuffer("DrawBufferOpaque_V1");
-            pd.CulledMeshes            = builder.ReadBuffer("CulledMeshesOpaque_V1");
-            pd.CulledPointLightIndices = builder.ReadBuffer("CulledPointLightIndices");
-            pd.CulledSpotLightIndices  = builder.ReadBuffer("CulledSpotLightIndices");
-            pd.AOBlurTexture           = builder.ReadTexture("AOBlurTexture");
-            pd.SSSTexture              = builder.ReadTexture("SSSTexture");
+            pd.CameraData   = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.LightData    = builder.ReadBuffer("LightData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.MeshData     = builder.ReadBuffer("MeshDataOpaque_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
+            pd.CulledMeshes = builder.ReadBuffer("CulledMeshesOpaque_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
+            pd.DrawBuffer   = builder.ReadBuffer("DrawBufferOpaque_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE |
+                                                                            EResourceState::RESOURCE_STATE_INDIRECT_ARGUMENT);
+            pd.CulledPointLightIndices =
+                builder.ReadBuffer("CulledPointLightIndices", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.CulledSpotLightIndices =
+                builder.ReadBuffer("CulledSpotLightIndices", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.AOBlurTexture = builder.ReadTexture("AOBlurTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.SSSTexture    = builder.ReadTexture("SSSTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
         },
@@ -132,15 +135,18 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
             builder.WriteRenderTarget("AlbedoTexture_V1", glm::vec4{0.f}, EOp::LOAD, EOp::STORE, "AlbedoTexture_V0");
             builder.WriteRenderTarget("HDRTexture_V1", glm::vec4{0.f}, EOp::LOAD, EOp::STORE, "HDRTexture_V0");
 
-            pd.CameraData              = builder.ReadBuffer("CameraData");
-            pd.LightData               = builder.ReadBuffer("LightData");
-            pd.MeshData                = builder.ReadBuffer("MeshDataTransparent_V1");
-            pd.DrawBuffer              = builder.ReadBuffer("DrawBufferTransparent_V1");
-            pd.CulledMeshes            = builder.ReadBuffer("CulledMeshesTransparent_V1");
-            pd.CulledPointLightIndices = builder.ReadBuffer("CulledPointLightIndices");
-            pd.CulledSpotLightIndices  = builder.ReadBuffer("CulledSpotLightIndices");
-            pd.AOBlurTexture           = builder.ReadTexture("AOBlurTexture");
-            pd.SSSTexture              = builder.ReadTexture("SSSTexture");
+            pd.CameraData   = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.LightData    = builder.ReadBuffer("LightData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.MeshData     = builder.ReadBuffer("MeshDataTransparent_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
+            pd.CulledMeshes = builder.ReadBuffer("CulledMeshesTransparent_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
+            pd.DrawBuffer   = builder.ReadBuffer("DrawBufferTransparent_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE |
+                                                                                 EResourceState::RESOURCE_STATE_INDIRECT_ARGUMENT);
+            pd.CulledPointLightIndices =
+                builder.ReadBuffer("CulledPointLightIndices", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.CulledSpotLightIndices =
+                builder.ReadBuffer("CulledSpotLightIndices", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.AOBlurTexture = builder.ReadTexture("AOBlurTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.SSSTexture    = builder.ReadTexture("SSSTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
         },

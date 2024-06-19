@@ -70,7 +70,7 @@ class VulkanImage final : public Image
     VmaAllocation m_Allocation             = VK_NULL_HANDLE;
     VkImageView m_View                     = VK_NULL_HANDLE;
     VkDescriptorImageInfo m_DescriptorInfo = {};
-    std::vector<VkImageView> m_ViewMips;  // TODO:
+ //   std::vector<VkImageView> m_ViewMips;  // TODO:
 
     VulkanImage() = delete;
     void Invalidate() final override;

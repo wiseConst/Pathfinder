@@ -46,9 +46,9 @@ void FinalCompositePass::AddFinalPass(Unique<RenderGraph>& rendergraph)
                                                   EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT});
             builder.WriteRenderTarget("FinalTexture", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
 
-            pd.AlbedoTexture = builder.ReadTexture("AlbedoTexture_V1");
-            pd.BloomTexture  = builder.ReadTexture("BloomTexture");
-            pd.CameraData    = builder.ReadBuffer("CameraData");
+            pd.AlbedoTexture = builder.ReadTexture("AlbedoTexture_V1", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.BloomTexture  = builder.ReadTexture("BloomTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.CameraData    = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
         },
@@ -80,7 +80,8 @@ void FinalCompositePass::AddSwapchainBlitPass(Unique<RenderGraph>& rendergraph)
 
     rendergraph->AddPass<PassData>(
         "SwapchainBlitPass", ERGPassType::RGPASS_TYPE_GRAPHICS,
-        [=](PassData& pd, RenderGraphBuilder& builder) { pd.FinalTexture = builder.ReadTexture("FinalTexture"); },
+        [=](PassData& pd, RenderGraphBuilder& builder)
+        { pd.FinalTexture = builder.ReadTexture("FinalTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE); },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
         {
             // TODO: Insert barrier manually?

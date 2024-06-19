@@ -20,10 +20,10 @@ void DepthPrePass::AddPass(Unique<RenderGraph>& rendergraph)
 {
     struct PassData
     {
-        RGBufferID MeshDataOpaque;
         RGBufferID CameraData;
-        RGBufferID DrawBufferOpaque;
+        RGBufferID MeshDataOpaque;
         RGBufferID CulledMeshesOpaque;
+        RGBufferID DrawBufferOpaque;
     };
 
     rendergraph->AddPass<PassData>(
@@ -40,10 +40,11 @@ void DepthPrePass::AddPass(Unique<RenderGraph>& rendergraph)
                                                                  EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteDepthStencil("DepthOpaque", DepthStencilClearValue(0.f, 0), EOp::CLEAR, EOp::STORE);
 
-            pd.CameraData         = builder.ReadBuffer("CameraData");
-            pd.MeshDataOpaque     = builder.ReadBuffer("MeshDataOpaque_V1");
-            pd.DrawBufferOpaque   = builder.ReadBuffer("DrawBufferOpaque_V1");
-            pd.CulledMeshesOpaque = builder.ReadBuffer("CulledMeshesOpaque_V1");
+            pd.CameraData         = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
+            pd.MeshDataOpaque     = builder.ReadBuffer("MeshDataOpaque_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
+            pd.CulledMeshesOpaque = builder.ReadBuffer("CulledMeshesOpaque_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
+            pd.DrawBufferOpaque   = builder.ReadBuffer("DrawBufferOpaque_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE |
+                                                                                  EResourceState::RESOURCE_STATE_INDIRECT_ARGUMENT);
 
             builder.SetViewportScissor(m_Width, m_Height);
         },

@@ -37,10 +37,10 @@ void LightCullingPass::AddLightCullingPass(Unique<RenderGraph>& rendergraph)
         "LightCullingPass", ERGPassType::RGPASS_TYPE_COMPUTE,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
-            pd.CameraData        = builder.ReadBuffer("CameraData");
-            pd.LightData         = builder.ReadBuffer("LightData");
-            pd.LightCullFrustums = builder.ReadBuffer("LightCullFrustums");
-            pd.DepthOpaque       = builder.ReadTexture("DepthOpaque");
+            pd.CameraData        = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE);
+            pd.LightData         = builder.ReadBuffer("LightData", EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE);
+            pd.LightCullFrustums = builder.ReadBuffer("LightCullFrustums", EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE);
+            pd.DepthOpaque       = builder.ReadTexture("DepthOpaque", EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE);
 
             // TODO: Move  FrustumDebugTexture to ComputeFrustums pass
             builder.DeclareTexture("FrustumDebugTexture",
@@ -136,7 +136,8 @@ void LightCullingPass::AddComputeLightCullingFrustumsPass(Unique<RenderGraph>& r
                                                         .Capacity   = sizeof(TileFrustum) * adjustedTiledWidth * adjustedTiledHeight});
             pd.LightCullFrustums = builder.WriteBuffer("LightCullFrustums");
 
-            pd.CameraData = builder.ReadBuffer("CameraData");
+            pd.CameraData = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_STORAGE_BUFFER |
+                                                                 EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE);
         },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
         {

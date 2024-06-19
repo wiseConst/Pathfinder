@@ -42,24 +42,6 @@ class RenderGraph final : private Uncopyable, private Unmovable
     RGTextureID AliasTexture(const std::string& name, const std::string& source);
     RGBufferID AliasBuffer(const std::string& name, const std::string& source);
 
-#if 0
-    void AddTextureAlias(const std::string& name, const RGTextureID textureID)
-    {
-        PFR_ASSERT(!name.empty(), "Name is empty!");
-        PFR_ASSERT(!m_TextureNameIDMap.contains(name), "Wrong name to alias! Already present!");
-
-        m_TextureNameIDMap[name] = textureID;
-    }
-
-    void AddBufferAlias(const std::string& name, const RGBufferID bufferID)
-    {
-        PFR_ASSERT(!name.empty(), "Name is empty!");
-        PFR_ASSERT(!m_BufferNameIDMap.contains(name), "Wrong name to alias! Already present!");
-
-        m_BufferNameIDMap[name] = bufferID;
-    }
-#endif
-
     FORCEINLINE NODISCARD RGTextureID GetTextureID(const std::string& name) const
     {
         PFR_ASSERT(!name.empty(), "Invalid texture name!");
@@ -87,9 +69,6 @@ class RenderGraph final : private Uncopyable, private Unmovable
     uint8_t m_CurrentFrameIndex{};
     RenderGraphResourcePool& m_ResourcePool;
 
-    // NOTE: Testing.
-    std::unordered_map<std::string, std::string> m_AliasMap;
-
     std::vector<Unique<RGPassBase>> m_Passes;
     std::vector<Unique<RGTexture>> m_Textures;
     std::vector<Unique<RGBuffer>> m_Buffers;
@@ -97,13 +76,35 @@ class RenderGraph final : private Uncopyable, private Unmovable
     std::vector<uint32_t> m_TopologicallySortedPasses;
     std::vector<std::vector<uint32_t>> m_AdjdacencyLists;
 
+    std::unordered_map<std::string, std::string> m_AliasMap;
     std::unordered_map<std::string, RGTextureID> m_TextureNameIDMap;
     std::unordered_map<std::string, RGBufferID> m_BufferNameIDMap;
 
     void BuildAdjacencyLists();
     void TopologicalSort();
 
+    // TODO: Populate it, cuz it's poor dump rn.
     void GraphVizDump();
+
+    // BUFFER: Read-After-Write
+    std::vector<BufferMemoryBarrier> BuildBufferRAWBarriers(const Unique<RGPassBase>& currentPass,
+                                                            const std::unordered_set<uint32_t>& runPasses);
+    // BUFFER: Write-After-Read
+    std::vector<BufferMemoryBarrier> BuildBufferWARBarriers(const Unique<RGPassBase>& currentPass,
+                                                            const std::unordered_set<uint32_t>& runPasses);
+    // BUFFER: Write-After-Write
+    std::vector<BufferMemoryBarrier> BuildBufferWAWBarriers(const Unique<RGPassBase>& currentPass,
+                                                            const std::unordered_set<uint32_t>& runPasses);
+
+    // BUFFER: Read-After-Write
+    std::vector<ImageMemoryBarrier> BuildTextureRAWBarriers(const Unique<RGPassBase>& currentPass,
+                                                            const std::unordered_set<uint32_t>& runPasses);
+    // TEXTURE: Write-After-Read
+    std::vector<ImageMemoryBarrier> BuildTextureWARBarriers(const Unique<RGPassBase>& currentPass,
+                                                            const std::unordered_set<uint32_t>& runPasses);
+    // TEXTURE: Write-After-Write
+    std::vector<ImageMemoryBarrier> BuildTextureWAWBarriers(const Unique<RGPassBase>& currentPass,
+                                                            const std::unordered_set<uint32_t>& runPasses);
 };
 
 }  // namespace Pathfinder

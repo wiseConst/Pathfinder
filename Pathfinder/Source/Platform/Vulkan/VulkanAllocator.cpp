@@ -47,7 +47,7 @@ void VulkanAllocator::CreateImage(const VkImageCreateInfo& imageCI, VkImage& ima
 void VulkanAllocator::CreateBuffer(const VkBufferCreateInfo& bufferCI, VkBuffer& buffer, VmaAllocation& allocation,
                                    const BufferFlags extraFlags)
 {
-    PFR_ASSERT(extraFlags != 0, "Can't create buffer with extraFlags == 0!");
+    PFR_ASSERT(extraFlags != 0, "Can't create buffer with empty extraFlags!");
     const bool bIsDeviceLocal = (extraFlags & EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL) == EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL;
     constexpr VmaAllocationCreateFlags vmaResizableBARFlags =
         VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT |

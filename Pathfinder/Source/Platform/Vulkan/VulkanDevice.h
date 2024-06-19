@@ -8,7 +8,6 @@ namespace Pathfinder
 {
 
 class VulkanAllocator;
-class VulkanDescriptorAllocator;
 class VulkanDevice final : private Uncopyable, private Unmovable
 {
   public:
@@ -19,7 +18,6 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     void FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const CommandBufferSpecification& commandBufferSpec) const;
 
     NODISCARD FORCEINLINE const auto& GetAllocator() const { return m_VMA; }
-    NODISCARD FORCEINLINE const auto& GetDescriptorAllocator() const { return m_VDA; }
 
     FORCEINLINE void WaitDeviceOnFinish() const
     {
@@ -101,7 +99,6 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     VkPipelineCache m_PipelineCache           = VK_NULL_HANDLE;
 
     Unique<VulkanAllocator> m_VMA;
-    Unique<VulkanDescriptorAllocator> m_VDA;
 
     VulkanDevice() = delete;
     void ChooseBestPhysicalDevice(const VkInstance& instance);

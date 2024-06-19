@@ -29,7 +29,7 @@ void ObjectCullingPass::AddPass(Unique<RenderGraph>& rendergraph)
         "ObjectCullingPass", ERGPassType::RGPASS_TYPE_COMPUTE,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
-            pd.CameraData = builder.ReadBuffer("CameraData");
+            pd.CameraData = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE);
 
             pd.MeshDataOpaque          = builder.WriteBuffer("MeshDataOpaque_V1", "MeshDataOpaque_V0");
             pd.MeshDataTransparent     = builder.WriteBuffer("MeshDataTransparent_V1", "MeshDataTransparent_V0");

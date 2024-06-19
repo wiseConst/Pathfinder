@@ -133,7 +133,7 @@ class SamplerStorage : private Uncopyable, private Unmovable
         // Decrement image usage or destroy.
         if (auto it = s_Samplers.find(samplerSpec); it != s_Samplers.end())
         {
-            if (it->second.first == 1 || it->second.first == 0)
+            if (it->second.first == 1)
             {
                 s_Instance->DestroySamplerImpl(it->second.second);
                 s_Samplers.erase(it);
@@ -158,7 +158,7 @@ class SamplerStorage : private Uncopyable, private Unmovable
 namespace ImageUtils
 {
 
-static bool IsDepthFormat(const EImageFormat imageFormat)
+FORCEINLINE NODISCARD static bool IsDepthFormat(const EImageFormat imageFormat)
 {
     switch (imageFormat)
     {
@@ -175,7 +175,7 @@ static bool IsDepthFormat(const EImageFormat imageFormat)
     return false;
 }
 
-static bool IsStencilFormat(const EImageFormat imageFormat)
+FORCEINLINE NODISCARD static bool IsStencilFormat(const EImageFormat imageFormat)
 {
     switch (imageFormat)
     {
@@ -198,7 +198,7 @@ void* ConvertRgbToRgba(const uint8_t* rgb, const uint32_t width, const uint32_t 
 
 void UnloadRawImage(void* data);
 
-FORCEINLINE static uint32_t CalculateMipCount(const uint32_t width, const uint32_t height)
+FORCEINLINE NODISCARD static uint32_t CalculateMipCount(const uint32_t width, const uint32_t height)
 {
     return static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;  // +1 for base mip level.
 }

@@ -2,45 +2,13 @@
 
 #include <Core/Core.h>
 #include <Core/Math.h>
-#include "Image.h"
 #include "RendererCoreDefines.h"
-#include "Shader.h"
 
 namespace Pathfinder
 {
 
-struct MemoryBarrier
-{
-    RendererTypeFlags srcStageMask  = EPipelineStage::PIPELINE_STAGE_NONE;
-    RendererTypeFlags srcAccessMask = EAccessFlags::ACCESS_NONE;
-    RendererTypeFlags dstStageMask  = EPipelineStage::PIPELINE_STAGE_NONE;
-    RendererTypeFlags dstAccessMask = EAccessFlags::ACCESS_NONE;
-};
-
-struct BufferMemoryBarrier
-{
-    Shared<Buffer> buffer                       = nullptr;
-    RendererTypeFlags srcStageMask              = EPipelineStage::PIPELINE_STAGE_NONE;
-    RendererTypeFlags srcAccessMask             = EAccessFlags::ACCESS_NONE;
-    RendererTypeFlags dstStageMask              = EPipelineStage::PIPELINE_STAGE_NONE;
-    RendererTypeFlags dstAccessMask             = EAccessFlags::ACCESS_NONE;
-    std::optional<uint32_t> srcQueueFamilyIndex = std::nullopt;
-    std::optional<uint32_t> dstQueueFamilyIndex = std::nullopt;
-};
-
-struct ImageMemoryBarrier
-{
-    RendererTypeFlags srcStageMask              = EPipelineStage::PIPELINE_STAGE_NONE;
-    RendererTypeFlags srcAccessMask             = EAccessFlags::ACCESS_NONE;
-    RendererTypeFlags dstStageMask              = EPipelineStage::PIPELINE_STAGE_NONE;
-    RendererTypeFlags dstAccessMask             = EAccessFlags::ACCESS_NONE;
-    EImageLayout oldLayout                      = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
-    EImageLayout newLayout                      = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
-    std::optional<uint32_t> srcQueueFamilyIndex = std::nullopt;
-    std::optional<uint32_t> dstQueueFamilyIndex = std::nullopt;
-    Shared<Image> image                         = nullptr;
-    ImageSubresourceRange subresourceRange{};
-};
+class Pipeline;
+class Texture;
 
 enum class ECommandBufferType : uint8_t
 {
@@ -88,8 +56,6 @@ class SyncPoint : private Uncopyable, private Unmovable
     SyncPoint() = delete;
 };
 
-class Pipeline;
-class Texture;
 class CommandBuffer : private Uncopyable, private Unmovable
 {
   public:

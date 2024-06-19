@@ -35,7 +35,7 @@ struct RenderGraphResource
     std::unordered_set<uint32_t> ReadPasses;
 
     std::unordered_set<uint32_t> AlreadySyncedWith;
-    EResourceState State = EResourceState::RESOURCE_STATE_COMMON;
+   // EResourceState State = EResourceState::RESOURCE_STATE_UNDEFINED;
     uint64_t ID{};
     // uint64_t Version{};
     // uint64_t RefCounter{};

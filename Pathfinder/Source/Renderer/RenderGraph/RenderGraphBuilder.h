@@ -9,6 +9,8 @@
 namespace Pathfinder
 {
 
+class RenderGraph;
+
 class RenderGraphBuilder final : private Uncopyable, private Unmovable
 {
   public:
@@ -25,7 +27,7 @@ class RenderGraphBuilder final : private Uncopyable, private Unmovable
     void DeclareTexture(const std::string& name, const RGTextureSpecification& rgTextureSpec);
 
     RGTextureID WriteTexture(const std::string& name, const std::string& input = s_DEFAULT_STRING);
-    RGTextureID ReadTexture(const std::string& name);
+    RGTextureID ReadTexture(const std::string& name, const ResourceStateFlags resourceStateFlags);
 
     RGTextureID WriteRenderTarget(const std::string& name, const ColorClearValue& clearValue, const EOp loadOp, const EOp storeOp,
                                   const std::string& input = s_DEFAULT_STRING);
@@ -35,7 +37,7 @@ class RenderGraphBuilder final : private Uncopyable, private Unmovable
 
     // NOTE: Can be extended in future by adding EResourceState::storage/vertex/index_buffer
     RGBufferID WriteBuffer(const std::string& name, const std::string& input = s_DEFAULT_STRING);
-    RGBufferID ReadBuffer(const std::string& name);
+    RGBufferID ReadBuffer(const std::string& name, const ResourceStateFlags resourceStateFlags);
 
   private:
     RenderGraph& m_RenderGraphRef;

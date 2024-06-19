@@ -32,8 +32,9 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
         "FramePreparePass", ERGPassType::RGPASS_TYPE_TRANSFER,
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
-            RGBufferSpecification perFrameBS = {
-                .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL, .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE, .bPerFrame = true};
+            RGBufferSpecification perFrameBS = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL | EBufferFlag::BUFFER_FLAG_MAPPED,
+                                                .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE,
+                                                .bPerFrame  = true};
 
             perFrameBS.DebugName = "MeshDataOpaque_V0";
             builder.DeclareBuffer("MeshDataOpaque_V0", perFrameBS);
@@ -54,9 +55,7 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
             pd.CameraData = builder.WriteBuffer("CameraData");
 
             RGBufferSpecification drawBufferBS = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_ADDRESSABLE | EBufferFlag::BUFFER_FLAG_MAPPED,
-                                                  .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
-                                                                EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE |
-                                                                EBufferUsage::BUFFER_USAGE_INDIRECT};
+                                                  .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE | EBufferUsage::BUFFER_USAGE_INDIRECT};
 
             drawBufferBS.DebugName = "DrawBufferOpaque_V0";
             builder.DeclareBuffer("DrawBufferOpaque_V0", drawBufferBS);

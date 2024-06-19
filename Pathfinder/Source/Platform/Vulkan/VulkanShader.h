@@ -3,7 +3,6 @@
 #include "Renderer/Shader.h"
 #include "Renderer/Buffer.h"
 #include "VulkanCore.h"
-#include "VulkanDescriptors.h"
 
 #include "spirv-reflect/spirv_reflect.h"
 
@@ -26,10 +25,9 @@ class VulkanShader final : public Shader
   private:
     struct ShaderDescription
     {
-        EShaderStage Stage = EShaderStage::SHADER_STAGE_VERTEX;
-
-        std::string EntrypointName = "main";
+        EShaderStage Stage         = EShaderStage::SHADER_STAGE_VERTEX;
         VkShaderModule Module      = VK_NULL_HANDLE;
+        std::string EntrypointName = "main";
     };
 
     std::vector<ShaderDescription> m_ShaderDescriptions;

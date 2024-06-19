@@ -5,7 +5,6 @@
 #include "RenderGraphContext.h"
 
 #include <unordered_set>
-#include <optional>
 
 namespace Pathfinder
 {
@@ -84,8 +83,8 @@ class RenderGraphPassBase : private Uncopyable, private Unmovable
     std::unordered_map<RGBufferID, ResourceStateFlags> m_BufferStateMap;
 
     std::vector<RenderTargetInfo> m_RenderTargetsInfo;
-    std::optional<DepthStencilInfo> m_DepthStencil           = std::nullopt;
-    std::optional<ViewportScissorInfo> m_ViewportScissorInfo = std::nullopt;
+    Optional<DepthStencilInfo> m_DepthStencil           = std::nullopt;
+    Optional<ViewportScissorInfo> m_ViewportScissorInfo = std::nullopt;
 };
 using RGPassBase = RenderGraphPassBase;
 

@@ -3,7 +3,6 @@
 #include <Core/Math.h>
 #include <array>
 #include <map>
-#include <optional>
 #include <variant>
 
 #include "Globals.h"
@@ -18,11 +17,12 @@ namespace Pathfinder
 
 static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
 
-class CommandBuffer;
-using CommandBufferPerFrame = std::array<Shared<CommandBuffer>, s_FRAMES_IN_FLIGHT>;
-
+class Image;
 class Buffer;
-using BufferPerFrame = std::array<Shared<Buffer>, s_FRAMES_IN_FLIGHT>;
+class CommandBuffer;
+
+using CommandBufferPerFrame = std::array<Shared<CommandBuffer>, s_FRAMES_IN_FLIGHT>;
+using BufferPerFrame        = std::array<Shared<Buffer>, s_FRAMES_IN_FLIGHT>;
 
 using ColorClearValue = glm::vec4;
 
@@ -143,6 +143,52 @@ enum EAccessFlags : RendererTypeFlags
     ACCESS_SHADER_BINDING_TABLE_READ_BIT             = 0x10000000000ULL
 };
 
+struct MemoryBarrier
+{
+    RendererTypeFlags srcStageMask  = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags srcAccessMask = EAccessFlags::ACCESS_NONE;
+    RendererTypeFlags dstStageMask  = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags dstAccessMask = EAccessFlags::ACCESS_NONE;
+};
+
+struct BufferMemoryBarrier
+{
+    Shared<Buffer> buffer                  = nullptr;
+    RendererTypeFlags srcStageMask         = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags srcAccessMask        = EAccessFlags::ACCESS_NONE;
+    RendererTypeFlags dstStageMask         = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags dstAccessMask        = EAccessFlags::ACCESS_NONE;
+    Optional<uint32_t> srcQueueFamilyIndex = std::nullopt;
+    Optional<uint32_t> dstQueueFamilyIndex = std::nullopt;
+};
+
+enum class EImageLayout : uint8_t
+{
+    IMAGE_LAYOUT_UNDEFINED = 0,
+    IMAGE_LAYOUT_GENERAL,
+    IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
+    IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
+    IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
+    IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+    IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+    IMAGE_LAYOUT_PRESENT_SRC,
+    IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL
+};
+
+struct ImageMemoryBarrier
+{
+    RendererTypeFlags srcStageMask         = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags srcAccessMask        = EAccessFlags::ACCESS_NONE;
+    RendererTypeFlags dstStageMask         = EPipelineStage::PIPELINE_STAGE_NONE;
+    RendererTypeFlags dstAccessMask        = EAccessFlags::ACCESS_NONE;
+    EImageLayout oldLayout                 = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+    EImageLayout newLayout                 = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
+    Optional<uint32_t> srcQueueFamilyIndex = std::nullopt;
+    Optional<uint32_t> dstQueueFamilyIndex = std::nullopt;
+    Shared<Image> image                    = nullptr;
+    ImageSubresourceRange subresourceRange{};
+};
+
 enum class EQueryPipelineStatistic : uint32_t
 {
     QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT                    = BIT(0),
@@ -216,19 +262,6 @@ enum class EImageFormat : uint8_t
     FORMAT_BC7_SRGB,
 };
 
-enum class EImageLayout : uint8_t
-{
-    IMAGE_LAYOUT_UNDEFINED = 0,
-    IMAGE_LAYOUT_GENERAL,
-    IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL,
-    IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL,
-    IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-    IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
-    IMAGE_LAYOUT_PRESENT_SRC,
-    IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL
-};
-
 using ImageUsageFlags = uint32_t;
 enum EImageUsage : ImageUsageFlags
 {
@@ -247,7 +280,7 @@ enum EBufferFlag : BufferFlags
 {
     BUFFER_FLAG_ADDRESSABLE  = BIT(0),
     BUFFER_FLAG_DEVICE_LOCAL = BIT(1) | BUFFER_FLAG_ADDRESSABLE,
-    BUFFER_FLAG_MAPPED       = BIT(2),
+    BUFFER_FLAG_MAPPED       = BIT(2),  // NOTE: In case only BUFFER_FLAG_MAPPED it's placed in CPU memory.
 };
 
 using BufferUsageFlags = uint32_t;
@@ -256,7 +289,7 @@ enum EBufferUsage : BufferUsageFlags
     BUFFER_USAGE_VERTEX                                       = BIT(0),
     BUFFER_USAGE_INDEX                                        = BIT(1),
     BUFFER_USAGE_STORAGE                                      = BIT(2),
-    BUFFER_USAGE_TRANSFER_SOURCE                              = BIT(3),  // NOTE: Mark as BUFFER_USAGE_TRANSFER_SOURCE to place in CPU only.
+    BUFFER_USAGE_TRANSFER_SOURCE                              = BIT(3),
     BUFFER_USAGE_TRANSFER_DESTINATION                         = BIT(4),
     BUFFER_USAGE_UNIFORM                                      = BIT(5),
     BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY = BIT(6),
@@ -276,21 +309,17 @@ enum class EOp : uint8_t
 using ResourceStateFlags = uint32_t;
 enum EResourceState : ResourceStateFlags
 {
-    RESOURCE_STATE_COMMON                   = BIT(0),
-    RESOURCE_STATE_VERTEX_BUFFER            = BIT(1),
-    RESOURCE_STATE_STORAGE_BUFFER           = BIT(2),
-    RESOURCE_STATE_INDEX_BUFFER             = BIT(3),
-    RESOURCE_STATE_RENDER_TARGET            = BIT(4),
-    RESOURCE_STATE_TEXTURE                  = BIT(5),
-    RESOURCE_STATE_STORAGE_IMAGE            = BIT(6),
-    RESOURCE_STATE_DEPTH_WRITE              = BIT(7),
-    RESOURCE_STATE_DEPTH_READ               = BIT(8),
-    RESOURCE_STATE_COMPUTE_SHADER_RESOURCE  = BIT(9),
-    RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE = BIT(10),
-    RESOURCE_STATE_INDIRECT_ARGUMENT        = BIT(11),
-    RESOURCE_STATE_COPY_DESTINATION         = BIT(12),
-    RESOURCE_STATE_COPY_SOURCE              = BIT(13),
-    RESOURCE_STATE_ACCELERATION_STRUCTURE   = BIT(14)
+    RESOURCE_STATE_UNDEFINED                = BIT(0),
+    RESOURCE_STATE_STORAGE_BUFFER           = BIT(1),
+    RESOURCE_STATE_INDIRECT_ARGUMENT        = BIT(3),
+    RESOURCE_STATE_ACCELERATION_STRUCTURE   = BIT(4),
+    RESOURCE_STATE_COLOR_RENDER_TARGET      = BIT(5),
+    RESOURCE_STATE_DEPTH_RENDER_TARGET      = BIT(6),
+    RESOURCE_STATE_TEXTURE                  = BIT(7),
+    RESOURCE_STATE_STORAGE_IMAGE            = BIT(8),
+    RESOURCE_STATE_VERTEX_SHADER_RESOURCE   = BIT(9),
+    RESOURCE_STATE_COMPUTE_SHADER_RESOURCE  = BIT(10),
+    RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE = BIT(11),
 };
 
 struct RenderingInfo

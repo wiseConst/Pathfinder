@@ -68,19 +68,12 @@ void Renderer::Init()
 
     for (uint8_t frameIndex{}; frameIndex < s_FRAMES_IN_FLIGHT; ++frameIndex)
     {
-        CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
-                                             .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
-                                             .FrameIndex = frameIndex,
-                                             .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+        const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
+                                                   .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                   .FrameIndex = frameIndex,
+                                                   .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
 
-        cbSpec.Type                                        = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL;
         s_RendererData->RenderCommandBuffer.at(frameIndex) = CommandBuffer::Create(cbSpec);
-
-        cbSpec.Type                                         = ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE_ASYNC;
-        s_RendererData->ComputeCommandBuffer.at(frameIndex) = CommandBuffer::Create(cbSpec);
-
-        cbSpec.Type                                          = ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC;
-        s_RendererData->TransferCommandBuffer.at(frameIndex) = CommandBuffer::Create(cbSpec);
     }
 
     ShaderLibrary::WaitUntilShadersLoaded();
@@ -198,9 +191,6 @@ void Renderer::Begin()
     s_RendererData->LightStruct->PointLightCount           = s_RendererData->LightStruct->SpotLightCount =
         s_RendererData->LightStruct->DirectionalLightCount = 0;
 
-    // TODO-FIXME: queue family indices thing (ownership)
-    s_RendererData->TransferCommandBuffer.at(s_RendererData->FrameIndex)->BeginRecording(true);
-    s_RendererData->ComputeCommandBuffer.at(s_RendererData->FrameIndex)->BeginRecording(true);
     s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex)->BeginRecording(true);
 
     // NOTE: Once per frame
@@ -209,11 +199,6 @@ void Renderer::Begin()
     s_DescriptorManager->Bind(s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex),
                               EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT);
     s_DescriptorManager->Bind(s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex),
-                              EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT);
-
-    // Bind mega descriptor set to compute command buffer for Graphics, Compute, RT stages.
-    s_DescriptorManager->Bind(s_RendererData->ComputeCommandBuffer.at(s_RendererData->FrameIndex));
-    s_DescriptorManager->Bind(s_RendererData->ComputeCommandBuffer.at(s_RendererData->FrameIndex),
                               EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT);
 
     Renderer2D::Begin();
@@ -241,12 +226,6 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     rg->Build();
     rg->Execute();
 
-    s_RendererData->ComputeCommandBuffer.at(s_RendererData->FrameIndex)->EndRecording();
-
-    s_RendererData->TransferCommandBuffer.at(s_RendererData->FrameIndex)->EndRecording();
-    const auto transferSyncPoint = s_RendererData->TransferCommandBuffer.at(s_RendererData->FrameIndex)->Submit();
-    const auto computeSyncPoint  = s_RendererData->ComputeCommandBuffer.at(s_RendererData->FrameIndex)->Submit({transferSyncPoint});
-
     if (uiLayer) uiLayer->EndRender();
 
     s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex)->EndRecording();
@@ -257,8 +236,7 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     const auto swapchainRenderFinishedSyncPoint =
         SyncPoint::Create(swapchain->GetRenderSemaphore(), 1, EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT);
     s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex)
-        ->Submit({transferSyncPoint, computeSyncPoint, swapchainImageAvailableSyncPoint}, {swapchainRenderFinishedSyncPoint},
-                 swapchain->GetRenderFence());
+        ->Submit({swapchainImageAvailableSyncPoint}, {swapchainRenderFinishedSyncPoint}, swapchain->GetRenderFence());
     s_RendererData->bIsFrameBegin = false;
 }
 

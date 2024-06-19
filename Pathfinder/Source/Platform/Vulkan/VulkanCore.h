@@ -15,9 +15,9 @@ namespace Pathfinder
 #define PFR_VK_API_VERSION VK_API_VERSION_1_3
 
 #define VK_FORCE_VALIDATION 1
-#define VK_FORCE_SHADER_COMPILATION 0
+#define VK_FORCE_SHADER_COMPILATION 1
 #define VK_FORCE_PIPELINE_COMPILATION 0
-#define VK_FORCE_DRIVER_PIPELINE_CACHE 0
+#define VK_FORCE_DRIVER_PIPELINE_CACHE 1
 
 #define VK_LOG_VMA_ALLOCATIONS 0
 #define VK_LOG_INFO 0
@@ -35,8 +35,8 @@ static const std::vector<const char*> s_InstanceLayers = {
 #ifdef PFR_LINUX
     "VK_LAYER_MESA_overlay",  // Linux statistics overlay(framerate graph etc)
 #endif
-
 };
+
 static const std::vector<const char*> s_InstanceExtensions = {
     VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,  // Required by full screen ext
 };
