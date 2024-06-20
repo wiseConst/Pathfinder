@@ -33,6 +33,21 @@ layout(location = 0) out VertexOutput
 
 #define DEBUG_MESHLETS 0
 
+// NOTE: Seems like both glm and glsl have different functions for packing/unpacking, cuz unpackUnorm4x8 from glsl doesn't work when I pack by glm.
+vec4 glm_unpackUnorm4x8(const uint32_t packed)
+{
+    const float r = float((packed >> 24) & 0xFF) * 0.0039215686274509803921568627451f;
+    const float g = float((packed >> 16) & 0xFF) * 0.0039215686274509803921568627451f;
+    const float b = float((packed >> 8) & 0xFF) * 0.0039215686274509803921568627451f;
+    const float a = float(packed & 0xFF) * 0.0039215686274509803921568627451f;
+    return vec4(r, g, b, a);
+}
+
+vec3 unpackUnorm3x8(const u8vec3 packed)
+{
+    return vec3(int32_t(packed.x), int32_t(packed.y), int32_t(packed.z)) / 127.0 - 1.0;
+}
+
 void main()
 {
     uint32_t i = 0; // reusable var
@@ -65,7 +80,7 @@ void main()
         gl_MeshVerticesEXT[i].gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
         o_VertexOutput[i].WorldPos = worldPos;
 
-        o_VertexOutput[i].Color = VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Color;//unpackUnorm4x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Color);
+        o_VertexOutput[i].Color = glm_unpackUnorm4x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Color);
         #if DEBUG_MESHLETS
               o_VertexOutput[i].Color = vec4(mcolor, 1.0);
         #endif
@@ -73,8 +88,8 @@ void main()
         o_VertexOutput[i].UV = VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].UV;
         o_VertexOutput[i].MaterialBufferBDA = md.materialBufferBDA;
 
-        const vec3 N = normalize(normalMatrix * VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Normal);
-        vec3 T = normalize(normalMatrix * VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Tangent);
+        const vec3 N = normalize(normalMatrix * unpackUnorm3x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Normal));
+        vec3 T = normalize(normalMatrix * unpackUnorm3x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Tangent));
         T = normalize(T - dot(T, N) * N);
         const vec3 B = cross(N, T);
         o_VertexOutput[i].TBNtoWorld = mat3(T, B, N);

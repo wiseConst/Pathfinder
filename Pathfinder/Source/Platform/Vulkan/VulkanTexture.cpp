@@ -18,19 +18,17 @@ VulkanTexture::VulkanTexture(const TextureSpecification& textureSpec, const void
     Invalidate(data, dataSize);
 }
 
-NODISCARD const VkDescriptorImageInfo& VulkanTexture::GetDescriptorInfo()
+NODISCARD const VkDescriptorImageInfo VulkanTexture::GetDescriptorInfo() const
 {
-    if (m_Image; const auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Image))
-    {
-        m_DescriptorInfo = vulkanImage->GetDescriptorInfo();
-    }
-    else
-    {
-        PFR_ASSERT(false, "VulkanTexture: m_Image is not valid! or failed to cast ot VulkanImage!");
-    }
+    PFR_ASSERT(m_Image, "VulkanTexture: m_Image is not valid!");
+    PFR_ASSERT(m_Sampler, "Sampler is not valid!");
 
-    m_DescriptorInfo.sampler = m_Sampler;
-    return m_DescriptorInfo;
+    const auto vulkanImage = std::static_pointer_cast<VulkanImage>(m_Image);
+    PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+
+    return VkDescriptorImageInfo{.sampler     = m_Sampler,
+                                 .imageView   = vulkanImage->GetView(),
+                                 .imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Image->GetSpecification().Layout)};
 }
 
 void VulkanTexture::Destroy()
@@ -38,6 +36,7 @@ void VulkanTexture::Destroy()
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
     if (m_BindlessIndex.has_value()) Renderer::GetDescriptorManager()->FreeTexture(m_BindlessIndex);
+    if (m_Sampler) SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
 
     const SamplerSpecification samplerSpec = {m_Specification.Filter, m_Specification.Wrap};
     SamplerStorage::DestroySampler(samplerSpec);

@@ -4,6 +4,7 @@
 #ifdef __cplusplus
 using vec2    = glm::vec2;
 using u16vec2 = glm::u16vec2;
+using u8vec3  = glm::u8vec3;
 using u8vec4  = glm::u8vec4;
 using vec3    = glm::vec3;
 using vec4    = glm::vec4;

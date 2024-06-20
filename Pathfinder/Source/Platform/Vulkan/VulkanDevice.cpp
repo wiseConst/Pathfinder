@@ -605,15 +605,16 @@ void VulkanDevice::ChooseBestPhysicalDevice(const VkInstance& instance)
     LOG_INFO(" Using Vulkan API Version: {}.{}.{}", VK_API_VERSION_MAJOR(suitableGpu.Properties.apiVersion),
              VK_API_VERSION_MINOR(suitableGpu.Properties.apiVersion), VK_API_VERSION_PATCH(suitableGpu.Properties.apiVersion));
 
-    m_DeviceName      = suitableGpu.Properties.deviceName;
-    m_PhysicalDevice  = suitableGpu.PhysicalDevice;
-    m_TimestampPeriod = suitableGpu.Properties.limits.timestampPeriod;
-    m_GraphicsFamily  = suitableGpu.QueueFamilyIndices.GraphicsFamily.value();
-    m_ComputeFamily   = suitableGpu.QueueFamilyIndices.ComputeFamily.value();
-    m_TransferFamily  = suitableGpu.QueueFamilyIndices.TransferFamily.value();
-    m_PresentFamily   = suitableGpu.QueueFamilyIndices.PresentFamily.value();
-    m_VendorID        = suitableGpu.Properties.vendorID;
-    m_DeviceID        = suitableGpu.Properties.deviceID;
+    m_DeviceName           = suitableGpu.Properties.deviceName;
+    m_PhysicalDevice       = suitableGpu.PhysicalDevice;
+    m_TimestampPeriod      = suitableGpu.Properties.limits.timestampPeriod;
+    m_MaxSamplerAnisotropy = suitableGpu.Properties.limits.maxSamplerAnisotropy;
+    m_GraphicsFamily       = suitableGpu.QueueFamilyIndices.GraphicsFamily.value();
+    m_ComputeFamily        = suitableGpu.QueueFamilyIndices.ComputeFamily.value();
+    m_TransferFamily       = suitableGpu.QueueFamilyIndices.TransferFamily.value();
+    m_PresentFamily        = suitableGpu.QueueFamilyIndices.PresentFamily.value();
+    m_VendorID             = suitableGpu.Properties.vendorID;
+    m_DeviceID             = suitableGpu.Properties.deviceID;
     memcpy(m_PipelineCacheUUID, suitableGpu.Properties.pipelineCacheUUID,
            sizeof(suitableGpu.Properties.pipelineCacheUUID[0]) * VK_UUID_SIZE);
 }

@@ -13,7 +13,7 @@ class VulkanTexture final : public Texture
     ~VulkanTexture() override { Destroy(); }
 
     // NOTE: Since image layout changes frequently, update layout on call.
-    NODISCARD const VkDescriptorImageInfo& GetDescriptorInfo();
+    NODISCARD const VkDescriptorImageInfo GetDescriptorInfo() const;
 
     void Resize(const uint32_t width, const uint32_t height)
     {

@@ -9,7 +9,7 @@
 namespace Pathfinder
 {
 
-class Image;
+class Texture;
 
 // NOTE: Per-RHI UI Layer.
 class UILayer : public Layer
@@ -34,7 +34,7 @@ public:
     static void SetDefaultFont(const std::filesystem::path& fontPath, const float sizePixels);
 
     // Implemented per RHI.
-    static void DrawImage(Shared<Image> image, const glm::vec2& imageSize, const glm::vec2& uv0, const glm::vec2& uv1,
+    static void DrawTexture(Shared<Texture> texture, const glm::vec2& size, const glm::vec2& uv0, const glm::vec2& uv1,
                           const glm::vec4& tintCol = glm::vec4(1.0f), const glm::vec4& borderCol = glm::vec4(0.0f));
 
 protected:

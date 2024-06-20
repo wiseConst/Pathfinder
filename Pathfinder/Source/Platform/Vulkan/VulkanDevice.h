@@ -24,6 +24,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
         PFR_ASSERT(vkDeviceWaitIdle(m_LogicalDevice) == VK_SUCCESS, "Failed to wait for rendering device to finish other operations.");
     }
 
+    NODISCARD FORCEINLINE const auto GetMaxSamplerAnisotropy() const { return m_MaxSamplerAnisotropy; }
     NODISCARD FORCEINLINE const auto GetTimestampPeriod() const { return m_TimestampPeriod; }
     NODISCARD FORCEINLINE const auto& GetLogicalDevice() const { return m_LogicalDevice; }
     NODISCARD FORCEINLINE const auto& GetPhysicalDevice() const { return m_PhysicalDevice; }
@@ -87,11 +88,12 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     VkQueue m_ComputeQueue  = VK_NULL_HANDLE;
 
     std::vector<uint32_t> m_QueueFamilyIndices;
-    uint32_t m_GraphicsFamily = UINT32_MAX;
-    uint32_t m_PresentFamily  = UINT32_MAX;
-    uint32_t m_ComputeFamily  = UINT32_MAX;
-    uint32_t m_TransferFamily = UINT32_MAX;
-    float m_TimestampPeriod   = 1.f;
+    uint32_t m_GraphicsFamily    = UINT32_MAX;
+    uint32_t m_PresentFamily     = UINT32_MAX;
+    uint32_t m_ComputeFamily     = UINT32_MAX;
+    uint32_t m_TransferFamily    = UINT32_MAX;
+    float m_TimestampPeriod      = 1.f;
+    float m_MaxSamplerAnisotropy = 0.f;
 
     uint32_t m_VendorID                       = 0;
     uint32_t m_DeviceID                       = 0;

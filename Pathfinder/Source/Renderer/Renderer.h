@@ -158,7 +158,6 @@ class Renderer final
 
         Pathfinder::SSAOPass SSAOPass;
         uint64_t SSAOPipelineHash = 0;
-        uint64_t HBAOPipelineHash = 0;  // Currently unused
 
         Pathfinder::AOBlurPass AOBlurPass;
         uint64_t BoxBlurAOPipelineHash = 0;

@@ -169,6 +169,7 @@ void SandboxLayer::OnUIRender()
         ImGui::End();
     }
 
+    #if 0
     static bool bShowRenderTargetList = true;
     if (bShowRenderTargetList)
     {
@@ -190,6 +191,7 @@ void SandboxLayer::OnUIRender()
 
         ImGui::End();
     }
+    #endif
 
     static bool bShowPipelineMap = true;
     if (bShowPipelineMap)

@@ -60,7 +60,6 @@ void Renderer::Init()
                          {"ComputeFrustums"},
                          {"Composite"},
                          {"AO/SSAO"},
-                         {"AO/HBAO"},
                          {"Post/GaussianBlur"},
                          {"Post/MedianBlur"},
                          {"Post/BoxBlur"},
@@ -406,18 +405,6 @@ void Renderer::CreatePipelines()
                                         .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
 
         s_RendererData->SSAOPipelineHash = PipelineLibrary::Push(ssaoPS);
-    }
-
-    // HBAO
-    {
-        const GraphicsPipelineOptions hbaoGPO = {.Formats = {EImageFormat::FORMAT_R8_UNORM}, .CullMode = ECullMode::CULL_MODE_BACK};
-
-        PipelineSpecification hbaoPS = {.DebugName       = "HBAO",
-                                        .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(hbaoGPO),
-                                        .Shader          = ShaderLibrary::Get("AO/HBAO"),
-                                        .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
-
-        s_RendererData->HBAOPipelineHash = PipelineLibrary::Push(hbaoPS);
     }
 
     // BoxBlurAO

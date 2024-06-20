@@ -253,17 +253,12 @@ void MeshManager::LoadMesh(std::vector<Shared<Submesh>>& submeshes, const std::f
     std::string currentMeshDir = meshFilePath.parent_path().string() + "/";
     PFR_ASSERT(!currentMeshDir.empty(), "Current mesh directory path invalid!");
     std::unordered_map<std::string, Shared<Texture>> loadedTextures;
-    for (size_t meshIndex = 0; meshIndex < asset->meshes.size(); ++meshIndex)
+    for (size_t meshIndex{}; meshIndex < asset->meshes.size(); ++meshIndex)
     {
         LoadSubmeshes(submeshes, currentMeshDir, loadedTextures, asset.get(), meshIndex);
     }
 
-#if PFR_DEBUG
-    PFR_ASSERT(fastgltf::validate(asset.get()) == fastgltf::Error::None, "Asset is not valid after processing?");
-#endif
-
     submeshes.shrink_to_fit();
-
     LOG_INFO("FASTGLTF: Time taken to load and create mesh - \"{}\": ({:.5f}) seconds.", meshFilePath.string(), t.GetElapsedSeconds());
 }
 
@@ -273,13 +268,13 @@ SurfaceMesh MeshManager::GenerateUVSphere(const uint32_t sectorCount, const uint
     const float invStackCount       = 1.f / stackCount;
     const float sectorAngleCoeff    = 2 * glm::pi<float>() / sectorCount;
 
-    for (uint32_t i = 0; i <= stackCount; ++i)
+    for (uint32_t i{}; i <= stackCount; ++i)
     {
         const float stackAngle = glm::pi<float>() / 2 - glm::pi<float>() * i * invStackCount;
         const float xy         = cosf(stackAngle);
         const float z          = sinf(stackAngle);
 
-        for (int j = 0; j <= sectorCount; ++j)
+        for (uint32_t j{}; j <= sectorCount; ++j)
         {
             const float sectorAngle = sectorAngleCoeff * j;
 #if 0
@@ -296,7 +291,7 @@ SurfaceMesh MeshManager::GenerateUVSphere(const uint32_t sectorCount, const uint
     vertices.shrink_to_fit();
 
     std::vector<uint32_t> indices = {};
-    for (uint32_t i = 0; i < stackCount; ++i)
+    for (uint32_t i{}; i < stackCount; ++i)
     {
         uint32_t k1 = i * (sectorCount + 1);
         uint32_t k2 = k1 + sectorCount + 1;
@@ -354,19 +349,12 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
 
     for (const auto& p : asset.meshes[meshIndex].primitives)
     {
-        const auto positionIt = p.findAttribute("POSITION");
-        PFR_ASSERT(positionIt != p.attributes.end(), "Mesh doesn't contain positions?!");
-        PFR_ASSERT(p.indicesAccessor.has_value(), "Non-indexed geometry is not supported!");
-
         // INDICES
+        PFR_ASSERT(p.indicesAccessor.has_value(), "Non-indexed geometry is not supported!");
         const auto& indicesAccessor = asset.accessors[p.indicesAccessor.value()];
         std::vector<uint32_t> indices(indicesAccessor.count);
         fastgltf::iterateAccessorWithIndex<std::uint32_t>(asset, indicesAccessor,
                                                           [&](uint32_t index, std::size_t idx) { indices[idx] = index; });
-
-        // POSITION
-        const auto& positionAccessor = asset.accessors[positionIt->second];
-        PFR_ASSERT(positionAccessor.type == fastgltf::AccessorType::Vec3, "Positions can only contain vec3!");
 
         glm::mat4 localTransform = glm::mat4(1.f);
         std::visit(fastgltf::visitor{[&](const fastgltf::Node::TransformMatrix& matrix)
@@ -386,17 +374,30 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
                                      }},
                    fastGLTFnode.transform);
 
-        std::vector<MeshManager::MeshoptimizeVertex> meshoptimizeVertices(positionAccessor.count);
+        // POSITION
+        const auto positionIt = p.findAttribute("POSITION");
+        PFR_ASSERT(positionIt != p.attributes.end(), "Mesh doesn't contain positions?!");
+
+        const auto& positionAccessor = asset.accessors[positionIt->second];
+        PFR_ASSERT(positionAccessor.type == fastgltf::AccessorType::Vec3, "Positions can only contain vec3!");
+
+        std::vector<MeshAttributeVertex> attributeVertices(positionAccessor.count);
+        std::vector<MeshPositionVertex> rawVertices(positionAccessor.count);
         fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, positionAccessor,
                                                       [&](const glm::vec3& position, std::size_t idx)
-                                                      { meshoptimizeVertices[idx].Position = localTransform * vec4(position, 1.0); });
+                                                      { rawVertices[idx].Position = localTransform * vec4(position, 1.0); });
+
+        constexpr auto packUnorm3x8 = [](const glm::vec3& value) { return glm::u8vec3(value * 127.f + 127.5f); };
 
         // NORMAL
         if (const auto& normalIt = p.findAttribute("NORMAL"); normalIt != p.attributes.end())
         {
             fastgltf::iterateAccessorWithIndex<glm::vec3>(asset, asset.accessors[normalIt->second],
                                                           [&](const glm::vec3& normal, std::size_t idx)
-                                                          { meshoptimizeVertices[idx].Normal = normal; });
+                                                          {
+                                                              // NOTE: Decode by using (int32_t(x)/127.0 - 1.0)
+                                                              attributeVertices[idx].Normal = packUnorm3x8(normal);
+                                                          });
         }
 
         // TANGENT
@@ -404,7 +405,7 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         {
             fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[tangentIt->second],
                                                           [&](const glm::vec4& tangent, std::size_t idx)
-                                                          { meshoptimizeVertices[idx].Tangent = tangent; });
+                                                          { attributeVertices[idx].Tangent = packUnorm3x8(tangent); });
         }
 
         // COLOR_0
@@ -412,9 +413,12 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         {
             fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[color_0_It->second],
                                                           [&](const glm::vec4& color, std::size_t idx)
-                                                          {
-                                                              meshoptimizeVertices[idx].Color = color;  // glm::packUnorm4x8(color);
-                                                          });
+                                                          { attributeVertices[idx].Color = glm::packUnorm4x8(color); });
+        }
+        else
+        {
+            for (auto& attributeVertex : attributeVertices)
+                attributeVertex.Color = 0xFFFFFFFF;
         }
 
         // UV
@@ -422,7 +426,7 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         {
             fastgltf::iterateAccessorWithIndex<glm::vec2>(asset, asset.accessors[uvIT->second],
                                                           [&](const glm::vec2& uv, std::size_t idx) {
-                                                              meshoptimizeVertices[idx].UV =
+                                                              attributeVertices[idx].UV =
                                                                   glm::u16vec2(meshopt_quantizeHalf(uv.x), meshopt_quantizeHalf(uv.y));
                                                           });
         }
@@ -436,16 +440,17 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
             const auto& materialAccessor = asset.materials[p.materialIndex.value()];
 
             // Assemble gathered textures.
-            PBRData pbrData   = {.BaseColor = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data())};
-            pbrData.Metallic  = materialAccessor.pbrData.metallicFactor;
-            pbrData.Roughness = materialAccessor.pbrData.roughnessFactor;
-            pbrData.bIsOpaque = materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque;
+            PBRData pbrData = {
+                .BaseColor = glm::make_vec4(materialAccessor.pbrData.baseColorFactor.data()),
+                .Roughness = materialAccessor.pbrData.roughnessFactor,
+                .Metallic  = materialAccessor.pbrData.metallicFactor,
+                .bIsOpaque = materialAccessor.alphaMode == fastgltf::AlphaMode::Opaque,
+            };
 
             Shared<Texture> albedo = nullptr;
             if (materialAccessor.pbrData.baseColorTexture.has_value())
             {
-                TextureSpecification albedoTextureSpec = {};
-                albedoTextureSpec.Format               = EImageFormat::FORMAT_BC7_UNORM;
+                TextureSpecification albedoTextureSpec = {.Format = EImageFormat::FORMAT_BC7_UNORM};
 
                 const auto& textureInfo = materialAccessor.pbrData.baseColorTexture.value();
                 albedo = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, albedoTextureSpec);
@@ -455,8 +460,7 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
             Shared<Texture> normalMap = nullptr;
             if (materialAccessor.normalTexture.has_value())
             {
-                TextureSpecification normalMapTextureSpec = {};
-                normalMapTextureSpec.Format               = EImageFormat::FORMAT_BC5_UNORM;
+                TextureSpecification normalMapTextureSpec = {.Format = EImageFormat::FORMAT_BC5_UNORM};
 
                 const auto& textureInfo = materialAccessor.normalTexture.value();
                 normalMap = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, normalMapTextureSpec);
@@ -466,8 +470,7 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
             Shared<Texture> metallicRoughness = nullptr;
             if (materialAccessor.pbrData.metallicRoughnessTexture.has_value())
             {
-                TextureSpecification metallicRoughnessTextureSpec = {};
-                metallicRoughnessTextureSpec.Format               = EImageFormat::FORMAT_BC5_UNORM;
+                TextureSpecification metallicRoughnessTextureSpec = {.Format = EImageFormat::FORMAT_BC5_UNORM};
 
                 const auto& textureInfo = materialAccessor.pbrData.metallicRoughnessTexture.value();
                 metallicRoughness       = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
@@ -478,8 +481,7 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
             Shared<Texture> emissiveMap = nullptr;
             if (materialAccessor.emissiveTexture.has_value())
             {
-                TextureSpecification emissiveTextureSpec = {};
-                emissiveTextureSpec.Format               = EImageFormat::FORMAT_BC7_UNORM;
+                TextureSpecification emissiveTextureSpec = {.Format = EImageFormat::FORMAT_BC7_UNORM};
 
                 const auto& textureInfo = materialAccessor.emissiveTexture.value();
                 emissiveMap = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, emissiveTextureSpec);
@@ -489,8 +491,7 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
             Shared<Texture> occlusionMap = nullptr;
             if (materialAccessor.occlusionTexture.has_value())
             {
-                TextureSpecification occlusionTextureSpec = {};
-                occlusionTextureSpec.Format               = EImageFormat::FORMAT_BC4_UNORM;
+                TextureSpecification occlusionTextureSpec = {.Format = EImageFormat::FORMAT_BC4_UNORM};
 
                 const auto& textureInfo = materialAccessor.occlusionTexture.value();
                 occlusionMap =
@@ -511,52 +512,26 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
         // In case mesh didn't have any material we force white material.
         if (!material)
         {
-            PBRData pbrData   = {};
-            pbrData.BaseColor = glm::vec4(1.f);
-            pbrData.Metallic  = 1.f;
-            pbrData.Roughness = 1.f;
-            pbrData.bIsOpaque = true;
-            material          = MakeShared<Material>(pbrData);
+            const PBRData pbrData = {.BaseColor = glm::vec4(1.f), .Roughness = 1.f, .Metallic = 1.f, .bIsOpaque = true};
+            material              = MakeShared<Material>(pbrData);
             submesh->SetMaterial(material);
         }
 
-        std::vector<uint32_t> finalIndices;
-        std::vector<MeshManager::MeshoptimizeVertex> finalVertices;
-        MeshManager::OptimizeMesh(indices, meshoptimizeVertices, finalIndices, finalVertices);
-
+        MeshManager::OptimizeMesh(indices, rawVertices, attributeVertices);
         const BufferSpecification bufferSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
                                                 .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
                                                               EBufferUsage::BUFFER_USAGE_ACCELERATION_STRUCTURE_BUILD_INPUT_READ_ONLY};
-        submesh->m_IndexBuffer = Buffer::Create(bufferSpec, finalIndices.data(), finalIndices.size() * sizeof(finalIndices[0]));
+        submesh->m_IndexBuffer               = Buffer::Create(bufferSpec, indices.data(), indices.size() * sizeof(indices[0]));
 
-        std::vector<MeshPositionVertex> vertexPositions(finalVertices.size());
-        std::vector<MeshAttributeVertex> vertexAttributes(finalVertices.size());
-        for (size_t i = 0; i < finalVertices.size(); ++i)
-        {
-            const auto& finalVertex = finalVertices[i];
-
-            vertexPositions[i].Position = finalVertex.Position;
-
-            vertexAttributes[i].Color   = finalVertex.Color;
-            vertexAttributes[i].Normal  = finalVertex.Normal;
-            vertexAttributes[i].Tangent = finalVertex.Tangent;
-            vertexAttributes[i].UV      = finalVertex.UV;
-        }
-        indices.clear();
-        meshoptimizeVertices.clear();
-
-        submesh->m_VertexPositionBuffer =
-            Buffer::Create(bufferSpec, vertexPositions.data(), vertexPositions.size() * sizeof(vertexPositions[0]));
-
+        submesh->m_VertexPositionBuffer = Buffer::Create(bufferSpec, rawVertices.data(), rawVertices.size() * sizeof(rawVertices[0]));
         submesh->m_VertexAttributeBuffer =
-            Buffer::Create(bufferSpec, vertexAttributes.data(), vertexAttributes.size() * sizeof(vertexAttributes[0]));
-
-        submesh->m_BoundingSphere = MeshManager::GenerateBoundingSphere(vertexPositions);
+            Buffer::Create(bufferSpec, attributeVertices.data(), attributeVertices.size() * sizeof(attributeVertices[0]));
+        submesh->m_BoundingSphere = MeshManager::GenerateBoundingSphere(rawVertices);
 
         std::vector<uint32_t> meshletVertices;
         std::vector<uint8_t> meshletTriangles;
         std::vector<Meshlet> meshlets;
-        MeshManager::BuildMeshlets(finalIndices, vertexPositions, meshlets, meshletVertices, meshletTriangles);
+        MeshManager::BuildMeshlets(indices, rawVertices, meshlets, meshletVertices, meshletTriangles);
 
         const BufferSpecification meshletBufferSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
                                                        .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE};
@@ -628,7 +603,7 @@ AABB MeshManager::GenerateAABB(const std::vector<MeshPositionVertex>& points)
         }
 
         const glm::vec3 center = (max + min) * 0.5f;
-        return {center, max - center};
+        return {.Center = center, .Extents = max - center};
     }
 #endif
 
@@ -721,33 +696,33 @@ Sphere MeshManager::GenerateBoundingSphere(const std::vector<MeshPositionVertex>
     return sphere;
 }
 
-void MeshManager::OptimizeMesh(const std::vector<uint32_t>& srcIndices, const std::vector<MeshoptimizeVertex>& srcVertices,
-                               std::vector<uint32_t>& outIndices, std::vector<MeshoptimizeVertex>& outVertices)
+void MeshManager::OptimizeMesh(std::vector<uint32_t>& indices, std::vector<MeshPositionVertex>& rawVertices,
+                               std::vector<MeshAttributeVertex>& attributeVertices)
 {
-    // #1 INDEXING
-    std::vector<uint32_t> remappedIndices(srcIndices.size());
-    const size_t remappedVertexCount = meshopt_generateVertexRemap(remappedIndices.data(), srcIndices.data(), srcIndices.size(),
-                                                                   srcVertices.data(), srcVertices.size(), sizeof(srcVertices[0]));
+    PFR_ASSERT(!rawVertices.empty() && rawVertices.size() == attributeVertices.size(),
+               "Vertex streams should have exact same not zero size!");
 
-    outIndices.resize(remappedIndices.size());
-    meshopt_remapIndexBuffer(outIndices.data(), srcIndices.data(), remappedIndices.size(), remappedIndices.data());
+    const meshopt_Stream vertexStreams[] = {{rawVertices.data(), sizeof(MeshPositionVertex), sizeof(MeshPositionVertex)},
+                                            {attributeVertices.data(), sizeof(MeshAttributeVertex), sizeof(MeshAttributeVertex)}};
 
-    outVertices.resize(remappedVertexCount);
-    meshopt_remapVertexBuffer(outVertices.data(), srcVertices.data(), srcVertices.size(), sizeof(srcVertices[0]), remappedIndices.data());
+    // #1 REINDEXING BUFFERS TO GET RID OF REDUNDANT VERTICES.
+    std::vector<uint32_t> remappedIndices(indices.size());
+    const size_t uniqueVertexCount =
+        meshopt_generateVertexRemapMulti(remappedIndices.data(), indices.data(), indices.size(), rawVertices.size(), vertexStreams,
+                                         sizeof(vertexStreams) / sizeof(vertexStreams[0]));
 
-    // #2 VERTEX CACHE
-    meshopt_optimizeVertexCache(outIndices.data(), outIndices.data(), outIndices.size(), outVertices.size());
+    meshopt_remapIndexBuffer(indices.data(), indices.data(), remappedIndices.size(), remappedIndices.data());
 
-    // #3 OVERDRAW
-    meshopt_optimizeOverdraw(outIndices.data(), outIndices.data(), outIndices.size(), &outVertices[0].Position.x, outVertices.size(),
-                             sizeof(outVertices[0]),
-                             1.05f);  // max 5% vertex cache hit ratio can be worse then before
+    RemapVertexStream<MeshPositionVertex>(uniqueVertexCount, rawVertices, remappedIndices);
+    RemapVertexStream<MeshAttributeVertex>(uniqueVertexCount, attributeVertices, remappedIndices);
 
-    // NOTE: I don't think I rly need to call these funcs twice since I'm using 2 vertex streams, cuz I've already merged them in
-    // MeshoptimizeVertex and then I unmerge them xd
-    // #4 VERTEX FETCH
-    meshopt_optimizeVertexFetch(outVertices.data(), outIndices.data(), outIndices.size(), outVertices.data(), outVertices.size(),
-                                sizeof(outVertices[0]));
+    // #2 VERTEX CACHE OPTIMIZATION (REORDER TRIANGLES TO MAXIMIZE THE LOCALITY OF REUSED VERTEX REFERENCES IN VERTEX SHADERS)
+    meshopt_optimizeVertexCache(indices.data(), indices.data(), indices.size(), rawVertices.size());
+
+    // #3 OVERDRAW OPTIMIZATION (REORDER TRIANGLES TO MINIMIZE OVERDRAW FROM ALL DIRECTIONS)
+    constexpr float vertexCacheHitRatio = 1.05f;  // max 5% vertex cache hit ratio can be worse then before
+    meshopt_optimizeOverdraw(indices.data(), indices.data(), indices.size(), &rawVertices[0].Position.x, rawVertices.size(),
+                             sizeof(rawVertices[0]), vertexCacheHitRatio);
 }
 
 // TODO: Check meshopt comms at backface culling.
@@ -756,43 +731,43 @@ void MeshManager::BuildMeshlets(const std::vector<uint32_t>& indices, const std:
                                 std::vector<uint8_t>& outMeshletTriangles)
 {
     const size_t maxMeshletCount = meshopt_buildMeshletsBound(indices.size(), MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_TRIANGLE_COUNT);
-    std::vector<meshopt_Meshlet> meshopt_meshlets(maxMeshletCount);
+    std::vector<meshopt_Meshlet> meshoptMeshlets(maxMeshletCount);
     outMeshletVertices.resize(maxMeshletCount * MAX_MESHLET_VERTEX_COUNT);
     outMeshletTriangles.resize(maxMeshletCount * MAX_MESHLET_TRIANGLE_COUNT * 3);
 
     const size_t actualMeshletCount =
-        meshopt_buildMeshlets(meshopt_meshlets.data(), outMeshletVertices.data(), outMeshletTriangles.data(), indices.data(),
-                              indices.size(), &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(vertexPositions[0]),
-                              MAX_MESHLET_VERTEX_COUNT, MAX_MESHLET_TRIANGLE_COUNT, MESHLET_CONE_WEIGHT);
+        meshopt_buildMeshlets(meshoptMeshlets.data(), outMeshletVertices.data(), outMeshletTriangles.data(), indices.data(), indices.size(),
+                              &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(vertexPositions[0]), MAX_MESHLET_VERTEX_COUNT,
+                              MAX_MESHLET_TRIANGLE_COUNT, MESHLET_CONE_WEIGHT);
 
     {
         // Trimming
-        const meshopt_Meshlet& last = meshopt_meshlets[actualMeshletCount - 1];
+        const meshopt_Meshlet& last = meshoptMeshlets.at(actualMeshletCount - 1);
         outMeshletVertices.resize(last.vertex_offset + last.vertex_count);
         outMeshletVertices.shrink_to_fit();
 
         outMeshletTriangles.resize(last.triangle_offset + ((last.triangle_count * 3 + 3) & ~3));
         outMeshletTriangles.shrink_to_fit();
 
-        meshopt_meshlets.resize(actualMeshletCount);
-        meshopt_meshlets.shrink_to_fit();
+        meshoptMeshlets.resize(actualMeshletCount);
+        meshoptMeshlets.shrink_to_fit();
     }
 
     // For optimal performance, it is recommended to further optimize each meshlet in isolation for better triangle and vertex locality
-    for (size_t i{}; i < meshopt_meshlets.size(); ++i)
+    for (size_t i{}; i < meshoptMeshlets.size(); ++i)
     {
-        meshopt_optimizeMeshlet(&outMeshletVertices[meshopt_meshlets[i].vertex_offset],
-                                &outMeshletTriangles[meshopt_meshlets[i].triangle_offset], meshopt_meshlets[i].triangle_count,
-                                meshopt_meshlets[i].vertex_count);
+        meshopt_optimizeMeshlet(&outMeshletVertices[meshoptMeshlets[i].vertex_offset],
+                                &outMeshletTriangles[meshoptMeshlets[i].triangle_offset], meshoptMeshlets[i].triangle_count,
+                                meshoptMeshlets[i].vertex_count);
     }
 
-    outMeshlets.resize(meshopt_meshlets.size());
+    outMeshlets.resize(meshoptMeshlets.size());
     for (size_t i{}; i < actualMeshletCount; ++i)
     {
-        const auto& meshopt_m = meshopt_meshlets[i];
+        const auto& meshopt_m = meshoptMeshlets[i];
         const auto bounds     = meshopt_computeMeshletBounds(
             &outMeshletVertices[meshopt_m.vertex_offset], &outMeshletTriangles[meshopt_m.triangle_offset], meshopt_m.triangle_count,
-            &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(vertexPositions[0]));
+            &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(MeshPositionVertex));
 
         outMeshlets[i].vertexOffset   = meshopt_m.vertex_offset;
         outMeshlets[i].vertexCount    = meshopt_m.vertex_count;
@@ -802,9 +777,9 @@ void MeshManager::BuildMeshlets(const std::vector<uint32_t>& indices, const std:
         outMeshlets[i].center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
         outMeshlets[i].radius = bounds.radius;
 
-        outMeshlets[i].coneApex   = glm::vec3(bounds.cone_apex[0], bounds.cone_apex[1], bounds.cone_apex[2]);
-        outMeshlets[i].coneAxis   = glm::vec3(bounds.cone_axis[0], bounds.cone_axis[1], bounds.cone_axis[2]);
-        outMeshlets[i].coneCutoff = bounds.cone_cutoff;
+        outMeshlets[i].coneCutoff = bounds.cone_cutoff_s8;
+        for (uint32_t k{}; k < 3; ++k)
+            outMeshlets[i].coneAxis[k] = bounds.cone_axis_s8[k];
     }
 }
 

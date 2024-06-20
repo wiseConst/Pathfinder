@@ -16,9 +16,20 @@ uint32_t hash(uint32_t a)
     return a;
 }
 
-bool IsConeBackfacing(const vec3 cameraPosition, const vec3 coneApex, const vec3 coneAxis, const float coneCutoff, const float radius)
+// Since I do frustum, occlusion(in future) culling, I can save 12 bytes on meshlet structure by culling via bounding sphere.
+bool IsConeBackfacing(const vec3 cameraPosition, const vec3 coneAxis, const float coneCutoff, const vec3 center, const float radius)
 {
-    return dot(coneApex - cameraPosition, coneAxis) >= coneCutoff * length(coneApex - cameraPosition) + radius;
+    return dot(normalize(center - cameraPosition), coneAxis) >= coneCutoff + radius / length(center - cameraPosition);
+}
+
+vec3 DecodeConeAxis(int8_t coneAxis[3])
+{
+    return vec3(int32_t(coneAxis[0]) / 127.0, int32_t(coneAxis[1]) / 127.0, int32_t(coneAxis[2]) / 127.0);
+}
+
+float DecodeConeCutoff(int8_t coneCutoff)
+{
+    return int32_t(coneCutoff) / 127.0;
 }
 
 #endif
@@ -54,8 +65,8 @@ struct Meshlet
     /* bounding sphere, useful for frustum and occlusion culling */
     vec3 center;
     float radius;
-    /* normal cone, useful for backface culling */
-    vec3 coneApex;
-    vec3 coneAxis;
-    float coneCutoff; /* = cos(angle/2) */
+
+    /* 8-bit SNORM; decode using x/127.0 */
+    int8_t coneAxis[3];
+    int8_t coneCutoff; /* = cos(angle/2) */
 };

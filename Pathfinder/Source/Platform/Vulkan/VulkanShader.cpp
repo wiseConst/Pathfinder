@@ -3,9 +3,6 @@
 
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
-#include "VulkanBuffer.h"
-#include "VulkanImage.h"
-#include "VulkanTexture.h"
 
 #include <Core/Application.h>
 #include <Core/Window.h>
@@ -17,28 +14,6 @@
 
 namespace Pathfinder
 {
-
-static const char* SpvReflectDescriptorTypeToString(const SpvReflectDescriptorType descriptorType)
-{
-    switch (descriptorType)
-    {
-        case SPV_REFLECT_DESCRIPTOR_TYPE_ACCELERATION_STRUCTURE_KHR: return "ACCELERATION_STRUCTURE_KHR";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLER: return "SAMPLER";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER: return "COMBINED_IMAGE_SAMPLER";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_SAMPLED_IMAGE: return "SAMPLED_IMAGE";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_IMAGE: return "STORAGE_IMAGE";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_TEXEL_BUFFER: return "UNIFORM_TEXEL_BUFFER";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_TEXEL_BUFFER: return "STORAGE_TEXEL_BUFFER";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER: return "UNIFORM_BUFFER";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER: return "STORAGE_BUFFER";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_UNIFORM_BUFFER_DYNAMIC: return "UNIFORM_BUFFER_DYNAMIC";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC: return "STORAGE_BUFFER_DYNAMIC";
-        case SPV_REFLECT_DESCRIPTOR_TYPE_INPUT_ATTACHMENT: return "INPUT_ATTACHMENT";
-    }
-
-    PFR_ASSERT(false, "Unknown spv reflect descriptor type!");
-    return "Unknown";
-}
 
 static VkFormat SpvReflectFormatToVulkan(const SpvReflectFormat format)
 {

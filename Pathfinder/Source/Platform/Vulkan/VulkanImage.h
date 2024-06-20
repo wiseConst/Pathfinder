@@ -39,16 +39,6 @@ class VulkanImage final : public Image
 
     NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
     NODISCARD FORCEINLINE const auto& GetView() const { return m_View; }
-    NODISCARD FORCEINLINE const auto& GetDescriptorInfo()
-    {
-        m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
-        return m_DescriptorInfo;
-    }
-    NODISCARD FORCEINLINE const auto& GetSampler() const
-    {
-        if (!m_DescriptorInfo.sampler) LOG_WARN("Returning null image sampler! (This shouldn't happen.)");
-        return m_DescriptorInfo.sampler;
-    }
 
     void SetLayout(const EImageLayout newLayout, const bool bImmediate = false) final override;
     void SetData(const void* data, size_t dataSize) final override;
@@ -69,7 +59,6 @@ class VulkanImage final : public Image
     VkImage m_Handle                       = VK_NULL_HANDLE;
     VmaAllocation m_Allocation             = VK_NULL_HANDLE;
     VkImageView m_View                     = VK_NULL_HANDLE;
-    VkDescriptorImageInfo m_DescriptorInfo = {};
  //   std::vector<VkImageView> m_ViewMips;  // TODO:
 
     VulkanImage() = delete;

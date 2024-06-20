@@ -19,22 +19,11 @@ class Submesh;
 class MeshManager final
 {
   public:
-    // TODO: Fix color packing
-    struct MeshoptimizeVertex
-    {
-        glm::vec3 Position = glm::vec3(0.0f);
-        glm::vec4 Color    = glm::vec4(1.f);
-        //    uint32_t Color     = 0xFFFFFFFF;
-        glm::vec3 Normal  = glm::vec3(0.0f);
-        glm::vec3 Tangent = glm::vec3(0.0f);
-        glm::u16vec2 UV   = glm::u16vec2(0);
-    };
-
     static AABB GenerateAABB(const std::vector<MeshPositionVertex>& points);
 
     static Sphere GenerateBoundingSphere(const std::vector<MeshPositionVertex>& points);
-    static void OptimizeMesh(const std::vector<uint32_t>& srcIndices, const std::vector<MeshoptimizeVertex>& srcVertices,
-                             std::vector<uint32_t>& outIndices, std::vector<MeshoptimizeVertex>& outVertices);
+    static void OptimizeMesh(std::vector<uint32_t>& indices, std::vector<MeshPositionVertex>& rawVertices,
+                             std::vector<MeshAttributeVertex>& attributeVertices);
 
     static void BuildMeshlets(const std::vector<uint32_t>& indices, const std::vector<MeshPositionVertex>& vertexPositions,
                               std::vector<Meshlet>& outMeshlets, std::vector<uint32_t>& outMeshletVertices,
@@ -53,6 +42,16 @@ class MeshManager final
                                        const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor, const size_t textureIndex,
                                        TextureSpecification& textureSpec, const bool bMetallicRoughness = false,
                                        const bool bFlipOnLoad = false);
+
+    template <typename T>
+    static void RemapVertexStream(const size_t remappedVertexCount, std::vector<T>& vertexStream,
+                                  const std::vector<uint32_t>& remappedIndices)
+    {
+        std::vector<T> remmapedVertexStream(remappedVertexCount);
+        meshopt_remapVertexBuffer(remmapedVertexStream.data(), vertexStream.data(), vertexStream.size(), sizeof(vertexStream[0]),
+                                  remappedIndices.data());
+        vertexStream = std::move(remmapedVertexStream);
+    }
 
     MeshManager()  = delete;
     ~MeshManager() = default;

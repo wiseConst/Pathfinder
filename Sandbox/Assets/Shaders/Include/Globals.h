@@ -5,12 +5,10 @@
 #include "Lights.h"
 #include "Primitives.h"
 
-static constexpr uint32_t s_MAX_TEXTURES = BIT(16);
-static constexpr uint32_t s_MAX_IMAGES   = BIT(16);
+static constexpr uint32_t s_MAX_TEXTURES = BIT(20);
+static constexpr uint32_t s_MAX_IMAGES   = BIT(20);
 
 #else
-
-// NOTE: Mark things as Global/BDA to make sure that basic shader reflection won't catch it!
 
 #include "Pathfinder.glsl"
 #include "Include/Meshlets.h"
@@ -49,13 +47,11 @@ struct MeshPositionVertex
     vec3 Position;
 };
 
-// TODO: Fix color packing.
 struct MeshAttributeVertex
 {
-    vec4 Color;
-    // uint32_t Color;
-    vec3 Normal;
-    vec3 Tangent;
+    uint32_t Color;
+    u8vec3 Normal;
+    u8vec3 Tangent;  // NOTE: TODO: Why would I use 4th component of Tangent? flipping the normals or what?
 #ifdef __cplusplus
     u16vec2 UV;
 #else
@@ -63,7 +59,7 @@ struct MeshAttributeVertex
 #endif
 };
 
-const uint32_t s_INVALID_CULLED_OBJECT_INDEX = 2 << 20;
+const uint32_t s_INVALID_CULLED_OBJECT_INDEX = 1 << 21;
 
 struct PBRData
 {

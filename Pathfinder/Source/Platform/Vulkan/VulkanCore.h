@@ -279,6 +279,24 @@ NODISCARD FORCEINLINE static VkPolygonMode PathfinderPolygonModeToVulkan(const E
     return VK_POLYGON_MODE_FILL;
 }
 
+NODISCARD FORCEINLINE static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
+{
+    switch (compareOp)
+    {
+        case ECompareOp::COMPARE_OP_LESS: return VK_COMPARE_OP_LESS;
+        case ECompareOp::COMPARE_OP_EQUAL: return VK_COMPARE_OP_EQUAL;
+        case ECompareOp::COMPARE_OP_NEVER: return VK_COMPARE_OP_NEVER;
+        case ECompareOp::COMPARE_OP_ALWAYS: return VK_COMPARE_OP_ALWAYS;
+        case ECompareOp::COMPARE_OP_GREATER: return VK_COMPARE_OP_GREATER;
+        case ECompareOp::COMPARE_OP_NOT_EQUAL: return VK_COMPARE_OP_NOT_EQUAL;
+        case ECompareOp::COMPARE_OP_LESS_OR_EQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
+        case ECompareOp::COMPARE_OP_GREATER_OR_EQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
+    }
+
+    PFR_ASSERT(false, "Unknown compare op!");
+    return VK_COMPARE_OP_NEVER;
+}
+
 }  // namespace VulkanUtils
 
 }  // namespace Pathfinder

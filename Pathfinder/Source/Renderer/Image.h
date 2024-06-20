@@ -14,8 +14,6 @@ struct ImageSpecification
     uint32_t Height            = 0;
     EImageFormat Format        = EImageFormat::FORMAT_UNDEFINED;
     EImageLayout Layout        = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
-    ESamplerWrap Wrap          = ESamplerWrap::SAMPLER_WRAP_REPEAT;
-    ESamplerFilter Filter      = ESamplerFilter::SAMPLER_FILTER_NEAREST;
     ImageUsageFlags UsageFlags = 0;
     uint32_t Mips              = 1;
     uint32_t Layers            = 1;
@@ -41,12 +39,10 @@ class Image : private Uncopyable, private Unmovable
 
     static Shared<Image> Create(const ImageSpecification& imageSpec);
 
-    const auto& GetUUID() const { return m_UUID; }
     virtual void SetDebugName(const std::string& name) = 0;
 
   protected:
     ImageSpecification m_Specification = {};
-    UUID m_UUID                        = {};
     Optional<uint32_t> m_BindlessIndex = std::nullopt;
 
     Image(const ImageSpecification& imageSpec) : m_Specification(imageSpec) {}
@@ -58,23 +54,26 @@ class Image : private Uncopyable, private Unmovable
 
 struct SamplerSpecification
 {
-    ESamplerFilter Filter  = ESamplerFilter::SAMPLER_FILTER_LINEAR;
-    ESamplerWrap Wrap      = ESamplerWrap::SAMPLER_WRAP_REPEAT;
-    bool bAnisotropyEnable = false;
-    bool bCompareEnable    = false;
-    float MipLodBias       = 0.0f;
-    float MaxAnisotropy    = 0.0f;
-    float MinLod           = 0.0f;
-    float MaxLod           = 0.0f;
-    ECompareOp CompareOp   = ECompareOp::COMPARE_OP_NEVER;
+    ESamplerFilter Filter               = ESamplerFilter::SAMPLER_FILTER_LINEAR;
+    ESamplerWrap Wrap                   = ESamplerWrap::SAMPLER_WRAP_REPEAT;
+    bool bAnisotropyEnable              = false;
+    bool bCompareEnable                 = false;
+    float MipLodBias                    = 0.0f;
+    float MaxAnisotropy                 = 0.0f;
+    float MinLod                        = 0.0f;
+    float MaxLod                        = 0.0f;
+    ECompareOp CompareOp                = ECompareOp::COMPARE_OP_NEVER;
+    ESamplerReductionMode ReductionMode = ESamplerReductionMode::SAMPLER_REDUCTION_MODE_NONE;
 
     struct Hash
     {
         std::size_t operator()(const SamplerSpecification& key) const
         {
-            std::size_t hash = std::hash<std::uint64_t>{}(
-                static_cast<uint64_t>(key.Filter) + static_cast<uint64_t>(key.Wrap) + static_cast<uint64_t>(key.CompareOp) +
-                static_cast<uint64_t>(key.bAnisotropyEnable) + static_cast<uint64_t>(key.bCompareEnable));
+            std::size_t hash =
+                std::hash<std::uint64_t>{}(static_cast<uint64_t>(key.Filter) + static_cast<uint64_t>(key.Wrap) +
+                                           static_cast<uint64_t>(key.CompareOp) + static_cast<uint64_t>(key.bAnisotropyEnable) +
+                                           static_cast<uint64_t>(key.bCompareEnable)) +
+                static_cast<uint64_t>(key.ReductionMode);
 
             hash ^= std::hash<int>{}(key.MipLodBias) + std::hash<int>{}(key.MaxAnisotropy) + std::hash<int>{}(key.MinLod) +
                     std::hash<int>{}(key.MaxLod);
@@ -86,9 +85,9 @@ struct SamplerSpecification
 
     bool operator==(const SamplerSpecification& other) const
     {
-        return std::tie(Filter, Wrap, bAnisotropyEnable, bCompareEnable, CompareOp, MipLodBias, MaxAnisotropy, MinLod, MaxLod) ==
-               std::tie(other.Filter, other.Wrap, other.bAnisotropyEnable, other.bCompareEnable, other.CompareOp, other.MipLodBias,
-                        other.MaxAnisotropy, other.MinLod, other.MaxLod);
+        return std::tie(Filter, Wrap, bAnisotropyEnable, bCompareEnable, CompareOp, MipLodBias, MaxAnisotropy, MinLod, MaxLod,
+                        ReductionMode) == std::tie(other.Filter, other.Wrap, other.bAnisotropyEnable, other.bCompareEnable, other.CompareOp,
+                                                   other.MipLodBias, other.MaxAnisotropy, other.MinLod, other.MaxLod, other.ReductionMode);
     }
 };
 

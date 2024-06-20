@@ -25,6 +25,7 @@ class Texture : private Uncopyable, private Unmovable
   public:
     virtual ~Texture() = default;
 
+   NODISCARD FORCEINLINE const auto& GetUUID() const { return m_UUID; }
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE const auto GetBindlessIndex() const
     {
@@ -42,6 +43,7 @@ class Texture : private Uncopyable, private Unmovable
     Shared<Image> m_Image                = nullptr;
     TextureSpecification m_Specification = {};
     Optional<uint32_t> m_BindlessIndex   = std::nullopt;
+    UUID m_UUID                          = {}; // NOTE: Used only for imgui purposes.
 
     Texture(const TextureSpecification& textureSpec) : m_Specification(textureSpec) {}
     Texture() = delete;

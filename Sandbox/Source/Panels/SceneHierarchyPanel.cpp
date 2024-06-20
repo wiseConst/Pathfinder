@@ -343,21 +343,21 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
                                              ImGui::SliderFloat("Roughness", &materialData.Roughness, 0.0f, 1.0f))
                                              bIsAnythingAdjusted = true;
 
-                                         static constexpr auto DrawImage =
+                                         static constexpr auto DrawTexture =
                                              [](const Shared<Texture>& texture, const std::string_view& imageName)
                                          {
                                              if (!texture) return;
 
                                              ImGui::Text("%s", imageName.data());
-                                             UILayer::DrawImage(texture->GetImage(), imageSize, {0, 0}, {1, 1});
+                                             UILayer::DrawTexture(texture, imageSize, {0, 0}, {1, 1});
                                              ImGui::Separator();
                                          };
 
-                                         DrawImage(mat->GetAlbedo(), "Albedo");
-                                         DrawImage(mat->GetNormalMap(), "NormalMap");
-                                         DrawImage(mat->GetMetallicRoughness(), "MetallicRoughness");
-                                         DrawImage(mat->GetEmissiveMap(), "EmissiveMap");
-                                         DrawImage(mat->GetAOMap(), "AO");
+                                         DrawTexture(mat->GetAlbedo(), "Albedo");
+                                         DrawTexture(mat->GetNormalMap(), "NormalMap");
+                                         DrawTexture(mat->GetMetallicRoughness(), "MetallicRoughness");
+                                         DrawTexture(mat->GetEmissiveMap(), "EmissiveMap");
+                                         DrawTexture(mat->GetAOMap(), "AO");
 
                                          if (bIsAnythingAdjusted) mat->Update();
                                      }
@@ -378,7 +378,7 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
             {
                 ImGui::Separator();
                 const auto& textureSpec = sc.Texture->GetSpecification();
-                UILayer::DrawImage(sc.Texture->GetImage(), {textureSpec.Width, textureSpec.Height}, {0, 0}, {1, 1});
+                UILayer::DrawTexture(sc.Texture , {textureSpec.Width, textureSpec.Height}, {0, 0}, {1, 1});
             }
         });
 }

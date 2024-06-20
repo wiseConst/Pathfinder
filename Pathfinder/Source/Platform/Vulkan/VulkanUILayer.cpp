@@ -13,6 +13,7 @@
 #include "VulkanContext.h"
 #include "VulkanCommandBuffer.h"
 #include "VulkanImage.h"
+#include "VulkanTexture.h"
 
 #include <Renderer/Swapchain.h>
 #include <Renderer/Renderer.h>
@@ -51,9 +52,8 @@ void VulkanUILayer::Init()
                                                   {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}};
 
     const VkDescriptorPoolCreateInfo poolInfo = {.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
-                                                 .pNext         = nullptr,
                                                  .flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
-                                                 .maxSets       = 1500,
+                                                 .maxSets       = s_MAX_TEXTURES,
                                                  .poolSizeCount = (uint32_t)std::size(poolSizes),
                                                  .pPoolSizes    = poolSizes};
     VK_CHECK(vkCreateDescriptorPool(device->GetLogicalDevice(), &poolInfo, nullptr, &m_ImGuiPool), "Failed to create ImGui Pool!");
@@ -87,7 +87,6 @@ void VulkanUILayer::Init()
         .QueueFamily                 = device->GetGraphicsFamily(),
         .Queue                       = device->GetGraphicsQueue(),
         .DescriptorPool              = m_ImGuiPool,
-        .RenderPass                  = VK_NULL_HANDLE,
         .MinImageCount               = swapchain->GetImageCount(),
         .ImageCount                  = swapchain->GetImageCount(),
         .MSAASamples                 = VK_SAMPLE_COUNT_1_BIT,
@@ -192,30 +191,32 @@ void VulkanUILayer::UpdateTextureIDs()
     }
 }
 
-void UILayer::DrawImage(Shared<Image> image, const glm::vec2& imageSize, const glm::vec2& uv0, const glm::vec2& uv1,
+void UILayer::DrawTexture(Shared<Texture> texture, const glm::vec2& size, const glm::vec2& uv0, const glm::vec2& uv1,
                         const glm::vec4& tintCol, const glm::vec4& borderCol)
 {
-    PFR_ASSERT(image, "UILayer::DrawImage() - Image is null!");
-    const auto vulkanImage = std::static_pointer_cast<VulkanImage>(image);
-    PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+    PFR_ASSERT(texture, "UILayer::DrawTexture() - Texture is null!");
 
-    const auto& uuid = image->GetUUID();
+    const auto& uuid = texture->GetUUID();
     if (!s_TextureIDMap.contains(uuid))
     {
         s_TextureIDMap.emplace(uuid, nullptr);
         auto& textureID = s_TextureIDMap[uuid];
 
-        textureID = ImGui_ImplVulkan_AddTexture(vulkanImage->GetSampler(), vulkanImage->GetView(),
-                                                ImageUtils::PathfinderImageLayoutToVulkan(vulkanImage->GetSpecification().Layout));
+            const auto vulkanTexture = std::static_pointer_cast<VulkanTexture>(texture);
+        PFR_ASSERT(vulkanTexture, "Failed to cast Texture to VulkanTexture!");
+
+
+        const auto& vkImageInfo = vulkanTexture->GetDescriptorInfo();
+        textureID               = ImGui_ImplVulkan_AddTexture(vkImageInfo.sampler, vkImageInfo.imageView, vkImageInfo.imageLayout);
         PFR_ASSERT(textureID, "Failed to receieve textureID from imgui!");
 
-        ImGui::Image(textureID, (ImVec2&)imageSize, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
+        ImGui::Image(textureID, (ImVec2&)size, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
         s_LastActiveTextures[uuid] = true;
     }
     else
     {
         const auto& textureID = s_TextureIDMap[uuid];
-        ImGui::Image(textureID, (ImVec2&)imageSize, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
+        ImGui::Image(textureID, (ImVec2&)size, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
 
         s_LastActiveTextures[uuid] = true;
     }

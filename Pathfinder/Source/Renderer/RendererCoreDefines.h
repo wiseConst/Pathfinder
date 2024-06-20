@@ -363,6 +363,15 @@ enum class ESamplerWrap : uint8_t
     SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE,
 };
 
+// TODO: Refactor sampler storage.
+enum class ESamplerReductionMode : uint8_t
+{
+    SAMPLER_REDUCTION_MODE_NONE,
+    SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE,
+    SAMPLER_REDUCTION_MODE_MIN,
+    SAMPLER_REDUCTION_MODE_MAX,
+};
+
 struct QuadVertex
 {
     glm::vec3 Position = glm::vec3(0.0f);

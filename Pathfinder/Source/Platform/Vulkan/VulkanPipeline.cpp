@@ -17,24 +17,6 @@ namespace Pathfinder
 namespace PipelineUtils
 {
 
-NODISCARD FORCEINLINE static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
-{
-    switch (compareOp)
-    {
-        case ECompareOp::COMPARE_OP_LESS: return VK_COMPARE_OP_LESS;
-        case ECompareOp::COMPARE_OP_EQUAL: return VK_COMPARE_OP_EQUAL;
-        case ECompareOp::COMPARE_OP_NEVER: return VK_COMPARE_OP_NEVER;
-        case ECompareOp::COMPARE_OP_ALWAYS: return VK_COMPARE_OP_ALWAYS;
-        case ECompareOp::COMPARE_OP_GREATER: return VK_COMPARE_OP_GREATER;
-        case ECompareOp::COMPARE_OP_NOT_EQUAL: return VK_COMPARE_OP_NOT_EQUAL;
-        case ECompareOp::COMPARE_OP_LESS_OR_EQUAL: return VK_COMPARE_OP_LESS_OR_EQUAL;
-        case ECompareOp::COMPARE_OP_GREATER_OR_EQUAL: return VK_COMPARE_OP_GREATER_OR_EQUAL;
-    }
-
-    PFR_ASSERT(false, "Unknown compare op!");
-    return VK_COMPARE_OP_NEVER;
-}
-
 NODISCARD FORCEINLINE static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
 {
     switch (shaderStage)
@@ -470,7 +452,7 @@ void VulkanPipeline::Invalidate()
                 .depthTestEnable  = graphicsPO->bDepthTest ? VK_TRUE : VK_FALSE,
                 .depthWriteEnable = graphicsPO->bDepthWrite ? VK_TRUE : VK_FALSE,
                 .depthCompareOp =
-                    graphicsPO->bDepthTest ? PipelineUtils::PathfinderCompareOpToVulkan(graphicsPO->DepthCompareOp) : VK_COMPARE_OP_ALWAYS,
+                    graphicsPO->bDepthTest ? VulkanUtils::PathfinderCompareOpToVulkan(graphicsPO->DepthCompareOp) : VK_COMPARE_OP_ALWAYS,
                 .depthBoundsTestEnable = VK_FALSE,  // TODO: Make it configurable?
                 .stencilTestEnable     = VK_FALSE,  // TODO: Make it configurable?
                 .minDepthBounds        = 0.f,

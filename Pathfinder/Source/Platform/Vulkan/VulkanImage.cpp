@@ -15,6 +15,19 @@ namespace Pathfinder
 {
 namespace ImageUtils
 {
+NODISCARD FORCEINLINE static VkSamplerReductionMode PathfinderSamplerReductionModeToVulkan(const ESamplerReductionMode reductionMode)
+{
+    switch (reductionMode)
+    {
+        case ESamplerReductionMode::SAMPLER_REDUCTION_MODE_NONE:
+        case ESamplerReductionMode::SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE: return VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE;
+        case ESamplerReductionMode::SAMPLER_REDUCTION_MODE_MIN: return VK_SAMPLER_REDUCTION_MODE_MIN;
+        case ESamplerReductionMode::SAMPLER_REDUCTION_MODE_MAX: return VK_SAMPLER_REDUCTION_MODE_MAX;
+    }
+
+    PFR_ASSERT(false, "Unknown reduction mode!");
+    return VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE;
+}
 
 NODISCARD FORCEINLINE static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)
 {
@@ -233,8 +246,7 @@ void VulkanImage::SetLayout(const EImageLayout newLayout, const bool bImmediate)
         vulkanCommandBuffer->Submit()->Wait();
     }
 
-    m_Specification.Layout       = newLayout;
-    m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
+    m_Specification.Layout = newLayout;
 }
 
 void VulkanImage::SetData(const void* data, size_t dataSize)
@@ -270,12 +282,12 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
     else
 #endif
     {
-        const CommandBufferSpecification cbSpec = {.Type =
-                                                       ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL /*COMMAND_BUFFER_TYPE_TRANSFER_ASYNC*/,
-                                                   .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
-                                                   .FrameIndex = Renderer::GetRendererData()->FrameIndex,
-                                                   .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
-        auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
+        const CommandBufferSpecification cbSpec = {
+            .Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL /*COMMAND_BUFFER_TYPE_TRANSFER_ASYNC*/,
+            .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+            .FrameIndex = Renderer::GetRendererData()->FrameIndex,
+            .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+        auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
         vulkanCommandBuffer->CopyBufferToImage((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle,
@@ -323,14 +335,11 @@ void VulkanImage::Invalidate()
         m_Specification.Layout = newLayout;
     }
 
-    m_DescriptorInfo = {
-        (VkSampler)SamplerStorage::CreateOrRetrieveCachedSampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap}),
-        m_View, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
-
     if (m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT && !m_BindlessIndex.has_value())
     {
         SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL, true);
-        const auto& vkImageInfo = GetDescriptorInfo();
+        const VkDescriptorImageInfo vkImageInfo = {.imageView   = m_View,
+                                                   .imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
         Renderer::GetDescriptorManager()->LoadImage(&vkImageInfo, m_BindlessIndex);
     }
 
@@ -350,10 +359,6 @@ void VulkanImage::Destroy()
 
     ImageUtils::DestroyImageView(m_View);
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_View, nullptr);
-
-    if (m_DescriptorInfo.sampler) SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
-
-    m_DescriptorInfo = {};
 
     if (m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT && m_BindlessIndex.has_value())
         Renderer::GetDescriptorManager()->FreeImage(m_BindlessIndex);
@@ -445,24 +450,36 @@ NODISCARD static ECompareOp VulkanCompareOpToPathfinder(const VkCompareOp compar
 
 void* VulkanSamplerStorage::CreateSamplerImpl(const SamplerSpecification& samplerSpec)
 {
-    VkSamplerCreateInfo samplerCI     = {.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-    samplerCI.unnormalizedCoordinates = VK_FALSE;
-    samplerCI.addressModeU            = ImageUtils::PathfinderSamplerWrapToVulkan(samplerSpec.Wrap);
-    samplerCI.addressModeV            = samplerCI.addressModeU;
-    samplerCI.addressModeW            = samplerCI.addressModeU;
+    const auto& device     = VulkanContext::Get().GetDevice();
+    const auto addressMode = ImageUtils::PathfinderSamplerWrapToVulkan(samplerSpec.Wrap);
+    const auto filter      = ImageUtils::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
 
-    samplerCI.minLod     = samplerSpec.MinLod;
-    samplerCI.maxLod     = IsNearlyEqual(samplerSpec.MaxLod, .0f) ? VK_LOD_CLAMP_NONE : samplerSpec.MaxLod;
-    samplerCI.mipLodBias = samplerSpec.MipLodBias;
+    const VkSamplerReductionModeCreateInfo reductionModeCI = {
+        .sType         = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
+        .reductionMode = ImageUtils::PathfinderSamplerReductionModeToVulkan(samplerSpec.ReductionMode)};
 
-    samplerCI.minFilter = samplerCI.magFilter = ImageUtils::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
-
-    samplerCI.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;  // VK_BORDER_COLOR_INT_OPAQUE_BLACK;  // TODO: configurable??
-    samplerCI.mipmapMode  = samplerCI.magFilter == VK_FILTER_NEAREST ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    const VkSamplerCreateInfo samplerCI = {
+        .sType            = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .pNext            = samplerSpec.ReductionMode == ESamplerReductionMode::SAMPLER_REDUCTION_MODE_NONE ? nullptr : &reductionModeCI,
+        .magFilter        = filter,
+        .minFilter        = filter,
+        .mipmapMode       = filter == VK_FILTER_NEAREST ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .addressModeU     = addressMode,
+        .addressModeV     = addressMode,
+        .addressModeW     = addressMode,
+        .mipLodBias       = samplerSpec.MipLodBias,
+        .anisotropyEnable = samplerSpec.bAnisotropyEnable ? VK_TRUE : VK_FALSE,
+        .maxAnisotropy    = samplerSpec.bAnisotropyEnable ? device->GetMaxSamplerAnisotropy() : 0.f,
+        .compareEnable    = samplerSpec.bCompareEnable ? VK_TRUE : VK_FALSE,
+        .compareOp        = VulkanUtils::PathfinderCompareOpToVulkan(samplerSpec.CompareOp),
+        .minLod           = samplerSpec.MinLod,
+        .maxLod           = IsNearlyEqual(samplerSpec.MaxLod, .0f) ? VK_LOD_CLAMP_NONE : samplerSpec.MaxLod,
+        .borderColor      = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,  // VK_BORDER_COLOR_INT_OPAQUE_BLACK;  // TODO: configurable??
+        .unnormalizedCoordinates = VK_FALSE,
+    };
 
     VkSampler sampler = VK_NULL_HANDLE;
-    VK_CHECK(vkCreateSampler(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &samplerCI, nullptr, &sampler),
-             "Failed to create vulkan sampler!");
+    VK_CHECK(vkCreateSampler(device->GetLogicalDevice(), &samplerCI, nullptr, &sampler), "Failed to create vulkan sampler!");
     return sampler;
 }
 

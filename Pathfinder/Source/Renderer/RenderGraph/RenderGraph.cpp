@@ -183,9 +183,9 @@ void RenderGraph::Execute()
         if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_GRAPHICS &&
             (!currentPass->m_RenderTargetsInfo.empty() || currentPass->m_DepthStencil.has_value()))
             cb->EndRendering();
-        // LOG_INFO("Pass - {}, taken {:.3f}ms CPU time.", currPass->m_Name, t.GetElapsedMilliseconds());
 
         cb->EndDebugLabel();
+        // LOG_DEBUG("Pass - {}, taken {:.3f}ms CPU time.", currentPass->m_Name, t.GetElapsedMilliseconds());
     }
 }
 
@@ -342,7 +342,8 @@ std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferRAWBarriers(const Uniqu
         Optional<uint32_t> prevPassIdx = std::nullopt;
         for (const auto writePassIdx : buffer->WritePasses)
         {
-            if (!runPasses.contains(writePassIdx) || buffer->AlreadySyncedWith.contains(writePassIdx) &&!m_AliasMap.contains(buffer->Name)) continue;
+            if (!runPasses.contains(writePassIdx) || buffer->AlreadySyncedWith.contains(writePassIdx) && !m_AliasMap.contains(buffer->Name))
+                continue;
 
             buffer->AlreadySyncedWith.insert(writePassIdx);
             prevPassIdx = MakeOptional<uint32_t>(writePassIdx);
@@ -439,7 +440,7 @@ std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferWARBarriers(const Uniqu
         }
 
         if (buffer->Handle->GetSpecification().Capacity == 0) continue;
-      //  if (currentPass->m_BufferReads.contains(resourceID)) continue;  // In case it's RMW buffer
+        //  if (currentPass->m_BufferReads.contains(resourceID)) continue;  // In case it's RMW buffer
 
         // TODO: Maybe insert AlreadySyncedWith in the end?
         Optional<uint32_t> prevPassIdx = std::nullopt;

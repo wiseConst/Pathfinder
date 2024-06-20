@@ -3,16 +3,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "Include/Globals.h"
 
-#define PHONG 0
-#define PBR 1
-
-#if PHONG
-#include "Include/PhongShading.glslh"
-#endif
-
-#if PBR
 #include "Include/PBRShading.glslh"
-#endif
 
 layout(constant_id = 0) const bool bRenderViewNormalMap = false;
 
@@ -68,22 +59,16 @@ void main()
     const float roughness = metallicRoughness.r * mat.Roughness;
 
     vec3 irradiance = emissive;
-    #if PBR
     const vec3 F0 = mix(vec3(0.04), albedo.rgb, metallic);
     const vec3 ambient = albedo.rgb * ao * .04f;
     irradiance += (LightData(u_PC.LightDataBuffer).DirectionalLightCount + LightData(u_PC.LightDataBuffer).PointLightCount + LightData(u_PC.LightDataBuffer).SpotLightCount) > 0 ? ambient : vec3(0);
-    #endif
 
     for(uint i = 0; i < LightData(u_PC.LightDataBuffer).DirectionalLightCount; ++i)
     {
         DirectionalLight dl = LightData(u_PC.LightDataBuffer).DirectionalLights[i];
 
         const float kShadow = 1.0f;
-        #if PHONG
-            irradiance += DirectionalLightContribution(kShadow, V, N, dl, albedo.rgb, ao);
-        #elif PBR
-            irradiance += DirectionalLightContribution(kShadow, F0, V, N, dl, albedo.rgb, roughness, metallic);
-        #endif
+        irradiance += DirectionalLightContribution(kShadow, F0, V, N, dl, albedo.rgb, roughness, metallic);
     }
 
     const uint linearTileIndex = GetLinearGridIndex(gl_FragCoord.xy, CameraData(u_PC.CameraDataBuffer).FullResolution.x);
@@ -99,11 +84,7 @@ void main()
             const float kShadow = 1.0f;
            // if(pl.bCastShadows > 0) kShadow = 1.f - PointShadowCalculation(u_PointShadowmap[lightIndex], i_VertexInput.WorldPos, u_PC.CameraDataBuffer.Position, pl, u_PC.pad0.x /* far plane for point light shadow maps */);
 
-            #if PHONG
-                irradiance += PointLightContribution(kShadow, i_VertexInput.WorldPos, N, V, pl, albedo.rgb, ao);
-            #elif PBR
-                irradiance += PointLightContribution(kShadow, i_VertexInput.WorldPos,F0,  N, V, pl, albedo.rgb, roughness, metallic);
-            #endif
+            irradiance += PointLightContribution(kShadow, i_VertexInput.WorldPos,F0,  N, V, pl, albedo.rgb, roughness, metallic);
         }
     }
     
@@ -116,11 +97,7 @@ void main()
            if (lightIndex >= LightData(u_PC.LightDataBuffer).SpotLightCount) continue;
 
            SpotLight spl = LightData(u_PC.LightDataBuffer).SpotLights[lightIndex];
-           #if PHONG
-               irradiance += SpotLightContribution(i_VertexInput.WorldPos, N, V, spl, albedo.rgb, ao);
-           #elif PBR
-               irradiance += SpotLightContribution(i_VertexInput.WorldPos, F0, N, V, spl, albedo.rgb, roughness, metallic);
-           #endif
+           irradiance += SpotLightContribution(i_VertexInput.WorldPos, F0, N, V, spl, albedo.rgb, roughness, metallic);
         }
     }
 
