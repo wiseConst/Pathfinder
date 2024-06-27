@@ -1,0 +1,53 @@
+#version 460
+
+#extension GL_EXT_mesh_shader : require
+
+#extension GL_GOOGLE_include_directive : require
+#include "Include/Globals.h"
+#include "Include/MeshletTaskPayload.glslh"
+#include "Include/Culling.h"
+
+layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+shared uint32_t passedMeshletCount;
+
+void main()
+{
+    const uint32_t lid = gl_LocalInvocationID.x;
+    const uint32_t gid = gl_GlobalInvocationID.x;
+
+    if(lid == 0) 
+    {
+        passedMeshletCount = 0;
+    }
+
+    // Out-of-bounds #0
+    if(CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID]];
+   
+    // Out-of-bounds #1
+    if(gid >= md.meshletCount) return;
+
+    barrier();
+
+    const Meshlet meshlet = MeshletBuffer(md.meshletBufferBDA).meshlets[gid];
+    const vec3 coneAxis = RotateByQuat(DecodeConeAxis(meshlet.coneAxis), md.orientation);
+
+    Sphere sphere;
+    sphere.Center = RotateByQuat(meshlet.center * md.scale, md.orientation) + md.translation;
+    sphere.Radius = meshlet.radius * max(max(md.scale.x, md.scale.y), md.scale.z);
+
+  //  if (!IsConeBackfacing(CameraData(u_PC.CameraDataBuffer).Position, coneAxis, DecodeConeCutoff(meshlet.coneCutoff), sphere.Center, sphere.Radius) && SphereInsideFrustum(sphere, CameraData(u_PC.CameraDataBuffer).ViewFrustum))
+    {
+       const uint32_t index = atomicAdd(passedMeshletCount, 1);
+       tp_TaskData.meshlets[index] = uint8_t(gid & 0x1F);
+    }
+
+    barrier();
+    
+    if (lid == 0 && passedMeshletCount != 0)
+    {
+        tp_TaskData.baseMeshletID = gid;
+        EmitMeshTasksEXT(passedMeshletCount, 1, 1);
+    }
+}

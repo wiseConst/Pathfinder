@@ -1,5 +1,4 @@
-#ifndef KEYS_H
-#define KEYS_H
+#pragma once
 
 namespace Pathfinder
 {
@@ -220,5 +219,3 @@ enum class EGamepadAxis : uint8_t
 */
 
 }  // namespace Pathfinder
-
-#endif  // KEYS_H

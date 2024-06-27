@@ -1,0 +1,49 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#include "Include/Globals.h"
+#include "Include/Culling.h"
+
+layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
+
+struct DrawMeshTasksIndirectCommand
+{
+    uint32_t groupCountX;
+    uint32_t groupCountY;
+    uint32_t groupCountZ;
+};
+
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer DrawBuffer
+{
+    uint32_t Count;
+    DrawMeshTasksIndirectCommand Commands[];
+} s_DrawBufferBDA;
+
+void main()
+{
+	const uint32_t gID = gl_GlobalInvocationID.x;
+	if (gID >= u_PC.data0.x) return; // contains object count.
+
+    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[gID];
+
+    Sphere sphere;
+    sphere.Center = RotateByQuat(md.sphere.Center * md.scale, md.orientation) + md.translation;
+    sphere.Radius = md.sphere.Radius * max(max(md.scale.x, md.scale.y), md.scale.z);
+    if(SphereInsideFrustum(sphere, CameraData(u_PC.CameraDataBuffer).ViewFrustum))
+    {
+         const uint32_t index = atomicAdd(DrawBuffer(u_PC.addr1).Count, 1);
+         DrawBuffer(u_PC.addr1).Commands[index].groupCountX = uint32_t(ceil(float(md.meshletCount) / MESHLET_LOCAL_GROUP_SIZE));
+         DrawBuffer(u_PC.addr1).Commands[index].groupCountY = 1;
+         DrawBuffer(u_PC.addr1).Commands[index].groupCountZ = 1;
+
+         CulledMeshIDBuffer(u_PC.addr2).CulledMeshIDs[index] = gID;
+    }
+
+    barrier();
+
+    if(gl_LocalInvocationID.x == 0)
+    {
+        if(DrawBuffer(u_PC.addr1).Count < u_PC.data0.x)
+             CulledMeshIDBuffer(u_PC.addr2).CulledMeshIDs[DrawBuffer(u_PC.addr1).Count] = s_INVALID_CULLED_OBJECT_INDEX;
+    }
+}

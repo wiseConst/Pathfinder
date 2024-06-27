@@ -1,5 +1,4 @@
-#ifndef VULKANSWAPCHAIN_H
-#define VULKANSWAPCHAIN_H
+#pragma once
 
 #include "Renderer/Swapchain.h"
 #include "VulkanCore.h"
@@ -7,7 +6,6 @@
 
 namespace Pathfinder
 {
-class VulkanCommandBuffer;
 
 class VulkanSwapchain final : public Swapchain
 {
@@ -52,24 +50,16 @@ class VulkanSwapchain final : public Swapchain
     VkSwapchainKHR m_Handle = VK_NULL_HANDLE;
     void* m_WindowHandle    = nullptr;
 
-    VulkanSemaphorePerFrame m_RenderSemaphore;
+    using VulkanSemaphorePerFrame = std::array<VkSemaphore, s_FRAMES_IN_FLIGHT>;
+    using VulkanFencePerFrame     = std::array<VkFence, s_FRAMES_IN_FLIGHT>;
+
     VulkanFencePerFrame m_RenderFence;
+    VulkanSemaphorePerFrame m_RenderSemaphore;
     VulkanSemaphorePerFrame m_ImageAcquiredSemaphore;
 
     std::vector<VkImageLayout> m_ImageLayouts;
     std::vector<VkImage> m_Images;
     std::vector<VkImageView> m_ImageViews;
-
-#if PFR_WINDOWS
-    VkSurfaceFullScreenExclusiveWin32InfoEXT m_SurfaceFullScreenExclusiveWin32Info = {
-        VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT};
-#endif
-    EWindowMode m_LastWindowMode                                         = EWindowMode::WINDOW_MODE_WINDOWED;
-    int32_t m_LastPosX                                                   = 0;
-    int32_t m_LastPosY                                                   = 0;
-    int32_t m_LastWidth                                                  = 1280;
-    int32_t m_LastHeight                                                 = 720;
-    VkSurfaceFullScreenExclusiveInfoEXT m_SurfaceFullScreenExclusiveInfo = {VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT};
 
     VkSurfaceKHR m_Surface                = VK_NULL_HANDLE;
     VkSurfaceFormatKHR m_ImageFormat      = {VK_FORMAT_UNDEFINED, VK_COLORSPACE_SRGB_NONLINEAR_KHR};
@@ -80,8 +70,19 @@ class VulkanSwapchain final : public Swapchain
     uint32_t m_ImageIndex{0};
     uint32_t m_FrameIndex{0};
 
-    EWindowMode m_WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
-    bool m_bNeedsRecreate    = false;
+    int32_t m_LastPosX           = 0;
+    int32_t m_LastPosY           = 0;
+    int32_t m_LastWidth          = 1280;
+    int32_t m_LastHeight         = 720;
+    EWindowMode m_WindowMode     = EWindowMode::WINDOW_MODE_WINDOWED;
+    bool m_bNeedsRecreate        = false;
+    EWindowMode m_LastWindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
+
+#if PFR_WINDOWS
+    VkSurfaceFullScreenExclusiveWin32InfoEXT m_SurfaceFullScreenExclusiveWin32Info = {
+        VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_WIN32_INFO_EXT};
+#endif
+    VkSurfaceFullScreenExclusiveInfoEXT m_SurfaceFullScreenExclusiveInfo = {VK_STRUCTURE_TYPE_SURFACE_FULL_SCREEN_EXCLUSIVE_INFO_EXT};
 
     void Recreate();
     void Destroy() final override;
@@ -95,5 +96,3 @@ class VulkanSwapchain final : public Swapchain
 };
 
 }  // namespace Pathfinder
-
-#endif  // VULKANSWAPCHAIN_H

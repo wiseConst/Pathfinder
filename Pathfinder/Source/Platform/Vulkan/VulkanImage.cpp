@@ -1,4 +1,4 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanImage.h"
 
 #include "VulkanContext.h"
@@ -6,18 +6,57 @@
 #include "VulkanCommandBuffer.h"
 #include "VulkanBuffer.h"
 
-#include "Core/Application.h"
-#include "Core/Threading.h"
-#include "Core/Window.h"
+#include <Core/Application.h>
+#include <Core/Window.h>
 
-#include "Renderer/Renderer.h"
+#include <Renderer/Renderer.h>
 
 namespace Pathfinder
 {
 namespace ImageUtils
 {
+NODISCARD FORCEINLINE static VkSamplerReductionMode PathfinderSamplerReductionModeToVulkan(const ESamplerReductionMode reductionMode)
+{
+    switch (reductionMode)
+    {
+        case ESamplerReductionMode::SAMPLER_REDUCTION_MODE_NONE:
+        case ESamplerReductionMode::SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE: return VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE;
+        case ESamplerReductionMode::SAMPLER_REDUCTION_MODE_MIN: return VK_SAMPLER_REDUCTION_MODE_MIN;
+        case ESamplerReductionMode::SAMPLER_REDUCTION_MODE_MAX: return VK_SAMPLER_REDUCTION_MODE_MAX;
+    }
 
-VkImageUsageFlags PathfinderImageUsageFlagsToVulkan(const ImageUsageFlags usageFlags)
+    PFR_ASSERT(false, "Unknown reduction mode!");
+    return VK_SAMPLER_REDUCTION_MODE_WEIGHTED_AVERAGE;
+}
+
+NODISCARD FORCEINLINE static VkFilter PathfinderSamplerFilterToVulkan(const ESamplerFilter filter)
+{
+    switch (filter)
+    {
+        case ESamplerFilter::SAMPLER_FILTER_NEAREST: return VK_FILTER_NEAREST;
+        case ESamplerFilter::SAMPLER_FILTER_LINEAR: return VK_FILTER_LINEAR;
+    }
+
+    PFR_ASSERT(false, "Unknown sampler filter!");
+    return VK_FILTER_LINEAR;
+}
+
+NODISCARD FORCEINLINE static VkSamplerAddressMode PathfinderSamplerWrapToVulkan(const ESamplerWrap wrap)
+{
+    switch (wrap)
+    {
+        case ESamplerWrap::SAMPLER_WRAP_REPEAT: return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+        case ESamplerWrap::SAMPLER_WRAP_MIRRORED_REPEAT: return VK_SAMPLER_ADDRESS_MODE_MIRRORED_REPEAT;
+        case ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_EDGE;
+        case ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_BORDER: return VK_SAMPLER_ADDRESS_MODE_CLAMP_TO_BORDER;
+        case ESamplerWrap::SAMPLER_WRAP_MIRROR_CLAMP_TO_EDGE: return VK_SAMPLER_ADDRESS_MODE_MIRROR_CLAMP_TO_EDGE;
+    }
+
+    PFR_ASSERT(false, "Unknown sampler wrap!");
+    return VK_SAMPLER_ADDRESS_MODE_REPEAT;
+}
+
+NODISCARD VkImageUsageFlags PathfinderImageUsageFlagsToVulkan(const ImageUsageFlags usageFlags)
 {
     VkImageUsageFlags vkUsageFlags = 0;
 
@@ -26,18 +65,15 @@ VkImageUsageFlags PathfinderImageUsageFlagsToVulkan(const ImageUsageFlags usageF
     if (usageFlags & EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT) vkUsageFlags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
     if (usageFlags & EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT) vkUsageFlags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
     if (usageFlags & EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT) vkUsageFlags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    if (usageFlags & EImageUsage::IMAGE_USAGE_INPUT_ATTACHMENT_BIT) vkUsageFlags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-    if (usageFlags & EImageUsage::IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT) vkUsageFlags |= VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT;
     if (usageFlags & EImageUsage::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT) vkUsageFlags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
     if (usageFlags & EImageUsage::IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT)
         vkUsageFlags |= VK_IMAGE_USAGE_FRAGMENT_SHADING_RATE_ATTACHMENT_BIT_KHR;
-    if (usageFlags & EImageUsage::IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT) vkUsageFlags |= VK_IMAGE_USAGE_FRAGMENT_DENSITY_MAP_BIT_EXT;
 
     PFR_ASSERT(vkUsageFlags > 0, "Image should have any usage!");
     return vkUsageFlags;
 }
 
-VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
+NODISCARD VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
 {
     switch (imageFormat)
     {
@@ -90,52 +126,57 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat)
     return VK_FORMAT_UNDEFINED;
 }
 
-// NOTE: MultiGPU feature gonna require that device creates images
-void CreateImage(VkImage& image, VmaAllocation& allocation, const VkFormat format, const VkImageUsageFlags imageUsage,
-                 const VkExtent3D extent, const uint32_t mipLevels, const uint32_t layerCount)
+// NOTE: VK_IMAGE_TILING_LINEAR should never be used and will never be faster.
+void CreateImage(VkImage& outImage, VmaAllocation& outAllocation, const VkFormat format, const VkImageUsageFlags imageUsage,
+                 const VkExtent3D& extent, const VkImageType imageType, const uint32_t mipLevels, const uint32_t layerCount,
+                 const VkImageLayout initialLayout, const VkImageTiling imageTiling, const VkSampleCountFlagBits samples)
 {
-    VkImageCreateInfo imageCI = {VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO};
-    imageCI.imageType         = VK_IMAGE_TYPE_2D;
-    imageCI.extent            = extent;
-    imageCI.format            = format;
-    imageCI.usage             = imageUsage;
-    imageCI.mipLevels         = mipLevels;
+    const VkImageCreateFlags imageCreateFlags = layerCount == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
+    const VkImageCreateInfo imageCI           = {
+                  .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                  .flags         = imageCreateFlags,
+                  .imageType     = imageType,
+                  .format        = format,
+                  .extent        = extent,
+                  .mipLevels     = mipLevels,
+                  .arrayLayers   = layerCount,
+                  .samples       = samples,
+                  .tiling        = imageTiling,
+                  .usage         = imageUsage,
+                  .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,  // NOTE: Images are heavily affected by sharing mode, but buffers aren't.
+                  .initialLayout = initialLayout};
 
-    // NOTE: No sharing between queues at least for now.
-    imageCI.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
-    imageCI.queueFamilyIndexCount = 0;
-    imageCI.pQueueFamilyIndices   = nullptr;
-
-    imageCI.tiling        = VK_IMAGE_TILING_OPTIMAL;
-    imageCI.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    imageCI.arrayLayers   = layerCount;
-    imageCI.flags         = layerCount == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
-    imageCI.samples       = VK_SAMPLE_COUNT_1_BIT;
-
-    VulkanContext::Get().GetDevice()->GetAllocator()->CreateImage(imageCI, image, allocation);
+    VulkanContext::Get().GetDevice()->GetAllocator()->CreateImage(imageCI, outImage, outAllocation);
 }
 
+// TODO: ImageViewCache from LegitEngine
 void CreateImageView(const VkImage& image, VkImageView& imageView, const VkFormat format, const VkImageAspectFlags aspectFlags,
-                     const VkImageViewType imageViewType, const uint32_t mipLevels, const uint32_t layerCount)
+                     const VkImageViewType imageViewType, const uint32_t baseMipLevel, const uint32_t mipLevels,
+                     const uint32_t baseArrayLayer, const uint32_t layerCount)
 {
-    VkImageViewCreateInfo imageViewCreateInfo       = {VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO};
-    imageViewCreateInfo.viewType                    = imageViewType;
-    imageViewCreateInfo.image                       = image;
-    imageViewCreateInfo.format                      = format;
-    imageViewCreateInfo.subresourceRange.aspectMask = aspectFlags;
+    const VkImageViewCreateInfo imageViewCI = {
+        .sType            = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO,
+        .image            = image,
+        .viewType         = imageViewType,
+        .format           = format,
+        .components       = {VK_COMPONENT_SWIZZLE_R, VK_COMPONENT_SWIZZLE_G, VK_COMPONENT_SWIZZLE_B, VK_COMPONENT_SWIZZLE_A},
+        .subresourceRange = {.aspectMask     = aspectFlags,
+                             .baseMipLevel   = baseMipLevel,
+                             .levelCount     = mipLevels,
+                             .baseArrayLayer = baseArrayLayer,
+                             .layerCount     = layerCount}};
 
-    imageViewCreateInfo.subresourceRange.baseMipLevel   = 0;
-    imageViewCreateInfo.subresourceRange.levelCount     = mipLevels;
-    imageViewCreateInfo.subresourceRange.baseArrayLayer = 0;
-    imageViewCreateInfo.subresourceRange.layerCount     = layerCount;
-
-    imageViewCreateInfo.components.r = VK_COMPONENT_SWIZZLE_R;
-    imageViewCreateInfo.components.g = VK_COMPONENT_SWIZZLE_G;
-    imageViewCreateInfo.components.b = VK_COMPONENT_SWIZZLE_B;
-    imageViewCreateInfo.components.a = VK_COMPONENT_SWIZZLE_A;
-
-    VK_CHECK(vkCreateImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &imageViewCreateInfo, nullptr, &imageView),
+    VK_CHECK(vkCreateImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &imageViewCI, nullptr, &imageView),
              "Failed to create an image view!");
+
+    ++Renderer::GetStats().ImageViewCount;
+}
+
+void DestroyImageView(VkImageView& imageView)
+{
+    vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), imageView, nullptr);
+    imageView = VK_NULL_HANDLE;
+    --Renderer::GetStats().ImageViewCount;
 }
 
 void DestroyImage(VkImage& image, VmaAllocation& allocation)
@@ -143,7 +184,7 @@ void DestroyImage(VkImage& image, VmaAllocation& allocation)
     VulkanContext::Get().GetDevice()->GetAllocator()->DestroyImage(image, allocation);
 }
 
-VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout)
+NODISCARD VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout)
 {
     switch (imageLayout)
     {
@@ -151,22 +192,10 @@ VkImageLayout PathfinderImageLayoutToVulkan(const EImageLayout imageLayout)
         case EImageLayout::IMAGE_LAYOUT_GENERAL: return VK_IMAGE_LAYOUT_GENERAL;
         case EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_READ_ONLY_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL:
-            return VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_STENCIL_ATTACHMENT_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL:
-            return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_STENCIL_READ_ONLY_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_DEPTH_ATTACHMENT_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_DEPTH_READ_ONLY_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_STENCIL_ATTACHMENT_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_STENCIL_READ_ONLY_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_READ_ONLY_OPTIMAL: return VK_IMAGE_LAYOUT_READ_ONLY_OPTIMAL;
-        case EImageLayout::IMAGE_LAYOUT_ATTACHMENT_OPTIMAL: return VK_IMAGE_LAYOUT_ATTACHMENT_OPTIMAL;
         case EImageLayout::IMAGE_LAYOUT_PRESENT_SRC: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-        case EImageLayout::IMAGE_LAYOUT_SHARED_PRESENT: return VK_IMAGE_LAYOUT_SHARED_PRESENT_KHR;
         case EImageLayout::IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL:
             return VK_IMAGE_LAYOUT_FRAGMENT_SHADING_RATE_ATTACHMENT_OPTIMAL_KHR;
     }
@@ -188,35 +217,38 @@ VulkanImage::VulkanImage(const ImageSpecification& imageSpec) : Image(imageSpec)
     Invalidate();
 }
 
-void VulkanImage::SetLayout(const EImageLayout newLayout)
+void VulkanImage::SetLayout(const EImageLayout newLayout, const bool bImmediate)
 {
-    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
-                                               ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, Renderer::GetRendererData()->FrameIndex,
-                                               JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
-    auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
-    vulkanCommandBuffer->BeginRecording(true);
+    if (bImmediate)
+    {
+        const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
+                                                   .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                   .FrameIndex = Renderer::GetRendererData()->FrameIndex,
+                                                   .ThreadID   = ThreadPool::MapThreadID(std::this_thread::get_id())};
+        auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
+        vulkanCommandBuffer->BeginRecording(true);
 
-    VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
-    if (ImageUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
-    if (ImageUtils::IsDepthFormat(m_Specification.Format))
-        imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
-    else
-        imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
+        VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
+        if (ImageUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        if (ImageUtils::IsDepthFormat(m_Specification.Format))
+            imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
+        else
+            imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
 
-    vulkanCommandBuffer->TransitionImageLayout(m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout),
-                                               ImageUtils::PathfinderImageLayoutToVulkan(newLayout), imageAspectMask,
-                                               m_Specification.Layers, 0, m_Specification.Mips, 0);
+        vulkanCommandBuffer->TransitionImageLayout(m_Handle, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout),
+                                                   ImageUtils::PathfinderImageLayoutToVulkan(newLayout), imageAspectMask,
+                                                   m_Specification.Layers, 0, m_Specification.Mips, 0);
 
-    vulkanCommandBuffer->EndRecording();
-    vulkanCommandBuffer->Submit(true);
+        vulkanCommandBuffer->EndRecording();
+        vulkanCommandBuffer->Submit()->Wait();
+    }
 
-    m_Specification.Layout       = newLayout;
-    m_DescriptorInfo.imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout);
+    m_Specification.Layout = newLayout;
 }
 
 void VulkanImage::SetData(const void* data, size_t dataSize)
 {
-    SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+    SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, true);
 
     const auto& rd = Renderer::GetRendererData();
     rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
@@ -248,8 +280,10 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
 #endif
     {
         const CommandBufferSpecification cbSpec = {
-            ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
-            Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
+            .Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL /*COMMAND_BUFFER_TYPE_TRANSFER_ASYNC*/,
+            .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+            .FrameIndex = Renderer::GetRendererData()->FrameIndex,
+            .ThreadID   = ThreadPool::MapThreadID(std::this_thread::get_id())};
         auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
@@ -257,7 +291,7 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
                                                ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout), 1, &copyRegion);
 
         vulkanCommandBuffer->EndRecording();
-        vulkanCommandBuffer->Submit(true, false);
+        vulkanCommandBuffer->Submit()->Wait();
     }
 }
 
@@ -267,9 +301,9 @@ void VulkanImage::Invalidate()
 
     PFR_ASSERT(m_Specification.Mips > 0, "Mips should be 1 at least!");
     const auto vkImageFormat = ImageUtils::PathfinderImageFormatToVulkan(m_Specification.Format);
-    ImageUtils::CreateImage(m_Handle, m_Allocation, vkImageFormat,
-                            ImageUtils::PathfinderImageUsageFlagsToVulkan(m_Specification.UsageFlags),
-                            {m_Specification.Width, m_Specification.Height, 1}, m_Specification.Mips, m_Specification.Layers);
+    ImageUtils::CreateImage(
+        m_Handle, m_Allocation, vkImageFormat, ImageUtils::PathfinderImageUsageFlagsToVulkan(m_Specification.UsageFlags),
+        {m_Specification.Width, m_Specification.Height, 1}, VK_IMAGE_TYPE_2D, m_Specification.Mips, m_Specification.Layers);
 
     const VkImageViewType imageViewType = m_Specification.Layers == 1
                                               ? VK_IMAGE_VIEW_TYPE_2D
@@ -282,11 +316,11 @@ void VulkanImage::Invalidate()
     else
         imageAspectMask |= VK_IMAGE_ASPECT_COLOR_BIT;
 
-    ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat, imageAspectMask, imageViewType, m_Specification.Mips,
+    ImageUtils::CreateImageView(m_Handle, m_View, vkImageFormat, imageAspectMask, imageViewType, 0, m_Specification.Mips, 0,
                                 m_Specification.Layers);
 
     // NOTE: Small crutch since SetLayout() doesn't assume using inside Invalidate() but I find it convenient.
-    // On image creation it has undefined layout. Store newLayout and set it to specification after transition.
+    // On image creation it has undefined layout. We store newLayout and set it to specification after transition.
     // Because SetLayout uses oldLayout as m_Specification.Layout and newLayout I specify as m_Specification.Layout,
     // so layouts are equal and no transition happens.
     {
@@ -294,38 +328,37 @@ void VulkanImage::Invalidate()
             m_Specification.Layout == EImageLayout::IMAGE_LAYOUT_UNDEFINED ? EImageLayout::IMAGE_LAYOUT_GENERAL : m_Specification.Layout;
 
         m_Specification.Layout = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
-        SetLayout(newLayout);
+        SetLayout(newLayout, true);
         m_Specification.Layout = newLayout;
     }
 
-    m_DescriptorInfo = {
-        (VkSampler)SamplerStorage::CreateOrRetrieveCachedSampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap}),
-        m_View, ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
-
-    if (m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
+    if (m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT && !m_BindlessIndex.has_value())
     {
-        const auto& vkImageInfo = GetDescriptorInfo();
-        Renderer::GetBindlessRenderer()->LoadImage(&vkImageInfo, m_Index);
+        SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL, true);
+        const VkDescriptorImageInfo vkImageInfo = {.imageView   = m_View,
+                                                   .imageLayout = ImageUtils::PathfinderImageLayoutToVulkan(m_Specification.Layout)};
+        Renderer::GetDescriptorManager()->LoadImage(&vkImageInfo, m_BindlessIndex);
+    }
+
+    if (m_Specification.DebugName != s_DEFAULT_STRING)
+    {
+        VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_IMAGE,
+                        m_Specification.DebugName.data());
     }
 }
 
 void VulkanImage::Destroy()
 {
-    VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
+    //    VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
     ImageUtils::DestroyImage(m_Handle, m_Allocation);
     m_Handle = VK_NULL_HANDLE;
 
+    ImageUtils::DestroyImageView(m_View);
     vkDestroyImageView(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_View, nullptr);
 
-    if (m_DescriptorInfo.sampler) SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
-
-    m_DescriptorInfo = {};
-
-    if (m_Index != UINT32_MAX && m_Specification.bBindlessUsage)
-    {
-        Renderer::GetBindlessRenderer()->FreeImage(m_Index);
-    }
+    if (m_Specification.UsageFlags & EImageUsage::IMAGE_USAGE_STORAGE_BIT && m_BindlessIndex.has_value())
+        Renderer::GetDescriptorManager()->FreeImage(m_BindlessIndex);
 }
 
 void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const glm::vec4& color) const
@@ -348,13 +381,23 @@ void VulkanImage::ClearColor(const Shared<CommandBuffer>& commandBuffer, const g
                                                m_Specification.Mips, 0);
 
     const VkClearColorValue clearColorValue = {color.x, color.y, color.z, color.w};
-    const VkImageSubresourceRange range     = {imageAspectMask, 0, m_Specification.Mips, 0, m_Specification.Layers};
+    const VkImageSubresourceRange range     = {.aspectMask     = imageAspectMask,
+                                               .baseMipLevel   = 0,
+                                               .levelCount     = m_Specification.Mips,
+                                               .baseArrayLayer = 0,
+                                               .layerCount     = m_Specification.Layers};
 
     const auto rawCommandBuffer = static_cast<VkCommandBuffer>(commandBuffer->Get());
     vkCmdClearColorImage(rawCommandBuffer, m_Handle, vkNewLayout, &clearColorValue, 1, &range);
 
     vulkanCommandBuffer->TransitionImageLayout(m_Handle, vkNewLayout, vkOldLayout, imageAspectMask, m_Specification.Layers, 0,
                                                m_Specification.Mips, 0);
+}
+
+void VulkanImage::SetDebugName(const std::string& name)
+{
+    m_Specification.DebugName = name;
+    VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_IMAGE, m_Specification.DebugName.data());
 }
 
 NODISCARD static ESamplerFilter VulkanSamplerFilterToPathfinder(const VkFilter filter)
@@ -404,24 +447,36 @@ NODISCARD static ECompareOp VulkanCompareOpToPathfinder(const VkCompareOp compar
 
 void* VulkanSamplerStorage::CreateSamplerImpl(const SamplerSpecification& samplerSpec)
 {
-    VkSamplerCreateInfo samplerCI     = {VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO};
-    samplerCI.unnormalizedCoordinates = VK_FALSE;
-    samplerCI.addressModeU            = VulkanUtility::PathfinderSamplerWrapToVulkan(samplerSpec.Wrap);
-    samplerCI.addressModeV            = samplerCI.addressModeU;
-    samplerCI.addressModeW            = samplerCI.addressModeU;
+    const auto& device     = VulkanContext::Get().GetDevice();
+    const auto addressMode = ImageUtils::PathfinderSamplerWrapToVulkan(samplerSpec.Wrap);
+    const auto filter      = ImageUtils::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
 
-    samplerCI.minLod     = samplerSpec.MinLod;
-    samplerCI.maxLod     = IsNearlyEqual(samplerSpec.MaxLod, .0f) ? VK_LOD_CLAMP_NONE : samplerSpec.MaxLod;
-    samplerCI.mipLodBias = samplerSpec.MipLodBias;
+    const VkSamplerReductionModeCreateInfo reductionModeCI = {
+        .sType         = VK_STRUCTURE_TYPE_SAMPLER_REDUCTION_MODE_CREATE_INFO,
+        .reductionMode = ImageUtils::PathfinderSamplerReductionModeToVulkan(samplerSpec.ReductionMode)};
 
-    samplerCI.minFilter = samplerCI.magFilter = VulkanUtility::PathfinderSamplerFilterToVulkan(samplerSpec.Filter);
-
-    samplerCI.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK;  // VK_BORDER_COLOR_INT_OPAQUE_BLACK;  // TODO: configurable??
-    samplerCI.mipmapMode  = samplerCI.magFilter == VK_FILTER_NEAREST ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR;
+    const VkSamplerCreateInfo samplerCI = {
+        .sType            = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO,
+        .pNext            = samplerSpec.ReductionMode == ESamplerReductionMode::SAMPLER_REDUCTION_MODE_NONE ? nullptr : &reductionModeCI,
+        .magFilter        = filter,
+        .minFilter        = filter,
+        .mipmapMode       = filter == VK_FILTER_NEAREST ? VK_SAMPLER_MIPMAP_MODE_NEAREST : VK_SAMPLER_MIPMAP_MODE_LINEAR,
+        .addressModeU     = addressMode,
+        .addressModeV     = addressMode,
+        .addressModeW     = addressMode,
+        .mipLodBias       = samplerSpec.MipLodBias,
+        .anisotropyEnable = samplerSpec.bAnisotropyEnable ? VK_TRUE : VK_FALSE,
+        .maxAnisotropy    = samplerSpec.bAnisotropyEnable ? device->GetMaxSamplerAnisotropy() : 0.f,
+        .compareEnable    = samplerSpec.bCompareEnable ? VK_TRUE : VK_FALSE,
+        .compareOp        = VulkanUtils::PathfinderCompareOpToVulkan(samplerSpec.CompareOp),
+        .minLod           = samplerSpec.MinLod,
+        .maxLod           = IsNearlyEqual(samplerSpec.MaxLod, .0f) ? VK_LOD_CLAMP_NONE : samplerSpec.MaxLod,
+        .borderColor      = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,  // VK_BORDER_COLOR_INT_OPAQUE_BLACK;  // TODO: configurable??
+        .unnormalizedCoordinates = VK_FALSE,
+    };
 
     VkSampler sampler = VK_NULL_HANDLE;
-    VK_CHECK(vkCreateSampler(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &samplerCI, nullptr, &sampler),
-             "Failed to create vulkan sampler!");
+    VK_CHECK(vkCreateSampler(device->GetLogicalDevice(), &samplerCI, nullptr, &sampler), "Failed to create vulkan sampler!");
     return sampler;
 }
 

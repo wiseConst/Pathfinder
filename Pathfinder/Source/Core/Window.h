@@ -37,9 +37,6 @@ struct WindowSpecification final
     EWindowMode WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
 };
 
-using ResizeCallback = std::function<void(uint32_t, uint32_t)>;
-
-class Framebuffer;
 class Image;
 class Window : private Uncopyable, private Unmovable
 {

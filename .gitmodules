@@ -19,9 +19,6 @@
 [submodule "Pathfinder/vendor/vma"]
 	path = Pathfinder/vendor/vma
 	url = https://github.com/GPUOpen-LibrariesAndSDKs/VulkanMemoryAllocator.git
-[submodule "Pathfinder/vendor/spirv-reflect"]
-	path = Pathfinder/vendor/spirv-reflect
-	url = https://github.com/KhronosGroup/SPIRV-Reflect.git
 [submodule "Pathfinder/vendor/imgui"]
 	path = Pathfinder/vendor/imgui
 	url = https://github.com/ocornut/imgui.git
@@ -32,3 +29,9 @@
 [submodule "Pathfinder/vendor/nlohmann"]
 	path = Pathfinder/vendor/nlohmann
 	url = https://github.com/nlohmann/json.git
+[submodule "Pathfinder/vendor/spdlog"]
+	path = Pathfinder/vendor/spdlog
+	url = https://github.com/gabime/spdlog.git
+[submodule "Pathfinder/vendor/unordered_dense"]
+	path = Pathfinder/vendor/unordered_dense
+	url = https://github.com/martinus/unordered_dense.git

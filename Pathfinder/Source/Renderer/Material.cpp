@@ -1,23 +1,67 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "Material.h"
 
 #include "Buffer.h"
+#include "Texture.h"
 
 namespace Pathfinder
 {
 
 Material::Material(const PBRData& pbrData) : m_MaterialData(pbrData)
 {
-    BufferSpecification mbSpec = {EBufferUsage::BUFFER_USAGE_STORAGE, STORAGE_BUFFER_MESH_MATERIAL_BINDING, true, false};
-    mbSpec.Data     = &m_MaterialData;
-    mbSpec.DataSize = sizeof(pbrData);
-
-    m_MaterialBuffer = Buffer::Create(mbSpec);
+    const BufferSpecification mbSpec = {.ExtraFlags = EBufferFlag::BUFFER_FLAG_ADDRESSABLE | EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                        .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE};
+    m_MaterialBuffer                 = Buffer::Create(mbSpec, &m_MaterialData, sizeof(pbrData));
 }
 
-const uint32_t Material::GetBufferIndex() const
+void Material::Update()
 {
-    return m_MaterialBuffer->GetBindlessIndex();
+    m_MaterialBuffer->SetData(&m_MaterialData, sizeof(m_MaterialData));
+}
+
+const uint64_t Material::GetBDA() const
+{
+    return m_MaterialBuffer->GetBDA();
+}
+
+void Material::SetAlbedo(const Shared<Texture>& albedo)
+{
+    if (!albedo) return;
+
+    m_Albedo                          = albedo;
+    m_MaterialData.AlbedoTextureIndex = m_Albedo->GetBindlessIndex();
+}
+
+void Material::SetNormalMap(const Shared<Texture>& normalMap)
+{
+    if (!normalMap) return;
+
+    m_NormalMap                       = normalMap;
+    m_MaterialData.NormalTextureIndex = m_NormalMap->GetBindlessIndex();
+}
+
+void Material::SetEmissiveMap(const Shared<Texture>& emissiveMap)
+{
+    if (!emissiveMap) return;
+
+    m_EmissiveMap                       = emissiveMap;
+    m_MaterialData.EmissiveTextureIndex = m_EmissiveMap->GetBindlessIndex();
+}
+
+void Material::SetMetallicRoughnessMap(const Shared<Texture>& metallicRoughness)
+{
+    if (!metallicRoughness) return;
+
+    m_MetallicRoughness                          = metallicRoughness;
+    m_MaterialData.MetallicRoughnessTextureIndex = m_MetallicRoughness->GetBindlessIndex();
+}
+
+void Material::SetOcclusionMap(const Shared<Texture>& ao)
+{
+    if (!ao) return;
+
+    m_AO                                 = ao;
+    m_MaterialData.OcclusionTextureIndex = m_AO->GetBindlessIndex();
 }
 
 }  // namespace Pathfinder

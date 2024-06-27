@@ -1,83 +1,105 @@
-#ifndef RENDERGRAPH_H
-#define RENDERGRAPH_H
+#pragma once
 
-#include "Core/Core.h"
-#include "Renderer/RendererCoreDefines.h"
+#include <Core/Core.h>
+
+#include <Renderer/RendererCoreDefines.h>
+#include "RenderGraphPass.h"
+#include "RenderGraphBuilder.h"
+
+#include "RenderGraphResourcePool.h"
+
+// https://medium.com/@pavlo.muratov/organizing-gpu-work-with-directed-acyclic-graphs-f3fd5f2c2af3
+// NOTE: Heavily inspired by Yuri ODonnel, themaister, Adria-DX12, LegitEngine.
 
 namespace Pathfinder
 {
 
-// NOTE: RenderGraph built via this book: Castorina M. Mastering Graphics Programming with Vulkan 2023
-
-enum class ERenderGraphResourceType : uint8_t
-{
-    RENDER_GRAPH_RESOURCE_TYPE_ATTACHMENT = BIT(0),
-    RENDER_GRAPH_RESOURCE_TYPE_TEXTURE    = BIT(1),
-    RENDER_GRAPH_RESOURCE_TYPE_BUFFER     = BIT(2),
-    RENDER_GRAPH_RESOURCE_TYPE_REFERENCE =
-        BIT(3)  // used exclusively to ensure the right edges between nodes are computed without creating a new resource.
-};
-
-struct RenderGraphResourceInfo
-{
-    bool bExternal = false;
-};
-
-struct RenderGraphResourceHandle
-{
-};
-
-struct RenderGraphNode
-{
-    std::string Name = s_DEFAULT_STRING;
-    Shared<Pathfinder::Framebuffer> Framebuffer;
-    bool bRenderScene = false;  // false means render fullscreen quad, otherwise render whole scene
-
-    std::vector<RenderGraphResourceHandle> Inputs;
-    std::vector<RenderGraphResourceHandle> Outputs;
-    std::vector<uint32_t> Edges;  // Index into render graph array of nodes
-};
-
-struct RenderGraphResource
-{
-    ERenderGraphResourceType Type = ERenderGraphResourceType::RENDER_GRAPH_RESOURCE_TYPE_ATTACHMENT;
-    RenderGraphResourceInfo ResourceInfo;
-
-    RenderGraphNode
-        Producer;  // Stores a reference to the node that outputs a resource. This will be used to determine the edges of the graph.
-    RenderGraphResourceHandle OutputHandle;  // Stores the parent resource.
-
-    uint32_t ReferenceCounter = 0;  // Will be used when computing which resources can be aliased. Aliasing is a technique that allows
-                                    // multiple resources to share the same memory.
-
-    std::string Name = s_DEFAULT_STRING;  // Contains the name of the resource as defined in JSON. This is useful for debugging and
-                                          // also to retrieve the resource by name.
-};
-
-struct RenderGraphSpecification
-{
-};
+class CommandBuffer;
 
 class RenderGraph final : private Uncopyable, private Unmovable
 {
   public:
-    RenderGraph(const std::string_view& debugName) : m_DebugName(debugName) {}
-    ~RenderGraph() override = default;
+    RenderGraph(const uint8_t currentFrameIndex, const std::string& name, RenderGraphResourcePool& resourcePool);
+    ~RenderGraph() = default;
 
-    // void Render(const std::vector<RenderObject>& opaqueObjects, const std::vector<RenderObject>& transparentObjects);
-
-    void AddNode(const RenderGraphNode& node)
+    template <typename TData, typename... Args>
+        requires std::is_constructible_v<RenderGraphPass<TData>, Args...>
+    [[maybe_unused]] decltype(auto) AddPass(Args&&... args)
     {
-        if (m_Nodes.contains(node.Name)) return;
-
-        m_Nodes[node.Name] = node;
+        m_Passes.emplace_back(MakeUnique<RenderGraphPass<TData>>(std::forward<Args>(args)...));
+        Unique<RGPassBase>& pass = m_Passes.back();
+        pass->m_ID               = m_Passes.size() - 1;
+        RenderGraphBuilder builder(*this, *pass);
+        pass->Setup(builder);
+        return *dynamic_cast<RenderGraphPass<TData>*>(pass.get());
     }
 
+    void Build();
+    void Execute();
+
+    RGTextureID DeclareTexture(const std::string& name, const RGTextureSpecification& rgTextureSpec);
+    RGBufferID DeclareBuffer(const std::string& name, const RGBufferSpecification& rgBufferSpec);
+
+    RGTextureID AliasTexture(const std::string& name, const std::string& source);
+    RGBufferID AliasBuffer(const std::string& name, const std::string& source);
+
+    FORCEINLINE NODISCARD RGTextureID GetTextureID(const std::string& name) const
+    {
+        PFR_ASSERT(!name.empty(), "Invalid texture name!");
+        PFR_ASSERT(m_TextureNameIDMap.contains(name), "Texture isn't declared!");
+
+        return m_TextureNameIDMap.at(name);
+    }
+
+    FORCEINLINE NODISCARD RGBufferID GetBufferID(const std::string& name) const
+    {
+        PFR_ASSERT(!name.empty(), "Invalid buffer name!");
+        PFR_ASSERT(m_BufferNameIDMap.contains(name), "Buffer isn't declared!");
+
+        return m_BufferNameIDMap.at(name);
+    }
+
+    NODISCARD Shared<Texture>& GetTexture(const RGTextureID resourceID);
+    NODISCARD Shared<Buffer>& GetBuffer(const RGBufferID resourceID);
+
+    NODISCARD Unique<RGTexture>& GetRGTexture(const RGTextureID resourceID);
+    NODISCARD Unique<RGBuffer>& GetRGBuffer(const RGBufferID resourceID);
+
   private:
-    std::unordered_map<std::string, RenderGraphNode> m_Nodes;
-    std::string m_DebugName = s_DEFAULT_STRING;
+    std::string m_Name = s_DEFAULT_STRING;
+    uint8_t m_CurrentFrameIndex{};
+    RenderGraphResourcePool& m_ResourcePool;
+
+    std::vector<Unique<RGPassBase>> m_Passes;
+    std::vector<Unique<RGTexture>> m_Textures;
+    std::vector<Unique<RGBuffer>> m_Buffers;
+
+    std::vector<uint32_t> m_TopologicallySortedPasses;
+    std::vector<std::vector<uint32_t>> m_AdjdacencyLists;
+
+    UnorderedMap<std::string, std::string> m_AliasMap;
+    UnorderedMap<std::string, RGTextureID> m_TextureNameIDMap;
+    UnorderedMap<std::string, RGBufferID> m_BufferNameIDMap;
+
+    void BuildAdjacencyLists();
+    void TopologicalSort();
+
+    // TODO: Populate it, cuz it's poor dump rn.
+    void GraphVizDump();
+
+    // BUFFER: Read-After-Write
+    std::vector<BufferMemoryBarrier> BuildBufferRAWBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
+    // BUFFER: Write-After-Read
+    std::vector<BufferMemoryBarrier> BuildBufferWARBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
+    // BUFFER: Write-After-Write
+    std::vector<BufferMemoryBarrier> BuildBufferWAWBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
+
+    // BUFFER: Read-After-Write
+    std::vector<ImageMemoryBarrier> BuildTextureRAWBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
+    // TEXTURE: Write-After-Read
+    std::vector<ImageMemoryBarrier> BuildTextureWARBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
+    // TEXTURE: Write-After-Write
+    std::vector<ImageMemoryBarrier> BuildTextureWAWBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
 };
 
 }  // namespace Pathfinder
-
-#endif

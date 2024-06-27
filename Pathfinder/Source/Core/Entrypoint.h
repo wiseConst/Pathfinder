@@ -1,5 +1,4 @@
-#ifndef ENTRYPOINT_H
-#define ENTRYPOINT_H
+#pragma once
 
 #include "PlatformDetection.h"
 
@@ -19,27 +18,14 @@ inline int32_t Main(int32_t argc, char** argv)
 
 }  // namespace Pathfinder
 
-#endif
-
-#if PFR_RELEASE
-
-#ifdef PFR_WINDOWS
+#if PFR_WINDOWS && PFR_RELEASE
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPSTR lpCmdLine, int nCmdShow)
 {
     return Pathfinder::Main(__argc, __argv);
 }
 
-#else // macOS, linux don't have equivalent for WinMain
-
-int32_t main(int32_t argc, char** argv)
-{
-    return Pathfinder::Main(argc, argv);
-}
-
-#endif
-
-#else
+#else  // macOS, linux don't have equivalent for WinMain
 
 int32_t main(int32_t argc, char** argv)
 {

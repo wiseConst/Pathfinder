@@ -1,5 +1,4 @@
-#ifndef VULKANUILAYER_H
-#define VULKANUILAYER_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Layers/UILayer.h"
@@ -34,5 +33,3 @@ class VulkanUILayer final : public UILayer
 };
 
 }  // namespace Pathfinder
-
-#endif

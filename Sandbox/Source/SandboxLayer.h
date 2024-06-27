@@ -1,16 +1,17 @@
-#ifndef SANDBOXLAYER_H
-#define SANDBOXLAYER_H
+#pragma once
 
 #include "Pathfinder.h"
 
 namespace Pathfinder
 {
 
+class SceneHierarchyPanel;
+
 class SandboxLayer final : public Layer
 {
-  public:
-    SandboxLayer() : Layer("SandboxLayer") {}
-    ~SandboxLayer() override = default;
+public:
+    SandboxLayer();
+    ~SandboxLayer() override;
 
     void Init() final override;
     void Destroy() final override;
@@ -19,13 +20,12 @@ class SandboxLayer final : public Layer
     void OnUpdate(const float deltaTime) final override;
     void OnUIRender() final override;
 
-  private:
-    Shared<Camera> m_Camera = nullptr;
+private:
+    Shared<Camera> m_Camera     = nullptr;
     Shared<Scene> m_ActiveScene = nullptr;
+    Unique<SceneHierarchyPanel> m_WorldOutlinerPanel;
 
     bool bRenderUI = false;
 };
 
-}  // namespace Pathfinder
-
-#endif  // SANDBOXLAYER_H
+} // namespace Pathfinder

@@ -1,6 +1,9 @@
 #version 460
 
 #extension GL_EXT_mesh_shader : require
+#extension GL_GOOGLE_include_directive : require
+#include "Include/Globals.h"
+#include "Include/MeshletTaskPayload.glslh"
 
 // NOTE: 
 // This line guarantees that gl_Position is computed by the exact expression that was given in the shader without 
@@ -16,45 +19,23 @@ out gl_MeshPerVertexEXT {
   invariant float gl_CullDistance[];
 } gl_MeshVerticesEXT[];
 
-#extension GL_GOOGLE_include_directive : require
-#include "Include/Globals.h"
-#include "Include/MeshletTaskPayload.glslh"
-
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out;
-
-layout(set = LAST_BINDLESS_SET + 2, binding = 0, scalar) readonly buffer CulledMeshIDBufferOpaque
-{
-    uint32_t CulledMeshIDs[];
-} s_CulledMeshIDBufferOpaque;
-
-layout(set = LAST_BINDLESS_SET + 2, binding = 1, scalar) readonly buffer CulledMeshIDBufferTransparent
-{
-    uint32_t CulledMeshIDs[];
-} s_CulledMeshIDBufferTransparent;
 
 layout(location = 0) out VertexOutput
 {
     vec4 Color;
     vec2 UV;
     vec3 WorldPos;
-    flat uint32_t MaterialBufferIndex;
+    flat uint64_t MaterialBufferBDA;
     mat3 TBNtoWorld;
 } o_VertexOutput[];
 
 #define DEBUG_MESHLETS 0
 
-mat3 quaternionToMat3(const vec4 q) {
-    const vec3 q2 = q.xyz * q.xyz;
-    const vec3 qq2 = q.xyz * q2;
-    const vec3 qq1 = q.xyz * q.w;
-    const vec3 q1q2 = q.w * q.w * q.xyz;
-
-    return mat3(
-        1.0 - 2.0 * (q2.y + q2.z), 2.0 * (qq2.x + qq1.z), 2.0 * (qq2.y - qq1.y),
-        2.0 * (qq2.x - qq1.z), 1.0 - 2.0 * (q2.x + q2.z), 2.0 * (qq2.z + qq1.x),
-        2.0 * (qq2.y + qq1.y), 2.0 * (qq2.z - qq1.x), 1.0 - 2.0 * (q2.x + q2.y)
-    );
+vec3 unpackUnorm3x8(const u8vec3 packed)
+{
+    return vec3(int32_t(packed.x), int32_t(packed.y), int32_t(packed.z)) / 127.0 - 1.0;
 }
 
 void main()
@@ -63,62 +44,53 @@ void main()
     const uint32_t mi = tp_TaskData.baseMeshletID + uint32_t(tp_TaskData.meshlets[gl_WorkGroupID.x]);
     const uint32_t ti = gl_LocalInvocationID.x;
 
-    MeshData md;
-    if(u_PC.MaterialBufferIndex == 0) {
-        if(s_CulledMeshIDBufferOpaque.CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
-        md = s_GlobalMeshDataBufferOpaque.MeshesData[s_CulledMeshIDBufferOpaque.CulledMeshIDs[gl_DrawID]];
-    }
-    else {
-        if(s_CulledMeshIDBufferTransparent.CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
-        md = s_GlobalMeshDataBufferTransparent.MeshesData[s_CulledMeshIDBufferTransparent.CulledMeshIDs[gl_DrawID]];
-    }
-
-    const uint32_t primitiveCount = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].triangleCount;
-    const uint32_t vertexCount = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].vertexCount;
+    if(CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID]];
+    
+    const uint32_t primitiveCount = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].triangleCount;
+    const uint32_t vertexCount = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].vertexCount;
+    
     // This call will reserve output memory for storing vertex and primitive attributes (other than the vertex position). 
     // Requesting memory early helps hiding the latency required for memory allocation in the geometry engine.
-    if (ti == 0) 
-    {
-        SetMeshOutputsEXT(vertexCount, primitiveCount);
-    }
+    if (ti == 0) SetMeshOutputsEXT(vertexCount, primitiveCount);
 
     #if DEBUG_MESHLETS
         const uint32_t mhash = hash(mi);
         const vec3 mcolor = vec3(float(mhash & 255), float((mhash >> 8) & 255), float((mhash >> 16) & 255)) / 255.0;
     #endif
  
-    const mat3 normalMatrix = quaternionToMat3(md.orientation);
-    const uint32_t vertexOffset = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].vertexOffset;
+    const mat3 normalMatrix = QuatToRotMat3(md.orientation);
+
+    const uint32_t vertexOffset = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].vertexOffset;
     for(i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
-        const uint32_t vi = s_GlobalMeshletVerticesBuffers[md.meshletVerticesBufferIndex].vertices[vertexOffset + i];
-        const vec3 worldPos = RotateByQuat(s_GlobalVertexPosBuffers[md.vertexPosBufferIndex].Positions[vi].Position * md.scale, md.orientation) + md.translation;
+        const uint32_t vi = MeshletVerticesBuffer(md.meshletVerticesBufferBDA).vertices[vertexOffset + i];
+        const vec3 worldPos = RotateByQuat(VertexPosBuffer(md.vertexPosBufferBDA).positions[vi].Position * md.scale, md.orientation) + md.translation;
 
-        gl_MeshVerticesEXT[i].gl_Position = u_PC.CameraDataBuffer.ViewProjection * vec4(worldPos, 1.0);
+        gl_MeshVerticesEXT[i].gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
         o_VertexOutput[i].WorldPos = worldPos;
 
-        o_VertexOutput[i].Color = UnpackU8Vec4ToVec4(s_GlobalVertexAttribBuffers[md.vertexAttributeBufferIndex].Attributes[vi].Color);
+        o_VertexOutput[i].Color = glm_unpackUnorm4x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Color);
         #if DEBUG_MESHLETS
               o_VertexOutput[i].Color = vec4(mcolor, 1.0);
         #endif
 
-        o_VertexOutput[i].UV = s_GlobalVertexAttribBuffers[md.vertexAttributeBufferIndex].Attributes[vi].UV;
-        o_VertexOutput[i].MaterialBufferIndex = md.materialBufferIndex;
+        o_VertexOutput[i].UV = VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].UV;
+        o_VertexOutput[i].MaterialBufferBDA = md.materialBufferBDA;
 
-        const vec3 N = normalize(normalMatrix * s_GlobalVertexAttribBuffers[md.vertexAttributeBufferIndex].Attributes[vi].Normal);
-        vec3 T = normalize(normalMatrix * s_GlobalVertexAttribBuffers[md.vertexAttributeBufferIndex].Attributes[vi].Tangent);
+        const vec3 N = normalize(normalMatrix * unpackUnorm3x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Normal));
+        vec3 T = normalize(normalMatrix * unpackUnorm3x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Tangent));
         T = normalize(T - dot(T, N) * N);
         const vec3 B = cross(N, T);
         o_VertexOutput[i].TBNtoWorld = mat3(T, B, N);
     }
 
-    const uint32_t triangleOffset = s_GlobalMeshletBuffers[md.meshletBufferIndex].meshlets[mi].triangleOffset;
+    const uint32_t triangleOffset = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].triangleOffset;
     for(i = ti; i < primitiveCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
         gl_PrimitiveTriangleIndicesEXT[i] = uvec3(
-            s_GlobalMeshletTrianglesBuffers[md.meshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 0], 
-            s_GlobalMeshletTrianglesBuffers[md.meshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 1], 
-            s_GlobalMeshletTrianglesBuffers[md.meshletTrianglesBufferIndex].triangles[triangleOffset + 3 * i + 2]);
+            MeshletTrianglesBuffer(md.meshletTrianglesBufferBDA).triangles[triangleOffset + 3 * i + 0], 
+            MeshletTrianglesBuffer(md.meshletTrianglesBufferBDA).triangles[triangleOffset + 3 * i + 1], 
+            MeshletTrianglesBuffer(md.meshletTrianglesBufferBDA).triangles[triangleOffset + 3 * i + 2]);
     }
-
 }

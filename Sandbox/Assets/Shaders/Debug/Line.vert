@@ -4,13 +4,13 @@
 #include "Include/Globals.h"
 
 layout(location = 0) in vec3 inPosition;
-layout(location = 1) in vec4 inColor;
+layout(location = 1) in uint32_t inColor;
 
 layout(location = 0) out vec4 outColor;
 
 void main()
 {
-    gl_Position = u_PC.CameraDataBuffer.ViewProjection * vec4(inPosition, 1.0);
+    gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(inPosition, 1.0);
     
-    outColor = inColor;
+    outColor = unpackUnorm4x8(inColor);
 }

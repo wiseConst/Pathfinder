@@ -1,8 +1,12 @@
 #include "SandboxLayer.h"
+#include <Panels/SceneHierarchyPanel.h>
 
 namespace Pathfinder
 {
 static const std::string sceneFilePath = "Scenes/SponzaSonne";
+
+SandboxLayer::SandboxLayer() : Layer("SandboxLayer") {}
+SandboxLayer::~SandboxLayer() = default;
 
 void SandboxLayer::Init()
 {
@@ -12,6 +16,7 @@ void SandboxLayer::Init()
 
     m_ActiveScene = MakeShared<Scene>(s_DEFAULT_STRING);
     SceneManager::Deserialize(m_ActiveScene, sceneFilePath);
+    m_WorldOutlinerPanel = MakeUnique<SceneHierarchyPanel>(m_ActiveScene);
 
     UILayer::SetDefaultFont("Fonts/Manrope/static/Manrope-Bold.ttf", 18.0f);
 }
@@ -73,13 +78,13 @@ void SandboxLayer::OnUpdate(const float deltaTime)
     const glm::vec3 minLightPos{-15, -5, -5};
     const glm::vec3 maxLightPos{15, 20, 5};
 
-    m_ActiveScene->ForEach<PointLightComponent>(
-        [&](const auto entityID, PointLightComponent& plc)
+    m_ActiveScene->ForEach<TransformComponent, PointLightComponent>(
+        [&](TransformComponent& tc, PointLightComponent& plc)
         {
-            plc.pl.Position += glm::vec3(0, 3.0f, 0) * deltaTime;
-            if (plc.pl.Position.y > maxLightPos.y)
+            tc.Translation += glm::vec3(0, 3.0f, 0) * deltaTime;
+            if (tc.Translation.y > maxLightPos.y)
             {
-                plc.pl.Position.y -= (maxLightPos.y - minLightPos.y);
+                tc.Translation.y -= (maxLightPos.y - minLightPos.y);
             }
         });
 
@@ -158,49 +163,13 @@ void SandboxLayer::OnUIRender()
         }
         ImGui::Separator();
 
-        std::string currentBlurTypeStr = s_DEFAULT_STRING;
-        switch (rs.BlurType)
-        {
-            case EBlurType::BLUR_TYPE_GAUSSIAN: currentBlurTypeStr = "GAUSSIAN"; break;
-            case EBlurType::BLUR_TYPE_MEDIAN: currentBlurTypeStr = "MEDIAN"; break;
-            case EBlurType::BLUR_TYPE_BOX: currentBlurTypeStr = "BOX"; break;
-        }
-        const char* blurItems[3] = {"GAUSSIAN", "MEDIAN", "BOX"};
-        ImGui::Text("BlurType");
-        if (ImGui::BeginCombo("##blurTypeCombo", currentBlurTypeStr.data()))
-        {
-            for (uint32_t n{}; n < IM_ARRAYSIZE(blurItems); ++n)
-            {
-                const auto bIsSeleceted = strcmp(currentBlurTypeStr.data(), blurItems[n]) == 0;
-                if (ImGui::Selectable(blurItems[n], bIsSeleceted))
-                {
-                    currentBlurTypeStr = blurItems[n];
-                }
-                if (bIsSeleceted) ImGui::SetItemDefaultFocus();
-            }
-
-            if (strcmp(currentBlurTypeStr.data(), "GAUSSIAN") == 0)
-            {
-                rs.BlurType = EBlurType::BLUR_TYPE_GAUSSIAN;
-            }
-            else if (strcmp(currentBlurTypeStr.data(), "MEDIAN") == 0)
-            {
-                rs.BlurType = EBlurType::BLUR_TYPE_MEDIAN;
-            }
-            else if (strcmp(currentBlurTypeStr.data(), "BOX") == 0)
-            {
-                rs.BlurType = EBlurType::BLUR_TYPE_BOX;
-            }
-            ImGui::EndCombo();
-        }
-        ImGui::Separator();
-
         bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
         bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
 
         ImGui::End();
     }
 
+#if 0
     static bool bShowRenderTargetList = true;
     if (bShowRenderTargetList)
     {
@@ -210,9 +179,9 @@ void SandboxLayer::OnUIRender()
         {
             ImGui::Text("%s", name.data());
             const uint32_t imageWidth =
-                image->GetSpecification().Width > 10 ? image->GetSpecification().Width / 2 : image->GetSpecification().Width * 100;
+                image->GetSpecification().Width > 10 ? image->GetSpecification().Width / 4 : image->GetSpecification().Width * 100;
             const uint32_t imageHeight =
-                image->GetSpecification().Height > 10 ? image->GetSpecification().Height / 2 : image->GetSpecification().Height * 100;
+                image->GetSpecification().Height > 10 ? image->GetSpecification().Height / 4 : image->GetSpecification().Height * 100;
             UILayer::DrawImage(image, {imageWidth, imageHeight}, {0, 0}, {1, 1});
             ImGui::Separator();
         }
@@ -222,21 +191,83 @@ void SandboxLayer::OnUIRender()
 
         ImGui::End();
     }
+#endif
+
+    static bool bShowPipelineMap = true;
+    if (bShowPipelineMap)
+    {
+        ImGui::Begin("Pipeline Map", &bShowPipelineMap);
+
+        // TODO: Make ui better: kind of ALIGNED Table?
+        // NAME|ACTION
+        // DepthPrePass | RELOAD
+        // SSAO         | RELOAD
+        for (const auto& [hash, pipeline] : PipelineLibrary::GetStorage())
+        {
+            const auto& pipelineSpec = pipeline->GetSpecification();
+            ImGui::PushID(pipelineSpec.DebugName.data());
+            ImGui::Text("%s", pipelineSpec.DebugName.data());
+            ImGui::SameLine(ImGui::GetWindowContentRegionMax().x - 100.0f);
+            if (ImGui::Button("Hot-Reload"))
+            {
+                LOG_WARN("Hot-reloading pipeline: {}", pipelineSpec.DebugName);
+                PipelineLibrary::Invalidate(hash);
+            }
+            ImGui::Separator();
+            ImGui::PopID();
+        }
+
+        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
+        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
+
+        ImGui::End();
+    }
+
+    static bool bShowFrameTimers = true;
+    if (bShowFrameTimers)
+    {
+        ImGui::Begin("Frame Time Statistics", &bShowFrameTimers);
+
+        ImGui::Separator();
+        ImGui::Checkbox("CollectGPUStats", &Renderer::GetRendererSettings().bCollectGPUStats);
+
+        const auto& cpuTimers = Renderer::GetCPUProfilerResults();
+        ImGui::SeparatorText("CPU");
+        for (const auto& task : cpuTimers)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{task.Color.x, task.Color.y, task.Color.z, 1.f});
+            ImGui::Text("%s: %0.3f(ms)", task.Tag.data(), task.GetLength());
+            ImGui::PopStyleColor();
+        }
+
+        const auto& gpuTimers = Renderer::GetGPUProfilerResults();
+        ImGui::SeparatorText("GPU");
+        for (const auto& task : gpuTimers)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{task.Color.x, task.Color.y, task.Color.z, 1.f});
+            ImGui::Text("%s: %0.3f(ms)", task.Tag.data(), task.GetLength());
+            ImGui::PopStyleColor();
+        }
+
+        const auto& pipelineStatistics = Renderer::GetPipelineStatistics();
+        ImGui::SeparatorText("Pipeline Statistics");
+        for (const auto& [stageStr, queryCount] : pipelineStatistics)
+        {
+            ImGui::Text("%s: %llu", stageStr.data(), queryCount);
+        }
+
+        ImGui::End();
+    }
 
     static bool bShowRendererStats = true;
     if (bShowRendererStats)
     {
+        const auto& rs = Renderer::GetStats();
         ImGui::Begin("Renderer Statistics", &bShowRendererStats);
 
-        ImGui::SeparatorText("Pass Statistics");
-        for (const auto& [pass, passTime] : Renderer::GetPassStatistics())
-            ImGui::Text("%s: %0.4f(ms)", pass.data(), passTime);
+        ImGui::Separator();
+        ImGui::Text("ImageViews: %u", rs.ImageViewCount);
 
-        ImGui::SeparatorText("Pipeline Statistics");
-        for (const auto& [pipelineStat, stat] : Renderer::GetPipelineStatistics())
-            ImGui::Text("%s: %llu", pipelineStat.data(), stat);
-
-        const auto& rs = Renderer::GetStats();
         ImGui::SeparatorText("Memory Statistics");
         for (uint32_t memoryHeapIndex = 0; const auto& memoryBudget : rs.MemoryBudgets)
         {
@@ -255,29 +286,7 @@ void SandboxLayer::OnUIRender()
     }
 
     static bool bShowWorldOutliner = true;
-    if (bShowWorldOutliner)
-    {
-        const std::string worldOutlinerString = "World Outliner: " + std::to_string(m_ActiveScene->GetEntityCount()) + " entities.";
-        ImGui::Begin(worldOutlinerString.c_str(), &bShowWorldOutliner);
-
-        m_ActiveScene->ForEach<TagComponent>([&](const auto entityID, TagComponent& tagComponent)
-                                             { ImGui::Text("%s", tagComponent.Tag.c_str()); });
-
-        if (ImGui::BeginPopupContextWindow(0, ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
-        {
-            if (ImGui::MenuItem("Create Empty Entity"))
-            {
-                m_ActiveScene->CreateEntity();
-            }
-
-            ImGui::EndPopup();
-        }
-
-        bAnythingHovered = ImGui::IsAnyItemHovered() || ImGui::IsWindowHovered();
-        bAnythingFocused = ImGui::IsAnyItemFocused() || ImGui::IsWindowFocused();
-
-        ImGui::End();
-    }
+    if (bShowWorldOutliner) m_WorldOutlinerPanel->OnImGuiRender();
 
     UILayer::SetBlockEvents(bAnythingHovered || bAnythingFocused);
 }

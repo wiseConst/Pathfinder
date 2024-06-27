@@ -1,14 +1,16 @@
-#ifndef DEBUGRENDERER_H
-#define DEBUGRENDERER_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Renderer/RendererCoreDefines.h"
+
+#include <Renderer/Passes/DebugPass.h>
 
 namespace Pathfinder
 {
 
 class Pipeline;
 class Mesh;
+class RenderGraph;
 
 class DebugRenderer
 {
@@ -17,57 +19,39 @@ class DebugRenderer
     static void Shutdown();
 
     static void DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm::vec4& color);
-    
+
     static void DrawAABB(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color);
     static void DrawAABB(const glm::vec3& center, const glm::vec3& halfExtents, const glm::mat4& transform, const glm::vec4& color);
 
     static void DrawRect(const glm::mat4& transform, const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color);
     static void DrawRect(const glm::vec3& center, const glm::vec3& halfExtents, const glm::vec4& color);
 
-    static void DrawSphere(const Shared<Mesh>& mesh, const glm::mat4& transform, const glm::vec4& color);
-    static void DrawSphere(const glm::vec3& center, const float radius, const glm::mat4& transform, const glm::vec4& color);
+    static void DrawSphere(const Shared<Mesh>& mesh, const glm::vec3& translation, const glm::vec3& scale, const glm::vec4& orientation,
+                           const glm::vec4& color);
+    FORCEINLINE static void DrawSphere(const glm::vec3& translation, const glm::vec3& scale, const glm::vec4& orientation,
+                                       const glm::vec3& center, const float radius, const glm::vec4& color)
+    {
+        s_DebugRendererData->DebugSpheres.emplace_back(translation, scale, orientation, center, radius, glm::packUnorm4x8(color));
+    }
 
-    static void Flush();
+    static void Flush(Unique<RenderGraph>& renderGraph);
 
   private:
-    struct DebugSphereRenderInfo
-    {
-        glm::vec3 Translation;
-        glm::vec4 Orientation;
-        glm::vec3 Scale;
-        glm::vec3 Center;
-        float Radius;
-        glm::vec4 Color;
-    };
-
     struct DebugRendererData
     {
-        BufferPerFrame LineVertexBuffer;
-        Shared<Pipeline> LinePipeline = nullptr;
+        Pathfinder::DebugPass DebugPass;
+        uint64_t LinePipelineHash = 0;
 
-        SurfaceMesh DebugSphereMesh        = {};
-        Shared<Pipeline> SpherePipeline    = nullptr;
-        Shared<Buffer> DebugSphereInfoSSBO = nullptr;
-        std::vector<DebugSphereRenderInfo> DebugSphereInfos;
+        uint64_t SpherePipelineHash = 0;
+        std::vector<DebugSphereData> DebugSpheres;
 
         using LineVertexBasePerFrame = std::array<LineVertex*, s_FRAMES_IN_FLIGHT>;
         LineVertexBasePerFrame LineVertexBase;
         LineVertexBasePerFrame LineVertexCurrent;
 
-        uint32_t FrameIndex      = 0;
         uint32_t LineVertexCount = 0;
         float LineWidth          = 2.5f;
-
-        static constexpr uint32_t s_MAX_LINES              = 1000;
-        static constexpr uint32_t s_MAX_VERTICES           = s_MAX_LINES * 4;
-        static constexpr uint32_t s_MAX_VERTEX_BUFFER_SIZE = s_MAX_VERTICES * sizeof(LineVertex);
-
-        static inline std::array<glm::vec4, 4> QuadVertices = {
-            glm::vec4(-0.5f, -0.5f, 0.0f, 1.0f),  // bottom left
-            glm::vec4(0.5f, -0.5f, 0.0f, 1.0f),   // bottom right
-            glm::vec4(0.5f, 0.5f, 0.0f, 1.0f),    // top right
-            glm::vec4(-0.5f, 0.5f, 0.0f, 1.0f)    // top left
-        };
+        uint8_t FrameIndex       = 0;
     };
     static inline Unique<DebugRendererData> s_DebugRendererData = nullptr;
 
@@ -78,5 +62,3 @@ class DebugRenderer
 };
 
 }  // namespace Pathfinder
-
-#endif

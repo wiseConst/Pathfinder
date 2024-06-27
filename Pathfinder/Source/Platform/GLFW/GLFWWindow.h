@@ -1,7 +1,6 @@
-#ifndef GLFWWINDOW_H
-#define GLFWWINDOW_H
+#pragma once
 
-#include "Core/Window.h"
+#include <Core/Window.h>
 
 struct GLFWwindow;
 
@@ -37,5 +36,3 @@ class GLFWWindow final : public Window
 };
 
 }  // namespace Pathfinder
-
-#endif  // GLFWWINDOW_H

@@ -1,5 +1,4 @@
-#ifndef WINDOWEVENT_H
-#define WINDOWEVENT_H
+#pragma once
 
 #include "Events.h"
 
@@ -44,4 +43,3 @@ class WindowCloseEvent final : public Event
 
 }  // namespace Pathfinder
 
-#endif  // WINDOWEVENT_H

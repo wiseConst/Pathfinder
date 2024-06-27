@@ -18,11 +18,9 @@ Shared<Mesh> Mesh::Create(const std::string& meshPath)
 {
     PFR_ASSERT(!meshPath.empty(), "Mesh path is empty!");
     const auto& appSpec           = Application::Get().GetSpecification();
-    const auto& assetsDir         = appSpec.AssetsDir;
-    const auto& meshDir           = appSpec.MeshDir;
     const auto workingDirFilePath = std::filesystem::path(appSpec.WorkingDir);
 
-    const std::filesystem::path fullMeshPath = workingDirFilePath / assetsDir / meshDir / meshPath;
+    const std::filesystem::path fullMeshPath = workingDirFilePath / appSpec.AssetsDir / appSpec.MeshDir / meshPath;
     std::string fullMeshPathString           = fullMeshPath.string();
     std::replace(fullMeshPathString.begin(), fullMeshPathString.end(), '\\', '/');  // adjust
     return MakeShared<Mesh>(fullMeshPathString);

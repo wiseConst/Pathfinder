@@ -53,7 +53,10 @@ extern void PathfinderShutdown();
     {                                                                                                                                      \
         if (!(x))                                                                                                                          \
         {                                                                                                                                  \
-            LOG_ERROR(msg);                                                                                                                \
+            std::stringstream ss;                                                                                                          \
+            ss << "ASSERTION FAILED IN FUNCTION " << __FUNCTION__ << " AT LINE " << __LINE__ << ": " << #x << std::endl;                   \
+            ss << msg;                                                                                                                     \
+            LOG_ERROR(ss.str());                                                                                                           \
             DEBUGBREAK();                                                                                                                  \
         }                                                                                                                                  \
     }

@@ -1,8 +1,8 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanUILayer.h"
 
-#include "Events/Events.h"
-#include "Events/MouseEvent.h"
+#include <Events/Events.h>
+#include <Events/MouseEvent.h>
 
 #define IMGUI_IMPL_VULKAN_NO_PROTOTYPES
 #include <imgui.h>
@@ -13,16 +13,17 @@
 #include "VulkanContext.h"
 #include "VulkanCommandBuffer.h"
 #include "VulkanImage.h"
-#include "VulkanFramebuffer.h"
+#include "VulkanTexture.h"
 
-#include "Renderer/Swapchain.h"
-#include "Renderer/Renderer.h"
+#include <Renderer/Swapchain.h>
+#include <Renderer/Renderer.h>
 
-#include "Core/Application.h"
-#include "Core/Window.h"
+#include <Core/Application.h>
+#include <Core/Window.h>
 
 namespace Pathfinder
 {
+
 VulkanUILayer::VulkanUILayer()
 {
     Init();
@@ -50,11 +51,11 @@ void VulkanUILayer::Init()
                                                   {VK_DESCRIPTOR_TYPE_STORAGE_BUFFER_DYNAMIC, 1000},
                                                   {VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT, 1000}};
 
-    VkDescriptorPoolCreateInfo poolInfo = {VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO};
-    poolInfo.flags                      = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT;
-    poolInfo.maxSets                    = 1000;
-    poolInfo.poolSizeCount              = (uint32_t)std::size(poolSizes);
-    poolInfo.pPoolSizes                 = poolSizes;
+    const VkDescriptorPoolCreateInfo poolInfo = {.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
+                                                 .flags         = VK_DESCRIPTOR_POOL_CREATE_FREE_DESCRIPTOR_SET_BIT,
+                                                 .maxSets       = s_MAX_TEXTURES,
+                                                 .poolSizeCount = (uint32_t)std::size(poolSizes),
+                                                 .pPoolSizes    = poolSizes};
     VK_CHECK(vkCreateDescriptorPool(device->GetLogicalDevice(), &poolInfo, nullptr, &m_ImGuiPool), "Failed to create ImGui Pool!");
 
     ImGui::CreateContext();
@@ -77,35 +78,36 @@ void VulkanUILayer::Init()
     const auto& window = Application::Get().GetWindow();
     ImGui_ImplGlfw_InitForVulkan((GLFWwindow*)window->Get(), true);
 
-    ImGui_ImplVulkan_InitInfo initInfo = {};
-    initInfo.Instance                  = context.GetInstance();
-    initInfo.PhysicalDevice            = device->GetPhysicalDevice();
-    initInfo.Device                    = device->GetLogicalDevice();
-    initInfo.Queue                     = device->GetGraphicsQueue();
-    initInfo.DescriptorPool            = m_ImGuiPool;
     const auto& swapchain              = window->GetSwapchain();
-    initInfo.MinImageCount = initInfo.ImageCount = swapchain->GetImageCount();
-    initInfo.MSAASamples                         = VK_SAMPLE_COUNT_1_BIT;
-    initInfo.CheckVkResultFn                     = [](VkResult err) { VK_CHECK(err, "ImGui issues!"); };
-
-    initInfo.UseDynamicRendering                              = true;
-    initInfo.PipelineRenderingCreateInfo                      = {VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO};
-    initInfo.PipelineRenderingCreateInfo.colorAttachmentCount = 1;
-
-    const auto vkImageFormat                                     = ImageUtils::PathfinderImageFormatToVulkan(swapchain->GetImageFormat());
-    initInfo.PipelineRenderingCreateInfo.pColorAttachmentFormats = &vkImageFormat;
+    const auto vkImageFormat           = ImageUtils::PathfinderImageFormatToVulkan(swapchain->GetImageFormat());
+    ImGui_ImplVulkan_InitInfo initInfo = {
+        .Instance                    = context.GetInstance(),
+        .PhysicalDevice              = device->GetPhysicalDevice(),
+        .Device                      = device->GetLogicalDevice(),
+        .QueueFamily                 = device->GetGraphicsFamily(),
+        .Queue                       = device->GetGraphicsQueue(),
+        .DescriptorPool              = m_ImGuiPool,
+        .MinImageCount               = swapchain->GetImageCount(),
+        .ImageCount                  = swapchain->GetImageCount(),
+        .MSAASamples                 = VK_SAMPLE_COUNT_1_BIT,
+        .PipelineCache               = device->GetPipelineCache(),
+        .UseDynamicRendering         = true,
+        .PipelineRenderingCreateInfo = {.sType                   = VK_STRUCTURE_TYPE_PIPELINE_RENDERING_CREATE_INFO,
+                                        .colorAttachmentCount    = 1,
+                                        .pColorAttachmentFormats = &vkImageFormat},
+        .CheckVkResultFn             = [](VkResult err) { VK_CHECK(err, "ImGui issues!"); },
+    };
     ImGui_ImplVulkan_Init(&initInfo);
 
     // execute a gpu command to upload imgui font textures
-    ImGui_ImplVulkan_CreateFontsTexture();
+    PFR_ASSERT(ImGui_ImplVulkan_CreateFontsTexture(), "Failed to create fonts texture for ImGui!");
 
     window->AddResizeCallback(
-        [](uint32_t width, uint32_t height)
+        [](const WindowResizeData& resizeData)
         {
             for (auto& [uuid, textureID] : s_TextureIDMap)
-            {
                 ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
-            }
+
             s_LastActiveTextures.clear();
             s_TextureIDMap.clear();
         });
@@ -118,9 +120,8 @@ void VulkanUILayer::Destroy()
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
     for (auto& [image, textureID] : s_TextureIDMap)
-    {
         ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
-    }
+
     s_TextureIDMap.clear();
 
     ImGui_ImplVulkan_Shutdown();
@@ -184,35 +185,35 @@ void VulkanUILayer::UpdateTextureIDs()
 
         const auto& textureID = s_TextureIDMap[uuid];
         ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
-        bIsActive = false;
         s_TextureIDMap.erase(uuid);
     }
 }
 
-void UILayer::DrawImage(Shared<Image> image, const glm::vec2& imageSize, const glm::vec2& uv0, const glm::vec2& uv1,
-                        const glm::vec4& tintCol, const glm::vec4& borderCol)
+void UILayer::DrawTexture(Shared<Texture> texture, const glm::vec2& size, const glm::vec2& uv0, const glm::vec2& uv1,
+                          const glm::vec4& tintCol, const glm::vec4& borderCol)
 {
-    PFR_ASSERT(image, "UILayer::DrawImage() - Image is null!");
-    const auto vulkanImage = std::static_pointer_cast<VulkanImage>(image);
-    PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage!");
+    PFR_ASSERT(texture, "UILayer::DrawTexture() - Texture is null!");
 
-    const auto& uuid = image->GetUUID();
+    const auto& uuid = texture->GetUUID();
     if (!s_TextureIDMap.contains(uuid))
     {
-        s_TextureIDMap.emplace(image->GetUUID(), nullptr);
+        s_TextureIDMap.emplace(uuid, nullptr);
         auto& textureID = s_TextureIDMap[uuid];
 
-        textureID = ImGui_ImplVulkan_AddTexture(vulkanImage->GetSampler(), vulkanImage->GetView(),
-                                                ImageUtils::PathfinderImageLayoutToVulkan(vulkanImage->GetSpecification().Layout));
+        const auto vulkanTexture = std::static_pointer_cast<VulkanTexture>(texture);
+        PFR_ASSERT(vulkanTexture, "Failed to cast Texture to VulkanTexture!");
+
+        const auto& vkImageInfo = vulkanTexture->GetDescriptorInfo();
+        textureID               = ImGui_ImplVulkan_AddTexture(vkImageInfo.sampler, vkImageInfo.imageView, vkImageInfo.imageLayout);
         PFR_ASSERT(textureID, "Failed to receieve textureID from imgui!");
 
-        ImGui::Image(textureID, (ImVec2&)imageSize, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
+        ImGui::Image(textureID, (ImVec2&)size, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
         s_LastActiveTextures[uuid] = true;
     }
     else
     {
         const auto& textureID = s_TextureIDMap[uuid];
-        ImGui::Image(textureID, (ImVec2&)imageSize, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
+        ImGui::Image(textureID, (ImVec2&)size, (ImVec2&)uv0, (ImVec2&)uv1, (ImVec4&)tintCol, (ImVec4&)borderCol);
 
         s_LastActiveTextures[uuid] = true;
     }

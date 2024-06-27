@@ -1,10 +1,9 @@
-#ifndef APPLICATION_H
-#define APPLICATION_H
+#pragma once
 
 #include "Core.h"
-#include "Renderer/RendererAPI.h"
-#include "Layers/LayerQueue.h"
-#include "Layers/UILayer.h"
+#include <Renderer/RendererAPI.h>
+#include <Layers/LayerQueue.h>
+#include <Layers/UILayer.h>
 
 namespace Pathfinder
 {
@@ -37,7 +36,6 @@ struct ApplicationSpecification final
 class Application : private Unmovable, private Uncopyable
 {
   public:
-    Application() = delete;
     explicit Application(const ApplicationSpecification& appSpec) noexcept;
     virtual ~Application();
 
@@ -54,12 +52,14 @@ class Application : private Unmovable, private Uncopyable
 
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE const auto& GetWindow() const { return m_Window; }
+    //  NODISCARD FORCEINLINE const auto& GetUILayer() const { return m_UILayer; }
     NODISCARD FORCEINLINE static const auto& Get()
     {
         PFR_ASSERT(s_Instance, "Application instance is not valid!");
         return *s_Instance;
     }
 
+    NODISCARD FORCEINLINE const auto GetCurrentFrameNumber() const { return m_FrameNumber; }
 
   private:
     static inline Application* s_Instance = nullptr;
@@ -72,12 +72,12 @@ class Application : private Unmovable, private Uncopyable
 
     float m_DeltaTime               = 0.0f;
     static inline bool s_bIsRunning = false;
+    uint32_t m_FrameNumber{};
 
     void OnEvent(Event& e);
+    Application() = delete;
 };
 
 Unique<Application> Create();
 
 }  // namespace Pathfinder
-
-#endif  // APPLICATION_H

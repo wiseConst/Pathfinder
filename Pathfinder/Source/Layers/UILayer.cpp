@@ -1,4 +1,4 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "UILayer.h"
 
 #include "Renderer/RendererAPI.h"
@@ -29,7 +29,7 @@ void UILayer::SetDefaultFont(const std::filesystem::path& fontPath, const float 
 
     if (fontPath.empty())
     {
-        LOG_TAG_WARN(UILayer, "Font path is empty! Returning..");
+        LOG_WARN("UILayer: Font path is empty! Returning..");
         return;
     }
 

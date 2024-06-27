@@ -30,7 +30,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
 add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 
-add_compile_options($<$<CONFIG:Debug>:-g>) # -lto
+add_compile_options($<$<CONFIG:Debug>:-g>)
 add_compile_options($<$<CONFIG:Release>:-Ofast -lto>)
 
 if (MSVC)

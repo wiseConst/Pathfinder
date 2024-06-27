@@ -1,13 +1,12 @@
 #include "PathfinderPCH.h"
 #include "Application.h"
 
-#include "Threading.h"
+#include "ThreadPool.h"
 
 #include "Window.h"
 #include "Renderer/GraphicsContext.h"
-#include "Renderer/Texture2D.h"
+#include "Renderer/Texture.h"
 #include "Renderer/Renderer.h"
-#include "Renderer/Renderer2D.h"
 
 #include "Input.h"
 #include "Events/Events.h"
@@ -31,14 +30,14 @@ Application::Application(const ApplicationSpecification& appSpec) noexcept : m_S
 
     if (m_Specification.WorkingDir == s_DEFAULT_STRING) m_Specification.WorkingDir = std::filesystem::current_path().string();
 
-    Logger::Init(std::string(m_Specification.Title) + ".log");
+    Log::Init(std::string(m_Specification.Title) + ".log");
     PFR_ASSERT(s_FRAMES_IN_FLIGHT != 0, "Frames in flight should be greater than zero!");
-    PFR_ASSERT(s_WORKER_THREAD_COUNT > 0 && JobSystem::GetNumThreads() > 0, "No worker threads found!");
+    PFR_ASSERT(s_WORKER_THREAD_COUNT > 0 && ThreadPool::GetNumThreads() > 0, "No worker threads found!");
     PFR_ASSERT(!m_Specification.AssetsDir.empty() && !m_Specification.MeshDir.empty() && !m_Specification.CacheDir.empty() &&
                    !m_Specification.ShadersDir.empty(),
                "Application specification doesn't have needed directories. (in e.g. AssetsDir)");
 
-    JobSystem::Init();
+    ThreadPool::Init();
 
     RendererAPI::Set(m_Specification.RendererAPI);
     m_LayerQueue = MakeUnique<LayerQueue>();
@@ -58,8 +57,8 @@ void Application::Run()
     uint32_t frameCount     = 0;
     double accumulatedDelta = 0.0;
 
-    LOG_ERROR("Hi world! %f", 0.5f);
-    LOG_TRACE("Current working directory: %s", m_Specification.WorkingDir.data());
+    LOG_ERROR("Hi world! {}", 0.5f);
+    LOG_TRACE("Current working directory: {}", m_Specification.WorkingDir);
     while (m_Window->IsRunning() && s_bIsRunning)
     {
         Timer t = {};
@@ -88,6 +87,7 @@ void Application::Run()
         m_Window->PollEvents();
         m_DeltaTime = static_cast<float>(t.GetElapsedSeconds());
 
+        ++m_FrameNumber;
         ++frameCount;
         accumulatedDelta += m_DeltaTime;
         if (accumulatedDelta >= 1.0)
@@ -96,15 +96,16 @@ void Application::Run()
             ss << std::fixed << std::setprecision(4);  // Set the float format
             ss << m_Window->GetSpecification().Title << " x64 / " << frameCount << " FPS ";
             ss << "[cpu]: " << t.GetElapsedMilliseconds() << "ms ";
-            ss << "[gpu]: " << Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime << "ms ";
+            ss << "[gpu]: " << Renderer::GetStats().GPUTime << "ms ";
             ss << "[present]: " << Renderer::GetStats().SwapchainPresentTime << "ms ";
-            ss << "[rhi]: " << Renderer::GetStats().RHITime << "ms ";
             ss << "[objects]: " << Renderer::GetStats().ObjectsDrawn;
-            ss << " [tris]: " << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
-            ss << " [2D batches]: " << Renderer2D::GetStats().BatchCount;
+            ss << " [tris]: " << Renderer::GetStats().TriangleCount;
+            //  ss << " [2D quads]: " << Renderer2D::GetStats().QuadCount;
             ss << " [descriptor pools]: " << Renderer::GetStats().DescriptorPoolCount;
             ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
             ss << " [samplers]: " << SamplerStorage::GetSamplerCount();
+            ss << " [barriers]: " << Renderer::GetStats().BarrierCount;
+            ss << " [barrier batches]: " << Renderer::GetStats().BarrierBatchCount;
             m_Window->SetWindowTitle(ss.str().data());
 
             accumulatedDelta = 0.0;
@@ -128,8 +129,8 @@ Application::~Application()
     m_Window.reset();
     m_GraphicsContext.reset();
 
-    JobSystem::Shutdown();
-    Logger::Shutdown();
+    ThreadPool::Shutdown();
+    Log::Shutdown();
     s_Instance = nullptr;
 }
 

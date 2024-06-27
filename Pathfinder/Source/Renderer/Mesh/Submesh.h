@@ -1,5 +1,4 @@
-#ifndef SUBMESH_H
-#define SUBMESH_H
+#pragma once
 
 #include "Core/Core.h"
 #include "Renderer/RendererCoreDefines.h"
@@ -10,13 +9,13 @@ namespace Pathfinder
 
 class Buffer;
 class Material;
-class Texture2D;
+class Texture;
 
 class Submesh final : private Uncopyable, private Unmovable
 {
   public:
     Submesh() = default;
-    ~Submesh() override { Destroy(); }
+    ~Submesh() { Destroy(); }
 
     NODISCARD FORCEINLINE const auto& GetIndexBuffer() const { return m_IndexBuffer; }
     NODISCARD FORCEINLINE const auto& GetVertexPositionBuffer() const { return m_VertexPositionBuffer; }
@@ -48,5 +47,3 @@ class Submesh final : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif

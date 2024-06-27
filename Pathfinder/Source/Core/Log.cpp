@@ -1,47 +1,31 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "Log.h"
 
-#include <chrono>
+#include <spdlog/sinks/stdout_color_sinks.h>
+#include <spdlog/sinks/basic_file_sink.h>
+
+#include "Application.h"
 
 namespace Pathfinder
 {
 
-static bool s_bIsLoggerInitialized = false;
-
-void Logger::Init(const std::string_view& logFileName)
+void Log::Init(const std::string_view& logFileName)
 {
-    if (!s_bIsLoggerInitialized)
-    {
-        PFR_ASSERT(!logFileName.empty(), "Log file name is empty!");
-        s_LogFile.open(logFileName.data(), std::ios::out | std::ios::trunc);
-        PFR_ASSERT(s_LogFile.is_open(), "Failed to open log file!");
-        s_LogBuffer.reserve(s_LogBufferSize);
+    assert(logFileName.data());
 
-        s_bIsLoggerInitialized = true;
-    }
-}
+    std::vector<spdlog::sink_ptr> logSinks;
+    logSinks.emplace_back(std::make_shared<spdlog::sinks::stdout_color_sink_mt>());
 
-void Logger::Shutdown()
-{
-    if (s_bIsLoggerInitialized)
-    {
-        Flush();
-        s_LogFile.close();
-        s_bIsLoggerInitialized = false;
-    }
-}
+    constexpr bool bTruncate = true;
+    logSinks.emplace_back(std::make_shared<spdlog::sinks::basic_file_sink_mt>(logFileName.data(), bTruncate));
 
-const char* Logger::GetCurrentSystemTime()
-{
-    static constexpr uint32_t s_MaxSystemTimeMessageLength              = 64 + 1;
-    static char s_SystemTimeMessageBuffer[s_MaxSystemTimeMessageLength] = {0};
-    memset(s_SystemTimeMessageBuffer, 0, sizeof(char) * s_MaxSystemTimeMessageLength);
+    logSinks[0]->set_pattern("%^[Thread: %t][%T] %n: %v%$");
+    logSinks[1]->set_pattern("[Thread: %t][%T] [%l] %n: %v");
 
-    const auto now     = std::chrono::system_clock::now();
-    const auto rawTime = std::chrono::system_clock::to_time_t(now);
-
-    std::strftime(s_SystemTimeMessageBuffer, s_MaxSystemTimeMessageLength, "[%d/%m/%Y][%X]", std::localtime(&rawTime));
-    return s_SystemTimeMessageBuffer;
+    s_Logger = std::make_shared<spdlog::logger>(std::string(s_ENGINE_NAME), begin(logSinks), end(logSinks));
+    spdlog::register_logger(s_Logger);
+    s_Logger->set_level(spdlog::level::trace);
+    s_Logger->flush_on(spdlog::level::trace);
 }
 
 }  // namespace Pathfinder

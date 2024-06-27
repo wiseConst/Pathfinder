@@ -1,5 +1,4 @@
-#ifndef RENDERERAPI_H
-#define RENDERERAPI_H
+#pragma once
 
 #include "Core/Core.h"
 
@@ -24,10 +23,8 @@ class RendererAPI : private Uncopyable, private Unmovable
   private:
     inline static ERendererAPI s_RendererAPI = ERendererAPI::RENDERER_API_VULKAN;
 
-    RendererAPI()           = default;
-    ~RendererAPI() override = default;
+    RendererAPI()           = delete;
 };
 
 }  // namespace Pathfinder
 
-#endif  // RENDERERAPI_H

@@ -1,5 +1,4 @@
-#ifndef MOUSEEVENT_H
-#define MOUSEEVENT_H
+#pragma once
 
 #include "Events.h"
 #include "Core/Keys.h"
@@ -105,4 +104,3 @@ class MouseButtonReleasedEvent final : public Event
 
 }  // namespace Pathfinder
 
-#endif  // MOUSEEVENT_H

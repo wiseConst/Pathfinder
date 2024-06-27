@@ -1,16 +1,14 @@
-#ifndef UILAYER_H
-#define UILAYER_H
+#pragma once
 
-#include "Core/Core.h"
+#include <Core/Core.h>
 #include "Layer.h"
-#include "Core/Math.h"
-#include <unordered_map>
+#include <filesystem>
 #include <imgui.h>
 
 namespace Pathfinder
 {
 
-class Image;
+class Texture;
 
 // NOTE: Per-RHI UI Layer.
 class UILayer : public Layer
@@ -35,19 +33,18 @@ class UILayer : public Layer
     static void SetDefaultFont(const std::filesystem::path& fontPath, const float sizePixels);
 
     // Implemented per RHI.
-    static void DrawImage(Shared<Image> image, const glm::vec2& imageSize, const glm::vec2& uv0, const glm::vec2& uv1,
-                          const glm::vec4& tintCol = glm::vec4(1.0f), const glm::vec4& borderCol = glm::vec4(0.0f));
+    static void DrawTexture(Shared<Texture> texture, const glm::vec2& size, const glm::vec2& uv0, const glm::vec2& uv1,
+                            const glm::vec4& tintCol = glm::vec4(1.0f), const glm::vec4& borderCol = glm::vec4(0.0f));
 
   protected:
     static inline bool m_bBlockEvents = false;
-    static inline std::unordered_map<UUID, ImTextureID> s_TextureIDMap;  // Cleared in Destroy().
-    static inline std::unordered_map<UUID, bool> s_LastActiveTextures;
+    static inline UnorderedMap<UUID, ImTextureID> s_TextureIDMap;  // Cleared in Destroy().
+    static inline UnorderedMap<UUID, bool> s_LastActiveTextures;
 
     UILayer() : Layer("UILayer") {}
+
     virtual void UpdateTextureIDs() = 0;  // Should be called inside BeginRender().
     void SetCustomTheme() const;          // Should be called in the end of Init().
 };
 
 }  // namespace Pathfinder
-
-#endif

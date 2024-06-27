@@ -3,16 +3,7 @@
 #extension GL_GOOGLE_include_directive : require
 #include "Include/Globals.h"
 
-#define PHONG 0
-#define PBR 1
-
-#if PHONG
-#include "Include/PhongShading.glslh"
-#endif
-
-#if PBR
 #include "Include/PBRShading.glslh"
-#endif
 
 layout(constant_id = 0) const bool bRenderViewNormalMap = false;
 
@@ -30,7 +21,7 @@ layout(location = 0) in VertexInput
     vec4 Color;
     vec2 UV;
     vec3 WorldPos;
-    flat uint32_t MaterialBufferIndex;
+    flat uint64_t MaterialBufferBDA;
     mat3 TBNtoWorld;
 } i_VertexInput;
 
@@ -51,10 +42,10 @@ vec2 GetMetallicRoughnessMap(const PBRData mat)
 
 void main()
 {
-    const PBRData mat = s_GlobalMaterialBuffers[nonuniformEXT(i_VertexInput.MaterialBufferIndex)].mat;
+    const PBRData mat = MaterialBuffer(i_VertexInput.MaterialBufferBDA).mat;
 
     const vec3 N = normalize(i_VertexInput.TBNtoWorld * GetNormalFromNormalMap(mat));
-    const vec3 V = normalize(u_PC.CameraDataBuffer.Position - i_VertexInput.WorldPos);
+    const vec3 V = normalize(CameraData(u_PC.CameraDataBuffer).Position - i_VertexInput.WorldPos);
 
     // <0> is reserved for white texture
     const vec3 emissive = mat.EmissiveTextureIndex != 0 ? texture(u_GlobalTextures[nonuniformEXT(mat.EmissiveTextureIndex)], i_VertexInput.UV).rgb : vec3(0.f);
@@ -68,59 +59,45 @@ void main()
     const float roughness = metallicRoughness.r * mat.Roughness;
 
     vec3 irradiance = emissive;
-    #if PBR
     const vec3 F0 = mix(vec3(0.04), albedo.rgb, metallic);
     const vec3 ambient = albedo.rgb * ao * .04f;
-    irradiance += (u_PC.LightDataBuffer.DirectionalLightCount + u_PC.LightDataBuffer.PointLightCount + u_PC.LightDataBuffer.SpotLightCount) > 0 ? ambient : vec3(0);
-    #endif
+    irradiance += (LightData(u_PC.LightDataBuffer).DirectionalLightCount + LightData(u_PC.LightDataBuffer).PointLightCount + LightData(u_PC.LightDataBuffer).SpotLightCount) > 0 ? ambient : vec3(0);
 
-    for(uint i = 0; i < u_PC.LightDataBuffer.DirectionalLightCount; ++i)
+    for(uint i = 0; i < LightData(u_PC.LightDataBuffer).DirectionalLightCount; ++i)
     {
-        DirectionalLight dl = u_PC.LightDataBuffer.DirectionalLights[i];
+        DirectionalLight dl = LightData(u_PC.LightDataBuffer).DirectionalLights[i];
 
         const float kShadow = 1.0f;
-        #if PHONG
-            irradiance += DirectionalLightContribution(kShadow, V, N, dl, albedo.rgb, ao);
-        #elif PBR
-            irradiance += DirectionalLightContribution(kShadow, F0, V, N, dl, albedo.rgb, roughness, metallic);
-        #endif
+        irradiance += DirectionalLightContribution(kShadow, F0, V, N, dl, albedo.rgb, roughness, metallic);
     }
 
-    const uint linearTileIndex = GetLinearGridIndex(gl_FragCoord.xy, u_PC.CameraDataBuffer.FullResolution.x);
+    const uint linearTileIndex = GetLinearGridIndex(gl_FragCoord.xy, CameraData(u_PC.CameraDataBuffer).FullResolution.x);
     // Point lights
     {
         const uint offset = linearTileIndex * MAX_POINT_LIGHTS;
-        for(uint i = 0; i < u_PC.LightDataBuffer.PointLightCount && VisiblePointLightIndicesBuffer(u_PC.VisiblePointLightIndicesDataBuffer).indices[offset + i] != INVALID_LIGHT_INDEX; ++i) 
+        for(uint i = 0; i < LightData(u_PC.LightDataBuffer).PointLightCount && VisiblePointLightIndicesBuffer(u_PC.VisiblePointLightIndicesDataBuffer).indices[offset + i] != INVALID_LIGHT_INDEX; ++i) 
         {
             const uint lightIndex = VisiblePointLightIndicesBuffer(u_PC.VisiblePointLightIndicesDataBuffer).indices[offset + i];
-            if (lightIndex >= u_PC.LightDataBuffer.PointLightCount) continue;
+            if (lightIndex >= LightData(u_PC.LightDataBuffer).PointLightCount) continue;
 
-            PointLight pl = u_PC.LightDataBuffer.PointLights[lightIndex];
-         const float kShadow = 1.0f;
+            PointLight pl = LightData(u_PC.LightDataBuffer).PointLights[lightIndex];
+            const float kShadow = 1.0f;
            // if(pl.bCastShadows > 0) kShadow = 1.f - PointShadowCalculation(u_PointShadowmap[lightIndex], i_VertexInput.WorldPos, u_PC.CameraDataBuffer.Position, pl, u_PC.pad0.x /* far plane for point light shadow maps */);
 
-            #if PHONG
-                irradiance += PointLightContribution(kShadow, i_VertexInput.WorldPos, N, V, pl, albedo.rgb, ao);
-            #elif PBR
-                irradiance += PointLightContribution(kShadow, i_VertexInput.WorldPos,F0,  N, V, pl, albedo.rgb, roughness, metallic);
-            #endif
+            irradiance += PointLightContribution(kShadow, i_VertexInput.WorldPos,F0,  N, V, pl, albedo.rgb, roughness, metallic);
         }
     }
     
     // Spot lights
     {
         const uint offset = linearTileIndex * MAX_SPOT_LIGHTS;
-        for(uint i = 0; i < u_PC.LightDataBuffer.SpotLightCount && VisibleSpotLightIndicesBuffer(u_PC.VisibleSpotLightIndicesDataBuffer).indices[offset + i] != INVALID_LIGHT_INDEX; ++i)
+        for(uint i = 0; i < LightData(u_PC.LightDataBuffer).SpotLightCount && VisibleSpotLightIndicesBuffer(u_PC.VisibleSpotLightIndicesDataBuffer).indices[offset + i] != INVALID_LIGHT_INDEX; ++i)
         {
            const uint lightIndex = VisibleSpotLightIndicesBuffer(u_PC.VisibleSpotLightIndicesDataBuffer).indices[offset + i];
-           if (lightIndex >= u_PC.LightDataBuffer.SpotLightCount) continue;
+           if (lightIndex >= LightData(u_PC.LightDataBuffer).SpotLightCount) continue;
 
-           SpotLight spl = u_PC.LightDataBuffer.SpotLights[lightIndex];
-           #if PHONG
-               irradiance += SpotLightContribution(i_VertexInput.WorldPos, N, V, spl, albedo.rgb, ao);
-           #elif PBR
-               irradiance += SpotLightContribution(i_VertexInput.WorldPos, F0, N, V, spl, albedo.rgb, roughness, metallic);
-           #endif
+           SpotLight spl = LightData(u_PC.LightDataBuffer).SpotLights[lightIndex];
+           irradiance += SpotLightContribution(i_VertexInput.WorldPos, F0, N, V, spl, albedo.rgb, roughness, metallic);
         }
     }
 
@@ -132,6 +109,6 @@ void main()
 
     if(bRenderViewNormalMap)
     {
-        outViewNormalMap = u_PC.CameraDataBuffer.View * vec4(N, 1);
+        outViewNormalMap = CameraData(u_PC.CameraDataBuffer).View * vec4(N, 1);
     }
 }

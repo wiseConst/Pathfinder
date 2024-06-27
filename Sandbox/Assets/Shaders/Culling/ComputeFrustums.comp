@@ -1,0 +1,36 @@
+#version 460
+
+#extension GL_GOOGLE_include_directive : require
+#include "Include/Globals.h"
+#include "Include/Culling.h"
+
+layout(local_size_x = LIGHT_CULLING_TILE_SIZE, local_size_y = LIGHT_CULLING_TILE_SIZE, local_size_z = 1) in;
+
+// TODO: Cone frustums https://www.youtube.com/watch?v=E-KBGNpXnrw&list=PLU2nPsAdxKWQYxkmQ3TdbLsyc1l2j25XM&index=126&ab_channel=GameEngineSeries
+void main()
+{
+    const vec2 wgid = vec2(gl_GlobalInvocationID.xy); // Each thread inside warp creates 1 frustum.
+    if(any(greaterThan(wgid, CameraData(u_PC.CameraDataBuffer).FullResolution))) return;
+
+    // -Z = -1
+    vec4 screenToViewCoords[4];
+    // Top left point
+    screenToViewCoords[0] = vec4(wgid.xy * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
+    // Top right point
+    screenToViewCoords[1] = vec4(vec2(wgid.x + 1.0, wgid.y) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
+    // Bottom left point
+    screenToViewCoords[2] = vec4(vec2(wgid.x, wgid.y + 1.0) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
+    // Bottom right point
+    screenToViewCoords[3] = vec4(vec2(wgid.x + 1.0, wgid.y + 1.0) * LIGHT_CULLING_TILE_SIZE, -1.0, 1.0);
+    
+    for(uint i = 0; i < 4; ++i)
+        screenToViewCoords[i].xyz = ScreenSpaceToView(screenToViewCoords[i], CameraData(u_PC.CameraDataBuffer).InvFullResolution).xyz;
+
+    // View space eye position is always at the origin.
+    const vec3 eyePos = vec3(0);
+    const uint linearTileIndex = GetLinearGridIndex(wgid * LIGHT_CULLING_TILE_SIZE, CameraData(u_PC.CameraDataBuffer).FullResolution.x);
+    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[0] = ComputePlane(eyePos, screenToViewCoords[2].xyz, screenToViewCoords[0].xyz);
+    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[1] = ComputePlane(eyePos, screenToViewCoords[1].xyz, screenToViewCoords[3].xyz);
+    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[2] = ComputePlane(eyePos, screenToViewCoords[0].xyz, screenToViewCoords[1].xyz);
+    LightCullingFrustum(u_PC.LightCullingFrustumDataBuffer).frustums[linearTileIndex].Planes[3] = ComputePlane(eyePos, screenToViewCoords[3].xyz, screenToViewCoords[2].xyz);
+}

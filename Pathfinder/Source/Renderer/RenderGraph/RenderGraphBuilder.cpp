@@ -1,122 +1,165 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "RenderGraphBuilder.h"
 #include "RenderGraph.h"
-
-#include "Core/Application.h"
-
-#include <nlohmann/json.hpp>
 
 namespace Pathfinder
 {
 
-namespace RenderGraphUtils
+void RenderGraphBuilder::DeclareBuffer(const std::string& name, const RGBufferSpecification& rgBufferSpec)
 {
-
-static ERenderGraphResourceType StringToResourceType(const std::string& type)
-{
-    if (strcmp(type.data(), "texture") == 0)
-        return ERenderGraphResourceType::RENDER_GRAPH_RESOURCE_TYPE_TEXTURE;
-    else if (strcmp(type.data(), "attachment") == 0)
-        return ERenderGraphResourceType::RENDER_GRAPH_RESOURCE_TYPE_ATTACHMENT;
-    else if (strcmp(type.data(), "buffer") == 0)
-        return ERenderGraphResourceType::RENDER_GRAPH_RESOURCE_TYPE_BUFFER;
-    else if (strcmp(type.data(), "reference") == 0)
-    {
-        // This is used for resources that need to create an edge but are not actually
-        // used by the render pass
-        return ERenderGraphResourceType::RENDER_GRAPH_RESOURCE_TYPE_REFERENCE;
-    }
-
-    PFR_ASSERT(false, "Unknown render graph resource type!");
-    return ERenderGraphResourceType::RENDER_GRAPH_RESOURCE_TYPE_REFERENCE;
+    m_RGPassBaseRef.m_BufferCreates.insert(m_RenderGraphRef.DeclareBuffer(name, rgBufferSpec));
 }
 
-}  // namespace RenderGraphUtils
-
-Unique<RenderGraph> RenderGraphBuilder::Create(const std::filesystem::path& renderGraphSpecificationPath)
+void RenderGraphBuilder::DeclareTexture(const std::string& name, const RGTextureSpecification& rgTextureSpec)
 {
-    return nullptr;
+    m_RGPassBaseRef.m_TextureCreates.insert(m_RenderGraphRef.DeclareTexture(name, rgTextureSpec));
+}
 
-    PFR_ASSERT(!renderGraphSpecificationPath.empty(), "Invalid render graph specification path!");
-
-    const auto& appSpec = Application::Get().GetSpecification();
-    const std::filesystem::path renderGraphFilePath =
-        std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / renderGraphSpecificationPath;
-
-#if 0
-    using namespace simdjson;
-    ondemand::parser parser;
-    const auto parsedJson  = padded_string::load(renderGraphFilePath.string());
-    ondemand::document doc = parser.iterate(parsedJson);
-
-    std::string debugName = s_DEFAULT_STRING;
-    if (auto nameField = doc.find_field("name"); !nameField.is_null())
+RGTextureID RenderGraphBuilder::WriteTexture(const std::string& name, const std::string& input)
+{
+    if (input != s_DEFAULT_STRING)
     {
-        debugName = std::string(nameField.get_string().value());
-        PFR_ASSERT(!debugName.empty(), "Node name is empty!");
+        const auto sourceTextureID = m_RenderGraphRef.GetTextureID(input);
+        m_RGPassBaseRef.m_TextureReads.insert(sourceTextureID);
+
+        const auto textureID = m_RenderGraphRef.AliasTexture(name, input);
+        m_RGPassBaseRef.m_TextureWrites.insert(textureID);
+
+        m_RenderGraphRef.GetRGTexture(textureID)->ReadPasses.insert(m_RGPassBaseRef.m_ID);
+        m_RenderGraphRef.GetRGTexture(textureID)->WritePasses.insert(m_RGPassBaseRef.m_ID);
+
+        m_RGPassBaseRef.m_TextureStateMap[textureID.m_ID.value()] = EResourceState::RESOURCE_STATE_STORAGE_IMAGE;
+        return textureID;
     }
-    auto rg = MakeUnique<RenderGraph>(debugName);
 
-    auto passesField = doc.find_field("passes");
-    PFR_ASSERT(!passesField.is_null(), "Passes field is invalid!");
+    const auto textureID = m_RenderGraphRef.GetTextureID(name);
+    m_RGPassBaseRef.m_TextureWrites.insert(textureID);
 
-    auto passesArr = passesField.get_array();
-    PFR_ASSERT(!passesArr.is_empty(), "Passes array is empty!");
-#endif
+    m_RenderGraphRef.GetRGTexture(textureID)->WritePasses.insert(m_RGPassBaseRef.m_ID);
+    m_RGPassBaseRef.m_TextureStateMap[textureID.m_ID.value()] = EResourceState::RESOURCE_STATE_STORAGE_IMAGE;
+    return textureID;
+}
 
-#if 0
-    const auto passCount = passesArr.count_elements().value();
+RGTextureID RenderGraphBuilder::ReadTexture(const std::string& name, const ResourceStateFlags resourceStateFlags)
+{
+    PFR_ASSERT(resourceStateFlags != 0, "Resource state flags can't be empty!");
 
-    for (size_t passIdx{}; passIdx < passCount; ++passIdx)
+    const auto textureID = m_RenderGraphRef.GetTextureID(name);
+    m_RGPassBaseRef.m_TextureReads.insert(textureID);
+
+    m_RenderGraphRef.GetRGTexture(textureID)->ReadPasses.insert(m_RGPassBaseRef.m_ID);
+    m_RGPassBaseRef.m_TextureStateMap[textureID.m_ID.value()] |= EResourceState::RESOURCE_STATE_TEXTURE | resourceStateFlags;
+    return textureID;
+}
+
+RGTextureID RenderGraphBuilder::WriteRenderTarget(const std::string& name, const ColorClearValue& clearValue, const EOp loadOp,
+                                                  const EOp storeOp, const std::string& input)
+{
+    if (input != s_DEFAULT_STRING)
     {
-        auto inputs  = passesArr.at(passIdx)["inputs"].get_array();
-        auto outputs = passesArr.at(passIdx)["outputs"].get_array();
+        const auto sourceTextureID = m_RenderGraphRef.GetTextureID(input);
+        m_RGPassBaseRef.m_TextureReads.insert(sourceTextureID);
 
-        //   const std::string nodeName = std::string(passesArr.at(passIdx)["name"].get_c_str());
-        RenderGraphNode rgNode = {/*nodeName*/};
+        const auto textureID = m_RenderGraphRef.AliasTexture(name, input);
+        m_RGPassBaseRef.m_TextureWrites.insert(textureID);
 
-        for (auto input : inputs)
-        {
-      //      auto td = input.at(1);
+        m_RenderGraphRef.GetRGTexture(textureID)->ReadPasses.insert(m_RGPassBaseRef.m_ID);
+        m_RenderGraphRef.GetRGTexture(textureID)->WritePasses.insert(m_RGPassBaseRef.m_ID);
 
-            auto typeField = input.find_field_unordered("type");
-            auto nameField = input.find_field_unordered("name");
-
-            LOG_TRACE("%s", input.get_raw_json_string().value().raw());
-            //    LOG_TRACE("%s", input["name"].get_string().value().data());
-        }
-
-        /* for (sizet ii = 0; ii < pass_inputs.size(); ++ii)
-         {
-             json pass_input = pass_inputs[ii];
-
-             FrameGraphResourceInputCreation input_creation{};
-
-             std::string input_type = pass_input.value("type", "");
-             RASSERT(!input_type.empty());
-
-             std::string input_name = pass_input.value("name", "");
-             RASSERT(!input_name.empty());
-
-             input_creation.type                   = string_to_resource_type(input_type.c_str());
-             input_creation.resource_info.external = false;
-
-             input_creation.name = string_buffer.append_use_f("%s", input_name.c_str());
-
-             node_creation.inputs.push(input_creation);
-         }*/
-
-        rg->AddNode(rgNode);
-        // auto d = arr.at(passIdx)["name"];
-        // auto outputs = arr.at(passIdx)["outputs"];
-
-        // LOG_TRACE("%s", inputs.at(0)["name"].get_string().value().data());
-        // LOG_TRACE("%s", outputs.at(0)["name"].get_string().value().data());
-        // LOG_TRACE("%s", arr.at(passIdx)["name"].get_string().value().data());
+        m_RGPassBaseRef.m_RenderTargetsInfo.emplace_back(clearValue, textureID, loadOp, storeOp);
+        m_RGPassBaseRef.m_TextureStateMap[textureID.m_ID.value()] = EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET;
+        return textureID;
     }
-#endif
 
-    //return rg;
+    const auto textureID = m_RenderGraphRef.GetTextureID(name);
+    m_RGPassBaseRef.m_TextureWrites.insert(textureID);
+
+    m_RenderGraphRef.GetRGTexture(textureID)->WritePasses.insert(m_RGPassBaseRef.m_ID);
+    m_RGPassBaseRef.m_TextureStateMap[textureID.m_ID.value()] = EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET;
+
+    m_RGPassBaseRef.m_RenderTargetsInfo.emplace_back(clearValue, textureID, loadOp, storeOp);
+    return textureID;
+}
+
+RGTextureID RenderGraphBuilder::WriteDepthStencil(const std::string& name, const DepthStencilClearValue& clearValue, const EOp depthLoadOp,
+                                                  const EOp depthStoreOp, const EOp stencilLoadOp, const EOp stencilStoreOp,
+                                                  const std::string& input)
+{
+    if (input != s_DEFAULT_STRING)
+    {
+        const auto sourceTextureID = m_RenderGraphRef.GetTextureID(input);
+        m_RGPassBaseRef.m_TextureReads.insert(sourceTextureID);
+
+        const auto textureID = m_RenderGraphRef.AliasTexture(name, input);
+        m_RGPassBaseRef.m_TextureWrites.insert(textureID);
+
+        m_RenderGraphRef.GetRGTexture(textureID)->ReadPasses.insert(m_RGPassBaseRef.m_ID);
+        m_RenderGraphRef.GetRGTexture(textureID)->WritePasses.insert(m_RGPassBaseRef.m_ID);
+
+        m_RGPassBaseRef.m_DepthStencil = {.ClearValue         = clearValue,
+                                          .DepthStencilHandle = textureID,
+                                          .DepthLoadOp        = depthLoadOp,
+                                          .DepthStoreOp       = depthStoreOp,
+                                          .StencilLoadOp      = stencilLoadOp,
+                                          .StencilStoreOp     = stencilStoreOp};
+
+        m_RGPassBaseRef.m_TextureStateMap[textureID.m_ID.value()] = EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET;
+
+        return textureID;
+    }
+
+    const auto textureID = m_RenderGraphRef.GetTextureID(name);
+    m_RGPassBaseRef.m_TextureWrites.insert(textureID);
+
+    m_RenderGraphRef.GetRGTexture(textureID)->WritePasses.insert(m_RGPassBaseRef.m_ID);
+    m_RGPassBaseRef.m_DepthStencil                            = {.ClearValue         = clearValue,
+                                                                 .DepthStencilHandle = textureID,
+                                                                 .DepthLoadOp        = depthLoadOp,
+                                                                 .DepthStoreOp       = depthStoreOp,
+                                                                 .StencilLoadOp      = stencilLoadOp,
+                                                                 .StencilStoreOp     = stencilStoreOp};
+    m_RGPassBaseRef.m_TextureStateMap[textureID.m_ID.value()] = EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET;
+
+    return textureID;
+}
+
+RGBufferID RenderGraphBuilder::ReadBuffer(const std::string& name, const ResourceStateFlags resourceStateFlags)
+{
+    PFR_ASSERT(resourceStateFlags != 0, "Resource state flags can't be empty!");
+
+    const auto bufferID = m_RenderGraphRef.GetBufferID(name);
+    m_RGPassBaseRef.m_BufferReads.insert(bufferID);
+
+    m_RenderGraphRef.GetRGBuffer(bufferID)->ReadPasses.insert(m_RGPassBaseRef.m_ID);
+    m_RGPassBaseRef.m_BufferStateMap[bufferID.m_ID.value()] |= EResourceState::RESOURCE_STATE_STORAGE_BUFFER | resourceStateFlags;
+    return bufferID;
+}
+
+RGBufferID RenderGraphBuilder::WriteBuffer(const std::string& name, const std::string& input)
+{
+    if (input != s_DEFAULT_STRING)
+    {
+        const auto sourceBufferID = m_RenderGraphRef.GetBufferID(input);
+        m_RGPassBaseRef.m_BufferReads.insert(sourceBufferID);
+
+        const auto bufferID = m_RenderGraphRef.AliasBuffer(name, input);
+        m_RGPassBaseRef.m_BufferWrites.insert(bufferID);
+
+        m_RenderGraphRef.GetRGBuffer(bufferID)->ReadPasses.insert(m_RGPassBaseRef.m_ID);
+        m_RenderGraphRef.GetRGBuffer(bufferID)->WritePasses.insert(m_RGPassBaseRef.m_ID);
+
+        m_RGPassBaseRef.m_BufferStateMap[bufferID.m_ID.value()] =
+            EResourceState::RESOURCE_STATE_STORAGE_BUFFER | EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE;
+        return bufferID;
+    }
+
+    const auto bufferID = m_RenderGraphRef.GetBufferID(name);
+    m_RGPassBaseRef.m_BufferWrites.insert(bufferID);
+
+    m_RenderGraphRef.GetRGBuffer(bufferID)->WritePasses.insert(m_RGPassBaseRef.m_ID);
+    m_RGPassBaseRef.m_BufferStateMap[bufferID.m_ID.value()] =
+        EResourceState::RESOURCE_STATE_STORAGE_BUFFER | EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE;
+    return bufferID;
 }
 
 }  // namespace Pathfinder

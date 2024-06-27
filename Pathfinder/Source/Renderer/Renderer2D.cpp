@@ -1,182 +1,92 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "Renderer2D.h"
 
-#include "Core/Threading.h"
-#include "Renderer.h"
+#include <Core/Application.h>
+#include <Core/Window.h>
+
 #include "Pipeline.h"
 #include "Shader.h"
 #include "Buffer.h"
 #include "CommandBuffer.h"
-#include "Framebuffer.h"
+#include "Texture.h"
+
+#include "RenderGraph/RenderGraph.h"
 
 namespace Pathfinder
 {
 
-Renderer2D::Renderer2D()  = default;
-Renderer2D::~Renderer2D() = default;
-
 void Renderer2D::Init()
 {
-    s_RendererData2D = MakeUnique<RendererData2D>();
-    memset(&s_Renderer2DStats, 0, sizeof(s_Renderer2DStats));
+    m_RendererData2D = MakeUnique<RendererData2D>();
+    memset(&m_Renderer2DStats, 0, sizeof(m_Renderer2DStats));
+    m_RendererData2D->Sprites.resize(s_MAX_QUADS);
 
-    ShaderLibrary::Load({"Quad2D"});
+    ShaderLibrary::Load(std::vector<ShaderSpecification>{{"Quad2D"}});
+    ShaderLibrary::WaitUntilShadersLoaded();
 
-    std::ranges::for_each(s_RendererData2D->QuadVertexBase,
-                          [](auto& quadVertexBase)
-                          {
-                              // TODO: Use here CPU-side memory allocator
-                              quadVertexBase = new QuadVertex[s_RendererData2D->s_MAX_VERTICES];
-                          });
+    // NOTE: Formats should be the same as ForwardPlus pipeline.
+    const GraphicsPipelineOptions quadGPO = {
+        .Formats           = {EImageFormat::FORMAT_RGBA16F, EImageFormat::FORMAT_RGBA16F, EImageFormat::FORMAT_D32F},
+        .FrontFace         = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE,
+        .PrimitiveTopology = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .bBlendEnable      = true,
+        .BlendMode         = EBlendMode::BLEND_MODE_ALPHA,
+        .PolygonMode       = EPolygonMode::POLYGON_MODE_FILL,
+        .bDepthTest        = true,
+        .bDepthWrite       = true,  // NOTE: For now quad 2d, as well as debug pass are the latest, so I write depth.
+        .DepthCompareOp    = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL};
 
-    std::ranges::for_each(s_RendererData2D->QuadVertexBuffer,
-                          [](auto& vertexBuffer)
-                          {
-                              BufferSpecification vbSpec = {EBufferUsage::BUFFER_USAGE_VERTEX};
-                              vbSpec.BufferCapacity      = s_RendererData2D->s_MAX_VERTEX_BUFFER_SIZE;
+    PipelineSpecification quadPipelineSpec = {.DebugName       = "Quad2D",
+                                              .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(quadGPO),
+                                              .Shader          = ShaderLibrary::Get("Quad2D"),
+                                              .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
+    m_RendererData2D->QuadPipelineHash     = PipelineLibrary::Push(quadPipelineSpec);
 
-                              vertexBuffer = Buffer::Create(vbSpec);
-                          });
+    const auto& windowSpec       = Application::Get().GetWindow()->GetSpecification();
+    m_RendererData2D->Quad2DPass = Quad2DPass(windowSpec.Width, windowSpec.Height, m_RendererData2D->QuadPipelineHash);
 
-    {
-        // TODO: Use here memory allocator
-        uint32_t* indices = new uint32_t[s_RendererData2D->s_MAX_INDICES];
+    Application::Get().GetWindow()->AddResizeCallback([&](const WindowResizeData& resizeData)
+                                                      { m_RendererData2D->Quad2DPass.OnResize(resizeData.Width, resizeData.Height); });
 
-        // Counter-Clockwise order
-        uint32_t offset = 0;
-        for (uint32_t i = 0; i < s_RendererData2D->s_MAX_INDICES; i += 6)
-        {
-            indices[i + 0] = offset + 0;
-            indices[i + 1] = offset + 1;
-            indices[i + 2] = offset + 2;
-
-            indices[i + 3] = offset + 2;
-            indices[i + 4] = offset + 3;
-            indices[i + 5] = offset + 0;
-
-            offset += 4;
-        }
-
-        BufferSpecification ibSpec = {EBufferUsage::BUFFER_USAGE_INDEX};
-        ibSpec.Data                = indices;
-        ibSpec.DataSize            = sizeof(uint32_t) * s_RendererData2D->s_MAX_INDICES;
-
-        s_RendererData2D->QuadIndexBuffer = Buffer::Create(ibSpec);
-
-        delete[] indices;
-    }
-
-    PipelineSpecification quadPipelineSpec = {"Quad2D"};
-    quadPipelineSpec.PipelineType          = EPipelineType::PIPELINE_TYPE_GRAPHICS;
-    quadPipelineSpec.Shader                = ShaderLibrary::Get("Quad2D");
-    quadPipelineSpec.bBindlessCompatible   = true;
-
-    GraphicsPipelineOptions quadPipelineOptions = {};
-    quadPipelineOptions.FrontFace               = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
-    quadPipelineOptions.TargetFramebuffer       = Renderer::GetRendererData()->GBuffer;
-    quadPipelineOptions.InputBufferBindings     = {{
-        {"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
-        {"inNormal", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
-        {"inUV", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC2},
-        {"inColor", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC4},
-    }};
-    quadPipelineSpec.PipelineOptions            = std::make_optional<GraphicsPipelineOptions>(quadPipelineOptions);
-    // quadPipelineSpec.bDepthTest            = true;
-    // quadPipelineSpec.bDepthWrite           = true;  // Do I rly need this? since im using depth pre pass of my static meshes
-    // quadPipelineSpec.DepthCompareOp        = ECompareOp::COMPARE_OP_LESS_OR_EQUAL;
-    PipelineBuilder::Push(s_RendererData2D->QuadPipeline, quadPipelineSpec);
-
-    PipelineBuilder::Build();
-    LOG_TAG_TRACE(RENDERER_2D, "Renderer2D created!");
+    PipelineLibrary::Compile();
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
 void Renderer2D::Shutdown()
 {
-    std::ranges::for_each(s_RendererData2D->QuadVertexBase,
-                          [](QuadVertex* quadVertexBase)
-                          {
-                              // TODO: Use here memory allocator
-                              delete[] quadVertexBase;
-                          });
-
-    s_RendererData2D.reset();
-    LOG_TAG_TRACE(RENDERER_2D, "Renderer2D destroyed!");
+    m_RendererData2D.reset();
+    LOG_TRACE("{}", __FUNCTION__);
 }
 
-void Renderer2D::Begin()
+void Renderer2D::Begin(const uint8_t frameIndex)
 {
-    s_Renderer2DStats = {};
+    m_Renderer2DStats = {};
 
-    auto& rd                                                          = Renderer::GetRendererData();
-    s_RendererData2D->FrameIndex                                      = rd->FrameIndex;
-    s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex] = s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex];
-    s_RendererData2D->Sprites.clear();
+    m_RendererData2D->FrameIndex         = frameIndex;
+    m_RendererData2D->CurrentSpriteCount = 0;
 }
 
-void Renderer2D::FlushBatch()
+void Renderer2D::Flush(Unique<RenderGraph>& renderGraph)
 {
-    const uint32_t dataSize = s_Renderer2DStats.QuadCount * sizeof(QuadVertex) * 4;
-    if (dataSize == 0) return;
-
-    const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GRAPHICS,
-                                               ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, s_RendererData2D->FrameIndex,
-                                               JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
-    auto renderCommandBuffer                = CommandBuffer::Create(cbSpec);
-    renderCommandBuffer->BeginRecording(true);
-
-    auto& rd = Renderer::GetRendererData();
-    auto& br = Renderer::GetBindlessRenderer();
-    br->Bind(renderCommandBuffer);
-
-    rd->GBuffer->BeginPass(renderCommandBuffer);
-
-    s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]->SetData(
-        s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], dataSize);
-
-    PushConstantBlock pc = {};
-    pc.CameraDataBuffer  = rd->CameraSSBO[rd->FrameIndex]->GetBDA();
-
-    constexpr uint64_t offset = 0;
-    renderCommandBuffer->BindVertexBuffers({s_RendererData2D->QuadVertexBuffer[s_RendererData2D->FrameIndex]}, 0, 1, &offset);
-    renderCommandBuffer->BindIndexBuffer(s_RendererData2D->QuadIndexBuffer);
-
-    Renderer::BindPipeline(renderCommandBuffer, s_RendererData2D->QuadPipeline);
-    renderCommandBuffer->BindPushConstants(s_RendererData2D->QuadPipeline, 0, 0, sizeof(pc), &pc);
-    renderCommandBuffer->DrawIndexed(s_Renderer2DStats.QuadCount * 6);
-
-    rd->GBuffer->EndPass(renderCommandBuffer);
-
-    renderCommandBuffer->EndRecording();
-    renderCommandBuffer->Submit(true, false);
-
-    memset(s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex], 0, dataSize);
-    s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex] = s_RendererData2D->QuadVertexBase[s_RendererData2D->FrameIndex];
-    ++s_Renderer2DStats.BatchCount;
-    s_Renderer2DStats.QuadCount = 0;
+    m_RendererData2D->Quad2DPass.AddPass(renderGraph, m_RendererData2D->Sprites, m_RendererData2D->CurrentSpriteCount);
 }
 
-void Renderer2D::Flush()
+void Renderer2D::DrawQuad(const glm::vec3& translation, const glm::vec3& scale, const glm::vec4& orientation, const glm::vec4& color,
+                          const Shared<Texture>& texture, const uint32_t layer)
 {
-    FlushBatch();
-}
-
-void Renderer2D::DrawQuad(const glm::mat4& transform, const glm::vec4& color, const uint32_t layer)
-{
-    if (s_Renderer2DStats.QuadCount >= s_RendererData2D->s_MAX_QUADS) Flush();
-
-    for (uint32_t i = 0; i < 4; ++i)
+    if (m_Renderer2DStats.QuadCount >= s_MAX_QUADS)
     {
-        s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex]->Position =
-            transform * glm::vec4(s_RendererData2D->QuadVertices[i], 1.0f);
-        s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex]->Color  = color;
-        s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex]->Normal = s_RendererData2D->QuadNormals[i];
-        s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex]->UV     = s_RendererData2D->QuadUVs[i];
-
-        ++s_RendererData2D->QuadVertexCurrent[s_RendererData2D->FrameIndex];
+        LOG_WARN("m_Renderer2DStats.QuadCount >= m_RendererData2D->s_MAX_QUADS");
+        return;
     }
 
-    ++s_Renderer2DStats.QuadCount;
-    s_Renderer2DStats.TriangleCount += 2;
+    const uint32_t defaultBindlessTextureIndex                      = TextureManager::GetWhiteTexture()->GetBindlessIndex();
+    m_RendererData2D->Sprites[m_RendererData2D->CurrentSpriteCount] = Sprite(
+        translation, scale, orientation, glm::packUnorm4x8(color), texture ? texture->GetBindlessIndex() : defaultBindlessTextureIndex);
+
+    ++m_Renderer2DStats.QuadCount;
+    m_Renderer2DStats.TriangleCount += 2;
+    ++m_RendererData2D->CurrentSpriteCount;
 }
 
 }  // namespace Pathfinder

@@ -1,5 +1,4 @@
-#ifndef SCENEMANAGER_H
-#define SCENEMANAGER_H
+#pragma once
 
 #include "Core/Core.h"
 
@@ -15,10 +14,8 @@ class SceneManager
     static void Serialize(const Shared<Scene>& scene, const std::filesystem::path& sceneFilePath);
 
   private:
-    SceneManager()     = delete;
+    SceneManager()  = delete;
     ~SceneManager() = default;
 };
 
 }  // namespace Pathfinder
-
-#endif

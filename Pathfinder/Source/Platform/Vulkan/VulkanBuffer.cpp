@@ -1,14 +1,11 @@
-#include "PathfinderPCH.h"
+#include <PathfinderPCH.h>
 #include "VulkanBuffer.h"
 
 #include "VulkanCommandBuffer.h"
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
 
-#include "Renderer/Renderer.h"
-#include "VulkanBindlessRenderer.h"
-
-#include "Core/Threading.h"
+#include <Renderer/Renderer.h>
 
 namespace Pathfinder
 {
@@ -16,41 +13,44 @@ namespace Pathfinder
 namespace BufferUtils
 {
 
-void CreateBuffer(VkBuffer& buffer, VmaAllocation& allocation, const size_t size, const VkBufferUsageFlags bufferUsage,
-                  VmaMemoryUsage memoryUsage)
+NODISCARD FORCEINLINE bool BufferFlagsContain(const BufferFlags bufferFlags, const EBufferFlag flag)
 {
-    VkBufferCreateInfo bufferCI = {VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO};
-    bufferCI.usage              = bufferUsage;
-    bufferCI.size               = size;
-
-    // NOTE: No sharing between queues
-    bufferCI.sharingMode           = VK_SHARING_MODE_EXCLUSIVE;
-    bufferCI.queueFamilyIndexCount = 0;
-    bufferCI.pQueueFamilyIndices   = nullptr;
-
-    VulkanContext::Get().GetDevice()->GetAllocator()->CreateBuffer(bufferCI, buffer, allocation, memoryUsage);
+    return (bufferFlags & flag) == flag;
 }
 
-VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUsage)
+FORCEINLINE static void CreateBuffer(VkBuffer& buffer, VmaAllocation& allocation, const size_t size, const VkBufferUsageFlags bufferUsage,
+                                     const BufferFlags extraFlags)
 {
-    VkBufferUsageFlags vkBufferUsage = 0;
+    const auto& device                = VulkanContext::Get().GetDevice();
+    auto& queueFamilyIndices          = device->GetQueueFamilyIndices();
+    const VkBufferCreateInfo bufferCI = {.sType                 = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO,
+                                         .size                  = size,
+                                         .usage                 = bufferUsage,
+                                         .sharingMode           = VK_SHARING_MODE_CONCURRENT,
+                                         .queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size()),
+                                         .pQueueFamilyIndices   = queueFamilyIndices.data()};
 
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX)
-        vkBufferUsage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    device->GetAllocator()->CreateBuffer(bufferCI, buffer, allocation, extraFlags);
+}
 
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX)
-        vkBufferUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+NODISCARD FORCEINLINE VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUsage, const BufferFlags extraFlags)
+{
+    VkBufferUsageFlags vkBufferUsage =
+        VK_BUFFER_USAGE_TRANSFER_SRC_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;  // NOTE: VMA advises this, since I'm heavily relying on ReBAR.
 
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM)
-        vkBufferUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if ((extraFlags & EBufferFlag::BUFFER_FLAG_ADDRESSABLE) == EBufferFlag::BUFFER_FLAG_ADDRESSABLE)
+        vkBufferUsage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE)
-        vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT;
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX) vkBufferUsage |= VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX) vkBufferUsage |= VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM) vkBufferUsage |= VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT;
+
+    if (bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE) vkBufferUsage |= VK_BUFFER_USAGE_STORAGE_BUFFER_BIT;
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE) vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_DESTINATION) vkBufferUsage |= VK_BUFFER_USAGE_TRANSFER_DST_BIT;
-
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_SHADER_DEVICE_ADDRESS) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_DEVICE_ADDRESS_BIT;
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDIRECT) vkBufferUsage |= VK_BUFFER_USAGE_INDIRECT_BUFFER_BIT;
 
@@ -63,107 +63,37 @@ VkBufferUsageFlags PathfinderBufferUsageToVulkan(const BufferUsageFlags bufferUs
 
     if (bufferUsage & EBufferUsage::BUFFER_USAGE_SHADER_BINDING_TABLE) vkBufferUsage |= VK_BUFFER_USAGE_SHADER_BINDING_TABLE_BIT_KHR;
 
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE &&
-        (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM))
-        PFR_ASSERT(false, "Buffer usage that has STAGING usage can't have any other flags!");
-
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM &&
-        (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE))
-        PFR_ASSERT(false, "Buffer usage that has UNIFORM usage can't have any other flags!");
-
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX && bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX)
-        PFR_ASSERT(false, "Buffer usage can't be both VERTEX and INDEX!");
-
     PFR_ASSERT(vkBufferUsage > 0, "Buffer should have any usage!");
     return vkBufferUsage;
 }
 
-VmaMemoryUsage DetermineMemoryUsageByBufferUsage(const BufferUsageFlags bufferUsage)
-{
-    VmaMemoryUsage memoryUsage = VMA_MEMORY_USAGE_AUTO;
-
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE &&
-        (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM))
-        PFR_ASSERT(false, "Buffer usage that has STAGING usage can't have any other flags!");
-
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM &&
-        (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX || bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX ||
-         bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE))
-        PFR_ASSERT(false, "Buffer usage that has UNIFORM usage can't have any other flags!");
-
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX && bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX)
-        PFR_ASSERT(false, "Buffer usage can't be both VERTEX and INDEX!");
-
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE)
-        return VMA_MEMORY_USAGE_CPU_ONLY;
-    else if (bufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM)
-        return VMA_MEMORY_USAGE_CPU_TO_GPU;
-
-    if (bufferUsage & EBufferUsage::BUFFER_USAGE_VERTEX || bufferUsage & EBufferUsage::BUFFER_USAGE_INDEX ||
-        bufferUsage & EBufferUsage::BUFFER_USAGE_STORAGE || bufferUsage & EBufferUsage::BUFFER_USAGE_INDIRECT)
-        return VMA_MEMORY_USAGE_GPU_ONLY;
-
-    return memoryUsage;
-}
-
-bool IsMappable(const VmaAllocation& allocation)
-{
-    return VulkanContext::Get().GetDevice()->GetAllocator()->IsMappable(allocation);
-}
-
-void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation)
+FORCEINLINE static void DestroyBuffer(VkBuffer& buffer, VmaAllocation& allocation)
 {
     VulkanContext::Get().GetDevice()->GetAllocator()->DestroyBuffer(buffer, allocation);
 }
 
 }  // namespace BufferUtils
 
-VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec) : Buffer(bufferSpec)
+VulkanBuffer::VulkanBuffer(const BufferSpecification& bufferSpec, const void* data, const size_t dataSize) : Buffer(bufferSpec)
 {
-    if (m_Specification.BufferCapacity > 0)
+    // TODO: Collapse into function??
+    if (m_Specification.Capacity > 0)
     {
-        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
-                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
-                                  BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
-        m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
+        const auto bufferUsage = BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.UsageFlags, m_Specification.ExtraFlags);
+        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.Capacity, bufferUsage, m_Specification.ExtraFlags);
+        if (BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_ADDRESSABLE))
+            m_BufferDeviceAddress = MakeOptional<uint64_t>(VulkanContext::Get().GetDevice()->GetBufferDeviceAddress(m_Handle));
+
+        if (m_Specification.DebugName != s_DEFAULT_STRING)
+            VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_BUFFER,
+                            m_Specification.DebugName.data());
     }
 
-    if (m_Specification.Data && m_Specification.DataSize != 0)
-    {
-        SetData(m_Specification.Data, m_Specification.DataSize);
-        m_Specification.Data     = nullptr;
-        m_Specification.DataSize = 0;
-    }
+    if (data && dataSize != 0) SetData(data, dataSize);
 
-    if (m_Specification.BufferCapacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
-    {
-        void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
-        m_bIsMapped  = true;
-    }
-
-    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
-    {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.BufferBinding, m_Index);
-    }
-}
-
-NODISCARD void* VulkanBuffer::GetMapped() const
-{
-    if (!m_bIsMapped)
-    {
-        LOG_WARN("Buffer is not mapped! Returning nullptr.");
-        return nullptr;
-    }
-
-    return VulkanContext::Get().GetDevice()->GetAllocator()->GetMapped(m_Allocation);
-}
-
-uint64_t VulkanBuffer::GetBDA() const
-{
-    return VulkanContext::Get().GetDevice()->GetBufferDeviceAddress(m_Handle);
+    if (!m_Mapped &&
+        m_Specification.Capacity > 0 /*&& BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_MAPPED)*/)
+        m_Mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
 }
 
 void VulkanBuffer::SetData(const void* data, const size_t dataSize)
@@ -172,117 +102,96 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
 
     if (!m_Handle)
     {
-        m_Specification.BufferCapacity = m_Specification.BufferCapacity > dataSize ? m_Specification.BufferCapacity : dataSize;
-        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
-                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
-                                  BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
+        m_Specification.Capacity = m_Specification.Capacity > dataSize ? m_Specification.Capacity : dataSize;
+        BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.Capacity,
+                                  BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.UsageFlags, m_Specification.ExtraFlags),
+                                  m_Specification.ExtraFlags);
+        if (BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_ADDRESSABLE))
+            m_BufferDeviceAddress = MakeOptional<uint64_t>(VulkanContext::Get().GetDevice()->GetBufferDeviceAddress(m_Handle));
 
-        m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
+        m_Mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
+
+        if (m_Specification.DebugName != s_DEFAULT_STRING)
+            VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_BUFFER,
+                            m_Specification.DebugName.data());
     }
 
-    if (dataSize > m_Specification.BufferCapacity) Resize(dataSize);
+    if (dataSize > m_Specification.Capacity) Resize(dataSize);
 
-    // NOTE: Check for uniform buffer's memory because I force them to be on BAR(host & device) memory
-    if (m_Specification.BufferUsage & EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE ||
-        m_Specification.BufferUsage & EBufferUsage::BUFFER_USAGE_UNIFORM && BufferUtils::IsMappable(m_Allocation))
+    if (VulkanContext::Get().GetDevice()->GetAllocator()->IsAllocationMappable(m_Allocation))
     {
-        void* mapped = nullptr;
-        if (!m_bIsMapped)
-        {
-            mapped      = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
-            m_bIsMapped = true;
-        }
-        else
-            mapped = VulkanContext::Get().GetDevice()->GetAllocator()->GetMapped(m_Allocation);
+        // NOTE: Should I set this flag? Since I rely on rebar sometimes(if device local), which implies mappable.
+        //    PFR_ASSERT(BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_MAPPED), "Mapped flag isn't
+        //    specified!");
+        if (!m_Mapped && m_Specification.Capacity >
+                             0 /*&& BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_MAPPED)*/)
+            m_Mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
 
-        PFR_ASSERT(mapped, "Failed to map buffer's memory!");
-        memcpy(mapped, data, dataSize);
-
-        if (!m_Specification.bMapPersistent)
-        {
-            VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(m_Allocation);
-            m_bIsMapped = false;
-        }
+        PFR_ASSERT(m_Mapped, "Mapped memory is invalid!");
+        memcpy(m_Mapped, data, dataSize);
     }
     else
     {
-        const auto& rd = Renderer::GetRendererData();
-        rd->UploadHeap[rd->FrameIndex]->SetData(data, dataSize);
+        const auto& rd   = Renderer::GetRendererData();
+        auto& uploadHeap = rd->UploadHeap.at(rd->FrameIndex);
+        uploadHeap->SetData(data, dataSize);
 
-#if TODO
-        if (auto commandBuffer = rd->CurrentTransferCommandBuffer.lock())
-        {
-            auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
-            PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
+        const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC,
+                                                   .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
+                                                   .FrameIndex = rd->FrameIndex,
+                                                   .ThreadID   = ThreadPool::MapThreadID(std::this_thread::get_id())};
+        auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
+        vulkanCommandBuffer->BeginRecording(true);
 
-            const VkBufferCopy region = {0, 0, dataSize};
-            vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
-        }
-        else
-#endif
-        {
-            const CommandBufferSpecification cbSpec = {
-                ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER, ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
-                Renderer::GetRendererData()->FrameIndex, JobSystem::MapThreadID(JobSystem::GetMainThreadID())};
-            auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(cbSpec);
-            vulkanCommandBuffer->BeginRecording(true);
+        const VkBufferCopy region = {.srcOffset = 0, .dstOffset = 0, .size = dataSize};
+        vulkanCommandBuffer->CopyBuffer((VkBuffer)uploadHeap->Get(), m_Handle, 1, &region);
 
-            const VkBufferCopy region = {0, 0, dataSize};
-            vulkanCommandBuffer->CopyBuffer((VkBuffer)rd->UploadHeap[rd->FrameIndex]->Get(), m_Handle, 1, &region);
-
-            vulkanCommandBuffer->EndRecording();
-            vulkanCommandBuffer->Submit(true, false);
-        }
-    }
-
-    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
-    {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&GetDescriptorInfo(), m_Specification.BufferBinding, m_Index);
+        vulkanCommandBuffer->EndRecording();
+        vulkanCommandBuffer->Submit()->Wait();
     }
 }
 
 void VulkanBuffer::Resize(const size_t newBufferCapacity)
 {
-    if (newBufferCapacity == m_Specification.BufferCapacity) return;
+    if (newBufferCapacity == m_Specification.Capacity) return;
+    PFR_ASSERT(newBufferCapacity != 0, "Zero buffer capacity!");
 
     Destroy();
-    m_Specification.BufferCapacity = newBufferCapacity;
-    BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.BufferCapacity,
-                              BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.BufferUsage),
-                              BufferUtils::DetermineMemoryUsageByBufferUsage(m_Specification.BufferUsage));
-    m_DescriptorInfo = {m_Handle, 0, m_Specification.BufferCapacity};
+    m_Specification.Capacity = newBufferCapacity;
+    BufferUtils::CreateBuffer(m_Handle, m_Allocation, m_Specification.Capacity,
+                              BufferUtils::PathfinderBufferUsageToVulkan(m_Specification.UsageFlags, m_Specification.ExtraFlags),
+                              m_Specification.ExtraFlags);
+    if (BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_ADDRESSABLE))
+        m_BufferDeviceAddress = MakeOptional<uint64_t>(VulkanContext::Get().GetDevice()->GetBufferDeviceAddress(m_Handle));
 
-    if (m_Specification.BufferCapacity > 0 && m_Specification.bMapPersistent && !m_bIsMapped)
-    {
-        void* mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
-        m_bIsMapped  = true;
-    }
+    if (m_Specification.DebugName != s_DEFAULT_STRING)
+        VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_BUFFER,
+                        m_Specification.DebugName.data());
 
-    if (m_Handle && m_Specification.bBindlessUsage && m_Index == UINT32_MAX)
-    {
-        Renderer::GetBindlessRenderer()->LoadStorageBuffer(&m_DescriptorInfo, m_Specification.BufferBinding, m_Index);
-    }
+    if (m_Specification.Capacity > 0 /*&& BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_MAPPED)*/)
+        m_Mapped = VulkanContext::Get().GetDevice()->GetAllocator()->Map(m_Allocation);
+}
+
+void VulkanBuffer::SetDebugName(const std::string& name)
+{
+    m_Specification.DebugName = name;
+    VK_SetDebugName(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, VK_OBJECT_TYPE_BUFFER,
+                    m_Specification.DebugName.data());
 }
 
 void VulkanBuffer::Destroy()
 {
-    VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
+    // VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
-    if (m_bIsMapped)
+    if (m_Mapped /* &&  BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_MAPPED)*/)
     {
         VulkanContext::Get().GetDevice()->GetAllocator()->Unmap(m_Allocation);
-        m_bIsMapped = false;
+        m_Mapped = nullptr;
     }
 
     if (m_Handle) BufferUtils::DestroyBuffer(m_Handle, m_Allocation);
-    m_Handle = VK_NULL_HANDLE;
-
-    m_DescriptorInfo = {};
-
-    if (m_Index != UINT32_MAX && m_Specification.bBindlessUsage)
-    {
-        Renderer::GetBindlessRenderer()->FreeBuffer(m_Index, m_Specification.BufferBinding);
-    }
+    m_BufferDeviceAddress = std::nullopt;
+    m_Handle              = VK_NULL_HANDLE;
 }
 
 }  // namespace Pathfinder

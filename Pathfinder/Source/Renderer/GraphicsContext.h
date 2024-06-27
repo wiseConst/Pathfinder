@@ -1,5 +1,4 @@
-#ifndef GRAPHICSCONTEXT_H
-#define GRAPHICSCONTEXT_H
+#pragma once
 
 #include "RendererAPI.h"
 #include "Core/Core.h"
@@ -26,7 +25,9 @@ class GraphicsContext : private Uncopyable, private Unmovable
 
     static Unique<GraphicsContext> Create(const ERendererAPI rendererApi);
 
+    NODISCARD virtual const float GetTimestampPeriod() const                     = 0;
     virtual void FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudgets) = 0;
+    virtual void WaitDeviceOnFinish() const                                      = 0;
 
     virtual void Begin() = 0;
     virtual void End()   = 0;
@@ -39,5 +40,3 @@ class GraphicsContext : private Uncopyable, private Unmovable
 };
 
 }  // namespace Pathfinder
-
-#endif  // GRAPHICSCONTEXT_H

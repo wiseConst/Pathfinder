@@ -1,0 +1,58 @@
+{
+  "Scene": "SponzaSonne",
+  "Entities": {
+    "13184783760960274608": {
+      "TagComponent": "sponza",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "MeshComponent": {
+        "MeshSource": "sponza/scene.gltf",
+        "bDrawBoundingSphere": false
+      }
+    },
+    "11320190932899782829": {
+      "TagComponent": "sonne",
+      "TransformComponent": {
+        "Translation": {
+          "x": 1.0,
+          "y": 0.05000000074505806,
+          "z": -0.3499999940395355
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": 0.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "DirectionalLightComponent": {
+        "Color": {
+          "x": 0.7507598996162415,
+          "y": 0.3649655282497406,
+          "z": 0.12550698220729828
+        },
+        "Intensity": 1.159999966621399,
+        "bCastShadows": 0
+      }
+    }
+  }
+}

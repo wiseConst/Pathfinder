@@ -1,6 +1,4 @@
-#ifndef MEMORY_H
-#define MEMORY_H
-
+#pragma once
 
 /*void* operator new(size_t size)
 {
@@ -24,4 +22,3 @@ namespace Pathfinder
 
 }
 
-#endif  // MEMORY_H

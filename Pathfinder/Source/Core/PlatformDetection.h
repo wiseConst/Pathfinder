@@ -1,9 +1,9 @@
-#ifndef PLATFORMDETECTION_H
-#define PLATFORMDETECTION_H
+#pragma once
 
 // GCC predefined compiler macros
 
 #if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#define NOMINMAX
 #include <Windows.h>
 #define PFR_WINDOWS 1
 #elif defined(__APPLE__)
@@ -29,5 +29,3 @@
 #elif defined(_POSIX_VERSION)
 #error "Posix not supported!"
 #endif
-
-#endif  // PLATFORMDETECTION_H
