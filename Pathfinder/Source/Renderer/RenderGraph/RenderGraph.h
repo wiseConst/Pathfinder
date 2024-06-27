@@ -8,6 +8,7 @@
 
 #include "RenderGraphResourcePool.h"
 
+// https://medium.com/@pavlo.muratov/organizing-gpu-work-with-directed-acyclic-graphs-f3fd5f2c2af3
 // NOTE: Heavily inspired by Yuri ODonnel, themaister, Adria-DX12, LegitEngine.
 
 namespace Pathfinder
@@ -76,9 +77,9 @@ class RenderGraph final : private Uncopyable, private Unmovable
     std::vector<uint32_t> m_TopologicallySortedPasses;
     std::vector<std::vector<uint32_t>> m_AdjdacencyLists;
 
-    std::unordered_map<std::string, std::string> m_AliasMap;
-    std::unordered_map<std::string, RGTextureID> m_TextureNameIDMap;
-    std::unordered_map<std::string, RGBufferID> m_BufferNameIDMap;
+    UnorderedMap<std::string, std::string> m_AliasMap;
+    UnorderedMap<std::string, RGTextureID> m_TextureNameIDMap;
+    UnorderedMap<std::string, RGBufferID> m_BufferNameIDMap;
 
     void BuildAdjacencyLists();
     void TopologicalSort();
@@ -87,24 +88,18 @@ class RenderGraph final : private Uncopyable, private Unmovable
     void GraphVizDump();
 
     // BUFFER: Read-After-Write
-    std::vector<BufferMemoryBarrier> BuildBufferRAWBarriers(const Unique<RGPassBase>& currentPass,
-                                                            const std::unordered_set<uint32_t>& runPasses);
+    std::vector<BufferMemoryBarrier> BuildBufferRAWBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
     // BUFFER: Write-After-Read
-    std::vector<BufferMemoryBarrier> BuildBufferWARBarriers(const Unique<RGPassBase>& currentPass,
-                                                            const std::unordered_set<uint32_t>& runPasses);
+    std::vector<BufferMemoryBarrier> BuildBufferWARBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
     // BUFFER: Write-After-Write
-    std::vector<BufferMemoryBarrier> BuildBufferWAWBarriers(const Unique<RGPassBase>& currentPass,
-                                                            const std::unordered_set<uint32_t>& runPasses);
+    std::vector<BufferMemoryBarrier> BuildBufferWAWBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
 
     // BUFFER: Read-After-Write
-    std::vector<ImageMemoryBarrier> BuildTextureRAWBarriers(const Unique<RGPassBase>& currentPass,
-                                                            const std::unordered_set<uint32_t>& runPasses);
+    std::vector<ImageMemoryBarrier> BuildTextureRAWBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
     // TEXTURE: Write-After-Read
-    std::vector<ImageMemoryBarrier> BuildTextureWARBarriers(const Unique<RGPassBase>& currentPass,
-                                                            const std::unordered_set<uint32_t>& runPasses);
+    std::vector<ImageMemoryBarrier> BuildTextureWARBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
     // TEXTURE: Write-After-Write
-    std::vector<ImageMemoryBarrier> BuildTextureWAWBarriers(const Unique<RGPassBase>& currentPass,
-                                                            const std::unordered_set<uint32_t>& runPasses);
+    std::vector<ImageMemoryBarrier> BuildTextureWAWBarriers(const Unique<RGPassBase>& currentPass, const UnorderedSet<uint32_t>& runPasses);
 };
 
 }  // namespace Pathfinder

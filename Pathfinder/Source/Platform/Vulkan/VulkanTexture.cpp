@@ -33,7 +33,7 @@ NODISCARD const VkDescriptorImageInfo VulkanTexture::GetDescriptorInfo() const
 
 void VulkanTexture::Destroy()
 {
-    VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
+    // VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
     if (m_BindlessIndex.has_value()) Renderer::GetDescriptorManager()->FreeTexture(m_BindlessIndex);
     if (m_Sampler) SamplerStorage::DestroySampler(SamplerSpecification{m_Specification.Filter, m_Specification.Wrap});
@@ -72,7 +72,7 @@ void VulkanTexture::GenerateMipMaps()
 
     const CommandBufferSpecification cbSpec = {ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
                                                ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY, Renderer::GetRendererData()->FrameIndex,
-                                               ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+                                               ThreadPool::MapThreadID(std::this_thread::get_id())};
     auto vulkanCommandBuffer =
         MakeShared<VulkanCommandBuffer>(cbSpec);  // Blit is a graphics command, so dedicated transfer queue doesn't support them.
     vulkanCommandBuffer->BeginRecording(true);

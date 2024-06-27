@@ -44,8 +44,6 @@ void main()
     if(gl_LocalInvocationID.x == 0)
     {
         if(DrawBuffer(u_PC.addr1).Count < u_PC.data0.x)
-        {
              CulledMeshIDBuffer(u_PC.addr2).CulledMeshIDs[DrawBuffer(u_PC.addr1).Count] = s_INVALID_CULLED_OBJECT_INDEX;
-        }
     }
 }

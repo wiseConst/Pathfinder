@@ -3,8 +3,8 @@
 #include "Renderer2D.h"
 
 #include <Core/Application.h>
-#include "Swapchain.h"
 #include <Core/Window.h>
+#include "Swapchain.h"
 #include "GraphicsContext.h"
 
 #include "Shader.h"
@@ -31,9 +31,10 @@ namespace Pathfinder
 
 void Renderer::Init()
 {
-    s_RendererData              = MakeUnique<RendererData>();
     s_RendererSettings.bVSync   = Application::Get().GetWindow()->IsVSync();
+    s_RendererData              = MakeUnique<RendererData>();
     s_RendererData->LightStruct = MakeUnique<LightData>();
+    s_DescriptorManager         = DescriptorManager::Create();
 
     std::ranges::for_each(s_RendererData->UploadHeap,
                           [](auto& uploadHeap)
@@ -45,19 +46,20 @@ void Renderer::Init()
                               uploadHeap = Buffer::Create(uploadHeapSpec);
                           });
 
-    s_DescriptorManager = DescriptorManager::Create();
-    SamplerStorage::Init();
     TextureManager::Init();
     ShaderLibrary::Init();
     PipelineLibrary::Init();
     RayTracingBuilder::Init();
 
+    s_RendererData->R2D = MakeUnique<Renderer2D>();
+
     ShaderLibrary::Load({{"DepthPrePass"},
-                         {"SSShadows"},
-                         {"ObjectCulling"},
                          {"ForwardPlus"},
-                         {"LightCulling", {{"ADVANCED_CULLING", ""}}},
-                         {"ComputeFrustums"},
+                         {"Shadows/SSShadows"},
+                         {"Shadows/CSM"},
+                         {"Culling/ObjectCulling"},
+                         {"Culling/ComputeFrustums"},
+                         {"Culling/LightCulling", {{"ADVANCED_CULLING", ""}}},
                          {"Composite"},
                          {"AO/SSAO"},
                          {"Post/GaussianBlur"},
@@ -78,7 +80,6 @@ void Renderer::Init()
     ShaderLibrary::WaitUntilShadersLoaded();
     CreatePipelines();
 
-    Renderer2D::Init();
 #if PFR_DEBUG
     DebugRenderer::Init();
 #endif
@@ -87,6 +88,7 @@ void Renderer::Init()
         [](const WindowResizeData& resizeData)
         {
             s_RendererData->DepthPrePass.OnResize(resizeData.Width, resizeData.Height);
+            s_RendererData->CascadedShadowMapPass.OnResize(resizeData.Width, resizeData.Height);
             s_RendererData->LightCullingPass.OnResize(resizeData.Width, resizeData.Height);
             s_RendererData->SSSPass.OnResize(resizeData.Width, resizeData.Height);
             s_RendererData->SSAOPass.OnResize(resizeData.Width, resizeData.Height);
@@ -123,43 +125,48 @@ void Renderer::Init()
 
     const auto& windowSpec = Application::Get().GetWindow()->GetSpecification();
 
-    s_RendererData->FramePreparePass   = {};
-    s_RendererData->ObjectCullingPass  = {};
-    s_RendererData->DepthPrePass       = DepthPrePass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->LightCullingPass   = LightCullingPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->SSSPass            = ScreenSpaceShadowsPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->SSAOPass           = SSAOPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->AOBlurPass         = AOBlurPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->GBufferPass        = GBufferPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->BloomPass          = BloomPass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->FinalCompositePass = FinalCompositePass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->FramePreparePass      = {};
+    s_RendererData->ObjectCullingPass     = {};
+    s_RendererData->DepthPrePass          = DepthPrePass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->CascadedShadowMapPass = CascadedShadowMapPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->LightCullingPass      = LightCullingPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->SSSPass               = ScreenSpaceShadowsPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->SSAOPass              = SSAOPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->AOBlurPass            = AOBlurPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->GBufferPass           = GBufferPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->BloomPass             = BloomPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->FinalCompositePass    = FinalCompositePass(windowSpec.Width, windowSpec.Height);
+
+    constexpr auto maxTimestamps = 50;
+    s_RendererData->GPUProfiler  = GPUProfiler(maxTimestamps);
 }
 
 void Renderer::Shutdown()
 {
+    GraphicsContext::Get().WaitDeviceOnFinish();
+
 #if PFR_DEBUG
     DebugRenderer::Shutdown();
 #endif
 
-    Renderer2D::Shutdown();
     ShaderLibrary::Shutdown();
     PipelineLibrary::Shutdown();
     RayTracingBuilder::Shutdown();
-    TextureManager::Shutdown();
 
     s_RendererData.reset();
-    s_DescriptorManager.reset();
 
-    SamplerStorage::Shutdown();
+    TextureManager::Shutdown();
+    s_DescriptorManager.reset();
 
     LOG_TRACE("{}", __FUNCTION__);
 }
 
 void Renderer::Begin()
 {
+    TextureManager::LinkLoadedTexturesWithMeshes();
+
     s_RendererData->bIsFrameBegin = true;
     ShaderLibrary::DestroyGarbageIfNeeded();
-    TextureManager::LinkLoadedTexturesWithMeshes();
 
     // Update VSync state.
     auto& window = Application::Get().GetWindow();
@@ -168,14 +175,28 @@ void Renderer::Begin()
     s_RendererData->CameraStruct.FullResolution    = glm::vec2(window->GetSpecification().Width, window->GetSpecification().Height);
     s_RendererData->CameraStruct.InvFullResolution = 1.f / s_RendererData->CameraStruct.FullResolution;
 
+    s_RendererData->CurrentCascadeIndex  = 0;
     s_RendererData->bAnybodyCastsShadows = false;
     s_RendererData->LastBoundPipeline.reset();
-    s_RendererData->PassStats.clear();
-    s_RendererData->PipelineStats.clear();
+
     s_RendererData->OpaqueObjects.clear();
     s_RendererData->TransparentObjects.clear();
 
     s_RendererData->FrameIndex = window->GetCurrentFrameIndex();
+
+    s_RendererData->CachedGPUTimers.clear();
+    s_RendererData->CachedPipelineStats.clear();
+
+    // NOTE: On the very first frame, queries aren't Reset(), so we skip this frame.
+    if (s_RendererSettings.bCollectGPUStats && Application::Get().GetCurrentFrameNumber() != 0)
+    {
+        s_RendererData->GPUProfiler.CalculateResults(s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex));
+        s_RendererData->CachedGPUTimers     = s_RendererData->GPUProfiler.GetProfilerResults();
+        s_RendererData->CachedPipelineStats = s_RendererData->GPUProfiler.GetPipelineStatisticsResults();
+    }
+
+    s_RendererData->CPUProfiler.BeginFrame();
+    s_RendererData->GPUProfiler.BeginFrame();
 
     s_RendererData->UploadHeap.at(s_RendererData->FrameIndex)->Resize(s_RendererData->s_MAX_UPLOAD_HEAP_CAPACITY);
 
@@ -192,40 +213,47 @@ void Renderer::Begin()
 
     s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex)->BeginRecording(true);
 
-    // NOTE: Once per frame
-    // Bind mega descriptor set to render command buffer for Graphics, Compute, RT stages.
-    s_DescriptorManager->Bind(s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex));
+    // NOTE: Once per frame bind mega descriptor set to render command buffer for Graphics, Compute, RT stages.
     s_DescriptorManager->Bind(s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex),
-                              EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT);
-    s_DescriptorManager->Bind(s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex),
-                              EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT);
+                              EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT | EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT |
+                                  EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT);
 
-    Renderer2D::Begin();
+    s_RendererData->R2D->Begin(s_RendererData->FrameIndex);
 
     GraphicsContext::Get().FillMemoryBudgetStats(s_RendererStats.MemoryBudgets);
 }
 
 void Renderer::Flush(const Unique<UILayer>& uiLayer)
 {
+    s_RendererData->GPUProfiler.BeginPipelineStatisticsQuery(s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex));
+
     auto rg = MakeUnique<RenderGraph>(s_RendererData->FrameIndex, std::string(s_ENGINE_NAME), s_RendererData->ResourcePool);
 
     s_RendererData->FramePreparePass.AddPass(rg);   // Set camera data, light data, etc..
     s_RendererData->ObjectCullingPass.AddPass(rg);  // Cull objects in compute, fill indirect arg buffers.
+                                                    //  s_RendererData->CascadedShadowMapPass.AddPass(rg); // Cascaded Shadows
     s_RendererData->DepthPrePass.AddPass(rg);
     s_RendererData->LightCullingPass.AddPass(rg);  // Cull lights, fill buffers with culled indices.
     s_RendererData->SSSPass.AddPass(rg);           // ScreenSpace shadows
     s_RendererData->SSAOPass.AddPass(rg);          // ssao-depth-reconstruction
     s_RendererData->AOBlurPass.AddPass(rg);        // box-blur-ssao
     s_RendererData->GBufferPass.AddPass(rg);       // Forward+ opaque, transparent
-    // TODO: Renderer2D Pass
-    s_RendererData->BloomPass.AddPass(rg);  // Horizontal+Vertical non pbr bloom
-    // TODO: DebugRenderer Pass
+    s_RendererData->R2D->Flush(rg);                // Quad2D Pass
+    s_RendererData->BloomPass.AddPass(rg);         // Horizontal+Vertical non pbr bloom
+
+#if PFR_DEBUG
+    DebugRenderer::Flush(rg);
+#endif
+
     s_RendererData->FinalCompositePass.AddPass(rg);  // Assemble bloom, albedo and blit into swapchain.
 
     rg->Build();
     rg->Execute();
 
     if (uiLayer) uiLayer->EndRender();
+
+    s_RendererData->GPUProfiler.EndPipelineStatisticsQuery(s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex));
+    s_RendererData->GPUProfiler.EndFrame();
 
     s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex)->EndRecording();
 
@@ -237,11 +265,14 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
     s_RendererData->RenderCommandBuffer.at(s_RendererData->FrameIndex)
         ->Submit({swapchainImageAvailableSyncPoint}, {swapchainRenderFinishedSyncPoint}, swapchain->GetRenderFence());
     s_RendererData->bIsFrameBegin = false;
+
+    s_RendererData->CPUProfiler.EndFrame();
+    s_RendererData->CachedCPUTimers = s_RendererData->CPUProfiler.GetResults();
 }
 
 void Renderer::BeginScene(const Camera& camera)
 {
-    if (s_RendererData->CameraStruct.FOV != camera.GetZoom()) s_RendererData->LightCullingPass.SetRecomputeLightCullFrustums(true);
+    s_RendererData->LightCullingPass.SetRecomputeLightCullFrustums(s_RendererData->CameraStruct.FOV != camera.GetZoom());
     s_RendererData->CameraStruct.ViewFrustum       = camera.GetFrustum();
     s_RendererData->CameraStruct.View              = camera.GetView();
     s_RendererData->CameraStruct.Projection        = camera.GetProjection();
@@ -254,6 +285,12 @@ void Renderer::BeginScene(const Camera& camera)
 }
 
 void Renderer::EndScene() {}
+
+void Renderer::DrawQuad(const glm::vec3& translation, const glm::vec3& scale, const glm::vec4& orientation, const glm::vec4& color,
+                        const Shared<Texture>& texture, const uint32_t layer)
+{
+    s_RendererData->R2D->DrawQuad(translation, scale, orientation, color, texture, layer);
+}
 
 void Renderer::BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline> pipeline)
 {
@@ -329,13 +366,13 @@ void Renderer::CreatePipelines()
     {
         PipelineSpecification computeFrustumsPS     = {.DebugName       = "ComputeFrustums",
                                                        .PipelineOptions = MakeOptional<ComputePipelineOptions>(),
-                                                       .Shader          = ShaderLibrary::Get("ComputeFrustums"),
+                                                       .Shader          = ShaderLibrary::Get("Culling/ComputeFrustums"),
                                                        .PipelineType    = EPipelineType::PIPELINE_TYPE_COMPUTE};
         s_RendererData->ComputeFrustumsPipelineHash = PipelineLibrary::Push(computeFrustumsPS);
 
         PipelineSpecification lightCullingPS     = {.DebugName       = "LightCulling",
                                                     .PipelineOptions = MakeOptional<ComputePipelineOptions>(),
-                                                    .Shader          = ShaderLibrary::Get({"LightCulling", {{"ADVANCED_CULLING", ""}}}),
+                                                    .Shader          = ShaderLibrary::Get({"Culling/LightCulling", {{"ADVANCED_CULLING", ""}}}),
                                                     .PipelineType    = EPipelineType::PIPELINE_TYPE_COMPUTE};
         s_RendererData->LightCullingPipelineHash = PipelineLibrary::Push(lightCullingPS);
     }
@@ -344,9 +381,26 @@ void Renderer::CreatePipelines()
     {
         PipelineSpecification objectCullingPS     = {.DebugName       = "ObjectCulling",
                                                      .PipelineOptions = MakeOptional<ComputePipelineOptions>(),
-                                                     .Shader          = ShaderLibrary::Get("ObjectCulling"),
+                                                     .Shader          = ShaderLibrary::Get("Culling/ObjectCulling"),
                                                      .PipelineType    = EPipelineType::PIPELINE_TYPE_COMPUTE};
         s_RendererData->ObjectCullingPipelineHash = PipelineLibrary::Push(objectCullingPS);
+    }
+
+    // Cascaded Shadow Maps
+    {
+        const GraphicsPipelineOptions csmGPO = {.Formats        = {EImageFormat::FORMAT_R8_UNORM},
+                                                .CullMode       = ECullMode::CULL_MODE_FRONT,
+                                                .bMeshShading   = true,
+                                                .bDepthTest     = true,
+                                                .bDepthWrite    = true,
+                                                .DepthCompareOp = ECompareOp::COMPARE_OP_LESS_OR_EQUAL};
+
+        PipelineSpecification csmPS = {.DebugName       = "CSM",
+                                       .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(csmGPO),
+                                       .Shader          = ShaderLibrary::Get("Shadows/CSM"),
+                                       .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
+
+        s_RendererData->CSMPipelineHash = PipelineLibrary::Push(csmPS);
     }
 
     constexpr auto reversedDepthCompareOp    = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL;
@@ -423,7 +477,7 @@ void Renderer::CreatePipelines()
     {
         PipelineSpecification sssPS = {.DebugName       = "ScrenSpaceShadows",
                                        .PipelineOptions = MakeOptional<ComputePipelineOptions>(),
-                                       .Shader          = ShaderLibrary::Get("SSShadows"),
+                                       .Shader          = ShaderLibrary::Get("Shadows/SSShadows"),
                                        .PipelineType    = EPipelineType::PIPELINE_TYPE_COMPUTE};
 
         s_RendererData->SSShadowsPipelineHash = PipelineLibrary::Push(sssPS);

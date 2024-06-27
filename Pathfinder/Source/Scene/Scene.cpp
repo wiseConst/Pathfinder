@@ -5,7 +5,6 @@
 #include "Components.h"
 
 #include <Renderer/Renderer.h>
-#include <Renderer/Renderer2D.h>
 #include <Renderer/Pipeline.h>
 #include <Renderer/Shader.h>
 #include <Renderer/HWRT.h>
@@ -56,7 +55,7 @@ void Scene::OnUpdate(const float deltaTime)
         {
             const auto& sc = entity.GetComponent<SpriteComponent>();
 
-            Renderer2D::DrawQuad(tc.Translation, tc.Scale,
+            Renderer::DrawQuad(tc.Translation, tc.Scale,
                                  {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w},
                                  sc.Color, sc.Texture, sc.Layer);
         }

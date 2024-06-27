@@ -170,6 +170,35 @@ NODISCARD FORCEINLINE static VkShaderStageFlags PathfinderShaderStageFlagsToVulk
 
 }  // namespace CommandBufferUtils
 
+VulkanQueryPool::VulkanQueryPool(const uint32_t queryCount, const bool bIsPipelineStatistics) : QueryPool(queryCount, bIsPipelineStatistics)
+{
+    const VkQueryPoolCreateInfo queryPoolCI = {
+        .sType              = VK_STRUCTURE_TYPE_QUERY_POOL_CREATE_INFO,
+        .queryType          = bIsPipelineStatistics ? VK_QUERY_TYPE_PIPELINE_STATISTICS : VK_QUERY_TYPE_TIMESTAMP,
+        .queryCount         = queryCount,
+        .pipelineStatistics = bIsPipelineStatistics ? VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT |
+                                                          VK_QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT |  //
+                                                          VK_QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT |  //
+                                                          VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT |
+                                                          VK_QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT |  //
+                                                          VK_QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT |
+                                                          VK_QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT |          //
+                                                          VK_QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT |  //
+                                                          VK_QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT |
+                                                          VK_QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT |
+                                                          VK_QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT |
+                                                          VK_QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT_EXT |
+                                                          VK_QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT_EXT
+                                                    : VkQueryPipelineStatisticFlags{0}};
+    VK_CHECK(vkCreateQueryPool(VulkanContext::Get().GetDevice()->GetLogicalDevice(), &queryPoolCI, nullptr, &m_Handle),
+             "Failed to create timestamp query pool!");
+}
+
+void VulkanQueryPool::Destroy()
+{
+    vkDestroyQueryPool(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, nullptr);
+}
+
 VulkanSyncPoint::VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages)
     : SyncPoint(timelineSemaphoreHandle, value, pipelineStages)
 {
@@ -233,6 +262,11 @@ void VulkanCommandBuffer::BeginRecording(bool bOneTimeSubmit, const void* inheri
     if (bOneTimeSubmit) commandBufferBeginInfo.flags |= VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
 
     VK_CHECK(vkBeginCommandBuffer(m_Handle, &commandBufferBeginInfo), "Failed to begin command buffer recording!");
+}
+
+void VulkanCommandBuffer::EndRecording() const
+{
+    VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer");
 }
 
 Shared<SyncPoint> VulkanCommandBuffer::Submit(const std::vector<Shared<SyncPoint>>& waitPoints,
@@ -500,6 +534,7 @@ void VulkanCommandBuffer::InsertBarrier(const VkPipelineStageFlags2 srcStageMask
                                              .pBufferMemoryBarriers    = pBufferMemoryBarriers,
                                              .imageMemoryBarrierCount  = imageMemoryBarrierCount,
                                              .pImageMemoryBarriers     = pImageMemoryBarriers};
+
     vkCmdPipelineBarrier2(m_Handle, &dependencyInfo);
 }
 
@@ -507,7 +542,6 @@ void VulkanCommandBuffer::BindPushConstants(Shared<Pipeline> pipeline, const uin
 {
     auto vulkanPipeline = std::static_pointer_cast<VulkanPipeline>(pipeline);
     PFR_ASSERT(vulkanPipeline, "Failed to cast Pipeline to VulkanPipeline!");
-
     vkCmdPushConstants(m_Handle, vulkanPipeline->GetLayout(), VK_SHADER_STAGE_ALL, offset, size, data);
 }
 
@@ -699,7 +733,86 @@ void VulkanCommandBuffer::InsertBarriers(const std::vector<MemoryBarrier>& memor
                                              .pBufferMemoryBarriers    = bufferMemoryBarriersVK.data(),
                                              .imageMemoryBarrierCount  = static_cast<uint32_t>(imageMemoryBarriersVK.size()),
                                              .pImageMemoryBarriers     = imageMemoryBarriersVK.data()};
+
     vkCmdPipelineBarrier2(m_Handle, &dependencyInfo);
+}
+
+void VulkanCommandBuffer::BeginPipelineStatisticsQuery(Shared<QueryPool>& queryPool)
+{
+    vkCmdBeginQuery(m_Handle, (VkQueryPool)queryPool->Get(), 0, 0);
+}
+
+void VulkanCommandBuffer::EndPipelineStatisticsQuery(Shared<QueryPool>& queryPool)
+{
+    vkCmdEndQuery(m_Handle, (VkQueryPool)queryPool->Get(), 0);
+}
+
+std::vector<std::pair<std::string, std::uint64_t>> VulkanCommandBuffer::CalculateQueryPoolStatisticsResults(Shared<QueryPool>& queryPool)
+{
+    static constexpr uint32_t s_MAX_PIPELINE_STATISITCS                                            = 13;
+    static std::array<const std::string_view, s_MAX_PIPELINE_STATISITCS> s_PipelineStatisticsNames = {
+        "Input assembly vertex count        ",  // IA vertex
+        "Input assembly primitives count    ",  // IA primitives
+        "Vertex shader invocations          ",  // VS
+        "Geometry shader invocations        ",  // GS
+        "Geometry shader primitives         ",  //
+        "Clipping stage primitives processed",  // Clipping
+        "Clipping stage primitives output   ",  //
+        "Fragment shader invocations        ",  // FS
+        "Tess. Control shader invocations   ",  // TCS
+        "Tess. Evaluation shader invocations",  // TES
+        "Compute shader invocations         ",  // CSCS
+        "Task shader invocations            ",  // TS
+        "Mesh shader invocations            "   // MS
+    };
+
+    std::vector<std::pair<std::string, std::uint64_t>> results(s_MAX_PIPELINE_STATISITCS);
+    if (queryPool->Get())
+    {
+        std::vector<uint64_t> pipelineStatistiscs(s_MAX_PIPELINE_STATISITCS, 0);
+        const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+        VK_CHECK(vkGetQueryPoolResults(logicalDevice, (VkQueryPool)queryPool->Get(), 0, queryPool->GetQueryCount(),
+                                       static_cast<uint32_t>(pipelineStatistiscs.size() * sizeof(pipelineStatistiscs[0])),
+                                       pipelineStatistiscs.data(),
+                                       static_cast<uint32_t>(pipelineStatistiscs.size() * sizeof(pipelineStatistiscs[0])),
+                                       VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
+                 "Failed to retrieve pipeline statistics query results!");
+
+        for (size_t i = 0; i < pipelineStatistiscs.size(); ++i)
+        {
+            results[i].first  = s_PipelineStatisticsNames.at(i);
+            results[i].second = pipelineStatistiscs.at(i);
+        }
+    }
+
+    return results;
+}
+
+std::vector<uint64_t> VulkanCommandBuffer::CalculateQueryPoolProfilerResults(Shared<QueryPool>& queryPool, const size_t timestampCount)
+{
+    std::vector<uint64_t> results(timestampCount);
+
+    const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
+    VK_CHECK(vkGetQueryPoolResults(logicalDevice, (VkQueryPool)queryPool->Get(), 0, timestampCount,
+                                   static_cast<uint32_t>(results.size() * sizeof(results[0])), results.data(),
+                                   static_cast<uint32_t>(sizeof(results[0])), VK_QUERY_RESULT_64_BIT | VK_QUERY_RESULT_WAIT_BIT),
+             "Failed to retrieve timestamps query results!");
+
+    return results;
+}
+
+void VulkanCommandBuffer::ResetPool(Shared<QueryPool>& queryPool)
+{
+    vkCmdResetQueryPool(m_Handle, (VkQueryPool)queryPool->Get(), 0, queryPool->GetQueryCount());
+}
+
+void VulkanCommandBuffer::WriteTimestamp(Shared<QueryPool>& queryPool, const uint32_t timestampIndex, const EPipelineStage pipelineStage)
+{
+    auto vulkanQueryPool = std::static_pointer_cast<VulkanQueryPool>(queryPool);
+    PFR_ASSERT(vulkanQueryPool, "Failed to cast QueryPool to VulkanQueryPool");
+
+    vkCmdWriteTimestamp(m_Handle, (VkPipelineStageFlagBits)CommandBufferUtils::PathfinderPipelineStageToVulkan(pipelineStage),
+                        (VkQueryPool)vulkanQueryPool->Get(), timestampIndex);
 }
 
 }  // namespace Pathfinder

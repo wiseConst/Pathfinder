@@ -59,9 +59,11 @@ struct Meshlet
     /* offsets within meshlet_vertices and meshlet_triangles arrays with meshlet data */
     uint32_t vertexOffset;
     uint32_t triangleOffset;
+
     /* number of vertices and triangles used in the meshlet; data is stored in consecutive range defined by offset and count */
     uint32_t vertexCount;
     uint32_t triangleCount;
+
     /* bounding sphere, useful for frustum and occlusion culling */
     vec3 center;
     float radius;

@@ -1,18 +1,23 @@
 #include <PathfinderPCH.h>
 #include "DebugRenderer.h"
 
+#include <Core/Application.h>
+#include <Core/Window.h>
+
 #include <Renderer/Renderer.h>
 #include <Renderer/Pipeline.h>
 #include <Renderer/Shader.h>
 #include <Renderer/Buffer.h>
 #include <Renderer/CommandBuffer.h>
-#include <Renderer/Mesh/MeshManager.h>
 #include <Renderer/Mesh/Mesh.h>
 #include <Renderer/Mesh/Submesh.h>
+
+#include <Renderer/RenderGraph/RenderGraph.h>
 
 namespace Pathfinder
 {
 static bool s_bDebugRendererInit = false;
+static bool s_bStateNeedsUpdate  = true;
 
 #define UPDATE_STATE_ROUTINE                                                                                                               \
     {                                                                                                                                      \
@@ -27,22 +32,13 @@ void DebugRenderer::Init()
     s_DebugRendererData->FrameIndex = 0;
 
     ShaderLibrary::Load({{"Debug/Line"}, {"Debug/Sphere"}});
+    ShaderLibrary::WaitUntilShadersLoaded();
 
     std::ranges::for_each(s_DebugRendererData->LineVertexBase,
                           [](auto& lineVertexBase)
                           {
                               // TODO: Use here CPU-side memory allocator
-                              lineVertexBase = new LineVertex[s_DebugRendererData->s_MAX_VERTICES];
-                          });
-
-    std::ranges::for_each(s_DebugRendererData->LineVertexBuffer,
-                          [](auto& vertexBuffer)
-                          {
-                              const BufferSpecification vbSpec = {.DebugName  = "LineVertexBuffer",
-                                                                  .ExtraFlags = EBufferFlag::BUFFER_FLAG_MAPPED,
-                                                                  .UsageFlags = EBufferUsage::BUFFER_USAGE_VERTEX,
-                                                                  .Capacity   = s_DebugRendererData->s_MAX_VERTEX_BUFFER_SIZE};
-                              vertexBuffer                     = Buffer::Create(vbSpec);
+                              lineVertexBase = new LineVertex[s_MAX_VERTICES];
                           });
 
     for (uint32_t fif{}; fif < s_FRAMES_IN_FLIGHT; ++fif)
@@ -50,63 +46,50 @@ void DebugRenderer::Init()
         s_DebugRendererData->LineVertexCurrent[fif] = s_DebugRendererData->LineVertexBase[fif];
     }
 
-    ShaderLibrary::WaitUntilShadersLoaded();
-
-    std::ranges::for_each(s_DebugRendererData->DebugSphereSSBO,
-                          [](auto& debugSphereSSBO)
-                          {
-                              const BufferSpecification dsiSSBO = {.DebugName  = "DebugSphereSSBO",
-                                                                   .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
-                                                                   .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE |
-                                                                                 EBufferUsage::BUFFER_USAGE_TRANSFER_SOURCE};
-                              debugSphereSSBO                   = Buffer::Create(dsiSSBO);
-                          });
-
-    s_DebugRendererData->DebugSphereMesh = MeshManager::GenerateUVSphere(24, 18);
-
-    const auto* gpo = std::get_if<GraphicsPipelineOptions>(
-        &PipelineLibrary::Get(Renderer::GetRendererData()->ForwardPlusOpaquePipelineHash)->GetSpecification().PipelineOptions.value());
-    PFR_ASSERT(gpo, "GPO is not valid!");
-
+    // NOTE: Formats should be the same as ForwardPlus pipeline, but excluding HDR format.
     const GraphicsPipelineOptions sphereGPO = {
-        .InputBufferBindings = {{{"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3}}},
-        .Formats             = gpo->Formats,
-        .CullMode            = ECullMode::CULL_MODE_BACK,
-        .FrontFace           = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE,
-        .PrimitiveTopology   = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
-        .LineWidth           = s_DebugRendererData->LineWidth,
-        .bBlendEnable        = true,
-        .BlendMode           = EBlendMode::BLEND_MODE_ALPHA,
-        .PolygonMode         = EPolygonMode::POLYGON_MODE_LINE,
-        .bDepthTest          = true,
-        .bDepthWrite         = false,
-        .DepthCompareOp      = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL};
-
+        .VertexStreams     = {{{"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3}}},
+        .Formats           = {EImageFormat::FORMAT_RGBA16F, EImageFormat::FORMAT_D32F},
+        .FrontFace         = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE,
+        .PrimitiveTopology = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_TRIANGLE_LIST,
+        .LineWidth         = s_DebugRendererData->LineWidth,
+        .bBlendEnable      = true,
+        .BlendMode         = EBlendMode::BLEND_MODE_ALPHA,
+        .PolygonMode       = EPolygonMode::POLYGON_MODE_LINE,
+        .bDepthTest        = true,
+        .bDepthWrite       = false,
+        .DepthCompareOp    = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL};
     PipelineSpecification spherePipelineSpec = {.DebugName       = "DebugSphere",
                                                 .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(sphereGPO),
                                                 .Shader          = ShaderLibrary::Get("Debug/Sphere"),
                                                 .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
     s_DebugRendererData->SpherePipelineHash  = PipelineLibrary::Push(spherePipelineSpec);
 
-    const GraphicsPipelineOptions lineGPO = {
-        .InputBufferBindings = {{{"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
-                                 {"inColor", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UINT}}},
-        .Formats             = gpo->Formats,
-        .CullMode            = ECullMode::CULL_MODE_BACK,
-        .FrontFace           = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE,
-        .PrimitiveTopology   = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_LINE_LIST,
-        .LineWidth           = s_DebugRendererData->LineWidth,
-        .bBlendEnable        = true,
-        .BlendMode           = EBlendMode::BLEND_MODE_ALPHA,
-        .PolygonMode         = EPolygonMode::POLYGON_MODE_LINE,
-        .bDepthTest          = true,
-        .bDepthWrite         = false,
-        .DepthCompareOp      = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL};
+    // NOTE: Formats should be the same as ForwardPlus pipeline, but excluding HDR format.
+    const GraphicsPipelineOptions lineGPO  = {.VertexStreams = {{{"inPosition", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_VEC3},
+                                                                 {"inColor", EShaderBufferElementType::SHADER_BUFFER_ELEMENT_TYPE_UINT}}},
+                                              .Formats       = {EImageFormat::FORMAT_RGBA16F, EImageFormat::FORMAT_D32F},
+                                              .FrontFace     = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE,
+                                              .PrimitiveTopology = EPrimitiveTopology::PRIMITIVE_TOPOLOGY_LINE_LIST,
+                                              .LineWidth         = s_DebugRendererData->LineWidth,
+                                              .bBlendEnable      = true,
+                                              .BlendMode         = EBlendMode::BLEND_MODE_ALPHA,
+                                              .PolygonMode       = EPolygonMode::POLYGON_MODE_LINE,
+                                              .bDepthTest        = true,
+                                              .bDepthWrite       = false,
+                                              .DepthCompareOp    = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL};
     PipelineSpecification linePipelineSpec = {.DebugName       = "DebugLine",
                                               .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(lineGPO),
                                               .Shader          = ShaderLibrary::Get("Debug/Line"),
                                               .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
     s_DebugRendererData->LinePipelineHash  = PipelineLibrary::Push(linePipelineSpec);
+
+    const auto& windowSpec = Application::Get().GetWindow()->GetSpecification();
+    s_DebugRendererData->DebugPass =
+        DebugPass(windowSpec.Width, windowSpec.Height, s_DebugRendererData->SpherePipelineHash, s_DebugRendererData->LinePipelineHash);
+
+    Application::Get().GetWindow()->AddResizeCallback([](const WindowResizeData& resizeData)
+                                                      { s_DebugRendererData->DebugPass.OnResize(resizeData.Width, resizeData.Height); });
 
     PipelineLibrary::Compile();
     LOG_TRACE("{}", __FUNCTION__);
@@ -125,7 +108,15 @@ void DebugRenderer::Shutdown()
 
 void DebugRenderer::UpdateState()
 {
-    if (!s_bDebugRendererInit) return;
+    if (!s_bDebugRendererInit || !s_bStateNeedsUpdate) return;
+
+    memset(s_DebugRendererData->LineVertexBase[s_DebugRendererData->FrameIndex], 0,
+           s_DebugRendererData->LineVertexCount * sizeof(LineVertex));
+    s_DebugRendererData->LineVertexCurrent[s_DebugRendererData->FrameIndex] =
+        s_DebugRendererData->LineVertexBase[s_DebugRendererData->FrameIndex];
+    s_DebugRendererData->LineVertexCount = 0;
+
+    s_DebugRendererData->DebugSpheres.clear();
 
     auto& rd = Renderer::GetRendererData();
     if (s_DebugRendererData->FrameIndex == rd->FrameIndex) return;
@@ -133,70 +124,18 @@ void DebugRenderer::UpdateState()
     s_DebugRendererData->FrameIndex = rd->FrameIndex;
     s_DebugRendererData->LineVertexCurrent[s_DebugRendererData->FrameIndex] =
         s_DebugRendererData->LineVertexBase[s_DebugRendererData->FrameIndex];
+
+    s_bStateNeedsUpdate = false;
 }
 
-void DebugRenderer::Flush(Shared<CommandBuffer>& renderCommandBuffer)
+void DebugRenderer::Flush(Unique<RenderGraph>& renderGraph)
 {
     UPDATE_STATE_ROUTINE;
 
-    PFR_ASSERT(false, "NOT IMPLEMENTED!");
-#if 0
-    auto& rd = Renderer::GetRendererData();
-    renderCommandBuffer->BeginTimestampQuery();
+    s_DebugRendererData->DebugPass.AddPass(renderGraph, s_DebugRendererData->LineVertexBase.at(s_DebugRendererData->FrameIndex),
+                                           s_DebugRendererData->LineVertexCount, s_DebugRendererData->DebugSpheres);
 
-    if (const auto lineDataSize = s_DebugRendererData->LineVertexCount * sizeof(LineVertex); lineDataSize > 0)
-    {
-        s_DebugRendererData->LineVertexBuffer[s_DebugRendererData->FrameIndex]->SetData(
-            s_DebugRendererData->LineVertexBase[s_DebugRendererData->FrameIndex], lineDataSize);
-
-        renderCommandBuffer->BeginDebugLabel("DebugLines", glm::vec3(.1f, .8f, .3f));
-        //    rd->GBuffer->BeginPass(renderCommandBuffer);
-
-        const PushConstantBlock pc = {rd->CameraSSBO[rd->FrameIndex]->GetBDA()};
-        constexpr uint64_t offset  = 0;
-        renderCommandBuffer->BindVertexBuffers({s_DebugRendererData->LineVertexBuffer[s_DebugRendererData->FrameIndex]}, 0, 1, &offset);
-
-        Renderer::BindPipeline(renderCommandBuffer, PipelineLibrary::Get(s_DebugRendererData->LinePipelineHash));
-        renderCommandBuffer->BindPushConstants(PipelineLibrary::Get(s_DebugRendererData->LinePipelineHash), 0, 0, sizeof(pc), &pc);
-        renderCommandBuffer->Draw(s_DebugRendererData->LineVertexCount);
-
-        //  rd->GBuffer->EndPass(renderCommandBuffer);
-        renderCommandBuffer->EndDebugLabel();
-
-        memset(s_DebugRendererData->LineVertexBase[s_DebugRendererData->FrameIndex], 0, lineDataSize);
-        s_DebugRendererData->LineVertexCurrent[s_DebugRendererData->FrameIndex] =
-            s_DebugRendererData->LineVertexBase[s_DebugRendererData->FrameIndex];
-        s_DebugRendererData->LineVertexCount = 0;
-    }
-
-    if (!s_DebugRendererData->DebugSpheres.empty())
-    {
-        s_DebugRendererData->DebugSphereSSBO[s_DebugRendererData->FrameIndex]->SetData(s_DebugRendererData->DebugSpheres.data(),
-                                                                                       s_DebugRendererData->DebugSpheres.size() *
-                                                                                           sizeof(s_DebugRendererData->DebugSpheres[0]));
-
-        renderCommandBuffer->BeginDebugLabel("DebugSpheres", glm::vec3(.1f, .3f, .8f));
-        //       rd->GBuffer->BeginPass(renderCommandBuffer);
-
-        Renderer::BindPipeline(renderCommandBuffer, PipelineLibrary::Get(s_DebugRendererData->SpherePipelineHash));
-        PushConstantBlock pc = {rd->CameraSSBO[rd->FrameIndex]->GetBDA()};
-        pc.addr0             = s_DebugRendererData->DebugSphereSSBO[s_DebugRendererData->FrameIndex]->GetBDA();
-        renderCommandBuffer->BindPushConstants(PipelineLibrary::Get(s_DebugRendererData->SpherePipelineHash), 0, 0, sizeof(pc), &pc);
-
-        constexpr uint64_t offset = 0;
-        renderCommandBuffer->BindVertexBuffers({s_DebugRendererData->DebugSphereMesh.VertexBuffer}, 0, 1, &offset);
-        renderCommandBuffer->BindIndexBuffer(s_DebugRendererData->DebugSphereMesh.IndexBuffer);
-
-        renderCommandBuffer->DrawIndexed(s_DebugRendererData->DebugSphereMesh.IndexBuffer->GetSpecification().Capacity / sizeof(uint32_t),
-                                         s_DebugRendererData->DebugSpheres.size());
-
-        //        rd->GBuffer->EndPass(renderCommandBuffer);
-        renderCommandBuffer->EndDebugLabel();
-    }
-    renderCommandBuffer->EndTimestampQuery();
-#endif
-
-    s_DebugRendererData->DebugSpheres.clear();
+    s_bStateNeedsUpdate = true;
 }
 
 void DebugRenderer::DrawLine(const glm::vec3& p0, const glm::vec3& p1, const glm::vec4& color)

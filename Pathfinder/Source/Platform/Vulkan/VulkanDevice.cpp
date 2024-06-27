@@ -758,7 +758,7 @@ void VulkanDevice::CreateLogicalDevice()
 #endif
 }
 
-void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, const CommandBufferSpecification& commandBufferSpec) const
+void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, const CommandBufferSpecification& commandBufferSpec)
 {
     PFR_ASSERT(commandBufferSpec.ThreadID < s_WORKER_THREAD_COUNT, "Invalid threadID!");
 
@@ -795,10 +795,10 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, co
     const auto commandBufferNameStr = std::string("COMMAND_BUFFER_") + cbTypeStr + "_FRAME_" +
                                       std::to_string(commandBufferSpec.FrameIndex) + "_THREAD_" +
                                       std::to_string(commandBufferSpec.ThreadID);
-    VK_SetDebugName(m_LogicalDevice, inOutCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER, commandBufferNameStr.data())
+    VK_SetDebugName(m_LogicalDevice, inOutCommandBuffer, VK_OBJECT_TYPE_COMMAND_BUFFER, commandBufferNameStr.data());
 }
 
-void VulkanDevice::FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const CommandBufferSpecification& commandBufferSpec) const
+void VulkanDevice::FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const CommandBufferSpecification& commandBufferSpec)
 {
     PFR_ASSERT(commandBufferSpec.ThreadID < s_WORKER_THREAD_COUNT, "Invalid threadID!");
 

@@ -33,7 +33,7 @@ class Pipeline;
 struct ShaderSpecification
 {
     std::string Name = s_DEFAULT_STRING;
-    std::unordered_map<std::string, std::string> MacroDefinitions;
+    UnorderedMap<std::string, std::string> MacroDefinitions;
 };
 
 class Shader : private Uncopyable, private Unmovable

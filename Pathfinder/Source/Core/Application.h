@@ -59,6 +59,8 @@ class Application : private Unmovable, private Uncopyable
         return *s_Instance;
     }
 
+    NODISCARD FORCEINLINE const auto GetCurrentFrameNumber() const { return m_FrameNumber; }
+
   private:
     static inline Application* s_Instance = nullptr;
     ApplicationSpecification m_Specification;
@@ -70,6 +72,7 @@ class Application : private Unmovable, private Uncopyable
 
     float m_DeltaTime               = 0.0f;
     static inline bool s_bIsRunning = false;
+    uint32_t m_FrameNumber{};
 
     void OnEvent(Event& e);
     Application() = delete;

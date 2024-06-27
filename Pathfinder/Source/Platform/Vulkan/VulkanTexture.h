@@ -34,7 +34,6 @@ class VulkanTexture final : public Texture
     }
 
   private:
-    VkDescriptorImageInfo m_DescriptorInfo = {};
     VkSampler m_Sampler                    = VK_NULL_HANDLE;
 
     VulkanTexture() = delete;

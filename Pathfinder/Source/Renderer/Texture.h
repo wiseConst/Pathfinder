@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Core/Core.h>
+#include <Core/ThreadPool.h>
 #include "RendererCoreDefines.h"
 #include "Image.h"
 
@@ -25,7 +26,7 @@ class Texture : private Uncopyable, private Unmovable
   public:
     virtual ~Texture() = default;
 
-   NODISCARD FORCEINLINE const auto& GetUUID() const { return m_UUID; }
+    NODISCARD FORCEINLINE const auto& GetUUID() const { return m_UUID; }
     NODISCARD FORCEINLINE const auto& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE const auto GetBindlessIndex() const
     {
@@ -43,7 +44,7 @@ class Texture : private Uncopyable, private Unmovable
     Shared<Image> m_Image                = nullptr;
     TextureSpecification m_Specification = {};
     Optional<uint32_t> m_BindlessIndex   = std::nullopt;
-    UUID m_UUID                          = {}; // NOTE: Used only for imgui purposes.
+    UUID m_UUID                          = {};  // NOTE: Used only for imgui purposes.
 
     Texture(const TextureSpecification& textureSpec) : m_Specification(textureSpec) {}
     Texture() = delete;
@@ -68,11 +69,23 @@ class TextureCompressor final
     static void LoadCompressed(const std::filesystem::path& loadPath, TextureSpecification& outTextureSpec, std::vector<uint8_t>& outData);
 
   private:
+    static inline std::mutex s_CompressorMutex;
+
     TextureCompressor()  = delete;
     ~TextureCompressor() = default;
 };
 
+enum class ETextureLoadType : uint8_t
+{
+    TEXTURE_LOAD_TYPE_ALBEDO,
+    TEXTURE_LOAD_TYPE_NORMAL,
+    TEXTURE_LOAD_TYPE_METALLIC_ROUGHNESS,
+    TEXTURE_LOAD_TYPE_EMISSIVE,
+    TEXTURE_LOAD_TYPE_OCCLUSION
+};
+
 // TODO: Parallel texture loading/compressing.
+class Submesh;
 class TextureManager final
 {
   public:
@@ -81,12 +94,36 @@ class TextureManager final
 
     NODISCARD FORCEINLINE static const auto& GetWhiteTexture() { return s_WhiteTexture; }
 
-    // NOTE: Checks if any texture is loaded and blocks frame, until texture(or index) is assigned to mesh.
+    template <typename Func, typename... Args>
+    static Shared<Texture>& LoadTextureLazy(const ETextureLoadType textureLoadType, Weak<Submesh> submesh, const std::string& baseMeshDir,
+                                            const std::string& textureName, Func&& func, Args&&... args)
+    {
+        //const std::string wholeTextureName = baseMeshDir + textureName;
+
+        ////    if (loadedTextures.contains(textureName)) return loadedTextures[textureName];
+
+        ///*baseMeshDir + textureName*/
+        //s_TexturesInProcess.emplace_back(ThreadPool::Submit(std::forward<Func>(func), std::forward<Args>(args)...), submesh,
+        //                                 textureLoadType);
+
+        return s_WhiteTexture;
+    }
+
     static void LinkLoadedTexturesWithMeshes();
 
   private:
     static inline Shared<Texture> s_WhiteTexture = nullptr;
-    static inline Pool<Shared<Texture>> s_TexturePool;
+    //    static inline Pool<Shared<Texture>> s_TexturePool;
+
+    //static inline UnorderedMap<std::string, uint32_t> s_TexturesInProcessNameToIndex;
+
+    //struct LoadedTextureEntry
+    //{
+    //    std::shared_future<Shared<Texture>> TextureFuture;
+    //    Weak<Submesh> SubmeshPtr;
+    //    ETextureLoadType TextureLoadType;
+    //};
+    //static inline std::vector<LoadedTextureEntry> s_TexturesInProcess;
 
     TextureManager()  = delete;
     ~TextureManager() = default;

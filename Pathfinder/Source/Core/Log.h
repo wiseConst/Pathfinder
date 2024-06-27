@@ -37,6 +37,10 @@ class Log final
 #define LOG_DEBUG(...)
 #endif
 
+// TODO: Fix, cuz it doesn't work rn.
+namespace std
+{
+
 template <typename OStream, glm::length_t L, typename T, glm::qualifier Q>
 inline OStream& operator<<(OStream& os, const glm::vec<L, T, Q>& vector)
 {
@@ -53,3 +57,5 @@ template <typename OStream, typename T, glm::qualifier Q> inline OStream& operat
 {
     return os << glm::to_string(quaternion);
 }
+
+}  // namespace std

@@ -65,7 +65,9 @@ void RenderGraph::Build()
     TopologicalSort();
     GraphVizDump();
 
+#if RG_LOG_DEBUG_INFO
     LOG_INFO("{} - {:.3f}ms", __FUNCTION__, t.GetElapsedMilliseconds());
+#endif
 }
 
 void RenderGraph::Execute()
@@ -87,11 +89,23 @@ void RenderGraph::Execute()
         return glm::vec3(x, y, z);
     };
 
-    std::unordered_set<uint32_t> runPasses;
+    UnorderedSet<uint32_t> runPasses;
     for (auto currPassIdx : m_TopologicallySortedPasses)
     {
         Timer t           = {};
         auto& currentPass = m_Passes.at(currPassIdx);
+
+        Shared<CommandBuffer> cb = nullptr;
+        switch (currentPass->m_Type)
+        {
+            case ERGPassType::RGPASS_TYPE_GRAPHICS:
+            case ERGPassType::RGPASS_TYPE_TRANSFER:
+            case ERGPassType::RGPASS_TYPE_COMPUTE: cb = rd->RenderCommandBuffer.at(m_CurrentFrameIndex); break;
+        }
+        PFR_ASSERT(cb, "Command buffer is not valid!");
+
+        rd->CPUProfiler.BeginTimestamp(currentPass->m_Name, stringToVec3(currentPass->m_Name));
+        rd->GPUProfiler.BeginTimestamp(cb, currentPass->m_Name, stringToVec3(currentPass->m_Name));
 
 #if RG_LOG_DEBUG_INFO
         LOG_INFO("Running {}", currentPass->m_Name);
@@ -112,15 +126,6 @@ void RenderGraph::Execute()
             auto& rgBuffer   = GetRGBuffer(bufferID);
             rgBuffer->Handle = m_ResourcePool.AllocateBuffer(rgBuffer->Description);
         }
-
-        Shared<CommandBuffer> cb = nullptr;
-        switch (currentPass->m_Type)
-        {
-            case ERGPassType::RGPASS_TYPE_GRAPHICS:
-            case ERGPassType::RGPASS_TYPE_TRANSFER:
-            case ERGPassType::RGPASS_TYPE_COMPUTE: cb = rd->RenderCommandBuffer.at(m_CurrentFrameIndex); break;
-        }
-        PFR_ASSERT(cb, "Command buffer is not valid!");
 
         std::vector<BufferMemoryBarrier> bufferMemoryBarriers;
 
@@ -186,6 +191,9 @@ void RenderGraph::Execute()
 
         cb->EndDebugLabel();
         // LOG_DEBUG("Pass - {}, taken {:.3f}ms CPU time.", currentPass->m_Name, t.GetElapsedMilliseconds());
+
+        rd->GPUProfiler.EndTimestamp(cb);
+        rd->CPUProfiler.EndTimestamp();
     }
 }
 
@@ -320,7 +328,7 @@ void RenderGraph::TopologicalSort()
 }
 
 std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferRAWBarriers(const Unique<RGPassBase>& currentPass,
-                                                                     const std::unordered_set<uint32_t>& runPasses)
+                                                                     const UnorderedSet<uint32_t>& runPasses)
 {
     std::vector<BufferMemoryBarrier> bufferMemoryBarriers;
 
@@ -424,7 +432,7 @@ std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferRAWBarriers(const Uniqu
 }
 
 std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferWARBarriers(const Unique<RGPassBase>& currentPass,
-                                                                     const std::unordered_set<uint32_t>& runPasses)
+                                                                     const UnorderedSet<uint32_t>& runPasses)
 {
     std::vector<BufferMemoryBarrier> bufferMemoryBarriers;
 #if RG_LOG_DEBUG_INFO
@@ -523,7 +531,7 @@ std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferWARBarriers(const Uniqu
 }
 
 std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferWAWBarriers(const Unique<RGPassBase>& currentPass,
-                                                                     const std::unordered_set<uint32_t>& runPasses)
+                                                                     const UnorderedSet<uint32_t>& runPasses)
 {
     std::vector<BufferMemoryBarrier> bufferMemoryBarriers;
 #if RG_LOG_DEBUG_INFO
@@ -603,7 +611,7 @@ std::vector<BufferMemoryBarrier> RenderGraph::BuildBufferWAWBarriers(const Uniqu
 }
 
 std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureRAWBarriers(const Unique<RGPassBase>& currentPass,
-                                                                     const std::unordered_set<uint32_t>& runPasses)
+                                                                     const UnorderedSet<uint32_t>& runPasses)
 {
     std::vector<ImageMemoryBarrier> imageMemoryBarriers;
 #if RG_LOG_DEBUG_INFO
@@ -739,7 +747,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureRAWBarriers(const Uniqu
 }
 
 std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWARBarriers(const Unique<RGPassBase>& currentPass,
-                                                                     const std::unordered_set<uint32_t>& runPasses)
+                                                                     const UnorderedSet<uint32_t>& runPasses)
 {
     std::vector<ImageMemoryBarrier> imageMemoryBarriers;
 #if RG_LOG_DEBUG_INFO
@@ -874,7 +882,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWARBarriers(const Uniqu
 }
 
 std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWAWBarriers(const Unique<RGPassBase>& currentPass,
-                                                                     const std::unordered_set<uint32_t>& runPasses)
+                                                                     const UnorderedSet<uint32_t>& runPasses)
 {
     std::vector<ImageMemoryBarrier> imageMemoryBarriers;
 #if RG_LOG_DEBUG_INFO

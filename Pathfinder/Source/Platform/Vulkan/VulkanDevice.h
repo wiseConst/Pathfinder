@@ -14,8 +14,8 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     explicit VulkanDevice(const VkInstance& instance);
     ~VulkanDevice();
 
-    void AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, const CommandBufferSpecification& commandBufferSpec) const;
-    void FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const CommandBufferSpecification& commandBufferSpec) const;
+    void AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, const CommandBufferSpecification& commandBufferSpec);
+    void FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const CommandBufferSpecification& commandBufferSpec);
 
     NODISCARD FORCEINLINE const auto& GetAllocator() const { return m_VMA; }
 
@@ -74,6 +74,7 @@ class VulkanDevice final : private Uncopyable, private Unmovable
     std::vector<VkFormat> m_SupportedDepthStencilFormats;
 
     using VulkanCommandPoolPerFrame = std::array<std::array<VkCommandPool, s_WORKER_THREAD_COUNT>, s_FRAMES_IN_FLIGHT>;
+
     VulkanCommandPoolPerFrame m_GraphicsCommandPools;
     VulkanCommandPoolPerFrame m_TransferCommandPools;
     VulkanCommandPoolPerFrame m_ComputeCommandPools;

@@ -8,8 +8,7 @@
 namespace Pathfinder
 {
 
-FORCEINLINE static std::string HashShader(const std::string& shaderWithExt,
-                                          const std::unordered_map<std::string, std::string>& macroDefinitions)
+FORCEINLINE static std::string HashShader(const std::string& shaderWithExt, const UnorderedMap<std::string, std::string>& macroDefinitions)
 {
     std::string shaderDefinition = shaderWithExt + "_";
 

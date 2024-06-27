@@ -1,42 +1,13 @@
 #version 460
 
 #extension GL_EXT_mesh_shader : require
+
 #extension GL_GOOGLE_include_directive : require
 #include "Include/Globals.h"
 #include "Include/MeshletTaskPayload.glslh"
 
-// NOTE: 
-// This line guarantees that gl_Position is computed by the exact expression that was given in the shader without 
-// any optimization as this would change the operations and therefore quite likely change the result in some minor way.
-// Since I'm using DepthPrePass, I have to manually assure that gl_Position will be the same, 
-// in both Forward+ and PrePassZ mesh shaders.
-out invariant uvec3 gl_PrimitiveTriangleIndicesEXT[];
-
-out gl_MeshPerVertexEXT {
-  invariant vec4  gl_Position;
-  invariant float gl_PointSize;
-  invariant float gl_ClipDistance[];
-  invariant float gl_CullDistance[];
-} gl_MeshVerticesEXT[];
-
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out;
-
-layout(location = 0) out VertexOutput
-{
-    vec4 Color;
-    vec2 UV;
-    vec3 WorldPos;
-    flat uint64_t MaterialBufferBDA;
-    mat3 TBNtoWorld;
-} o_VertexOutput[];
-
-#define DEBUG_MESHLETS 0
-
-vec3 unpackUnorm3x8(const u8vec3 packed)
-{
-    return vec3(int32_t(packed.x), int32_t(packed.y), int32_t(packed.z)) / 127.0 - 1.0;
-}
 
 void main()
 {
@@ -54,13 +25,6 @@ void main()
     // Requesting memory early helps hiding the latency required for memory allocation in the geometry engine.
     if (ti == 0) SetMeshOutputsEXT(vertexCount, primitiveCount);
 
-    #if DEBUG_MESHLETS
-        const uint32_t mhash = hash(mi);
-        const vec3 mcolor = vec3(float(mhash & 255), float((mhash >> 8) & 255), float((mhash >> 16) & 255)) / 255.0;
-    #endif
- 
-    const mat3 normalMatrix = QuatToRotMat3(md.orientation);
-
     const uint32_t vertexOffset = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].vertexOffset;
     for(i = ti; i < vertexCount; i += MESHLET_LOCAL_GROUP_SIZE)
     {
@@ -68,21 +32,6 @@ void main()
         const vec3 worldPos = RotateByQuat(VertexPosBuffer(md.vertexPosBufferBDA).positions[vi].Position * md.scale, md.orientation) + md.translation;
 
         gl_MeshVerticesEXT[i].gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
-        o_VertexOutput[i].WorldPos = worldPos;
-
-        o_VertexOutput[i].Color = glm_unpackUnorm4x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Color);
-        #if DEBUG_MESHLETS
-              o_VertexOutput[i].Color = vec4(mcolor, 1.0);
-        #endif
-
-        o_VertexOutput[i].UV = VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].UV;
-        o_VertexOutput[i].MaterialBufferBDA = md.materialBufferBDA;
-
-        const vec3 N = normalize(normalMatrix * unpackUnorm3x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Normal));
-        vec3 T = normalize(normalMatrix * unpackUnorm3x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Tangent));
-        T = normalize(T - dot(T, N) * N);
-        const vec3 B = cross(N, T);
-        o_VertexOutput[i].TBNtoWorld = mat3(T, B, N);
     }
 
     const uint32_t triangleOffset = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].triangleOffset;

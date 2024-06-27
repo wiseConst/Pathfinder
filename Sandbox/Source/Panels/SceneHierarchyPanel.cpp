@@ -185,8 +185,7 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
     {
         auto& tag = entity.GetComponent<TagComponent>().Tag;
 
-        char name[256];
-        memset(name, 0, sizeof(name));
+        char name[256] = {0};
         strcpy_s(name, sizeof(name), tag.data());
 
         if (ImGui::InputText("##Tag", name, sizeof(name)))
@@ -325,7 +324,10 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
                                      for (auto& submesh : mc.Mesh->GetSubmeshes())
                                      {
                                          ImGui::Separator();
+
                                          const auto submeshStr = "Submesh[" + std::to_string(submeshIndex++) + "]";
+                                         ImGui::PushID(submeshStr.data());
+
                                          ImGui::Text("%s", submeshStr.data());
 
                                          ImGui::Separator();
@@ -360,27 +362,28 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
                                          DrawTexture(mat->GetAOMap(), "AO");
 
                                          if (bIsAnythingAdjusted) mat->Update();
+
+                                         ImGui::PopID();
                                      }
                                  });
 
-    DrawComponent<SpriteComponent>(
-        "SpriteComponent", entity,
-        [](auto& sc)
-        {
-            ImGui::Separator();
-            ImGui::Text("Color");
-            ImGui::ColorPicker4("Color", (float*)&sc.Color);
+    DrawComponent<SpriteComponent>("SpriteComponent", entity,
+                                   [](auto& sc)
+                                   {
+                                       ImGui::Separator();
+                                       ImGui::Text("Color");
+                                       ImGui::ColorPicker4("Color", (float*)&sc.Color);
 
-            ImGui::Separator();
-            ImGui::SliderInt("Layer", (int32_t*)&sc.Layer, 0, 5);
+                                       ImGui::Separator();
+                                       ImGui::SliderInt("Layer", (int32_t*)&sc.Layer, 0, 5);
 
-            if (sc.Texture)
-            {
-                ImGui::Separator();
-                const auto& textureSpec = sc.Texture->GetSpecification();
-                UILayer::DrawTexture(sc.Texture , {textureSpec.Width, textureSpec.Height}, {0, 0}, {1, 1});
-            }
-        });
+                                       if (sc.Texture)
+                                       {
+                                           ImGui::Separator();
+                                           const auto& textureSpec = sc.Texture->GetSpecification();
+                                           UILayer::DrawTexture(sc.Texture, {textureSpec.Width, textureSpec.Height}, {0, 0}, {1, 1});
+                                       }
+                                   });
 }
 
 }  // namespace Pathfinder

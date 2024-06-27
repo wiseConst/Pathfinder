@@ -38,6 +38,6 @@ void main()
     gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
     
     outUV = g_TexCoords[gl_VertexIndex];
-    outColor = unpackUnorm4x8(sprite.Color);
+    outColor = glm_unpackUnorm4x8(sprite.Color);
     outTextureIndex = sprite.BindlessTextureIndex;
 }

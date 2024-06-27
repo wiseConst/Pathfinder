@@ -7,6 +7,7 @@ layout(location = 0) out float outFragColor;
 layout(location = 0) in vec2 inUV;
 
 layout(constant_id = 0) const int blurRange = 2;
+layout(constant_id = 1) const float blurPower = 0.85f;
 
 void main()
 {
@@ -18,7 +19,7 @@ void main()
 		for(int y = -blurRange; y < blurRange; ++y)
 		{
 			const vec2 offsetUV = vec2(float(x), float(y)) * texelSize;
-			accumulatedAO += texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], inUV + offsetUV).r;
+			accumulatedAO += blurPower * texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], inUV + offsetUV).r;
 			++accumulatedCount;
 		}
 	}

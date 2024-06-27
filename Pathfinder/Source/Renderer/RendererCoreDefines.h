@@ -16,6 +16,7 @@ namespace Pathfinder
 #define LOG_TEXTURE_COMPRESSION_INFO 0
 
 static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
+static constexpr uint32_t s_MAX_QUADS        = 25000;
 
 class Image;
 class Buffer;
@@ -187,23 +188,6 @@ struct ImageMemoryBarrier
     Optional<uint32_t> dstQueueFamilyIndex = std::nullopt;
     Shared<Image> image                    = nullptr;
     ImageSubresourceRange subresourceRange{};
-};
-
-enum class EQueryPipelineStatistic : uint32_t
-{
-    QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_VERTICES_BIT                    = BIT(0),
-    QUERY_PIPELINE_STATISTIC_INPUT_ASSEMBLY_PRIMITIVES_BIT                  = BIT(1),
-    QUERY_PIPELINE_STATISTIC_VERTEX_SHADER_INVOCATIONS_BIT                  = BIT(2),
-    QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_INVOCATIONS_BIT                = BIT(3),
-    QUERY_PIPELINE_STATISTIC_GEOMETRY_SHADER_PRIMITIVES_BIT                 = BIT(4),
-    QUERY_PIPELINE_STATISTIC_CLIPPING_INVOCATIONS_BIT                       = BIT(5),
-    QUERY_PIPELINE_STATISTIC_CLIPPING_PRIMITIVES_BIT                        = BIT(6),
-    QUERY_PIPELINE_STATISTIC_FRAGMENT_SHADER_INVOCATIONS_BIT                = BIT(7),
-    QUERY_PIPELINE_STATISTIC_TESSELLATION_CONTROL_SHADER_PATCHES_BIT        = BIT(8),
-    QUERY_PIPELINE_STATISTIC_TESSELLATION_EVALUATION_SHADER_INVOCATIONS_BIT = BIT(9),
-    QUERY_PIPELINE_STATISTIC_COMPUTE_SHADER_INVOCATIONS_BIT                 = BIT(10),
-    QUERY_PIPELINE_STATISTIC_TASK_SHADER_INVOCATIONS_BIT                    = BIT(11),
-    QUERY_PIPELINE_STATISTIC_MESH_SHADER_INVOCATIONS_BIT                    = BIT(12)
 };
 
 enum class EImageFormat : uint8_t
@@ -384,6 +368,21 @@ struct LineVertex
 {
     glm::vec3 Position = glm::vec3(0.0f);
     uint32_t Color     = 0xFFFFFFFF;
+};
+
+// NOTE: For debug renderer.
+static constexpr uint32_t s_MAX_LINES              = 1000;
+static constexpr uint32_t s_MAX_VERTICES           = s_MAX_LINES * 4;
+static constexpr uint32_t s_MAX_VERTEX_BUFFER_SIZE = s_MAX_VERTICES * sizeof(LineVertex);
+
+struct DebugSphereData
+{
+    glm::vec3 Translation = glm::vec3(0.f);
+    glm::vec3 Scale       = glm::vec3(1.f);
+    glm::vec4 Orientation = glm::vec4(0.f, 0.f, 0.f, 1.f);
+    glm::vec3 Center      = glm::vec3(0.f);
+    float Radius          = 0.f;
+    uint32_t Color        = 0xFFFFFFFF;  // white by default
 };
 
 struct SurfaceMesh

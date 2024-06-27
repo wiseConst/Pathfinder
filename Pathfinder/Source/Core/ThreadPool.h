@@ -16,17 +16,15 @@ namespace Pathfinder
 class ThreadPool final : private Uncopyable, private Unmovable
 {
   public:
-    using Job = std::packaged_task<void()>;
-
     template <typename Func, typename... Args>
     NODISCARD FORCEINLINE static auto Submit(Func&& func, Args&&... args) -> std::shared_future<decltype(func(args...))>
     {
         using ReturnType = decltype(func(args...));
         std::packaged_task<ReturnType()> task(std::bind(std::forward<Func>(func), std::forward<Args>(args)...));
-        std::shared_future<ReturnType> future = task.get_future();
+        auto future = task.get_future();
         {
             std::scoped_lock lock(s_QueueMutex);
-            s_JobQueue.emplace(std::move(task));
+            s_JobQueue.emplace_back([movedTask = std::move(task)]() mutable { movedTask(); });
         }
         s_Cv.notify_one();
         return future;
@@ -40,7 +38,7 @@ class ThreadPool final : private Uncopyable, private Unmovable
         return std::clamp(std::thread::hardware_concurrency() - 1u, 1u, (uint32_t)s_WORKER_THREAD_COUNT);
     }
 
-    // NOTE: Returns index into array of workers.
+    // NOTE: Maps thread::id to actual worker index.
     NODISCARD FORCEINLINE static uint8_t MapThreadID(const std::thread::id& threadID)
     {
         if (threadID == s_MainThreadID) return 0;
@@ -51,15 +49,15 @@ class ThreadPool final : private Uncopyable, private Unmovable
         return 0;
     }
 
-    NODISCARD FORCEINLINE static const auto& GetMainThreadID() { return s_MainThreadID; }
+    NODISCARD FORCEINLINE static const auto GetMainThreadID() { return s_MainThreadID; }
 
   private:
-    static inline std::thread::id s_MainThreadID = std::this_thread::get_id();
-    static inline bool s_bShutdownRequested      = false;
-    static inline std::vector<std::jthread> s_Workers;
     static inline std::condition_variable_any s_Cv;
     static inline std::mutex s_QueueMutex;
-    static inline std::queue<Job> s_JobQueue;
+    static inline std::deque<std::move_only_function<void()>> s_JobQueue;
+    static inline std::vector<std::jthread> s_Workers;
+    static inline std::thread::id s_MainThreadID = std::this_thread::get_id();
+    static inline bool s_bShutdownRequested      = false;
 
     ThreadPool()  = default;
     ~ThreadPool() = default;

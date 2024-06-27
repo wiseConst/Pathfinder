@@ -501,7 +501,7 @@ void VulkanSwapchain::PresentImage()
         bWasEverUsed = false;
     }
 
-    const VkPresentInfoKHR pi = {
+    const VkPresentInfoKHR presentInfo = {
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
         .pWaitSemaphores    = bWasEverUsed ? &m_RenderSemaphore.at(m_FrameIndex) : &m_ImageAcquiredSemaphore.at(m_FrameIndex),
@@ -510,8 +510,9 @@ void VulkanSwapchain::PresentImage()
         .pImageIndices      = &m_ImageIndex,
     };
 
-    Timer t                                   = {};
-    const auto result                         = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &pi);
+    Timer t = {};
+
+    const auto result                         = vkQueuePresentKHR(VulkanContext::Get().GetDevice()->GetPresentQueue(), &presentInfo);
     Renderer::GetStats().SwapchainPresentTime = t.GetElapsedMilliseconds();
 
     if (result == VK_SUCCESS)

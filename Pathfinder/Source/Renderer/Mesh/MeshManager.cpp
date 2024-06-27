@@ -18,13 +18,28 @@
 #include <fastgltf/tools.hpp>
 #include <fastgltf/types.hpp>
 
+#include <meshoptimizer.h>
+
 namespace Pathfinder
 {
+
+namespace MeshOptimizerUtils
+{
+template <typename T>
+FORCEINLINE constexpr static void RemapVertexStream(const size_t remappedVertexCount, std::vector<T>& vertexStream,
+                                                    const std::vector<uint32_t>& remappedIndices)
+{
+    std::vector<T> remmapedVertexStream(remappedVertexCount);
+    meshopt_remapVertexBuffer(remmapedVertexStream.data(), vertexStream.data(), vertexStream.size(), sizeof(vertexStream[0]),
+                              remappedIndices.data());
+    vertexStream = std::move(remmapedVertexStream);
+}
+}  // namespace MeshOptimizerUtils
 
 namespace FastGLTFUtils
 {
 
-static ESamplerFilter SamplerFilterToPathfinder(const fastgltf::Filter filter)
+NODISCARD FORCEINLINE static ESamplerFilter SamplerFilterToPathfinder(const fastgltf::Filter filter)
 {
     switch (filter)
     {
@@ -37,7 +52,7 @@ static ESamplerFilter SamplerFilterToPathfinder(const fastgltf::Filter filter)
     return ESamplerFilter::SAMPLER_FILTER_LINEAR;
 }
 
-static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
+NODISCARD FORCEINLINE static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
 {
     switch (wrap)
     {
@@ -50,34 +65,34 @@ static ESamplerWrap SamplerWrapToPathfinder(const fastgltf::Wrap wrap)
     PFR_ASSERT(false, "Unknown fastgltf::wrap!");
     return ESamplerWrap::SAMPLER_WRAP_REPEAT;
 }
-}  // namespace FastGLTFUtils
 
-Shared<Texture> MeshManager::LoadTexture(std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const std::string& meshAssetsDir,
-                                         const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor,
-                                         const size_t textureIndex, TextureSpecification& textureSpec, const bool bMetallicRoughness,
-                                         const bool bFlipOnLoad)
+NODISCARD static Shared<Texture> LoadTexture(UnorderedMap<std::string, Shared<Texture>>& loadedTextures, const std::string& meshAssetsDir,
+                                             const size_t textureIndex, const fastgltf::Asset& asset,
+                                             const EImageFormat requestedImageFormat = EImageFormat::FORMAT_RGBA8_UNORM,
+                                             const bool bMetallicRoughness = false, const bool bFlipOnLoad = false)
 {
-    const auto& fastgltfTexture = asset.textures[textureIndex];
+    const auto& fastgltfTexture = asset.textures.at(textureIndex);
     const auto imageIndex       = fastgltfTexture.imageIndex;
     PFR_ASSERT(imageIndex.has_value(), "Invalid image index!");
 
-    if (fastgltfTexture.samplerIndex.has_value())
-    {
-        const auto& fastgltfTextureSampler = asset.samplers[fastgltfTexture.samplerIndex.value()];
+    const auto& fastgltfImage = asset.images.at(imageIndex.value());
 
-        if (fastgltfTextureSampler.magFilter.has_value())
-            textureSpec.Filter = FastGLTFUtils::SamplerFilterToPathfinder(fastgltfTextureSampler.magFilter.value());
+    TextureSpecification textureSpec = {.DebugName = std::string(fastgltfImage.name), .Format = requestedImageFormat};
 
-        textureSpec.Wrap = FastGLTFUtils::SamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
-    }
-
-    const auto& imageData = asset.images[imageIndex.value()].data;
-    PFR_ASSERT(std::holds_alternative<fastgltf::sources::URI>(imageData), "Texture hasn't path!");
-    const auto& fastgltfURI = std::get<fastgltf::sources::URI>(imageData);
+    PFR_ASSERT(std::holds_alternative<fastgltf::sources::URI>(fastgltfImage.data), "Texture hasn't path!");
+    const auto& fastgltfURI = std::get<fastgltf::sources::URI>(fastgltfImage.data);
 
     const std::string textureName = fastgltfURI.uri.fspath().stem().string();
     PFR_ASSERT(textureName.data(), "Texture has no name!");
-    if (loadedTextures.contains(textureName)) return loadedTextures[textureName];
+    if (loadedTextures.contains(textureName)) return loadedTextures.at(textureName);
+
+    if (fastgltfTexture.samplerIndex.has_value())
+    {
+        const auto& fastgltfTextureSampler = asset.samplers.at(fastgltfTexture.samplerIndex.value());
+        textureSpec.Wrap                   = FastGLTFUtils::SamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
+        if (fastgltfTextureSampler.magFilter.has_value())
+            textureSpec.Filter = FastGLTFUtils::SamplerFilterToPathfinder(fastgltfTextureSampler.magFilter.value());
+    }
 
     const auto& appSpec = Application::Get().GetSpecification();
     const auto ind      = meshAssetsDir.find(appSpec.MeshDir);
@@ -218,11 +233,13 @@ Shared<Texture> MeshManager::LoadTexture(std::unordered_map<std::string, Shared<
                     if (channels == 3) delete[] rgbToRgbaBuffer;
                 }
             }},
-        imageData);
+        fastgltfImage.data);
 
     loadedTextures[textureName] = texture;
     return texture;
 }
+
+}  // namespace FastGLTFUtils
 
 void MeshManager::LoadMesh(std::vector<Shared<Submesh>>& submeshes, const std::filesystem::path& meshFilePath)
 {
@@ -240,7 +257,7 @@ void MeshManager::LoadMesh(std::vector<Shared<Submesh>>& submeshes, const std::f
                                  fastgltf::Options::LoadGLBBuffers | fastgltf::Options::LoadExternalBuffers |
                                  fastgltf::Options::GenerateMeshIndices;
 
-    fastgltf::Expected<fastgltf::Asset> asset = parser.loadGltf(&data, meshFilePath.parent_path(), gltfOptions);
+    auto asset = parser.loadGltf(&data, meshFilePath.parent_path(), gltfOptions);
     if (const auto error = asset.error(); error != fastgltf::Error::None)
     {
         LOG_ERROR("FASTGLTF: Error occured while loading mesh \"{}\"! Error name: {} / Message: {}", meshFilePath.string(),
@@ -252,10 +269,11 @@ void MeshManager::LoadMesh(std::vector<Shared<Submesh>>& submeshes, const std::f
 
     std::string currentMeshDir = meshFilePath.parent_path().string() + "/";
     PFR_ASSERT(!currentMeshDir.empty(), "Current mesh directory path invalid!");
-    std::unordered_map<std::string, Shared<Texture>> loadedTextures;
+
+    UnorderedMap<std::string, Shared<Texture>> loadedTextures;
     for (size_t meshIndex{}; meshIndex < asset->meshes.size(); ++meshIndex)
     {
-        LoadSubmeshes(submeshes, currentMeshDir, loadedTextures, asset.get(), meshIndex);
+        LoadSubmeshes(loadedTextures, submeshes, currentMeshDir, asset.get(), meshIndex);
     }
 
     submeshes.shrink_to_fit();
@@ -333,9 +351,8 @@ SurfaceMesh MeshManager::GenerateUVSphere(const uint32_t sectorCount, const uint
     return mesh;
 }
 
-void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const std::string& meshDir,
-                                std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const fastgltf::Asset& asset,
-                                const size_t meshIndex)
+void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& loadedTextures, std::vector<Shared<Submesh>>& submeshes,
+                                const std::string& meshDir, const fastgltf::Asset& asset, const size_t meshIndex)
 {
     fastgltf::Node fastGLTFnode = {};
     for (auto& node : asset.nodes)
@@ -450,52 +467,45 @@ void MeshManager::LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const s
             Shared<Texture> albedo = nullptr;
             if (materialAccessor.pbrData.baseColorTexture.has_value())
             {
-                TextureSpecification albedoTextureSpec = {.Format = EImageFormat::FORMAT_BC7_UNORM};
+                TextureSpecification albedoTextureSpec = {};
 
-                const auto& textureInfo = materialAccessor.pbrData.baseColorTexture.value();
-                albedo = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, albedoTextureSpec);
+                const size_t textureIndex = materialAccessor.pbrData.baseColorTexture.value().textureIndex;
+                albedo = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC7_UNORM);
                 pbrData.AlbedoTextureIndex = albedo->GetBindlessIndex();
             }
 
             Shared<Texture> normalMap = nullptr;
             if (materialAccessor.normalTexture.has_value())
             {
-                TextureSpecification normalMapTextureSpec = {.Format = EImageFormat::FORMAT_BC5_UNORM};
-
-                const auto& textureInfo = materialAccessor.normalTexture.value();
-                normalMap = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, normalMapTextureSpec);
+                const size_t textureIndex = materialAccessor.normalTexture.value().textureIndex;
+                normalMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC5_UNORM);
                 pbrData.NormalTextureIndex = normalMap->GetBindlessIndex();
             }
 
             Shared<Texture> metallicRoughness = nullptr;
             if (materialAccessor.pbrData.metallicRoughnessTexture.has_value())
             {
-                TextureSpecification metallicRoughnessTextureSpec = {.Format = EImageFormat::FORMAT_BC5_UNORM};
-
-                const auto& textureInfo = materialAccessor.pbrData.metallicRoughnessTexture.value();
-                metallicRoughness       = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex,
-                                                      metallicRoughnessTextureSpec, true);
+                const size_t textureIndex = materialAccessor.pbrData.metallicRoughnessTexture.value().textureIndex;
+                metallicRoughness =
+                    FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC5_UNORM, true);
                 pbrData.MetallicRoughnessTextureIndex = metallicRoughness->GetBindlessIndex();
             }
 
             Shared<Texture> emissiveMap = nullptr;
             if (materialAccessor.emissiveTexture.has_value())
             {
-                TextureSpecification emissiveTextureSpec = {.Format = EImageFormat::FORMAT_BC7_UNORM};
+                const size_t textureIndex = materialAccessor.emissiveTexture.value().textureIndex;
+                emissiveMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC7_UNORM);
 
-                const auto& textureInfo = materialAccessor.emissiveTexture.value();
-                emissiveMap = LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, emissiveTextureSpec);
                 pbrData.EmissiveTextureIndex = emissiveMap->GetBindlessIndex();
             }
 
             Shared<Texture> occlusionMap = nullptr;
             if (materialAccessor.occlusionTexture.has_value())
             {
-                TextureSpecification occlusionTextureSpec = {.Format = EImageFormat::FORMAT_BC4_UNORM};
+                const size_t textureIndex = materialAccessor.occlusionTexture.value().textureIndex;
+                occlusionMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC4_UNORM);
 
-                const auto& textureInfo = materialAccessor.occlusionTexture.value();
-                occlusionMap =
-                    LoadTexture(loadedTextures, meshDir, asset, materialAccessor, textureInfo.textureIndex, occlusionTextureSpec);
                 pbrData.OcclusionTextureIndex = occlusionMap->GetBindlessIndex();
             }
 
@@ -577,12 +587,12 @@ AABB MeshManager::GenerateAABB(const std::vector<MeshPositionVertex>& points)
         }
 
         // Gather results and prepare them.
-        float minX[8] = {0}, minY[8] = {0}, minZ[8] = {0};
+        float minX[8] = {0.0f}, minY[8] = {0.0f}, minZ[8] = {0.0f};
         _mm256_storeu_ps(minX, minVecX);
         _mm256_storeu_ps(minY, minVecY);
         _mm256_storeu_ps(minZ, minVecZ);
 
-        float maxX[8] = {0}, maxY[8] = {0}, maxZ[8] = {0};
+        float maxX[8] = {0.0f}, maxY[8] = {0.0f}, maxZ[8] = {0.0f};
         _mm256_storeu_ps(maxX, maxVecX);
         _mm256_storeu_ps(maxY, maxVecY);
         _mm256_storeu_ps(maxZ, maxVecZ);
@@ -615,69 +625,24 @@ AABB MeshManager::GenerateAABB(const std::vector<MeshPositionVertex>& points)
         max = glm::max(point.Position, max);
     }
 
-    const glm::vec3 center = (max + min) * .5f;
+    const glm::vec3 center = (max + min) * 0.5f;
     return {center, max - center};
 }
 
 Sphere MeshManager::GenerateBoundingSphere(const std::vector<MeshPositionVertex>& points)
 {
-    glm::vec3 farthestVtx[2] = {points[0].Position, points[0].Position};
-    glm::vec3 averagedVertexPos(0.0f);
+    PFR_ASSERT(!points.empty(), "Empty vertices, can't generate bounding sphere!");
 
     // First pass - find averaged vertex pos.
-#if TEST_LATER
-    if (AVX2Supported())
-    {
-        size_t i       = 0;
-        __m256 sumVecX = _mm256_set1_ps(0.0f), sumVecY = _mm256_set1_ps(0.0f), sumVecZ = _mm256_set1_ps(0.0f);
-
-        const size_t alignedDataSize = (points.size() & ~7);
-        for (i = 0; i < alignedDataSize; i += 8)
-        {
-            const auto* pointPtr = &points[i];
-
-            const __m256 pointX =
-                _mm256_set_ps(pointPtr[7].Position.x, pointPtr[6].Position.x, pointPtr[5].Position.x, pointPtr[4].Position.x,
-                              pointPtr[3].Position.x, pointPtr[2].Position.x, pointPtr[1].Position.x, pointPtr[0].Position.x);
-            sumVecX = _mm256_add_ps(sumVecX, pointX);
-
-            const __m256 pointY =
-                _mm256_set_ps(pointPtr[7].Position.y, pointPtr[6].Position.y, pointPtr[5].Position.y, pointPtr[4].Position.y,
-                              pointPtr[3].Position.y, pointPtr[2].Position.y, pointPtr[1].Position.y, pointPtr[0].Position.y);
-            sumVecY = _mm256_add_ps(sumVecY, pointY);
-
-            const __m256 pointZ =
-                _mm256_set_ps(pointPtr[7].Position.z, pointPtr[6].Position.z, pointPtr[5].Position.z, pointPtr[4].Position.z,
-                              pointPtr[3].Position.z, pointPtr[2].Position.z, pointPtr[1].Position.z, pointPtr[0].Position.z);
-            sumVecZ = _mm256_add_ps(sumVecZ, pointZ);
-        }
-
-        // Gather results and prepare them.
-        float sumX[8] = {0}, sumY[8] = {0}, sumZ[8] = {0};
-        _mm256_storeu_ps(sumX, sumVecX);
-        _mm256_storeu_ps(sumY, sumVecY);
-        _mm256_storeu_ps(sumZ, sumVecZ);
-
-        for (i = 0; i < 8; ++i)
-            averagedVertexPos += glm::vec3{sumX[i], sumY[i], sumZ[i]};
-
-        // Take into account the remainder.
-        for (i = alignedDataSize; i < points.size(); ++i)
-        {
-            averagedVertexPos += points[i].Position;
-        }
-    }
-    else
-#endif
-    {
-        for (const auto& point : points)
-            averagedVertexPos += point.Position;
-    }
+    glm::vec3 averagedVertexPos(0.0f);
+    for (const auto& point : points)
+        averagedVertexPos += point.Position;
 
     averagedVertexPos /= points.size();
     const auto aabb = GenerateAABB(points);
 
     // Second pass - find farthest vertices for both averaged vertex position and AABB centroid.
+    glm::vec3 farthestVtx[2] = {points[0].Position, points[0].Position};
     for (const auto& point : points)
     {
         if (glm::distance2(averagedVertexPos, point.Position) > glm::distance2(averagedVertexPos, farthestVtx[0]))
@@ -692,7 +657,6 @@ Sphere MeshManager::GenerateBoundingSphere(const std::vector<MeshPositionVertex>
     sphere.Center = averagedVtxToFarthestDistance < aabbCentroidToFarthestDistance ? averagedVertexPos : aabb.Center;
     sphere.Radius = glm::min(averagedVtxToFarthestDistance, aabbCentroidToFarthestDistance);
 
-    // LOG_INFO("Time taken to create sphere from %u points: %0.3f ms", points.size(), t.GetElapsedMilliseconds());
     return sphere;
 }
 
@@ -713,8 +677,8 @@ void MeshManager::OptimizeMesh(std::vector<uint32_t>& indices, std::vector<MeshP
 
     meshopt_remapIndexBuffer(indices.data(), indices.data(), remappedIndices.size(), remappedIndices.data());
 
-    RemapVertexStream<MeshPositionVertex>(uniqueVertexCount, rawVertices, remappedIndices);
-    RemapVertexStream<MeshAttributeVertex>(uniqueVertexCount, attributeVertices, remappedIndices);
+    MeshOptimizerUtils::RemapVertexStream<MeshPositionVertex>(uniqueVertexCount, rawVertices, remappedIndices);
+    MeshOptimizerUtils::RemapVertexStream<MeshAttributeVertex>(uniqueVertexCount, attributeVertices, remappedIndices);
 
     // #2 VERTEX CACHE OPTIMIZATION (REORDER TRIANGLES TO MAXIMIZE THE LOCALITY OF REUSED VERTEX REFERENCES IN VERTEX SHADERS)
     meshopt_optimizeVertexCache(indices.data(), indices.data(), indices.size(), rawVertices.size());
@@ -725,7 +689,6 @@ void MeshManager::OptimizeMesh(std::vector<uint32_t>& indices, std::vector<MeshP
                              sizeof(rawVertices[0]), vertexCacheHitRatio);
 }
 
-// TODO: Check meshopt comms at backface culling.
 void MeshManager::BuildMeshlets(const std::vector<uint32_t>& indices, const std::vector<MeshPositionVertex>& vertexPositions,
                                 std::vector<Meshlet>& outMeshlets, std::vector<uint32_t>& outMeshletVertices,
                                 std::vector<uint8_t>& outMeshletTriangles)
@@ -769,17 +732,19 @@ void MeshManager::BuildMeshlets(const std::vector<uint32_t>& indices, const std:
             &outMeshletVertices[meshopt_m.vertex_offset], &outMeshletTriangles[meshopt_m.triangle_offset], meshopt_m.triangle_count,
             &vertexPositions[0].Position.x, vertexPositions.size(), sizeof(MeshPositionVertex));
 
-        outMeshlets[i].vertexOffset   = meshopt_m.vertex_offset;
-        outMeshlets[i].vertexCount    = meshopt_m.vertex_count;
-        outMeshlets[i].triangleOffset = meshopt_m.triangle_offset;
-        outMeshlets[i].triangleCount  = meshopt_m.triangle_count;
+        auto& outMeshlet = outMeshlets.at(i);
 
-        outMeshlets[i].center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
-        outMeshlets[i].radius = bounds.radius;
+        outMeshlet.vertexOffset   = meshopt_m.vertex_offset;
+        outMeshlet.vertexCount    = meshopt_m.vertex_count;
+        outMeshlet.triangleOffset = meshopt_m.triangle_offset;
+        outMeshlet.triangleCount  = meshopt_m.triangle_count;
 
-        outMeshlets[i].coneCutoff = bounds.cone_cutoff_s8;
+        outMeshlet.center = glm::vec3(bounds.center[0], bounds.center[1], bounds.center[2]);
+        outMeshlet.radius = bounds.radius;
+
+        outMeshlet.coneCutoff = bounds.cone_cutoff_s8;
         for (uint32_t k{}; k < 3; ++k)
-            outMeshlets[i].coneAxis[k] = bounds.cone_axis_s8[k];
+            outMeshlet.coneAxis[k] = bounds.cone_axis_s8[k];
     }
 }
 

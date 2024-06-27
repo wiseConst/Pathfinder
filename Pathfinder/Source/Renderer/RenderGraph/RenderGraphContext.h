@@ -2,7 +2,6 @@
 
 #include <Core/Core.h>
 #include "RenderGraphResourceId.h"
-#include <unordered_set>
 
 namespace Pathfinder
 {
@@ -31,10 +30,10 @@ struct RenderGraphResource
 {
     RenderGraphResource(const uint64_t id, const std::string_view& name) : ID(id), Name(name) /*, Version(0), RefCounter(0) */ {}
 
-    std::unordered_set<uint32_t> WritePasses;
-    std::unordered_set<uint32_t> ReadPasses;
+    UnorderedSet<uint32_t> WritePasses;
+    UnorderedSet<uint32_t> ReadPasses;
 
-    std::unordered_set<uint32_t> AlreadySyncedWith;
+    UnorderedSet<uint32_t> AlreadySyncedWith;
    // EResourceState State = EResourceState::RESOURCE_STATE_UNDEFINED;
     uint64_t ID{};
     // uint64_t Version{};

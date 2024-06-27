@@ -25,7 +25,9 @@ class GraphicsContext : private Uncopyable, private Unmovable
 
     static Unique<GraphicsContext> Create(const ERendererAPI rendererApi);
 
+    NODISCARD virtual const float GetTimestampPeriod() const                     = 0;
     virtual void FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudgets) = 0;
+    virtual void WaitDeviceOnFinish() const                                      = 0;
 
     virtual void Begin() = 0;
     virtual void End()   = 0;

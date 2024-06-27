@@ -160,11 +160,6 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
                 meshDataTransparentBuffer->SetData(transparentMeshesData.data(),
                                                    transparentMeshesData.size() * sizeof(transparentMeshesData[0]));
 
-            if (drawBufferOpaque->GetMapped()) rd->ObjectCullStats.DrawCountOpaque = *(uint32_t*)drawBufferOpaque->GetMapped();
-            if (drawBufferTransparent->GetMapped())
-                rd->ObjectCullStats.DrawCountTransparent = *(uint32_t*)drawBufferTransparent->GetMapped();
-
-            Renderer::GetStats().ObjectsDrawn = rd->ObjectCullStats.DrawCountOpaque + rd->ObjectCullStats.DrawCountTransparent;
 
             cb->FillBuffer(drawBufferOpaque, 0);
             cb->FillBuffer(culledMeshesBufferOpaque, 0);

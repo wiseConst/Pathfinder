@@ -26,20 +26,20 @@ class Material final : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const auto& GetEmissiveMap() const { return m_EmissiveMap; }
     NODISCARD FORCEINLINE const auto& GetAOMap() const { return m_AO; }
 
-    void SetAlbedo(const Shared<Texture>& albedo) { m_Albedo = albedo; }
-    void SetNormalMap(const Shared<Texture>& normalMap) { m_NormalMap = normalMap; }
-    void SetEmissiveMap(const Shared<Texture>& emissiveMap) { m_EmissiveMap = emissiveMap; }
-    void SetMetallicRoughnessMap(const Shared<Texture>& metallicRoughness) { m_MetallicRoughness = metallicRoughness; }
-    void SetOcclusionMap(const Shared<Texture>& ao) { m_AO = ao; }
+    void SetAlbedo(const Shared<Texture>& albedo);
+    void SetNormalMap(const Shared<Texture>& normalMap);
+    void SetEmissiveMap(const Shared<Texture>& emissiveMap);
+    void SetMetallicRoughnessMap(const Shared<Texture>& metallicRoughness);
+    void SetOcclusionMap(const Shared<Texture>& ao);
 
   protected:
-    PBRData m_MaterialData                = {};
+    PBRData m_MaterialData              = {};
     Shared<Texture> m_Albedo            = nullptr;
     Shared<Texture> m_NormalMap         = nullptr;
     Shared<Texture> m_MetallicRoughness = nullptr;  // NOTE: In glTF 2.0, it's packed: green channel for roughness, blue for metallic
     Shared<Texture> m_EmissiveMap       = nullptr;
     Shared<Texture> m_AO                = nullptr;
-    Shared<Buffer> m_MaterialBuffer       = nullptr;
+    Shared<Buffer> m_MaterialBuffer     = nullptr;
 };
 
 }  // namespace Pathfinder

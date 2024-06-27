@@ -46,9 +46,14 @@ void FinalCompositePass::AddFinalPass(Unique<RenderGraph>& rendergraph)
                                                   EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT});
             builder.WriteRenderTarget("FinalTexture", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
 
-            pd.AlbedoTexture = builder.ReadTexture("AlbedoTexture_V1", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
-            pd.BloomTexture  = builder.ReadTexture("BloomTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
-            pd.CameraData    = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+// NOTE: Debug Renderer things:
+#if PFR_DEBUG
+            pd.AlbedoTexture = builder.ReadTexture("AlbedoTexture_V3", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+#else
+            pd.AlbedoTexture = builder.ReadTexture("AlbedoTexture_V2", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+#endif
+            pd.BloomTexture = builder.ReadTexture("BloomTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            pd.CameraData   = builder.ReadBuffer("CameraData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
         },

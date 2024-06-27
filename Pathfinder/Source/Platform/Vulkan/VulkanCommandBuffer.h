@@ -6,6 +6,20 @@
 namespace Pathfinder
 {
 
+class VulkanQueryPool : public QueryPool
+{
+  public:
+    VulkanQueryPool(const uint32_t queryCount, const bool bIsPipelineStatistics);
+    ~VulkanQueryPool() { Destroy(); };
+
+    NODISCARD FORCEINLINE void* Get() const final override { return m_Handle; }
+
+  private:
+    VkQueryPool m_Handle = VK_NULL_HANDLE;
+
+    void Destroy() final override;
+};
+
 class VulkanSyncPoint final : public SyncPoint
 {
   public:
@@ -53,11 +67,17 @@ class VulkanCommandBuffer final : public CommandBuffer
     void InsertBarriers(const std::vector<MemoryBarrier>& memoryBarriers, const std::vector<BufferMemoryBarrier>& bufferMemoryBarriers = {},
                         const std::vector<ImageMemoryBarrier>& imageMemoryBarriers = {}) const final override;
 
+    void BeginPipelineStatisticsQuery(Shared<QueryPool>& queryPool) final override;
+    void EndPipelineStatisticsQuery(Shared<QueryPool>& queryPool) final override;
+
+    std::vector<std::pair<std::string, std::uint64_t>> CalculateQueryPoolStatisticsResults(Shared<QueryPool>& queryPool) final override;
+    std::vector<uint64_t> CalculateQueryPoolProfilerResults(Shared<QueryPool>& queryPool, const size_t timestampCount) final override;
+    void ResetPool(Shared<QueryPool>& queryPool) final override;
+    void WriteTimestamp(Shared<QueryPool>& queryPool, const uint32_t timestampIndex,
+                        const EPipelineStage pipelineStage = EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT) final override;
+
     void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = VK_NULL_HANDLE) final override;
-    FORCEINLINE void EndRecording() const final override
-    {
-        VK_CHECK(vkEndCommandBuffer(m_Handle), "Failed to end recording command buffer");
-    }
+    void EndRecording() const final override;
 
     Shared<SyncPoint> Submit(const std::vector<Shared<SyncPoint>>& waitPoints = {}, const std::vector<Shared<SyncPoint>>& signalPoints = {},
                              const void* signalFence = nullptr) final override;

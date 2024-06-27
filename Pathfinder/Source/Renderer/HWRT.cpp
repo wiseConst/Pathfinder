@@ -9,7 +9,6 @@ namespace Pathfinder
 
 void RayTracingBuilder::Init()
 {
-
     PFR_ASSERT(!s_Instance, "You can't have more than 1 graphics context per application instance!");
 
     switch (RendererAPI::Get())
@@ -17,8 +16,6 @@ void RayTracingBuilder::Init()
         case ERendererAPI::RENDERER_API_VULKAN:
         {
             s_Instance = new VulkanRayTracingBuilder();
-
-            LOG_INFO("VulkanRayTracingBuilder created!");
             break;
         }
         default:

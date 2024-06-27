@@ -94,6 +94,9 @@ void GBufferPass::AddForwardPlusOpaquePass(Unique<RenderGraph>& rendergraph)
             auto& aoBlurTexture                 = context.GetTexture(pd.AOBlurTexture);
             auto& sssTexture                    = context.GetTexture(pd.SSSTexture);  // TODO: use it
 
+            if (drawBufferOpaque->GetMapped()) rd->ObjectCullStats.DrawCountOpaque = *(uint32_t*)drawBufferOpaque->GetMapped();
+            Renderer::GetStats().ObjectsDrawn += rd->ObjectCullStats.DrawCountOpaque;
+
             const PushConstantBlock pc = {.CameraDataBuffer                   = cameraDataBuffer->GetBDA(),
                                           .LightDataBuffer                    = lightDataBuffer->GetBDA(),
                                           .StorageImageIndex                  = aoBlurTexture->GetBindlessIndex(),
@@ -165,6 +168,10 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
             auto& culledSpotLightIndicesBuffer  = context.GetBuffer(pd.CulledSpotLightIndices);
             auto& aoBlurTexture                 = context.GetTexture(pd.AOBlurTexture);
             auto& sssTexture                    = context.GetTexture(pd.SSSTexture);  // TODO: use it
+
+            if (drawBufferTransparent->GetMapped())
+                rd->ObjectCullStats.DrawCountTransparent = *(uint32_t*)drawBufferTransparent->GetMapped();
+            Renderer::GetStats().ObjectsDrawn += rd->ObjectCullStats.DrawCountTransparent;
 
             const PushConstantBlock pc = {.CameraDataBuffer                   = cameraDataBuffer->GetBDA(),
                                           .LightDataBuffer                    = lightDataBuffer->GetBDA(),

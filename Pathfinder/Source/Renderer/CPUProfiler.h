@@ -11,23 +11,32 @@ class CPUProfiler final
     CPUProfiler()  = default;
     ~CPUProfiler() = default;
 
-    FORCEINLINE void BeginTimestamp(const std::string& name) { m_Stats.emplace_back(name, 0.); }
-    FORCEINLINE void EndTimestamp()
+    FORCEINLINE void BeginFrame()
     {
-        auto& lastEntry = m_Stats.back();
-        //  lastEntry.TimeMs = Timer::Now() - lastEntry.TimeMs;
+        m_ProfilerTasks.clear();
+        m_FrameStartTime = Timer::Now();
+        ++m_FrameNumber;
+    }
+    FORCEINLINE void EndFrame() {}
+
+    FORCEINLINE void BeginTimestamp(const std::string& name, const glm::vec3& color = glm::vec3{1.f})
+    {
+        m_ProfilerTasks.emplace_back(GetCurrentFrameTimeSeconds(), 0.0, name, color);
     }
 
-    NODISCARD FORCEINLINE const auto& GetResults() const { return m_Stats; }
+    FORCEINLINE void EndTimestamp() { m_ProfilerTasks.back().EndTime = GetCurrentFrameTimeSeconds(); }
+
+    NODISCARD FORCEINLINE const auto& GetResults() const { return m_ProfilerTasks; }
 
   private:
-    struct ProfilerEntry
-    {
-        std::string Name = s_DEFAULT_STRING;
-        double TimeMs    = 0.;
-    };
+    std::chrono::high_resolution_clock::time_point m_FrameStartTime{};
+    std::vector<ProfilerTask> m_ProfilerTasks;
+    uint64_t m_FrameNumber{};
 
-    std::vector<ProfilerEntry> m_Stats;
+    NODISCARD FORCEINLINE double GetCurrentFrameTimeSeconds() const
+    {
+        return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(Timer::Now() - m_FrameStartTime).count());
+    }
 };
 
 }  // namespace Pathfinder

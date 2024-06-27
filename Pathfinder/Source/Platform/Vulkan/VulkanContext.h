@@ -20,6 +20,7 @@ class VulkanContext final : public GraphicsContext
         return static_cast<VulkanContext&>(*s_Instance);
     }
 
+    NODISCARD const float GetTimestampPeriod() const final override;
     FORCEINLINE const auto& GetDevice() const { return m_Device; }
     FORCEINLINE const auto& GetInstance() const { return m_VulkanInstance; }
 
@@ -29,6 +30,7 @@ class VulkanContext final : public GraphicsContext
 
     Unique<VulkanDevice> m_Device;
 
+    void WaitDeviceOnFinish() const final override;
     void Begin() final override;
     void End() final override;
     void FillMemoryBudgetStats(std::vector<MemoryBudget>& memoryBudgets) final override;

@@ -33,4 +33,19 @@ Shared<SyncPoint> SyncPoint::Create(void* timelineSemaphoreHandle, const uint64_
     PFR_ASSERT(false, "Unknown RendererAPI!");
     return nullptr;
 }
+
+Shared<QueryPool> QueryPool::Create(const uint32_t queryCount, const bool bIsPipelineStatistics)
+{
+    switch (RendererAPI::Get())
+    {
+        case ERendererAPI::RENDERER_API_VULKAN:
+        {
+            return MakeShared<VulkanQueryPool>(queryCount, bIsPipelineStatistics);
+        }
+    }
+
+    PFR_ASSERT(false, "Unknown RendererAPI!");
+    return nullptr;
+}
+
 }  // namespace Pathfinder

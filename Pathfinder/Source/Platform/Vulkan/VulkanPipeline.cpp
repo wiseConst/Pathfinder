@@ -321,46 +321,37 @@ void VulkanPipeline::Invalidate()
 
             VkPipelineVertexInputStateCreateInfo vertexInputState = {.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO};
 
-            const auto& inputVars = vulkanShader->GetInputVars();  // Input vars of all buffer bindings.
             std::vector<VkVertexInputAttributeDescription> vertexAttributeDescriptions;
-            std::vector<VkVertexInputBindingDescription> vertexStreams(graphicsPO->InputBufferBindings.size());
+            std::vector<VkVertexInputBindingDescription> vertexStreams(graphicsPO->VertexStreams.size());
             if (!graphicsPO->bMeshShading)
             {
-                uint32_t inputVarOffset = 0;
                 // Iterate through all vertex streams.
                 for (uint32_t vertexStreamIndex{}; vertexStreamIndex < vertexStreams.size(); ++vertexStreamIndex)
                 {
-                    vertexStreams.at(vertexStreamIndex).inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
-                    vertexStreams.at(vertexStreamIndex).binding   = vertexStreamIndex;
-                    vertexStreams.at(vertexStreamIndex).stride    = graphicsPO->InputBufferBindings.at(vertexStreamIndex).GetStride();
-
                     // Assemble all variable inside this vertex stream.
-                    const auto& currentVertexStream = graphicsPO->InputBufferBindings.at(vertexStreamIndex);
-                    for (uint32_t inputVarIndex{}; inputVarIndex < currentVertexStream.GetElements().size(); ++inputVarIndex)
+                    const auto& currentInputVertexStream = graphicsPO->VertexStreams.at(vertexStreamIndex);
+
+                    auto& currentVertexStream     = vertexStreams.at(vertexStreamIndex);
+                    currentVertexStream.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+                    currentVertexStream.binding   = vertexStreamIndex;
+                    currentVertexStream.stride    = currentInputVertexStream.GetStride();
+
+                    for (uint32_t inputVarIndex{}; inputVarIndex < currentInputVertexStream.GetElements().size(); ++inputVarIndex)
                     {
-                        PFR_ASSERT(currentVertexStream.GetElements()[inputVarIndex].Name == inputVars[inputVarOffset + inputVarIndex].Name,
-                                   "Shader input buffer binding, different names!");
-
-                        PFR_ASSERT(inputVarOffset + inputVarIndex < inputVars.size(), "Incorrect input var index!");
-                        PFR_ASSERT(
-                            inputVars[inputVarOffset + inputVarIndex].Description.format ==
-                                PipelineUtils::PathfinderShaderElementFormatToVulkan(currentVertexStream.GetElements()[inputVarIndex].Type),
-                            "Shader and renderer code input buffer element mismatch!");
-
-                        auto& vertexAttribute    = vertexAttributeDescriptions.emplace_back();
-                        vertexAttribute.binding  = vertexStreams.at(vertexStreamIndex).binding;
-                        vertexAttribute.format   = inputVars.at(inputVarOffset + inputVarIndex).Description.format;
+                        auto& vertexAttribute   = vertexAttributeDescriptions.emplace_back();
+                        vertexAttribute.binding = currentVertexStream.binding;
+                        vertexAttribute.format  = PipelineUtils::PathfinderShaderElementFormatToVulkan(
+                            currentInputVertexStream.GetElements().at(inputVarIndex).Type);
                         vertexAttribute.location = vertexAttributeDescriptions.size() - 1;
-                        vertexAttribute.offset   = currentVertexStream.GetElements()[inputVarIndex].Offset;
+                        vertexAttribute.offset   = currentInputVertexStream.GetElements()[inputVarIndex].Offset;
                     }
-                    inputVarOffset += currentVertexStream.GetElements().size();
                 }
 
-                vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributeDescriptions.size());
-                vertexInputState.pVertexAttributeDescriptions    = vertexAttributeDescriptions.data();
-
-                if (!inputVars.empty())
+                if (!vertexStreams.empty())
                 {
+                    vertexInputState.vertexAttributeDescriptionCount = static_cast<uint32_t>(vertexAttributeDescriptions.size());
+                    vertexInputState.pVertexAttributeDescriptions    = vertexAttributeDescriptions.data();
+
                     vertexInputState.vertexBindingDescriptionCount = static_cast<uint32_t>(vertexStreams.size());
                     vertexInputState.pVertexBindingDescriptions    = vertexStreams.data();
                 }

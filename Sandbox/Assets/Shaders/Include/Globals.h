@@ -32,6 +32,13 @@ static constexpr uint32_t s_MAX_IMAGES   = BIT(20);
 #endif
 
 #define SSS_LOCAL_GROUP_SIZE 16u
+#define SHADOW_CASCADE_COUNT 4
+
+struct CSMData
+{
+    mat4 ViewProj[SHADOW_CASCADE_COUNT];
+    uint32_t CascadeTextureIndices[SHADOW_CASCADE_COUNT];
+};
 
 struct Sprite
 {
@@ -106,8 +113,6 @@ layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, rgba8) uniform 
 layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, rgba16f) uniform image2D u_GlobalImages_RGBA16F[];
 layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, rgba32f) uniform image2D u_GlobalImages_RGBA32F[];
 layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, r32f) uniform image2D u_GlobalImages_R32F[];
-
-// NOTE: Every submesh has it's own storage buffer, where stored array of Positions, etc...
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer VertexPosBuffer
 {
@@ -229,6 +234,12 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CulledMeshID
 }
 s_CulledMeshIDBufferBDA;  // Name unused, check u_PC
 
+layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CSMDataBuffer
+{
+    CSMData ShadowMapData[MAX_DIR_LIGHTS];
+}
+s_CSMDataBufferBDA;  // Name unused, check u_PC
+
 #endif
 
 #ifdef __cplusplus
@@ -261,6 +272,14 @@ u_PC;
 #endif
 
 #ifndef __cplusplus
+
+// NOTE: Seems like both glm and glsl have different functions for packing/unpacking, cuz unpackUnorm4x8 from glsl doesn't work when I pack
+// by glm.
+vec4 glm_unpackUnorm4x8(const uint32_t packed)
+{
+    return vec4((packed >> 0) & 0xFF, (packed >> 8) & 0xFF, (packed >> 16) & 0xFF, (packed >> 24) & 0xFF) *
+           0.0039215686274509803921568627451f;
+}
 
 vec4 ClipSpaceToView(const vec4 clip)
 {

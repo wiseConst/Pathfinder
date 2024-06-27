@@ -139,7 +139,7 @@ void VulkanBuffer::SetData(const void* data, const size_t dataSize)
         const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC,
                                                    .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                                                    .FrameIndex = rd->FrameIndex,
-                                                   .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+                                                   .ThreadID   = ThreadPool::MapThreadID(std::this_thread::get_id())};
         auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
@@ -181,7 +181,7 @@ void VulkanBuffer::SetDebugName(const std::string& name)
 
 void VulkanBuffer::Destroy()
 {
-    VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
+    // VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
     if (m_Mapped /* &&  BufferUtils::BufferFlagsContain(m_Specification.ExtraFlags, EBufferFlag::BUFFER_FLAG_MAPPED)*/)
     {

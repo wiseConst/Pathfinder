@@ -1,7 +1,6 @@
 #pragma once
 
 #include <Core/Core.h>
-#include <unordered_map>
 #include <variant>
 #include <optional>
 
@@ -173,7 +172,7 @@ class Shader;
 
 struct GraphicsPipelineOptions
 {
-    std::vector<BufferLayout> InputBufferBindings = {};
+    std::vector<BufferLayout> VertexStreams = {};
     std::vector<EImageFormat> Formats             = {};
 
     ECullMode CullMode                   = ECullMode::CULL_MODE_NONE;
@@ -194,7 +193,7 @@ struct GraphicsPipelineOptions
 
     bool operator==(const GraphicsPipelineOptions& other) const
     {
-        if (InputBufferBindings.size() != other.InputBufferBindings.size() || Formats.size() != other.Formats.size() ||
+        if (VertexStreams.size() != other.VertexStreams.size() || Formats.size() != other.Formats.size() ||
             std::tie(CullMode, FrontFace, PrimitiveTopology, bMeshShading, LineWidth, bBlendEnable, BlendMode, bDynamicPolygonMode,
                      PolygonMode, bDepthTest, bDepthWrite,
                      DepthCompareOp) != std::tie(other.CullMode, other.FrontFace, other.PrimitiveTopology, other.bMeshShading,
@@ -209,10 +208,10 @@ struct GraphicsPipelineOptions
             if (std::find(other.Formats.begin(), other.Formats.end(), format) == other.Formats.end()) return false;
         }
 
-        for (size_t i{}; i < InputBufferBindings.size(); ++i)
+        for (size_t i{}; i < VertexStreams.size(); ++i)
         {
-            const auto& thisBufferElements  = InputBufferBindings[i].GetElements();
-            const auto& otherBufferElements = other.InputBufferBindings[i].GetElements();
+            const auto& thisBufferElements  = VertexStreams[i].GetElements();
+            const auto& otherBufferElements = other.VertexStreams[i].GetElements();
 
             if (thisBufferElements.size() != otherBufferElements.size()) return false;
 
@@ -252,7 +251,7 @@ struct PipelineSpecification
     std::optional<PipelineOptionsVariant> PipelineOptions = std::nullopt;
 
     using ShaderConstantType = std::variant<bool, int32_t, uint32_t, float>;  // NOTE: New types will grow with use.
-    std::unordered_map<EShaderStage, std::vector<ShaderConstantType>> ShaderConstantsMap;
+    UnorderedMap<EShaderStage, std::vector<ShaderConstantType>> ShaderConstantsMap;
 
     Shared<Pathfinder::Shader> Shader = nullptr;
     EPipelineType PipelineType        = EPipelineType::PIPELINE_TYPE_GRAPHICS;
@@ -392,7 +391,7 @@ class PipelineLibrary final : private Uncopyable, private Unmovable
     };
 
     static inline std::mutex s_PipelineLibraryMutex;
-    static inline std::unordered_map<uint64_t, Shared<Pipeline>> s_PipelineStorage;
+    static inline UnorderedMap<uint64_t, Shared<Pipeline>> s_PipelineStorage;
 
     friend class PipelineBuilder;
 

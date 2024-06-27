@@ -13,8 +13,16 @@
 #include <chrono>
 #include <concepts>
 
+#include <ankerl/unordered_dense.h>
+
 namespace Pathfinder
 {
+
+template <class Key, class T, class Hash = ankerl::unordered_dense::hash<Key>, class KeyEqual = std::equal_to<Key>>
+using UnorderedMap = ankerl::unordered_dense::map<Key, T, Hash, KeyEqual>;
+
+template <class Key, class Hash = ankerl::unordered_dense::hash<Key>, class KeyEqual = std::equal_to<Key>>
+using UnorderedSet = ankerl::unordered_dense::set<Key, Hash, KeyEqual>;
 
 struct WindowResizeData
 {
@@ -155,15 +163,15 @@ class Timer final
     Timer() noexcept = default;
     ~Timer()         = default;
 
-    FORCEINLINE double GetElapsedSeconds() const { return GetElapsedMilliseconds() / 1000; }
+  NODISCARD FORCEINLINE double GetElapsedSeconds() const { return GetElapsedMilliseconds() / 1000; }
 
-    FORCEINLINE double GetElapsedMilliseconds() const
+  NODISCARD FORCEINLINE double GetElapsedMilliseconds() const
     {
         const auto elapsed = std::chrono::duration<double, std::milli>(Now() - m_StartTime);
         return elapsed.count();
     }
 
-    FORCEINLINE static std::chrono::time_point<std::chrono::high_resolution_clock> Now()
+  NODISCARD FORCEINLINE static std::chrono::time_point<std::chrono::high_resolution_clock> Now()
     {
         return std::chrono::high_resolution_clock::now();
     }
@@ -177,7 +185,7 @@ template <typename T>
         t.resize(std::size_t{});
         t.data();
     }
-static T LoadData(const std::string_view& filePath)
+NODISCARD static T LoadData(const std::string_view& filePath)
 {
     PFR_ASSERT(!filePath.empty(), "FilePath is empty! Nothing to load data from!");
 
@@ -220,5 +228,16 @@ static void SaveData(const std::string_view& filePath, const void* data, const i
     file.write(reinterpret_cast<const char*>(data), dataSize);
     file.close();
 }
+
+struct ProfilerTask
+{
+    double StartTime = 0.0;  // Milliseconds
+    double EndTime   = 0.0;  // Milliseconds
+    std::string Tag  = s_DEFAULT_STRING;
+    glm::vec3 Color{1.f};
+
+    // Milliseconds
+    NODISCARD FORCEINLINE auto GetLength() const { return EndTime - StartTime; }
+};
 
 }  // namespace Pathfinder

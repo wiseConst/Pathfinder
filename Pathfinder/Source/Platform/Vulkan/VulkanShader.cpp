@@ -15,53 +15,6 @@
 namespace Pathfinder
 {
 
-static VkFormat SpvReflectFormatToVulkan(const SpvReflectFormat format)
-{
-    switch (format)
-    {
-        case SPV_REFLECT_FORMAT_UNDEFINED: return VK_FORMAT_UNDEFINED;
-        case SPV_REFLECT_FORMAT_R16_UINT: return VK_FORMAT_R16_UINT;
-        case SPV_REFLECT_FORMAT_R16_SINT: return VK_FORMAT_R16_SINT;
-        case SPV_REFLECT_FORMAT_R16_SFLOAT: return VK_FORMAT_R16_SFLOAT;
-        case SPV_REFLECT_FORMAT_R16G16_UINT: return VK_FORMAT_R16G16_UINT;
-        case SPV_REFLECT_FORMAT_R16G16_SINT: return VK_FORMAT_R16G16_SINT;
-        case SPV_REFLECT_FORMAT_R16G16_SFLOAT: return VK_FORMAT_R16G16_SFLOAT;
-        case SPV_REFLECT_FORMAT_R16G16B16_UINT: return VK_FORMAT_R16G16B16_UINT;
-        case SPV_REFLECT_FORMAT_R16G16B16_SINT: return VK_FORMAT_R16G16B16_SINT;
-        case SPV_REFLECT_FORMAT_R16G16B16_SFLOAT: return VK_FORMAT_R16G16B16_SFLOAT;
-        case SPV_REFLECT_FORMAT_R16G16B16A16_UINT: return VK_FORMAT_R16G16B16A16_UINT;
-        case SPV_REFLECT_FORMAT_R16G16B16A16_SINT: return VK_FORMAT_R16G16B16A16_SINT;
-        case SPV_REFLECT_FORMAT_R16G16B16A16_SFLOAT: return VK_FORMAT_R16G16B16A16_SFLOAT;
-        case SPV_REFLECT_FORMAT_R32_UINT: return VK_FORMAT_R32_UINT;
-        case SPV_REFLECT_FORMAT_R32_SINT: return VK_FORMAT_R32_SINT;
-        case SPV_REFLECT_FORMAT_R32_SFLOAT: return VK_FORMAT_R32_SFLOAT;
-        case SPV_REFLECT_FORMAT_R32G32_UINT: return VK_FORMAT_R32G32_UINT;
-        case SPV_REFLECT_FORMAT_R32G32_SINT: return VK_FORMAT_R32G32_SINT;
-        case SPV_REFLECT_FORMAT_R32G32_SFLOAT: return VK_FORMAT_R32G32_SFLOAT;
-        case SPV_REFLECT_FORMAT_R32G32B32_UINT: return VK_FORMAT_R32G32B32_UINT;
-        case SPV_REFLECT_FORMAT_R32G32B32_SINT: return VK_FORMAT_R32G32B32_SINT;
-        case SPV_REFLECT_FORMAT_R32G32B32_SFLOAT: return VK_FORMAT_R32G32B32_SFLOAT;
-        case SPV_REFLECT_FORMAT_R32G32B32A32_UINT: return VK_FORMAT_R32G32B32A32_UINT;
-        case SPV_REFLECT_FORMAT_R32G32B32A32_SINT: return VK_FORMAT_R32G32B32A32_SINT;
-        case SPV_REFLECT_FORMAT_R32G32B32A32_SFLOAT: return VK_FORMAT_R32G32B32A32_SFLOAT;
-        case SPV_REFLECT_FORMAT_R64_UINT: return VK_FORMAT_R64_UINT;
-        case SPV_REFLECT_FORMAT_R64_SINT: return VK_FORMAT_R64_SINT;
-        case SPV_REFLECT_FORMAT_R64_SFLOAT: return VK_FORMAT_R64_SFLOAT;
-        case SPV_REFLECT_FORMAT_R64G64_UINT: return VK_FORMAT_R64G64_UINT;
-        case SPV_REFLECT_FORMAT_R64G64_SINT: return VK_FORMAT_R64G64_SINT;
-        case SPV_REFLECT_FORMAT_R64G64_SFLOAT: return VK_FORMAT_R64G64_SFLOAT;
-        case SPV_REFLECT_FORMAT_R64G64B64_UINT: return VK_FORMAT_R64G64B64_UINT;
-        case SPV_REFLECT_FORMAT_R64G64B64_SINT: return VK_FORMAT_R64G64B64_SINT;
-        case SPV_REFLECT_FORMAT_R64G64B64_SFLOAT: return VK_FORMAT_R64G64B64_SFLOAT;
-        case SPV_REFLECT_FORMAT_R64G64B64A64_UINT: return VK_FORMAT_R64G64B64A64_UINT;
-        case SPV_REFLECT_FORMAT_R64G64B64A64_SINT: return VK_FORMAT_R64G64B64A64_SINT;
-        case SPV_REFLECT_FORMAT_R64G64B64A64_SFLOAT: return VK_FORMAT_R64G64B64A64_SFLOAT;
-    }
-
-    PFR_ASSERT(false, "Unknown spv reflect format!");
-    return VK_FORMAT_UNDEFINED;
-}
-
 VulkanShader::VulkanShader(const ShaderSpecification& shaderSpec) : Shader(shaderSpec)
 {
     Invalidate();
@@ -168,55 +121,6 @@ bool VulkanShader::DestroyGarbageIfNeeded()
     return bAnythingDestroyed;
 }
 
-void VulkanShader::Reflect(SpvReflectShaderModule& reflectModule, ShaderDescription& shaderDescription,
-                           const std::vector<uint32_t>& compiledShaderSrc)
-{
-    PFR_ASSERT(spvReflectCreateShaderModule(compiledShaderSrc.size() * sizeof(compiledShaderSrc[0]), compiledShaderSrc.data(),
-                                            &reflectModule) == SPV_REFLECT_RESULT_SUCCESS,
-               "Failed to reflect shader!");
-
-    shaderDescription.EntrypointName = std::string(reflectModule.entry_point_name);
-    uint32_t count                   = 0;
-
-    // Descriptor sets
-    PFR_ASSERT(spvReflectEnumerateDescriptorSets(&reflectModule, &count, NULL) == SPV_REFLECT_RESULT_SUCCESS,
-               "Failed to retrieve descriptor sets count from reflection module!");
-    PFR_ASSERT(count < 2, "Shader doesn't satisfy renderer's bindless system! DescriptorSets >= 2.")
-
-    // NOTE: Here I form BufferLayout (vertex buffer layout): what data and how laid out in memory
-    if (shaderDescription.Stage == EShaderStage::SHADER_STAGE_VERTEX)
-    {
-        PFR_ASSERT(spvReflectEnumerateInputVariables(&reflectModule, &count, NULL) == SPV_REFLECT_RESULT_SUCCESS,
-                   "Failed to retrieve input variable count!");
-
-        std::vector<SpvReflectInterfaceVariable*> inputVars(count);
-        PFR_ASSERT(spvReflectEnumerateInputVariables(&reflectModule, &count, inputVars.data()) == SPV_REFLECT_RESULT_SUCCESS,
-                   "Failed to retrieve input variables!");
-
-        std::ranges::sort(inputVars, [](const SpvReflectInterfaceVariable* lhs, const SpvReflectInterfaceVariable* rhs)
-                          { return lhs->location < rhs->location; });
-
-        m_InputVars.reserve(count);
-        for (const auto& reflectedInputVar : inputVars)
-        {
-            if (reflectedInputVar->built_in >= 0) continue;  // Default vars like gl_VertexIndex marked as ints > 0.
-
-            auto& inputVar                = m_InputVars.emplace_back();
-            inputVar.Name                 = reflectedInputVar->name;
-            inputVar.Description.location = reflectedInputVar->location;
-            inputVar.Description.format   = SpvReflectFormatToVulkan(reflectedInputVar->format);
-            inputVar.Description.binding  = 0;  // NOTE: Correct binding will be chosen at the pipeline creation stage
-            inputVar.Description.offset   = 0;  // NOTE: Same thing for this, at the pipeline creation stage
-        }
-    }
-
-    // NOTE: My bindless renderer and shader can contain the same push constant is it needed? Like I can update my data both through the
-    // shader and bindless renderer Push constants
-    PFR_ASSERT(spvReflectEnumeratePushConstantBlocks(&reflectModule, &count, NULL) == SPV_REFLECT_RESULT_SUCCESS,
-               "Failed to retrieve push constant count!");
-    PFR_ASSERT(count < 2, "Shader doesn't satisfy renderer's bindless system! PushConstants >= 2.")
-}
-
 void VulkanShader::LoadShaderModule(VkShaderModule& module, const std::vector<uint32_t>& shaderSrcSpv) const
 {
     const VkShaderModuleCreateInfo shaderModuleCI = {.sType    = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO,
@@ -265,14 +169,6 @@ void VulkanShader::Invalidate()
 
         const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
         VK_SetDebugName(logicalDevice, currentShaderDescription.Module, VK_OBJECT_TYPE_SHADER_MODULE, shaderNameExt.data());
-
-        // Collect reflection data
-        SpvReflectShaderModule reflectModule = {};
-        LOG_TRACE("SHADER_REFLECTION:\"{}\"...", shaderNameExt);
-        Reflect(reflectModule, currentShaderDescription, compiledShaderSrc);
-
-        // Cleanup only after descriptor sets && push constants assembled into my structures.
-        spvReflectDestroyShaderModule(&reflectModule);
     }
 }
 

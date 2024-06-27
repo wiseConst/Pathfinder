@@ -3,6 +3,11 @@
 #include <Core/Core.h>
 #include "DescriptorManager.h"
 #include "RendererCoreDefines.h"
+#include "Renderer2D.h"
+#include "Layers/UILayer.h"
+
+#include "CPUProfiler.h"
+#include "GPUProfiler.h"
 
 #include <Renderer/RenderGraph/RenderGraphPass.h>
 #include <Renderer/RenderGraph/RenderGraphResourcePool.h>
@@ -17,12 +22,12 @@
 #include <Renderer/Passes/BloomPass.h>
 #include <Renderer/Passes/LightCulling.h>
 #include <Renderer/Passes/ObjectCulling.h>
+#include <Renderer/Passes/CascadedShadowMapPass.h>
 
 namespace Pathfinder
 {
 
 // TODO: Create samplers array for bindless usage, replace every cache thing with *ObjectKey
-// TODO: Introduce QueryManager -> VulkanQueryManager for runtime queries, instead of creating for each command buffer(sucks)
 
 class Buffer;
 class Texture;
@@ -31,7 +36,6 @@ class Camera;
 class Image;
 class Submesh;
 class Mesh;
-class UILayer;
 
 class Renderer final
 {
@@ -45,6 +49,9 @@ class Renderer final
     static void BeginScene(const Camera& camera);
     static void EndScene();
 
+    static void DrawQuad(const glm::vec3& translation, const glm::vec3& scale, const glm::vec4& orientation,
+                         const glm::vec4& color = glm::vec4(1.0f), const Shared<Texture>& texture = nullptr, const uint32_t layer = 0);
+
     static void SubmitMesh(const Shared<Mesh>& mesh, const glm::vec3& translation = glm::vec3(0.0f),
                            const glm::vec3& scale = glm::vec3(1.0f), const glm::vec4& orientation = glm::vec4(0.f, 0.f, 0.f, 1.f));
     static void AddDirectionalLight(const DirectionalLight& dl);
@@ -55,16 +62,22 @@ class Renderer final
 
     static const std::map<std::string, Shared<Image>> GetRenderTargetList();
 
-    static const std::map<std::string, float>& GetPassStatistics()
+    static const auto& GetCPUProfilerResults()
     {
         PFR_ASSERT(s_RendererData, "RendererData is not valid!");
-        return s_RendererData->PassStats;
+        return s_RendererData->CachedCPUTimers;
     }
 
-    static const std::map<std::string, uint64_t>& GetPipelineStatistics()
+    static const auto& GetGPUProfilerResults()
     {
         PFR_ASSERT(s_RendererData, "RendererData is not valid!");
-        return s_RendererData->PipelineStats;
+        return s_RendererData->CachedGPUTimers;
+    }
+
+    static const std::vector<std::pair<std::string, uint64_t>>& GetPipelineStatistics()
+    {
+        PFR_ASSERT(s_RendererData, "RendererData is not valid!");
+        return s_RendererData->CachedPipelineStats;
     }
 
     static Shared<Image> GetFinalPassImage();
@@ -103,16 +116,23 @@ class Renderer final
 
     struct RendererData
     {
+        Unique<Renderer2D> R2D = nullptr;
+
         // MISC
         Unique<LightData> LightStruct = nullptr;
         CameraData CameraStruct;
-        std::map<std::string, float> PassStats;
-        std::map<std::string, uint64_t> PipelineStats;
 
         // NOTE: PerFramed should be objects that are used by host and device.
         BufferPerFrame UploadHeap;
 
-        static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 4 * 1024 * 1024;  // 4 MB
+        std::vector<ProfilerTask> CachedCPUTimers;
+        Pathfinder::CPUProfiler CPUProfiler;
+
+        std::vector<std::pair<std::string, uint64_t>> CachedPipelineStats;
+        std::vector<ProfilerTask> CachedGPUTimers;
+        Pathfinder::GPUProfiler GPUProfiler;
+
+        static constexpr size_t s_MAX_UPLOAD_HEAP_CAPACITY = 32 * 1024 * 1024;  // 32 MB
         uint8_t FrameIndex                                 = 0;
 
         RGResourcePool ResourcePool;
@@ -138,6 +158,11 @@ class Renderer final
         // BLOOM Ping-pong
         Pathfinder::BloomPass BloomPass;
         std::array<uint64_t, 2> BloomPipelineHash;
+
+        uint32_t CurrentCascadeIndex                     = 0;
+        CSMData CascadeShadowsData[SHADOW_CASCADE_COUNT] = {0};
+        uint64_t CSMPipelineHash                         = 0;
+        Pathfinder::CascadedShadowMapPass CascadedShadowMapPass;
 
         /*             SCREEN-SPACE SHADOWS                */
         bool bAnybodyCastsShadows      = false;
@@ -180,6 +205,7 @@ class Renderer final
     {
         bool bVSync;
         bool bDrawColliders;
+        bool bCollectGPUStats;
     };
 
     static inline RendererSettings s_RendererSettings;

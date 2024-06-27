@@ -14,19 +14,21 @@ class VulkanDescriptorManager final : public DescriptorManager
     ~VulkanDescriptorManager() override { Destroy(); }
 
     void Bind(const Shared<CommandBuffer>& commandBuffer,
-              const EPipelineStage overrideBindPoint = EPipelineStage::PIPELINE_STAGE_NONE) final override;
+              const RendererTypeFlags bindPoints = EPipelineStage::PIPELINE_STAGE_NONE) final override;
 
     void LoadImage(const void* pImageInfo, Optional<uint32_t>& outIndex) final override;
     void LoadTexture(const void* pTextureInfo, Optional<uint32_t>& outIndex) final override;
 
     FORCEINLINE void FreeImage(Optional<uint32_t>& imageIndex) final override
     {
+        std::scoped_lock lock(m_UploadMutex);
         m_StorageImageIDPool.Release(imageIndex.value());
         imageIndex = std::nullopt;
     }
 
     FORCEINLINE void FreeTexture(Optional<uint32_t>& textureIndex) final override
     {
+        std::scoped_lock lock(m_UploadMutex);
         m_TextureIDPool.Release(textureIndex.value());
         textureIndex = std::nullopt;
     }

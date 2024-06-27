@@ -21,7 +21,7 @@ class DescriptorManager : private Uncopyable, private Unmovable
     // 3) For RTX use PIPELINE_STAGE_RAY_TRACING_SHADER_BIT
     // Other stages will be caused to assertion
     virtual void Bind(const Shared<CommandBuffer>& commandBuffer,
-                      const EPipelineStage overrideBindPoint = EPipelineStage::PIPELINE_STAGE_NONE) = 0;
+                      const RendererTypeFlags bindPoints = EPipelineStage::PIPELINE_STAGE_NONE) = 0;
 
     virtual void LoadImage(const void* pImageInfo, Optional<uint32_t>& outIndex)     = 0;
     virtual void LoadTexture(const void* pTextureInfo, Optional<uint32_t>& outIndex) = 0;
@@ -32,6 +32,7 @@ class DescriptorManager : private Uncopyable, private Unmovable
     NODISCARD static Shared<DescriptorManager> Create();
 
   protected:
+    std::mutex m_UploadMutex;
     Pool<uint32_t> m_TextureIDPool;
     Pool<uint32_t> m_StorageImageIDPool;
 

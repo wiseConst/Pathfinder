@@ -15,7 +15,7 @@ LightCullingPass::LightCullingPass(const uint32_t width, const uint32_t height) 
 
 void LightCullingPass::AddPass(Unique<RenderGraph>& rendergraph)
 {
-    if (m_bRecomputeLightCullingFrustums) AddComputeLightCullingFrustumsPass(rendergraph);
+    AddComputeLightCullingFrustumsPass(rendergraph);
     AddLightCullingPass(rendergraph);
 }
 
@@ -142,6 +142,8 @@ void LightCullingPass::AddComputeLightCullingFrustumsPass(Unique<RenderGraph>& r
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
         {
             //    if (IsWorldEmpty()) return;
+
+            if (!m_bRecomputeLightCullingFrustums) return;
 
             const auto& rd = Renderer::GetRendererData();
 

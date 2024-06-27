@@ -144,7 +144,7 @@ class SamplerStorage : private Uncopyable, private Unmovable
 
   protected:
     static inline SamplerStorage* s_Instance = nullptr;
-    static inline std::unordered_map<SamplerSpecification, std::pair<uint32_t, void*>, SamplerSpecification::Hash>
+    static inline UnorderedMap<SamplerSpecification, std::pair<uint32_t, void*>, SamplerSpecification::Hash>
         s_Samplers;  // cached samples, pair<NumOfImagesUsingSampler, Sampler>
 
     SamplerStorage()          = default;

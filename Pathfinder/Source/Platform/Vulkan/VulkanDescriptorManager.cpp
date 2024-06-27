@@ -4,7 +4,6 @@
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
 #include "VulkanCommandBuffer.h"
-#include "VulkanTexture.h"
 
 #include <Core/Application.h>
 #include <Core/Window.h>
@@ -17,30 +16,50 @@ namespace Pathfinder
 VulkanDescriptorManager::VulkanDescriptorManager()
 {
     CreateDescriptorPools();
-    LOG_INFO("Vulkan Descriptor Manager created!");
+    LOG_INFO("{}", __FUNCTION__);
 }
 
-void VulkanDescriptorManager::Bind(const Shared<CommandBuffer>& commandBuffer, const EPipelineStage overrideBindPoint)
+void VulkanDescriptorManager::Bind(const Shared<CommandBuffer>& commandBuffer, const RendererTypeFlags bindPoints)
 {
-    const auto currentFrame = Application::Get().GetWindow()->GetCurrentFrameIndex();
+    const auto currentFrame    = Application::Get().GetWindow()->GetCurrentFrameIndex();
+    const auto& currentMegaSet = m_MegaSet.at(currentFrame);
 
-    VkPipelineBindPoint pipelineBindPoint = commandBuffer->GetSpecification().Type == ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL
-                                                ? VK_PIPELINE_BIND_POINT_GRAPHICS
-                                                : VK_PIPELINE_BIND_POINT_COMPUTE;
-    if (overrideBindPoint != EPipelineStage::PIPELINE_STAGE_NONE)
+    // NOTE: If override bind points aren't specified we use bindpoint based on command buffer type, otherwise we handle override bind
+    // points.
+    if (bindPoints == EPipelineStage::PIPELINE_STAGE_NONE)
     {
-        if (overrideBindPoint == EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT)
-            pipelineBindPoint = VK_PIPELINE_BIND_POINT_COMPUTE;
-        else if (overrideBindPoint == EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT)
-            pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-        else if (overrideBindPoint == EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT)
-            pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR;
-        else
-            PFR_ASSERT(false, "Unknown pipeline stages to override pipeline bind point for descriptor sets!");
+        const VkPipelineBindPoint pipelineBindPoint =
+            commandBuffer->GetSpecification().Type == ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL ? VK_PIPELINE_BIND_POINT_GRAPHICS
+                                                                                                      : VK_PIPELINE_BIND_POINT_COMPUTE;
+
+        vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), pipelineBindPoint, m_MegaPipelineLayout, 0, 1, &currentMegaSet, 0,
+                                nullptr);
+        return;
     }
 
-    vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), pipelineBindPoint, m_MegaPipelineLayout, 0, 1, &m_MegaSet[currentFrame],
-                            0, nullptr);
+    bool bAnythingBound = false;
+    if ((bindPoints & EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT) == EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT)
+    {
+        vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), VK_PIPELINE_BIND_POINT_COMPUTE, m_MegaPipelineLayout, 0, 1,
+                                &currentMegaSet, 0, nullptr);
+        bAnythingBound = true;
+    }
+
+    if ((bindPoints & EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT) == EPipelineStage::PIPELINE_STAGE_ALL_GRAPHICS_BIT)
+    {
+        vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), VK_PIPELINE_BIND_POINT_GRAPHICS, m_MegaPipelineLayout, 0, 1,
+                                &currentMegaSet, 0, nullptr);
+        bAnythingBound = true;
+    }
+
+    if ((bindPoints & EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT) == EPipelineStage::PIPELINE_STAGE_RAY_TRACING_SHADER_BIT)
+    {
+        vkCmdBindDescriptorSets((VkCommandBuffer)commandBuffer->Get(), VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR, m_MegaPipelineLayout, 0, 1,
+                                &currentMegaSet, 0, nullptr);
+        bAnythingBound = true;
+    }
+
+    PFR_ASSERT(bAnythingBound, "Unknown pipeline stages specified to override pipeline bind point for descriptor sets!");
 }
 
 void VulkanDescriptorManager::LoadImage(const void* pImageInfo, Optional<uint32_t>& outIndex)
@@ -49,6 +68,7 @@ void VulkanDescriptorManager::LoadImage(const void* pImageInfo, Optional<uint32_
     PFR_ASSERT(pImageInfo && vkImageInfo->imageView, "VulkanDescriptorManager: Texture(Image) for loading is not valid!");
 
     std::vector<VkWriteDescriptorSet> writes;
+    std::scoped_lock lock(m_UploadMutex);
 
     // Since on image creation index is UINT32_T::MAX
     outIndex = MakeOptional<uint32_t>(static_cast<uint32_t>(m_StorageImageIDPool.Add(m_StorageImageIDPool.GetSize())));
@@ -74,6 +94,7 @@ void VulkanDescriptorManager::LoadTexture(const void* pTextureInfo, Optional<uin
     PFR_ASSERT(pTextureInfo && vkTextureInfo->imageView, "VulkanDescriptorManager: Texture(Image) for loading is not valid!");
 
     std::vector<VkWriteDescriptorSet> writes;
+    std::scoped_lock lock(m_UploadMutex);
 
     // Since on image creation index is UINT32_T::MAX
     outIndex = MakeOptional<uint32_t>(static_cast<uint32_t>(m_TextureIDPool.Add(m_TextureIDPool.GetSize())));
@@ -150,7 +171,7 @@ void VulkanDescriptorManager::CreateDescriptorPools()
         Renderer::GetStats().DescriptorPoolCount += 1;
     }
 
-    m_PCBlock = VulkanUtils::GetPushConstantRange(VK_SHADER_STAGE_ALL, 0, sizeof(PushConstantBlock));
+    m_PCBlock = VulkanUtils::GetPushConstantRange(VK_SHADER_STAGE_ALL, /* offset */ 0, sizeof(PushConstantBlock));
     PFR_ASSERT(m_PCBlock.size == 128, "Exceeding minimum limit of push constant block!");
 
     const VkPipelineLayoutCreateInfo pipelineLayoutCI = {.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,
@@ -172,10 +193,9 @@ void VulkanDescriptorManager::Destroy()
     std::ranges::for_each(m_MegaDescriptorPool,
                           [&](const VkDescriptorPool& pool) { vkDestroyDescriptorPool(logicalDevice, pool, nullptr); });
     vkDestroyDescriptorSetLayout(logicalDevice, m_MegaDescriptorSetLayout, nullptr);
-
     vkDestroyPipelineLayout(logicalDevice, m_MegaPipelineLayout, nullptr);
 
-    LOG_INFO("Vulkan Descriptor Manager destroyed!");
+    LOG_INFO("{}", __FUNCTION__);
 }
 
 }  // namespace Pathfinder

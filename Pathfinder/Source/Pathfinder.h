@@ -24,7 +24,6 @@
 #include <Renderer/Pipeline.h>
 #include <Renderer/Swapchain.h>
 #include <Renderer/RendererAPI.h>
-#include <Renderer/Renderer2D.h>
 #include <Renderer/Texture.h>
 #include <Renderer/Image.h>
 #include <Renderer/Renderer.h>

@@ -131,25 +131,22 @@ void CreateImage(VkImage& outImage, VmaAllocation& outAllocation, const VkFormat
                  const VkExtent3D& extent, const VkImageType imageType, const uint32_t mipLevels, const uint32_t layerCount,
                  const VkImageLayout initialLayout, const VkImageTiling imageTiling, const VkSampleCountFlagBits samples)
 {
-    const auto& device                        = VulkanContext::Get().GetDevice();
-    auto& queueFamilyIndices                  = device->GetQueueFamilyIndices();
     const VkImageCreateFlags imageCreateFlags = layerCount == 6 ? VK_IMAGE_CREATE_CUBE_COMPATIBLE_BIT : 0;
-    const VkImageCreateInfo imageCI           = {.sType                 = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
-                                                 .flags                 = imageCreateFlags,
-                                                 .imageType             = imageType,
-                                                 .format                = format,
-                                                 .extent                = extent,
-                                                 .mipLevels             = mipLevels,
-                                                 .arrayLayers           = layerCount,
-                                                 .samples               = samples,
-                                                 .tiling                = imageTiling,
-                                                 .usage                 = imageUsage,
-                                                 .sharingMode           = VK_SHARING_MODE_CONCURRENT,
-                                                 .queueFamilyIndexCount = static_cast<uint32_t>(queueFamilyIndices.size()),
-                                                 .pQueueFamilyIndices   = queueFamilyIndices.data(),
-                                                 .initialLayout         = initialLayout};
+    const VkImageCreateInfo imageCI           = {
+                  .sType         = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO,
+                  .flags         = imageCreateFlags,
+                  .imageType     = imageType,
+                  .format        = format,
+                  .extent        = extent,
+                  .mipLevels     = mipLevels,
+                  .arrayLayers   = layerCount,
+                  .samples       = samples,
+                  .tiling        = imageTiling,
+                  .usage         = imageUsage,
+                  .sharingMode   = VK_SHARING_MODE_EXCLUSIVE,  // NOTE: Images are heavily affected by sharing mode, but buffers aren't.
+                  .initialLayout = initialLayout};
 
-    device->GetAllocator()->CreateImage(imageCI, outImage, outAllocation);
+    VulkanContext::Get().GetDevice()->GetAllocator()->CreateImage(imageCI, outImage, outAllocation);
 }
 
 // TODO: ImageViewCache from LegitEngine
@@ -227,7 +224,7 @@ void VulkanImage::SetLayout(const EImageLayout newLayout, const bool bImmediate)
         const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
                                                    .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
                                                    .FrameIndex = Renderer::GetRendererData()->FrameIndex,
-                                                   .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+                                                   .ThreadID   = ThreadPool::MapThreadID(std::this_thread::get_id())};
         auto vulkanCommandBuffer                = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
@@ -286,7 +283,7 @@ void VulkanImage::SetData(const void* data, size_t dataSize)
             .Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL /*COMMAND_BUFFER_TYPE_TRANSFER_ASYNC*/,
             .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
             .FrameIndex = Renderer::GetRendererData()->FrameIndex,
-            .ThreadID   = ThreadPool::MapThreadID(ThreadPool::GetMainThreadID())};
+            .ThreadID   = ThreadPool::MapThreadID(std::this_thread::get_id())};
         auto vulkanCommandBuffer = MakeShared<VulkanCommandBuffer>(cbSpec);
         vulkanCommandBuffer->BeginRecording(true);
 
@@ -352,7 +349,7 @@ void VulkanImage::Invalidate()
 
 void VulkanImage::Destroy()
 {
-    VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
+    //    VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
     ImageUtils::DestroyImage(m_Handle, m_Allocation);
     m_Handle = VK_NULL_HANDLE;

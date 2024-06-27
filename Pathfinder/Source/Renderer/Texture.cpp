@@ -6,6 +6,9 @@
 #include <Renderer/Renderer.h>
 #include <Renderer/DescriptorManager.h>
 
+#include <Renderer/Mesh/Submesh.h>
+#include <Renderer/Material.h>
+
 #include <compressonator.h>
 
 namespace Pathfinder
@@ -110,6 +113,9 @@ void TextureCompressor::Compress(TextureSpecification& textureSpec, const EImage
         case EImageFormat::FORMAT_BC7_SRGB: dstTexture.format = CMP_FORMAT_BC7; break;
     }
 
+    // NOTE: Well, it seems so AMD Compressonator isn't thread safe.
+    std::scoped_lock lock(s_CompressorMutex);
+
     dstTexture.dwDataSize = CMP_CalculateBufferSize(&dstTexture);
     dstTexture.pData      = (CMP_BYTE*)malloc(dstTexture.dwDataSize);
 
@@ -207,9 +213,16 @@ void TextureCompressor::LoadCompressed(const std::filesystem::path& loadPath, Te
 
 void TextureManager::Init()
 {
+    SamplerStorage::Init();
+
     {
         constexpr uint32_t whiteColor = 0xFFFFFFFF;
-        s_WhiteTexture = Texture::Create({.DebugName = "Default_WhiteTexture", .Width = 1, .Height = 1}, &whiteColor, sizeof(whiteColor));
+        s_WhiteTexture =
+            Texture::Create({.DebugName  = "Default_WhiteTexture",
+                             .Width      = 1,
+                             .Height     = 1,
+                             .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT},
+                            &whiteColor, sizeof(whiteColor));
     }
 
     LOG_TRACE("{}", __FUNCTION__);
@@ -219,8 +232,46 @@ void TextureManager::Shutdown()
 {
     s_WhiteTexture.reset();
     LOG_TRACE("{}", __FUNCTION__);
+
+    SamplerStorage::Shutdown();
 }
 
-void TextureManager::LinkLoadedTexturesWithMeshes() {}
+void TextureManager::LinkLoadedTexturesWithMeshes()
+{
+    //for (auto it = s_TexturesInProcess.begin(); it != s_TexturesInProcess.end();)
+    //{
+    //    auto& loadedEntry = *it;
+
+    //    // Don't block main thread.
+    //    if (loadedEntry.TextureFuture.wait_for(std::chrono::seconds(0)) != std::future_status::ready)
+    //    {
+    //        ++it;
+    //        continue;
+    //    }
+
+    //    const auto texture = loadedEntry.TextureFuture.get();
+    //    LOG_INFO("{}: {}", __FUNCTION__, texture->GetSpecification().DebugName);
+
+    //    if (auto submesh = loadedEntry.SubmeshPtr.lock())
+    //    {
+    //        auto& material = submesh->GetMaterial();
+    //        switch (loadedEntry.TextureLoadType)
+    //        {
+    //            case ETextureLoadType::TEXTURE_LOAD_TYPE_ALBEDO: material->SetAlbedo(texture); break;
+    //            case ETextureLoadType::TEXTURE_LOAD_TYPE_NORMAL: material->SetNormalMap(texture); break;
+    //            case ETextureLoadType::TEXTURE_LOAD_TYPE_METALLIC_ROUGHNESS: material->SetMetallicRoughnessMap(texture); break;
+    //            case ETextureLoadType::TEXTURE_LOAD_TYPE_OCCLUSION: material->SetOcclusionMap(texture); break;
+    //            case ETextureLoadType::TEXTURE_LOAD_TYPE_EMISSIVE: material->SetEmissiveMap(texture); break;
+    //            default: PFR_ASSERT(false, "Unknown ETextureLoadType!");
+    //        }
+
+    //        material->Update();
+    //    }
+
+    //    it = s_TexturesInProcess.erase(it);
+    //}
+
+    // s_TexturesInProcess.clear();
+}
 
 }  // namespace Pathfinder

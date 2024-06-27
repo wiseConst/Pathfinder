@@ -100,15 +100,14 @@ void VulkanUILayer::Init()
     ImGui_ImplVulkan_Init(&initInfo);
 
     // execute a gpu command to upload imgui font textures
-    ImGui_ImplVulkan_CreateFontsTexture();
+    PFR_ASSERT(ImGui_ImplVulkan_CreateFontsTexture(), "Failed to create fonts texture for ImGui!");
 
     window->AddResizeCallback(
         [](const WindowResizeData& resizeData)
         {
             for (auto& [uuid, textureID] : s_TextureIDMap)
-            {
                 ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
-            }
+
             s_LastActiveTextures.clear();
             s_TextureIDMap.clear();
         });
@@ -121,9 +120,8 @@ void VulkanUILayer::Destroy()
     VulkanContext::Get().GetDevice()->WaitDeviceOnFinish();
 
     for (auto& [image, textureID] : s_TextureIDMap)
-    {
         ImGui_ImplVulkan_RemoveTexture((VkDescriptorSet)textureID);
-    }
+
     s_TextureIDMap.clear();
 
     ImGui_ImplVulkan_Shutdown();
@@ -192,7 +190,7 @@ void VulkanUILayer::UpdateTextureIDs()
 }
 
 void UILayer::DrawTexture(Shared<Texture> texture, const glm::vec2& size, const glm::vec2& uv0, const glm::vec2& uv1,
-                        const glm::vec4& tintCol, const glm::vec4& borderCol)
+                          const glm::vec4& tintCol, const glm::vec4& borderCol)
 {
     PFR_ASSERT(texture, "UILayer::DrawTexture() - Texture is null!");
 
@@ -202,9 +200,8 @@ void UILayer::DrawTexture(Shared<Texture> texture, const glm::vec2& size, const 
         s_TextureIDMap.emplace(uuid, nullptr);
         auto& textureID = s_TextureIDMap[uuid];
 
-            const auto vulkanTexture = std::static_pointer_cast<VulkanTexture>(texture);
+        const auto vulkanTexture = std::static_pointer_cast<VulkanTexture>(texture);
         PFR_ASSERT(vulkanTexture, "Failed to cast Texture to VulkanTexture!");
-
 
         const auto& vkImageInfo = vulkanTexture->GetDescriptorInfo();
         textureID               = ImGui_ImplVulkan_AddTexture(vkImageInfo.sampler, vkImageInfo.imageView, vkImageInfo.imageLayout);

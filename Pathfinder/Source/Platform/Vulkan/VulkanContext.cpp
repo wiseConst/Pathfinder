@@ -27,6 +27,11 @@ VulkanContext::~VulkanContext()
     LOG_INFO("{}", __FUNCTION__);
 }
 
+NODISCARD const float VulkanContext::GetTimestampPeriod() const
+{
+    return m_Device->GetTimestampPeriod();
+}
+
 void VulkanContext::CreateInstance()
 {
     PFR_ASSERT(volkInitialize() == VK_SUCCESS, "Failed to initialize volk( meta-loader for Vulkan )!");
@@ -197,6 +202,11 @@ std::vector<const char*> VulkanContext::GetRequiredExtensions() const
 
     if constexpr (s_bEnableValidationLayers || VK_FORCE_VALIDATION) extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
     return extensions;
+}
+
+void VulkanContext::WaitDeviceOnFinish() const
+{
+    m_Device->WaitDeviceOnFinish();
 }
 
 void VulkanContext::Begin()

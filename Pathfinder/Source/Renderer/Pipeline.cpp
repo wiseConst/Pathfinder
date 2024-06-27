@@ -105,9 +105,9 @@ std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const Pipelin
             hash_combine(hash, std::hash<uint64_t>{}(GPO->bDepthTest + GPO->bDepthWrite + GPO->bDynamicPolygonMode + GPO->bMeshShading +
                                                      GPO->LineWidth));
 
-            for (size_t i{}; i < GPO->InputBufferBindings.size(); ++i)
+            for (size_t i{}; i < GPO->VertexStreams.size(); ++i)
             {
-                const auto& bufferElements = GPO->InputBufferBindings[i].GetElements();
+                const auto& bufferElements = GPO->VertexStreams[i].GetElements();
 
                 for (size_t k{}; k < bufferElements.size(); ++k)
                 {

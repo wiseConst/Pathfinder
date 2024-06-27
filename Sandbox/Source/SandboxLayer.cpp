@@ -169,7 +169,7 @@ void SandboxLayer::OnUIRender()
         ImGui::End();
     }
 
-    #if 0
+#if 0
     static bool bShowRenderTargetList = true;
     if (bShowRenderTargetList)
     {
@@ -191,7 +191,7 @@ void SandboxLayer::OnUIRender()
 
         ImGui::End();
     }
-    #endif
+#endif
 
     static bool bShowPipelineMap = true;
     if (bShowPipelineMap)
@@ -223,6 +223,42 @@ void SandboxLayer::OnUIRender()
         ImGui::End();
     }
 
+    static bool bShowFrameTimers = true;
+    if (bShowFrameTimers)
+    {
+        ImGui::Begin("Frame Time Statistics", &bShowFrameTimers);
+
+        ImGui::Separator();
+        ImGui::Checkbox("CollectGPUStats", &Renderer::GetRendererSettings().bCollectGPUStats);
+
+        const auto& cpuTimers = Renderer::GetCPUProfilerResults();
+        ImGui::SeparatorText("CPU");
+        for (const auto& task : cpuTimers)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{task.Color.x, task.Color.y, task.Color.z, 1.f});
+            ImGui::Text("%s: %0.3f(ms)", task.Tag.data(), task.GetLength());
+            ImGui::PopStyleColor();
+        }
+
+        const auto& gpuTimers = Renderer::GetGPUProfilerResults();
+        ImGui::SeparatorText("GPU");
+        for (const auto& task : gpuTimers)
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{task.Color.x, task.Color.y, task.Color.z, 1.f});
+            ImGui::Text("%s: %0.3f(ms)", task.Tag.data(), task.GetLength());
+            ImGui::PopStyleColor();
+        }
+
+        const auto& pipelineStatistics = Renderer::GetPipelineStatistics();
+        ImGui::SeparatorText("Pipeline Statistics");
+        for (const auto& [stageStr, queryCount] : pipelineStatistics)
+        {
+            ImGui::Text("%s: %llu", stageStr.data(), queryCount);
+        }
+
+        ImGui::End();
+    }
+
     static bool bShowRendererStats = true;
     if (bShowRendererStats)
     {
@@ -231,14 +267,6 @@ void SandboxLayer::OnUIRender()
 
         ImGui::Separator();
         ImGui::Text("ImageViews: %u", rs.ImageViewCount);
-
-        ImGui::SeparatorText("Pass Statistics");
-        for (const auto& [pass, passTime] : Renderer::GetPassStatistics())
-            ImGui::Text("%s: %0.4f(ms)", pass.data(), passTime);
-
-        ImGui::SeparatorText("Pipeline Statistics");
-        for (const auto& [pipelineStat, stat] : Renderer::GetPipelineStatistics())
-            ImGui::Text("%s: %llu", pipelineStat.data(), stat);
 
         ImGui::SeparatorText("Memory Statistics");
         for (uint32_t memoryHeapIndex = 0; const auto& memoryBudget : rs.MemoryBudgets)

@@ -4,8 +4,6 @@
 #include "Renderer/RendererCoreDefines.h"
 #include "Renderer/Texture.h"
 
-#include <meshoptimizer.h>
-
 namespace fastgltf
 {
 class Asset;
@@ -34,24 +32,8 @@ class MeshManager final
     static SurfaceMesh GenerateUVSphere(const uint32_t sectorCount, const uint32_t stackCount);
 
   private:
-    static void LoadSubmeshes(std::vector<Shared<Submesh>>& submeshes, const std::string& meshDir,
-                              std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const fastgltf::Asset& asset,
-                              const size_t meshIndex);
-
-    static Shared<Texture> LoadTexture(std::unordered_map<std::string, Shared<Texture>>& loadedTextures, const std::string& meshAssetsDir,
-                                       const fastgltf::Asset& asset, const fastgltf::Material& materialAccessor, const size_t textureIndex,
-                                       TextureSpecification& textureSpec, const bool bMetallicRoughness = false,
-                                       const bool bFlipOnLoad = false);
-
-    template <typename T>
-    static void RemapVertexStream(const size_t remappedVertexCount, std::vector<T>& vertexStream,
-                                  const std::vector<uint32_t>& remappedIndices)
-    {
-        std::vector<T> remmapedVertexStream(remappedVertexCount);
-        meshopt_remapVertexBuffer(remmapedVertexStream.data(), vertexStream.data(), vertexStream.size(), sizeof(vertexStream[0]),
-                                  remappedIndices.data());
-        vertexStream = std::move(remmapedVertexStream);
-    }
+    static void LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& loadedTextures, std::vector<Shared<Submesh>>& submeshes,
+                              const std::string& meshDir, const fastgltf::Asset& asset, const size_t meshIndex);
 
     MeshManager()  = delete;
     ~MeshManager() = default;

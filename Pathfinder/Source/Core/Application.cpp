@@ -7,7 +7,6 @@
 #include "Renderer/GraphicsContext.h"
 #include "Renderer/Texture.h"
 #include "Renderer/Renderer.h"
-#include "Renderer/Renderer2D.h"
 
 #include "Input.h"
 #include "Events/Events.h"
@@ -88,6 +87,7 @@ void Application::Run()
         m_Window->PollEvents();
         m_DeltaTime = static_cast<float>(t.GetElapsedSeconds());
 
+        ++m_FrameNumber;
         ++frameCount;
         accumulatedDelta += m_DeltaTime;
         if (accumulatedDelta >= 1.0)
@@ -96,11 +96,11 @@ void Application::Run()
             ss << std::fixed << std::setprecision(4);  // Set the float format
             ss << m_Window->GetSpecification().Title << " x64 / " << frameCount << " FPS ";
             ss << "[cpu]: " << t.GetElapsedMilliseconds() << "ms ";
-            ss << "[gpu]: " << Renderer::GetStats().GPUTime + Renderer2D::GetStats().GPUTime << "ms ";
+            ss << "[gpu]: " << Renderer::GetStats().GPUTime << "ms ";
             ss << "[present]: " << Renderer::GetStats().SwapchainPresentTime << "ms ";
             ss << "[objects]: " << Renderer::GetStats().ObjectsDrawn;
-            ss << " [tris]: " << Renderer::GetStats().TriangleCount + Renderer2D::GetStats().TriangleCount;
-            ss << " [2D quads]: " << Renderer2D::GetStats().QuadCount;
+            ss << " [tris]: " << Renderer::GetStats().TriangleCount;
+            //  ss << " [2D quads]: " << Renderer2D::GetStats().QuadCount;
             ss << " [descriptor pools]: " << Renderer::GetStats().DescriptorPoolCount;
             ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
             ss << " [samplers]: " << SamplerStorage::GetSamplerCount();

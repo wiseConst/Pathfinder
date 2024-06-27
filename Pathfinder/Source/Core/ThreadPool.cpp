@@ -49,14 +49,14 @@ void ThreadPool::Init()
 
                                                    while (true)
                                                    {
-                                                       Job job;
+                                                       std::move_only_function<void()> job;
                                                        {
                                                            std::unique_lock<std::mutex> lock(s_QueueMutex);
                                                            s_Cv.wait(lock, [&] { return !s_JobQueue.empty() || s_bShutdownRequested; });
                                                            if (s_bShutdownRequested && s_JobQueue.empty()) return;
 
                                                            job = std::move(s_JobQueue.front());
-                                                           s_JobQueue.pop();
+                                                           s_JobQueue.pop_front();
                                                        }
                                                        job();
                                                    }
@@ -76,6 +76,7 @@ void ThreadPool::Shutdown()
         s_bShutdownRequested = true;
     }
     s_Cv.notify_all();
+    s_Workers.clear();
     LOG_TRACE("{}", __FUNCTION__);
 }
 

@@ -71,14 +71,6 @@ target_link_libraries(${PROJECT_NAME} PRIVATE GPUOpen::VulkanMemoryAllocator)
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/vma/include)
 set_target_properties(VulkanMemoryAllocator PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
 
-# spirv-reflect
-set(SPIRV_REFLECT_EXECUTABLE OFF)
-set(SPIRV_REFLECT_STATIC_LIB ON)
-add_subdirectory(${VENDOR_DIR}/spirv-reflect)
-target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/spirv-reflect)
-target_link_libraries(${PROJECT_NAME} PRIVATE spirv-reflect-static)
-set_target_properties(spirv-reflect-static PROPERTIES FOLDER "ThirdParty" POSITION_INDEPENDENT_CODE ON)
-
 # shaderc
 target_include_directories(${PROJECT_NAME} PUBLIC ${VULKAN_SDK_DIR}/Include)
 
@@ -151,7 +143,7 @@ target_link_libraries(${PROJECT_NAME} PRIVATE
             $<$<CONFIG:Debug>:${VENDOR_DIR}/amd_compressonator/lib/bin/Compressonator_MDd.lib>
             $<$<CONFIG:Release>:${VENDOR_DIR}/amd_compressonator/lib/bin/Compressonator_MD.lib>)
 else()
-    message("TODO: Add libs for linux (AMD Compressonator).")
+    message("TODO: Add libs for linux/macos (AMD Compressonator).")
 endif()
 target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/amd_compressonator/include)
 
@@ -173,11 +165,16 @@ if(OpenMP_CXX_FOUND)
     target_compile_options(${PROJECT_NAME} PRIVATE ${OpenMP_CXX_FLAGS})
 endif()
 
+# ankerl's fast robin-hood backward shift deletion unordered set/map
+add_subdirectory(${VENDOR_DIR}/unordered_dense)
+target_link_libraries(${PROJECT_NAME} PRIVATE unordered_dense::unordered_dense)
+target_include_directories(${PROJECT_NAME} PUBLIC ${VENDOR_DIR}/unordered_dense/include)
+
 # Renderer compile config.
 add_compile_definitions($<$<CONFIG:Debug>:PFR_DEBUG=1>)
 add_compile_definitions($<$<CONFIG:Release>:PFR_RELEASE=1>)
 
-add_compile_options($<$<CONFIG:Debug>:-Og>) # -lto
+add_compile_options($<$<CONFIG:Debug>:-Og>)
 add_compile_options($<$<CONFIG:Release>:-O3 -lto>)
 
 # Dynamic MSVC runtime library linking

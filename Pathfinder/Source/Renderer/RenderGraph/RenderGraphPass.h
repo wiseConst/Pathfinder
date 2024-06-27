@@ -4,8 +4,6 @@
 #include <Renderer/RendererCoreDefines.h>
 #include "RenderGraphContext.h"
 
-#include <unordered_set>
-
 namespace Pathfinder
 {
 
@@ -70,17 +68,17 @@ class RenderGraphPassBase : private Uncopyable, private Unmovable
         uint32_t OffsetY{};
     };
 
-    std::unordered_set<RGTextureID> m_TextureCreates;
-    std::unordered_set<RGTextureID> m_TextureReads;
-    std::unordered_set<RGTextureID> m_TextureWrites;
-    //  std::unordered_set<RGTextureID> m_TextureDestroys;  // In case pass culled.
-    std::unordered_map<RGTextureID, ResourceStateFlags> m_TextureStateMap;
+    UnorderedSet<RGTextureID> m_TextureCreates;
+    UnorderedSet<RGTextureID> m_TextureReads;
+    UnorderedSet<RGTextureID> m_TextureWrites;
+    //  UnorderedSet<RGTextureID> m_TextureDestroys;  // In case pass culled.
+    UnorderedMap<RGTextureID, ResourceStateFlags> m_TextureStateMap;
 
-    std::unordered_set<RGBufferID> m_BufferCreates;
-    std::unordered_set<RGBufferID> m_BufferReads;
-    std::unordered_set<RGBufferID> m_BufferWrites;
-    // std::unordered_set<RGBufferID> m_BufferDestroys;  // In case pass culled.
-    std::unordered_map<RGBufferID, ResourceStateFlags> m_BufferStateMap;
+    UnorderedSet<RGBufferID> m_BufferCreates;
+    UnorderedSet<RGBufferID> m_BufferReads;
+    UnorderedSet<RGBufferID> m_BufferWrites;
+    // UnorderedSet<RGBufferID> m_BufferDestroys;  // In case pass culled.
+    UnorderedMap<RGBufferID, ResourceStateFlags> m_BufferStateMap;
 
     std::vector<RenderTargetInfo> m_RenderTargetsInfo;
     Optional<DepthStencilInfo> m_DepthStencil           = std::nullopt;

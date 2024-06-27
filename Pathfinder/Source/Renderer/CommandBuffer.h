@@ -31,6 +31,27 @@ struct CommandBufferSpecification
     uint8_t ThreadID          = 0;
 };
 
+class QueryPool : private Uncopyable, private Unmovable
+{
+  public:
+    QueryPool(const uint32_t queryCount, const bool bIsPipelineStatistics)
+        : m_QueryCount(queryCount), m_bPipelineStatistics(bIsPipelineStatistics)
+    {
+    }
+    virtual ~QueryPool() = default;
+
+    virtual void* Get() const = 0;
+    static Shared<QueryPool> Create(const uint32_t queryCount, const bool bIsPipelineStatistics = false);
+
+    NODISCARD FORCEINLINE const auto GetQueryCount() const { return m_QueryCount; }
+
+  protected:
+    uint32_t m_QueryCount{};
+    bool m_bPipelineStatistics{};
+
+    virtual void Destroy() = 0;
+};
+
 class SyncPoint : private Uncopyable, private Unmovable
 {
   public:
@@ -77,6 +98,15 @@ class CommandBuffer : private Uncopyable, private Unmovable
     virtual void BeginDebugLabel(std::string_view label, const glm::vec3& color = glm::vec3(1.0f)) const = 0;
     virtual void EndDebugLabel() const                                                                   = 0;
     /* DEBUG */
+
+    virtual void BeginPipelineStatisticsQuery(Shared<QueryPool>& queryPool) = 0;
+    virtual void EndPipelineStatisticsQuery(Shared<QueryPool>& queryPool)   = 0;
+
+    virtual std::vector<std::pair<std::string, std::uint64_t>> CalculateQueryPoolStatisticsResults(Shared<QueryPool>& queryPool) = 0;
+    virtual std::vector<uint64_t> CalculateQueryPoolProfilerResults(Shared<QueryPool>& queryPool, const size_t timestampCount)   = 0;
+    virtual void ResetPool(Shared<QueryPool>& queryPool)                                                                         = 0;
+    virtual void WriteTimestamp(Shared<QueryPool>& queryPool, const uint32_t timestampIndex,
+                                const EPipelineStage pipelineStage = EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT)             = 0;
 
     virtual void BeginRecording(bool bOneTimeSubmit = false, const void* inheritanceInfo = nullptr) = 0;
     virtual void EndRecording() const                                                               = 0;
