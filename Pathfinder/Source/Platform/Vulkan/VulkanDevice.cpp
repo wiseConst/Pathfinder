@@ -3,7 +3,7 @@
 
 #include "VulkanAllocator.h"
 
-#include "VulkanImage.h"
+#include "VulkanTexture.h"
 #include <Core/Application.h>
 #include <Core/Window.h>
 
@@ -435,27 +435,27 @@ void VulkanDevice::CreateCommandPools()
         for (uint16_t threadIndex = 0; threadIndex < s_WORKER_THREAD_COUNT; ++threadIndex)
         {
             VK_CHECK(vkCreateCommandPool(m_LogicalDevice, &graphicsCommandPoolCreateInfo, nullptr,
-                                         &m_GraphicsCommandPools.at(frameIndex).at(threadIndex)),
+                                         &m_GraphicsCommandPools[frameIndex][threadIndex]),
                      "Failed to create graphics command pool!");
             const std::string graphicsCommandPoolDebugName =
                 "GRAPHICS_COMMAND_POOL_FRAME[" + std::to_string(frameIndex) + "]_THREAD[" + std::to_string(threadIndex) + "]";
-            VK_SetDebugName(m_LogicalDevice, m_GraphicsCommandPools.at(frameIndex).at(threadIndex), VK_OBJECT_TYPE_COMMAND_POOL,
+            VK_SetDebugName(m_LogicalDevice, m_GraphicsCommandPools[frameIndex][threadIndex], VK_OBJECT_TYPE_COMMAND_POOL,
                             graphicsCommandPoolDebugName.data());
 
             VK_CHECK(vkCreateCommandPool(m_LogicalDevice, &computeCommandPoolCreateInfo, nullptr,
-                                         &m_ComputeCommandPools.at(frameIndex).at(threadIndex)),
+                                         &m_ComputeCommandPools[frameIndex][threadIndex]),
                      "Failed to create compute command pool!");
             const std::string computeCommandPoolDebugName =
                 "ASYNC_COMPUTE_COMMAND_POOL_FRAME[" + std::to_string(frameIndex) + "]_THREAD[" + std::to_string(threadIndex) + "]";
-            VK_SetDebugName(m_LogicalDevice, m_ComputeCommandPools.at(frameIndex).at(threadIndex), VK_OBJECT_TYPE_COMMAND_POOL,
+            VK_SetDebugName(m_LogicalDevice, m_ComputeCommandPools[frameIndex][threadIndex], VK_OBJECT_TYPE_COMMAND_POOL,
                             computeCommandPoolDebugName.data());
 
             VK_CHECK(vkCreateCommandPool(m_LogicalDevice, &transferCommandPoolCreateInfo, nullptr,
-                                         &m_TransferCommandPools.at(frameIndex).at(threadIndex)),
+                                         &m_TransferCommandPools[frameIndex][threadIndex]),
                      "Failed to create transfer command pool!");
             const std::string transferCommandPoolDebugName =
                 "ASYNC_TRANSFER_COMMAND_POOL_FRAME[" + std::to_string(frameIndex) + "]_THREAD[" + std::to_string(threadIndex) + "]";
-            VK_SetDebugName(m_LogicalDevice, m_TransferCommandPools.at(frameIndex).at(threadIndex), VK_OBJECT_TYPE_COMMAND_POOL,
+            VK_SetDebugName(m_LogicalDevice, m_TransferCommandPools[frameIndex][threadIndex], VK_OBJECT_TYPE_COMMAND_POOL,
                             transferCommandPoolDebugName.data());
         }
     }
@@ -511,14 +511,14 @@ void VulkanDevice::LoadPipelineCache()
     {
         bool bSamePipelineUUID = true;
         for (uint16_t i = 0; i < VK_UUID_SIZE && bSamePipelineUUID; ++i)
-            if (m_PipelineCacheUUID[i] != cacheData.at(16 + i)) bSamePipelineUUID = false;
+            if (m_PipelineCacheUUID[i] != cacheData[16 + i]) bSamePipelineUUID = false;
 
         bool bSameVendorID = true;
         bool bSameDeviceID = true;
         for (uint16_t i = 0; i < 4 && bSameDeviceID && bSameVendorID && bSamePipelineUUID; ++i)
         {
-            if (cacheData.at(8 + i) != ((m_VendorID >> (8 * i)) & 0xff)) bSameVendorID = false;
-            if (cacheData.at(12 + i) != ((m_DeviceID >> (8 * i)) & 0xff)) bSameDeviceID = false;
+            if (cacheData[8 + i] != ((m_VendorID >> (8 * i)) & 0xff)) bSameVendorID = false;
+            if (cacheData[12 + i] != ((m_DeviceID >> (8 * i)) & 0xff)) bSameDeviceID = false;
         }
 
         if (bSamePipelineUUID && bSameVendorID && bSameDeviceID)
@@ -548,9 +548,9 @@ VulkanDevice::~VulkanDevice()
     {
         for (uint16_t threadIndex = 0; threadIndex < s_WORKER_THREAD_COUNT; ++threadIndex)
         {
-            vkDestroyCommandPool(m_LogicalDevice, m_GraphicsCommandPools.at(frameIndex).at(threadIndex), nullptr);
-            vkDestroyCommandPool(m_LogicalDevice, m_ComputeCommandPools.at(frameIndex).at(threadIndex), nullptr);
-            vkDestroyCommandPool(m_LogicalDevice, m_TransferCommandPools.at(frameIndex).at(threadIndex), nullptr);
+            vkDestroyCommandPool(m_LogicalDevice, m_GraphicsCommandPools[frameIndex][threadIndex], nullptr);
+            vkDestroyCommandPool(m_LogicalDevice, m_ComputeCommandPools[frameIndex][threadIndex], nullptr);
+            vkDestroyCommandPool(m_LogicalDevice, m_TransferCommandPools[frameIndex][threadIndex], nullptr);
         }
     }
 
@@ -564,16 +564,16 @@ void VulkanDevice::ResetCommandPools() const
 
     for (uint16_t threadIndex = 0; threadIndex < s_WORKER_THREAD_COUNT; ++threadIndex)
     {
-        vkResetCommandPool(m_LogicalDevice, m_GraphicsCommandPools.at(currentFrameIndex).at(threadIndex), 0);
-        vkResetCommandPool(m_LogicalDevice, m_ComputeCommandPools.at(currentFrameIndex).at(threadIndex), 0);
-        vkResetCommandPool(m_LogicalDevice, m_TransferCommandPools.at(currentFrameIndex).at(threadIndex), 0);
+        vkResetCommandPool(m_LogicalDevice, m_GraphicsCommandPools[currentFrameIndex][threadIndex], 0);
+        vkResetCommandPool(m_LogicalDevice, m_ComputeCommandPools[currentFrameIndex][threadIndex], 0);
+        vkResetCommandPool(m_LogicalDevice, m_TransferCommandPools[currentFrameIndex][threadIndex], 0);
     }
 }
 
 NODISCARD bool VulkanDevice::IsDepthStencilFormatSupported(const EImageFormat imageFormat) const
 {
     return std::find(m_SupportedDepthStencilFormats.begin(), m_SupportedDepthStencilFormats.end(),
-                     ImageUtils::PathfinderImageFormatToVulkan(imageFormat)) != m_SupportedDepthStencilFormats.end();
+                     TextureUtils::PathfinderImageFormatToVulkan(imageFormat)) != m_SupportedDepthStencilFormats.end();
 }
 
 void VulkanDevice::ChooseBestPhysicalDevice(const VkInstance& instance)
@@ -772,19 +772,19 @@ void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, co
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL:
         {
             cbTypeStr        = "GRAPHICS";
-            cbAI.commandPool = m_GraphicsCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
+            cbAI.commandPool = m_GraphicsCommandPools[commandBufferSpec.FrameIndex][commandBufferSpec.ThreadID];
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE_ASYNC:
         {
             cbTypeStr        = "COMPUTE";
-            cbAI.commandPool = m_ComputeCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
+            cbAI.commandPool = m_ComputeCommandPools[commandBufferSpec.FrameIndex][commandBufferSpec.ThreadID];
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC:
         {
             cbTypeStr        = "TRANSFER";
-            cbAI.commandPool = m_TransferCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID);
+            cbAI.commandPool = m_TransferCommandPools[commandBufferSpec.FrameIndex][commandBufferSpec.ThreadID];
             break;
         }
         default: PFR_ASSERT(false, "Unknown command buffer type!");
@@ -806,19 +806,19 @@ void VulkanDevice::FreeCommandBuffer(const VkCommandBuffer& commandBuffer, const
     {
         case ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL:
         {
-            vkFreeCommandBuffers(m_LogicalDevice, m_GraphicsCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID), 1,
+            vkFreeCommandBuffers(m_LogicalDevice, m_GraphicsCommandPools[commandBufferSpec.FrameIndex][commandBufferSpec.ThreadID], 1,
                                  &commandBuffer);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_COMPUTE_ASYNC:
         {
-            vkFreeCommandBuffers(m_LogicalDevice, m_ComputeCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID), 1,
+            vkFreeCommandBuffers(m_LogicalDevice, m_ComputeCommandPools[commandBufferSpec.FrameIndex][commandBufferSpec.ThreadID], 1,
                                  &commandBuffer);
             break;
         }
         case ECommandBufferType::COMMAND_BUFFER_TYPE_TRANSFER_ASYNC:
         {
-            vkFreeCommandBuffers(m_LogicalDevice, m_TransferCommandPools.at(commandBufferSpec.FrameIndex).at(commandBufferSpec.ThreadID), 1,
+            vkFreeCommandBuffers(m_LogicalDevice, m_TransferCommandPools[commandBufferSpec.FrameIndex][commandBufferSpec.ThreadID], 1,
                                  &commandBuffer);
             break;
         }

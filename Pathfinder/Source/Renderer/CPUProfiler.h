@@ -35,7 +35,7 @@ class CPUProfiler final
 
     NODISCARD FORCEINLINE double GetCurrentFrameTimeSeconds() const
     {
-        return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(Timer::Now() - m_FrameStartTime).count());
+        return static_cast<double>(std::chrono::duration_cast<std::chrono::microseconds>(Timer::Now() - m_FrameStartTime).count()) / 1e3;
     }
 };
 

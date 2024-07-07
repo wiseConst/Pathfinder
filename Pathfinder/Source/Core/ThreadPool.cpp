@@ -35,7 +35,7 @@ static void SetThreadName(std::jthread& thread, const std::string& name)
 #endif
 }
 
-void ThreadPool::Init()
+void ThreadPool::Init() noexcept
 {
     s_Workers.resize(GetNumThreads());
 
@@ -69,14 +69,13 @@ void ThreadPool::Init()
     LOG_TRACE("{}", __FUNCTION__);
 }
 
-void ThreadPool::Shutdown()
+void ThreadPool::Shutdown() noexcept
 {
     {
         std::unique_lock lock(s_QueueMutex);
         s_bShutdownRequested = true;
     }
     s_Cv.notify_all();
-    s_Workers.clear();
     LOG_TRACE("{}", __FUNCTION__);
 }
 

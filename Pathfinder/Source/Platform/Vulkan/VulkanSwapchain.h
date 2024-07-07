@@ -92,7 +92,7 @@ class VulkanSwapchain final : public Swapchain
     void BeginPass(const Shared<CommandBuffer>& commandBuffer, const bool bPreserveContents) final override;
     void EndPass(const Shared<CommandBuffer>& commandBuffer) final override;
 
-    void CopyToSwapchain(const Shared<Image>& image) final override;
+    void CopyToSwapchain(const Shared<Texture>& texture) final override;
 };
 
 }  // namespace Pathfinder

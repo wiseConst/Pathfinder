@@ -37,10 +37,11 @@ void FinalCompositePass::AddFinalPass(Unique<RenderGraph>& rendergraph)
         {
             builder.DeclareTexture("FinalTexture",
                                    {.DebugName  = "FinalTexture",
-                                    .Width      = m_Width,
-                                    .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                    .Filter     = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                    .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                    .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                    .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
                                     .Format     = EImageFormat::FORMAT_A2R10G10B10_UNORM_PACK32,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                                                   EImageUsage::IMAGE_USAGE_TRANSFER_SRC_BIT});
@@ -66,8 +67,8 @@ void FinalCompositePass::AddFinalPass(Unique<RenderGraph>& rendergraph)
             auto& bloomTexture     = context.GetTexture(pd.BloomTexture);
 
             const PushConstantBlock pc = {.CameraDataBuffer   = cameraDataBuffer->GetBDA(),
-                                          .StorageImageIndex  = albedoTexture->GetBindlessIndex(),
-                                          .AlbedoTextureIndex = bloomTexture->GetBindlessIndex()};
+                                          .StorageImageIndex  = albedoTexture->GetTextureBindlessIndex(),
+                                          .AlbedoTextureIndex = bloomTexture->GetTextureBindlessIndex()};
 
             const auto& pipeline = PipelineLibrary::Get(rd->CompositePipelineHash);
             Renderer::BindPipeline(cb, pipeline);
@@ -91,7 +92,7 @@ void FinalCompositePass::AddSwapchainBlitPass(Unique<RenderGraph>& rendergraph)
         {
             // TODO: Insert barrier manually?
             auto& finalTexture = context.GetTexture(pd.FinalTexture);
-            Application::Get().GetWindow()->CopyToWindow(finalTexture->GetImage());
+            Application::Get().GetWindow()->CopyToWindow(finalTexture);
         });
 }
 

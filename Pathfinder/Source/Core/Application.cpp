@@ -100,9 +100,7 @@ void Application::Run()
             ss << "[present]: " << Renderer::GetStats().SwapchainPresentTime << "ms ";
             ss << "[objects]: " << Renderer::GetStats().ObjectsDrawn;
             ss << " [tris]: " << Renderer::GetStats().TriangleCount;
-            //  ss << " [2D quads]: " << Renderer2D::GetStats().QuadCount;
-            ss << " [descriptor pools]: " << Renderer::GetStats().DescriptorPoolCount;
-            ss << " [descriptor sets]: " << Renderer::GetStats().DescriptorSetCount;
+            ss << " [2D quads]: " << Renderer::GetStats().QuadCount;
             ss << " [samplers]: " << SamplerStorage::GetSamplerCount();
             ss << " [barriers]: " << Renderer::GetStats().BarrierCount;
             ss << " [barrier batches]: " << Renderer::GetStats().BarrierBatchCount;

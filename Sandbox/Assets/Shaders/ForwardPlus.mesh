@@ -33,9 +33,14 @@ layout(location = 0) out VertexOutput
 
 #define DEBUG_MESHLETS 0
 
-vec3 unpackUnorm3x8(const u8vec3 packed)
+vec3 unpackNormal(const u8vec3 packed)
 {
     return vec3(int32_t(packed.x), int32_t(packed.y), int32_t(packed.z)) / 127.0 - 1.0;
+}
+
+vec4 unpackTangent(const u8vec4 packed)
+{
+    return vec4(int32_t(packed.x), int32_t(packed.y), int32_t(packed.z), int32_t(packed.w)) / 127.0 - 1.0;
 }
 
 void main()
@@ -78,10 +83,11 @@ void main()
         o_VertexOutput[i].UV = VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].UV;
         o_VertexOutput[i].MaterialBufferBDA = md.materialBufferBDA;
 
-        const vec3 N = normalize(normalMatrix * unpackUnorm3x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Normal));
-        vec3 T = normalize(normalMatrix * unpackUnorm3x8(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Tangent));
+        const vec3 N = normalize(normalMatrix * unpackNormal(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Normal));
+        const vec4 vtxTangent = unpackTangent(VertexAttribBuffer(md.vertexAttributeBufferBDA).attributes[vi].Tangent);
+        vec3 T = normalize(normalMatrix * vtxTangent.xyz);
         T = normalize(T - dot(T, N) * N);
-        const vec3 B = cross(N, T);
+        const vec3 B = cross(N, T) * vtxTangent.w;
         o_VertexOutput[i].TBNtoWorld = mat3(T, B, N);
     }
 

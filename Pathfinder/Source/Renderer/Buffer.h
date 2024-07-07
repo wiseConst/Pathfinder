@@ -39,7 +39,7 @@ class Buffer : private Uncopyable, private Unmovable
   protected:
     BufferSpecification m_Specification = {};
     std::optional<uint64_t> m_BufferDeviceAddress;
-    void* m_Mapped                      = nullptr;
+    void* m_Mapped = nullptr;
 
     Buffer(const BufferSpecification& bufferSpec) : m_Specification(bufferSpec) {}
     Buffer() = delete;

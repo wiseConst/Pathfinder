@@ -9,7 +9,6 @@
 
 #include <Renderer/Buffer.h>
 #include <Renderer/Material.h>
-#include <Renderer/Image.h>
 #include <Renderer/Texture.h>
 #include <Renderer/Renderer.h>
 
@@ -45,7 +44,7 @@ NODISCARD FORCEINLINE static ESamplerFilter SamplerFilterToPathfinder(const fast
     {
         case fastgltf::Filter::Nearest: return ESamplerFilter::SAMPLER_FILTER_NEAREST;
         case fastgltf::Filter::Linear: return ESamplerFilter::SAMPLER_FILTER_LINEAR;
-        default: LOG_WARN("FASTGLTF: Other sampler filters aren't supported!"); return ESamplerFilter::SAMPLER_FILTER_NEAREST;
+        default: /*LOG_WARN("FASTGLTF: Other sampler filters aren't supported!"); */ return ESamplerFilter::SAMPLER_FILTER_NEAREST;
     }
 
     PFR_ASSERT(false, "Unknown fastgltf::filter!");
@@ -59,7 +58,7 @@ NODISCARD FORCEINLINE static ESamplerWrap SamplerWrapToPathfinder(const fastgltf
         case fastgltf::Wrap::ClampToEdge: return ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE;
         case fastgltf::Wrap::MirroredRepeat: return ESamplerWrap::SAMPLER_WRAP_MIRRORED_REPEAT;
         case fastgltf::Wrap::Repeat: return ESamplerWrap::SAMPLER_WRAP_REPEAT;
-        default: LOG_WARN("FASTGLTF: Other sampler wraps aren't supported!"); return ESamplerWrap::SAMPLER_WRAP_REPEAT;
+        default: /* LOG_WARN("FASTGLTF: Other sampler wraps aren't supported!"); */ return ESamplerWrap::SAMPLER_WRAP_REPEAT;
     }
 
     PFR_ASSERT(false, "Unknown fastgltf::wrap!");
@@ -89,9 +88,15 @@ NODISCARD static Shared<Texture> LoadTexture(UnorderedMap<std::string, Shared<Te
     if (fastgltfTexture.samplerIndex.has_value())
     {
         const auto& fastgltfTextureSampler = asset.samplers.at(fastgltfTexture.samplerIndex.value());
-        textureSpec.Wrap                   = FastGLTFUtils::SamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
+
+        textureSpec.WrapS = FastGLTFUtils::SamplerWrapToPathfinder(fastgltfTextureSampler.wrapS);
+        textureSpec.WrapT = FastGLTFUtils::SamplerWrapToPathfinder(fastgltfTextureSampler.wrapT);
+
         if (fastgltfTextureSampler.magFilter.has_value())
-            textureSpec.Filter = FastGLTFUtils::SamplerFilterToPathfinder(fastgltfTextureSampler.magFilter.value());
+            textureSpec.MagFilter = FastGLTFUtils::SamplerFilterToPathfinder(fastgltfTextureSampler.magFilter.value());
+
+        if (fastgltfTextureSampler.minFilter.has_value())
+            textureSpec.MinFilter = FastGLTFUtils::SamplerFilterToPathfinder(fastgltfTextureSampler.minFilter.value());
     }
 
     const auto& appSpec = Application::Get().GetSpecification();
@@ -104,135 +109,137 @@ NODISCARD static Shared<Texture> LoadTexture(UnorderedMap<std::string, Shared<Te
 
     Shared<Texture> texture = nullptr;
     std::visit(
-        fastgltf::visitor{
-            [](auto& arg) {},
-            [&](const fastgltf::sources::URI& uri)
-            {
-                std::filesystem::path textureURIPath = uri.uri.string();
-                if (const auto lastSlashIndex = textureURIPath.string().find_last_of("/"); lastSlashIndex != std::string::npos)
-                {
-                    // Strip extra info, all we want is texture name(everything after last slash).
-                    textureURIPath = uri.uri.string().substr(lastSlashIndex + 1);
-                }
+        fastgltf::visitor{[](auto& arg) {},
+                          [&](const fastgltf::sources::URI& uri)
+                          {
+                              std::filesystem::path textureURIPath = uri.uri.string();
+                              if (const auto lastSlashIndex = textureURIPath.string().find_last_of("/");
+                                  lastSlashIndex != std::string::npos)
+                              {
+                                  // Strip extra info, all we want is texture name(everything after last slash).
+                                  textureURIPath = uri.uri.string().substr(lastSlashIndex + 1);
+                              }
 
-                std::string bcExtension = ".bc";
-                switch (textureSpec.Format)
-                {
-                    case EImageFormat::FORMAT_BC1_RGB_UNORM: bcExtension += "1_rgb_unorm"; break;
-                    case EImageFormat::FORMAT_BC1_RGB_SRGB: bcExtension += "1_rgb_srgb"; break;
-                    case EImageFormat::FORMAT_BC1_RGBA_UNORM: bcExtension += "1_rgba_unorm"; break;
-                    case EImageFormat::FORMAT_BC1_RGBA_SRGB: bcExtension += "1_rgba_srgb"; break;
-                    case EImageFormat::FORMAT_BC2_UNORM: bcExtension += "2_unorm"; break;
-                    case EImageFormat::FORMAT_BC2_SRGB: bcExtension += "2_srgb"; break;
-                    case EImageFormat::FORMAT_BC3_UNORM: bcExtension += "3_unorm"; break;
-                    case EImageFormat::FORMAT_BC3_SRGB: bcExtension += "3_srgb"; break;
-                    case EImageFormat::FORMAT_BC4_UNORM: bcExtension += "4_unorm"; break;
-                    case EImageFormat::FORMAT_BC4_SNORM: bcExtension += "4_snorm"; break;
-                    case EImageFormat::FORMAT_BC5_UNORM: bcExtension += "5_unorm"; break;
-                    case EImageFormat::FORMAT_BC5_SNORM: bcExtension += "5_snorm"; break;
-                    case EImageFormat::FORMAT_BC6H_UFLOAT: bcExtension += "6H_ufloat"; break;
-                    case EImageFormat::FORMAT_BC6H_SFLOAT: bcExtension += "6H_sfloat"; break;
-                    case EImageFormat::FORMAT_BC7_UNORM: bcExtension += "7_unorm"; break;
-                    case EImageFormat::FORMAT_BC7_SRGB: bcExtension += "7_srgb"; break;
-                    default: LOG_WARN("Image format is not a BC!"); break;
-                }
+                              std::string bcExtension = ".bc";
+                              switch (textureSpec.Format)
+                              {
+                                  case EImageFormat::FORMAT_BC1_RGB_UNORM: bcExtension += "1_rgb_unorm"; break;
+                                  case EImageFormat::FORMAT_BC1_RGB_SRGB: bcExtension += "1_rgb_srgb"; break;
+                                  case EImageFormat::FORMAT_BC1_RGBA_UNORM: bcExtension += "1_rgba_unorm"; break;
+                                  case EImageFormat::FORMAT_BC1_RGBA_SRGB: bcExtension += "1_rgba_srgb"; break;
+                                  case EImageFormat::FORMAT_BC2_UNORM: bcExtension += "2_unorm"; break;
+                                  case EImageFormat::FORMAT_BC2_SRGB: bcExtension += "2_srgb"; break;
+                                  case EImageFormat::FORMAT_BC3_UNORM: bcExtension += "3_unorm"; break;
+                                  case EImageFormat::FORMAT_BC3_SRGB: bcExtension += "3_srgb"; break;
+                                  case EImageFormat::FORMAT_BC4_UNORM: bcExtension += "4_unorm"; break;
+                                  case EImageFormat::FORMAT_BC4_SNORM: bcExtension += "4_snorm"; break;
+                                  case EImageFormat::FORMAT_BC5_UNORM: bcExtension += "5_unorm"; break;
+                                  case EImageFormat::FORMAT_BC5_SNORM: bcExtension += "5_snorm"; break;
+                                  case EImageFormat::FORMAT_BC6H_UFLOAT: bcExtension += "6H_ufloat"; break;
+                                  case EImageFormat::FORMAT_BC6H_SFLOAT: bcExtension += "6H_sfloat"; break;
+                                  case EImageFormat::FORMAT_BC7_UNORM: bcExtension += "7_unorm"; break;
+                                  case EImageFormat::FORMAT_BC7_SRGB: bcExtension += "7_srgb"; break;
+                                  default: LOG_WARN("Image format is not a BC!"); break;
+                              }
 
-                std::filesystem::path textureCacheFilePath = currentMeshTextureCacheDir / textureURIPath;
-                textureCacheFilePath.replace_extension(bcExtension);
+                              std::filesystem::path textureCacheFilePath = currentMeshTextureCacheDir / textureURIPath;
+                              textureCacheFilePath.replace_extension(bcExtension);
 
-                // Firstly try to load compressed, otherwise compress and save.
-                if (std::filesystem::exists(textureCacheFilePath))
-                {
-                    std::vector<uint8_t> compressedImage;
-                    TextureCompressor::LoadCompressed(textureCacheFilePath, textureSpec, compressedImage);
-                    texture = Texture::Create(textureSpec, compressedImage.data(), compressedImage.size());
-                }
-                else
-                {
-                    int32_t x = 1, y = 1, channels = 4;
-                    const std::string texturePath   = meshAssetsDir + std::string(uri.uri.string());
-                    void* uncompressedData          = ImageUtils::LoadRawImage(texturePath, bFlipOnLoad, &x, &y, &channels);
-                    const auto uncompressedDataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
-                    textureSpec.Width               = x;
-                    textureSpec.Height              = y;
+                              // Firstly try to load compressed, otherwise compress and save.
+                              if (std::filesystem::exists(textureCacheFilePath))
+                              {
+                                  std::vector<uint8_t> compressedImage;
+                                  TextureManager::LoadCompressed(textureCacheFilePath, textureSpec, compressedImage);
+                                  texture = Texture::Create(textureSpec, compressedImage.data(), compressedImage.size());
+                              }
+                              else
+                              {
+                                  int32_t x = 1, y = 1, channels = 4;
+                                  const std::string texturePath   = meshAssetsDir + std::string(uri.uri.string());
+                                  void* uncompressedData          = TextureUtils::LoadRawImage(texturePath, bFlipOnLoad, &x, &y, &channels);
+                                  const auto uncompressedDataSize = static_cast<size_t>(x) * static_cast<size_t>(y) * channels;
+                                  textureSpec.Dimensions          = {x, y, 1};
 
-                    void* rgbToRgbaBuffer = nullptr;
-                    if (channels == 3) rgbToRgbaBuffer = ImageUtils::ConvertRgbToRgba((uint8_t*)uncompressedData, x, y);
+                                  void* rgbToRgbaBuffer = nullptr;
+                                  if (channels == 3) rgbToRgbaBuffer = TextureUtils::ConvertRgbToRgba((uint8_t*)uncompressedData, x, y);
 
-                    // Default format set in texture specification in case no BCn specified.
-                    EImageFormat srcImageFormat = EImageFormat::FORMAT_RGBA8_UNORM;
-                    switch (channels)
-                    {
-                        case 1:
-                        {
-                            if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM) textureSpec.Format = EImageFormat::FORMAT_R8_UNORM;
-                            srcImageFormat = EImageFormat::FORMAT_R8_UNORM;  // Grayscale
-                            break;
-                        }
-                        case 2:
-                        {
-                            if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM) textureSpec.Format = EImageFormat::FORMAT_RG8_UNORM;
-                            srcImageFormat = EImageFormat::FORMAT_RG8_UNORM;  // Grayscale with alpha
-                            break;
-                        }
-                        case 3:  // 24bpp(RGB) formats are hard to optimize in graphics hardware, so they're mostly
-                        // not supported(also in Vulkan). (but we handle this by converting rgb to rgba)
-                        case 4:
-                        {
-                            if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
-                                textureSpec.Format = EImageFormat::FORMAT_RGBA8_UNORM;
-                            srcImageFormat = EImageFormat::FORMAT_RGBA8_UNORM;  // RGBA
-                            break;
-                        }
-                        default: PFR_ASSERT(false, "Unsupported number of image channels!");
-                    }
+                                  // Default format set in texture specification in case no BCn specified.
+                                  EImageFormat srcImageFormat = EImageFormat::FORMAT_RGBA8_UNORM;
+                                  switch (channels)
+                                  {
+                                      case 1:
+                                      {
+                                          if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
+                                              textureSpec.Format = EImageFormat::FORMAT_R8_UNORM;
+                                          srcImageFormat = EImageFormat::FORMAT_R8_UNORM;  // Grayscale
+                                          break;
+                                      }
+                                      case 2:
+                                      {
+                                          if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
+                                              textureSpec.Format = EImageFormat::FORMAT_RG8_UNORM;
+                                          srcImageFormat = EImageFormat::FORMAT_RG8_UNORM;  // Grayscale with alpha
+                                          break;
+                                      }
+                                      case 3:  // 24bpp(RGB) formats are hard to optimize in graphics hardware, so they're mostly
+                                      // not supported(also in Vulkan). (but we handle this by converting rgb to rgba)
+                                      case 4:
+                                      {
+                                          if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
+                                              textureSpec.Format = EImageFormat::FORMAT_RGBA8_UNORM;
+                                          srcImageFormat = EImageFormat::FORMAT_RGBA8_UNORM;  // RGBA
+                                          break;
+                                      }
+                                      default: PFR_ASSERT(false, "Unsupported number of image channels!");
+                                  }
 
-                    uint8_t* whatToCompress   = nullptr;
-                    size_t whatToCompressSize = 0;
+                                  uint8_t* whatToCompress   = nullptr;
+                                  size_t whatToCompressSize = 0;
 
-                    // From: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
-                    // The textures for METALNESS and ROUGHNESS properties are packed together in a single texture called
-                    // metallicRoughnessTexture. Its GREEN channel contains ROUGHNESS values and its BLUE channel contains METALNESS values.
-                    // This texture MUST be encoded with linear transfer function and MAY use more than 8 bits per channel.
-                    // Convert to RG format by shifting GB to the left.
-                    if (bMetallicRoughness)
-                    {
-                        const size_t dataSize = static_cast<size_t>(x) * static_cast<size_t>(y);
-                        whatToCompressSize    = rgbToRgbaBuffer ? dataSize * 4 : uncompressedDataSize;
-                        whatToCompress        = static_cast<uint8_t*>(rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData);
-                        for (size_t i{}; i < dataSize; ++i)
-                        {
-                            whatToCompress[i * 4 + 0] = whatToCompress[i * 4 + 1];
-                            whatToCompress[i * 4 + 1] = whatToCompress[i * 4 + 2];
-                        }
-                    }
-                    else
-                    {
-                        whatToCompress     = reinterpret_cast<uint8_t*>(rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData);
-                        whatToCompressSize = rgbToRgbaBuffer ? static_cast<size_t>(x) * static_cast<size_t>(y) * 4 : uncompressedDataSize;
-                    }
+                                  // From: https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html
+                                  // The textures for METALNESS and ROUGHNESS properties are packed together in a single texture called
+                                  // metallicRoughnessTexture. Its GREEN channel contains ROUGHNESS values and its BLUE channel contains
+                                  // METALNESS values. This texture MUST be encoded with linear transfer function and MAY use more than 8
+                                  // bits per channel. Convert to RG format by shifting GB to the left.
+                                  if (bMetallicRoughness)
+                                  {
+                                      const size_t dataSize = static_cast<size_t>(x) * static_cast<size_t>(y);
+                                      whatToCompressSize    = rgbToRgbaBuffer ? dataSize * 4 : uncompressedDataSize;
+                                      whatToCompress        = static_cast<uint8_t*>(rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData);
+                                      for (size_t i{}; i < dataSize; ++i)
+                                      {
+                                          whatToCompress[i * 4 + 0] = whatToCompress[i * 4 + 1];
+                                          whatToCompress[i * 4 + 1] = whatToCompress[i * 4 + 2];
+                                      }
+                                  }
+                                  else
+                                  {
+                                      whatToCompress = reinterpret_cast<uint8_t*>(rgbToRgbaBuffer ? rgbToRgbaBuffer : uncompressedData);
+                                      whatToCompressSize =
+                                          rgbToRgbaBuffer ? static_cast<size_t>(x) * static_cast<size_t>(y) * 4 : uncompressedDataSize;
+                                  }
 
-                    if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
-                    {
-                        texture = Texture::Create(textureSpec, whatToCompress, whatToCompressSize);
-                    }
-                    else
-                    {
-                        void* compressedData      = nullptr;
-                        size_t compressedDataSize = 0;
+                                  if (textureSpec.Format == EImageFormat::FORMAT_RGBA8_UNORM)
+                                  {
+                                      texture = Texture::Create(textureSpec, whatToCompress, whatToCompressSize);
+                                  }
+                                  else
+                                  {
+                                      void* compressedData      = nullptr;
+                                      size_t compressedDataSize = 0;
 
-                        TextureCompressor::Compress(textureSpec, srcImageFormat, whatToCompress, whatToCompressSize, &compressedData,
-                                                    compressedDataSize);
+                                      TextureManager::Compress(textureSpec, srcImageFormat, whatToCompress, whatToCompressSize,
+                                                               &compressedData, compressedDataSize);
 
-                        texture = Texture::Create(textureSpec, compressedData, compressedDataSize);
-                        TextureCompressor::SaveCompressed(textureCacheFilePath, textureSpec, compressedData, compressedDataSize);
-                        free(compressedData);
-                    }
+                                      texture = Texture::Create(textureSpec, compressedData, compressedDataSize);
+                                      TextureManager::SaveCompressed(textureCacheFilePath, textureSpec, compressedData, compressedDataSize);
+                                      free(compressedData);
+                                  }
 
-                    ImageUtils::UnloadRawImage(uncompressedData);
-                    if (channels == 3) delete[] rgbToRgbaBuffer;
-                }
-            }},
+                                  TextureUtils::UnloadRawImage(uncompressedData);
+                                  if (channels == 3) delete[] rgbToRgbaBuffer;
+                              }
+                          }},
         fastgltfImage.data);
 
     loadedTextures[textureName] = texture;
@@ -404,7 +411,8 @@ void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& load
                                                       [&](const glm::vec3& position, std::size_t idx)
                                                       { rawVertices[idx].Position = localTransform * vec4(position, 1.0); });
 
-        constexpr auto packUnorm3x8 = [](const glm::vec3& value) { return glm::u8vec3(value * 127.f + 127.5f); };
+        constexpr auto packNormal  = [](const glm::vec3& value) { return glm::u8vec3(value * 127.f + 127.5f); };
+        constexpr auto packTangent = [](const glm::vec4& value) { return glm::u8vec4(value * 127.f + 127.5f); };
 
         // NORMAL
         if (const auto& normalIt = p.findAttribute("NORMAL"); normalIt != p.attributes.end())
@@ -413,7 +421,7 @@ void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& load
                                                           [&](const glm::vec3& normal, std::size_t idx)
                                                           {
                                                               // NOTE: Decode by using (int32_t(x)/127.0 - 1.0)
-                                                              attributeVertices[idx].Normal = packUnorm3x8(normal);
+                                                              attributeVertices[idx].Normal = packNormal(normal);
                                                           });
         }
 
@@ -422,7 +430,10 @@ void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& load
         {
             fastgltf::iterateAccessorWithIndex<glm::vec4>(asset, asset.accessors[tangentIt->second],
                                                           [&](const glm::vec4& tangent, std::size_t idx)
-                                                          { attributeVertices[idx].Tangent = packUnorm3x8(tangent); });
+                                                          {
+                                                              // NOTE: Decode by using (int32_t(x)/127.0 - 1.0)
+                                                              attributeVertices[idx].Tangent = packTangent(tangent);
+                                                          });
         }
 
         // COLOR_0
@@ -471,7 +482,7 @@ void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& load
 
                 const size_t textureIndex = materialAccessor.pbrData.baseColorTexture.value().textureIndex;
                 albedo = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC7_UNORM);
-                pbrData.AlbedoTextureIndex = albedo->GetBindlessIndex();
+                pbrData.AlbedoTextureIndex = albedo->GetTextureBindlessIndex();
             }
 
             Shared<Texture> normalMap = nullptr;
@@ -479,7 +490,7 @@ void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& load
             {
                 const size_t textureIndex = materialAccessor.normalTexture.value().textureIndex;
                 normalMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC5_UNORM);
-                pbrData.NormalTextureIndex = normalMap->GetBindlessIndex();
+                pbrData.NormalTextureIndex = normalMap->GetTextureBindlessIndex();
             }
 
             Shared<Texture> metallicRoughness = nullptr;
@@ -488,7 +499,7 @@ void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& load
                 const size_t textureIndex = materialAccessor.pbrData.metallicRoughnessTexture.value().textureIndex;
                 metallicRoughness =
                     FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC5_UNORM, true);
-                pbrData.MetallicRoughnessTextureIndex = metallicRoughness->GetBindlessIndex();
+                pbrData.MetallicRoughnessTextureIndex = metallicRoughness->GetTextureBindlessIndex();
             }
 
             Shared<Texture> emissiveMap = nullptr;
@@ -497,7 +508,7 @@ void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& load
                 const size_t textureIndex = materialAccessor.emissiveTexture.value().textureIndex;
                 emissiveMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC7_UNORM);
 
-                pbrData.EmissiveTextureIndex = emissiveMap->GetBindlessIndex();
+                pbrData.EmissiveTextureIndex = emissiveMap->GetTextureBindlessIndex();
             }
 
             Shared<Texture> occlusionMap = nullptr;
@@ -506,7 +517,7 @@ void MeshManager::LoadSubmeshes(UnorderedMap<std::string, Shared<Texture>>& load
                 const size_t textureIndex = materialAccessor.occlusionTexture.value().textureIndex;
                 occlusionMap = FastGLTFUtils::LoadTexture(loadedTextures, meshDir, textureIndex, asset, EImageFormat::FORMAT_BC4_UNORM);
 
-                pbrData.OcclusionTextureIndex = occlusionMap->GetBindlessIndex();
+                pbrData.OcclusionTextureIndex = occlusionMap->GetTextureBindlessIndex();
             }
 
             material = MakeShared<Material>(pbrData);

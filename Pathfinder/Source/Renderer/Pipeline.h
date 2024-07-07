@@ -6,7 +6,7 @@
 
 #include "RendererCoreDefines.h"
 #include "Buffer.h"
-#include "Image.h"
+#include "Texture.h"
 
 namespace Pathfinder
 {
@@ -109,17 +109,17 @@ struct BufferElement final
 class BufferLayout final
 {
   public:
-    BufferLayout(const std::initializer_list<BufferElement>& bufferElements) : m_Elements(bufferElements) { CalculateStride(); }
+    BufferLayout(const std::initializer_list<BufferElement>& bufferElements) noexcept : m_Elements(bufferElements) { CalculateStride(); }
     ~BufferLayout() = default;
 
-    NODISCARD FORCEINLINE auto GetStride() const { return m_Stride; }
-    NODISCARD FORCEINLINE const auto& GetElements() const { return m_Elements; }
+    NODISCARD FORCEINLINE auto GetStride() const noexcept { return m_Stride; }
+    NODISCARD FORCEINLINE const auto& GetElements() const noexcept { return m_Elements; }
 
   private:
     std::vector<BufferElement> m_Elements;
     uint32_t m_Stride = 0;
 
-    FORCEINLINE void CalculateStride()
+    FORCEINLINE void CalculateStride() noexcept
     {
         m_Stride = 0;
         for (auto& bufferElement : m_Elements)
@@ -173,7 +173,7 @@ class Shader;
 struct GraphicsPipelineOptions
 {
     std::vector<BufferLayout> VertexStreams = {};
-    std::vector<EImageFormat> Formats             = {};
+    std::vector<EImageFormat> Formats       = {};
 
     ECullMode CullMode                   = ECullMode::CULL_MODE_NONE;
     EFrontFace FrontFace                 = EFrontFace::FRONT_FACE_COUNTER_CLOCKWISE;
@@ -247,8 +247,7 @@ struct PipelineSpecification
 {
     std::string DebugName = s_DEFAULT_STRING;
 
-    using PipelineOptionsVariant = std::variant<GraphicsPipelineOptions, ComputePipelineOptions, RayTracingPipelineOptions>;
-    std::optional<PipelineOptionsVariant> PipelineOptions = std::nullopt;
+    std::variant<std::monostate, GraphicsPipelineOptions, ComputePipelineOptions, RayTracingPipelineOptions> PipelineOptions = {};
 
     using ShaderConstantType = std::variant<bool, int32_t, uint32_t, float>;  // NOTE: New types will grow with use.
     UnorderedMap<EShaderStage, std::vector<ShaderConstantType>> ShaderConstantsMap;
@@ -268,9 +267,9 @@ class Pipeline : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE const PipelineSpecification& GetSpecification() const { return m_Specification; }
     NODISCARD FORCEINLINE virtual void* Get() const = 0;
 
-    template <typename TPipelineOption> NODISCARD FORCEINLINE const TPipelineOption* GetPipelineOptions() const
+    template <typename TPipelineOption> NODISCARD FORCEINLINE const TPipelineOption& GetPipelineOptions() const noexcept
     {
-        PFR_ASSERT(m_Specification.PipelineOptions.has_value(), "TPipelineOption isn't valid!");
+        PFR_ASSERT(!std::holds_alternative<std::monostate>(m_Specification.PipelineOptions), "Pipeline specification hasn't options!");
 
         const bool bGraphicsPipelineOption   = std::is_same<TPipelineOption, GraphicsPipelineOptions>::value;
         const bool bComputePipelineOption    = std::is_same<TPipelineOption, ComputePipelineOptions>::value;
@@ -278,23 +277,29 @@ class Pipeline : private Uncopyable, private Unmovable
         PFR_ASSERT(bGraphicsPipelineOption || bComputePipelineOption || bRayTracingPipelineOption,
                    "Unknown TPipelineOption, supported: GraphicsPipelineOptions/ComputePipelineOptions/RayTracingPipelineOptions.");
 
-        const auto* pipelineOptions = std::get_if<TPipelineOption>(&m_Specification.PipelineOptions.value());
-        if (bGraphicsPipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_GRAPHICS ||  //
-            bComputePipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_COMPUTE ||    //
-            bRayTracingPipelineOption && m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_RAY_TRACING)
-            PFR_ASSERT(pipelineOptions, "TPipelineOption doesn't match with the pipeline type!");
+        if (m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_GRAPHICS)
+        {
+            PFR_ASSERT(bGraphicsPipelineOption, "TPipelineOption doesn't match with the pipeline type!");
+        }
+        else if (m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_COMPUTE)
+        {
+            PFR_ASSERT(bComputePipelineOption, "TPipelineOption doesn't match with the pipeline type!");
+        }
+        else if (m_Specification.PipelineType == EPipelineType::PIPELINE_TYPE_RAY_TRACING)
+        {
+            PFR_ASSERT(bRayTracingPipelineOption, "TPipelineOption doesn't match with the pipeline type!");
+        }
 
-        return pipelineOptions;
+        return std::get<TPipelineOption>(m_Specification.PipelineOptions);
     }
 
     FORCEINLINE void SetPolygonMode(const EPolygonMode polygonMode)
     {
-        if (!m_Specification.PipelineOptions.has_value()) return;
+        if (m_Specification.PipelineType != EPipelineType::PIPELINE_TYPE_GRAPHICS) return;
 
-        if (auto* graphicsPipelineOptions = std::get_if<GraphicsPipelineOptions>(&m_Specification.PipelineOptions.value()))
-        {
-            graphicsPipelineOptions->PolygonMode = polygonMode;
-        }
+        PFR_ASSERT(!std::holds_alternative<std::monostate>(m_Specification.PipelineOptions), "Pipeline specification hasn't options!");
+        auto& gpo       = std::get<GraphicsPipelineOptions>(m_Specification.PipelineOptions);
+        gpo.PolygonMode = polygonMode;
     }
 
   private:
@@ -331,6 +336,7 @@ class PipelineBuilder final : private Uncopyable, private Unmovable
 
     FORCEINLINE static void Push(const PipelineSpecification& pipelineSpec)
     {
+        PFR_ASSERT(!std::holds_alternative<std::monostate>(pipelineSpec.PipelineOptions), "Pipeline specification hasn't options!");
         std::scoped_lock lock(s_PipelineBuilderMutex);
         s_PipelinesToBuild.emplace_back(pipelineSpec);
     }

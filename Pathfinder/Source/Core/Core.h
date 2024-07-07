@@ -26,8 +26,7 @@ using UnorderedSet = ankerl::unordered_dense::set<Key, Hash, KeyEqual>;
 
 struct WindowResizeData
 {
-    uint32_t Width{};
-    uint32_t Height{};
+    glm::uvec2 Dimensions;
 };
 using ResizeCallback = std::function<void(const WindowResizeData&)>;
 
@@ -51,7 +50,7 @@ template <typename T, typename... Args> NODISCARD FORCEINLINE constexpr Shared<T
 }
 
 template <typename T> using Optional = std::optional<T>;
-template <typename T, typename... Args> NODISCARD FORCEINLINE constexpr Optional<T> MakeOptional(Args&&... args)
+template <typename T, typename... Args> NODISCARD FORCEINLINE constexpr Optional<T> MakeOptional(Args&&... args) noexcept
 {
     return std::make_optional<T>(std::forward<Args>(args)...);
 }
@@ -106,19 +105,19 @@ template <typename T> class Pool final : private Uncopyable, private Unmovable
 
     FORCEINLINE void Release(const ID& id) noexcept
     {
-        PFR_ASSERT(id < m_Data.size() && m_bIsPresent.at(id), "Object is not present in pool!");
+        PFR_ASSERT(id < m_Data.size() && m_bIsPresent[id], "Object is not present in pool!");
         m_bIsPresent[id] = false;
         m_FreeIDs.emplace_back(id);
     }
 
     NODISCARD FORCEINLINE T& Get(const ID& id) noexcept
     {
-        PFR_ASSERT(id < m_Data.size() && m_bIsPresent.at(id), "Object is not present in pool!");
-        return m_Data.at(id);
+        PFR_ASSERT(id < m_Data.size() && m_bIsPresent[id], "Object is not present in pool!");
+        return m_Data[id];
     }
 
-    NODISCARD FORCEINLINE const auto GetSize() const { return m_Data.size(); }
-    NODISCARD FORCEINLINE bool IsPresent(const ID& id) const noexcept { return id < m_bIsPresent.size() && m_bIsPresent.at(id); }
+    NODISCARD FORCEINLINE const auto GetSize() const noexcept { return m_Data.size(); }
+    NODISCARD FORCEINLINE bool IsPresent(const ID& id) const noexcept { return id < m_bIsPresent.size() && m_bIsPresent[id]; }
 
     class Iterator final
     {
@@ -136,7 +135,7 @@ template <typename T> class Pool final : private Uncopyable, private Unmovable
         FORCEINLINE bool operator!=(const Iterator& other) const { return m_ID != other.m_ID; }
 
       private:
-        FORCEINLINE void NextPresentElement()
+        FORCEINLINE void NextPresentElement() noexcept
         {
             for (; m_ID < m_Pool.GetSize() && !m_Pool.IsPresent(m_ID); ++m_ID)
                 ;
@@ -149,7 +148,7 @@ template <typename T> class Pool final : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE auto begin() { return Iterator(*this, 0); }
     NODISCARD FORCEINLINE auto end() { return Iterator(*this, GetSize()); }
 
-    FORCEINLINE void Clear() { m_Data.clear(), m_bIsPresent.clear(), m_FreeIDs.clear(); }
+    FORCEINLINE void Clear() noexcept { m_Data.clear(), m_bIsPresent.clear(), m_FreeIDs.clear(); }
 
   private:
     std::vector<T> m_Data;
@@ -163,15 +162,15 @@ class Timer final
     Timer() noexcept = default;
     ~Timer()         = default;
 
-  NODISCARD FORCEINLINE double GetElapsedSeconds() const { return GetElapsedMilliseconds() / 1000; }
+    NODISCARD FORCEINLINE double GetElapsedSeconds() const noexcept { return GetElapsedMilliseconds() / 1000; }
 
-  NODISCARD FORCEINLINE double GetElapsedMilliseconds() const
+    NODISCARD FORCEINLINE double GetElapsedMilliseconds() const noexcept
     {
         const auto elapsed = std::chrono::duration<double, std::milli>(Now() - m_StartTime);
         return elapsed.count();
     }
 
-  NODISCARD FORCEINLINE static std::chrono::time_point<std::chrono::high_resolution_clock> Now()
+    NODISCARD FORCEINLINE static std::chrono::time_point<std::chrono::high_resolution_clock> Now() noexcept
     {
         return std::chrono::high_resolution_clock::now();
     }
@@ -185,7 +184,7 @@ template <typename T>
         t.resize(std::size_t{});
         t.data();
     }
-NODISCARD static T LoadData(const std::string_view& filePath)
+NODISCARD static T LoadData(const std::string_view& filePath) noexcept
 {
     PFR_ASSERT(!filePath.empty(), "FilePath is empty! Nothing to load data from!");
 
@@ -208,7 +207,7 @@ NODISCARD static T LoadData(const std::string_view& filePath)
 }
 
 // NOTE: dataSize [bytes]
-static void SaveData(const std::string_view& filePath, const void* data, const int64_t dataSize)
+static void SaveData(const std::string_view& filePath, const void* data, const int64_t dataSize) noexcept
 {
     PFR_ASSERT(!filePath.empty(), "FilePath is empty! Nothing to save data to!");
 
@@ -237,7 +236,7 @@ struct ProfilerTask
     glm::vec3 Color{1.f};
 
     // Milliseconds
-    NODISCARD FORCEINLINE auto GetLength() const { return EndTime - StartTime; }
+    NODISCARD FORCEINLINE auto GetLength() const noexcept { return EndTime - StartTime; }
 };
 
 }  // namespace Pathfinder

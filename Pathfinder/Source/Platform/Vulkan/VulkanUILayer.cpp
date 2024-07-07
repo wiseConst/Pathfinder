@@ -12,7 +12,6 @@
 #include "VulkanDevice.h"
 #include "VulkanContext.h"
 #include "VulkanCommandBuffer.h"
-#include "VulkanImage.h"
 #include "VulkanTexture.h"
 
 #include <Renderer/Swapchain.h>
@@ -79,7 +78,7 @@ void VulkanUILayer::Init()
     ImGui_ImplGlfw_InitForVulkan((GLFWwindow*)window->Get(), true);
 
     const auto& swapchain              = window->GetSwapchain();
-    const auto vkImageFormat           = ImageUtils::PathfinderImageFormatToVulkan(swapchain->GetImageFormat());
+    const auto vkImageFormat           = TextureUtils::PathfinderImageFormatToVulkan(swapchain->GetImageFormat());
     ImGui_ImplVulkan_InitInfo initInfo = {
         .Instance                    = context.GetInstance(),
         .PhysicalDevice              = device->GetPhysicalDevice(),

@@ -9,12 +9,13 @@ namespace Pathfinder
 
 struct RGTextureSpecification
 {
-    std::string DebugName      = s_DEFAULT_STRING;
-    uint32_t Width             = 1;
-    uint32_t Height            = 1;
+    std::string DebugName = s_DEFAULT_STRING;
+    glm::uvec3 Dimensions{0};
     bool bGenerateMips         = false;
-    ESamplerWrap Wrap          = ESamplerWrap::SAMPLER_WRAP_REPEAT;
-    ESamplerFilter Filter      = ESamplerFilter::SAMPLER_FILTER_LINEAR;
+    ESamplerWrap WrapS         = ESamplerWrap::SAMPLER_WRAP_REPEAT;
+    ESamplerWrap WrapT         = WrapS;
+    ESamplerFilter MinFilter   = ESamplerFilter::SAMPLER_FILTER_LINEAR;
+    ESamplerFilter MagFilter   = MinFilter;
     EImageFormat Format        = EImageFormat::FORMAT_RGBA8_UNORM;
     ImageUsageFlags UsageFlags = EImageUsage::IMAGE_USAGE_SAMPLED_BIT;
     uint32_t Layers            = 1;

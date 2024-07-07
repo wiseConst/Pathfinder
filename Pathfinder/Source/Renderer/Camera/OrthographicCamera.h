@@ -29,6 +29,7 @@ class OrthographicCamera final : public Camera
 
     ~OrthographicCamera() override = default;
 
+    glm::mat4 GetUnreversedProjection() const final override { return m_Projection; }
     NODISCARD FORCEINLINE const float GetNearPlaneDepth() const final override { return -m_ZoomLevel; }
     NODISCARD FORCEINLINE const float GetFarPlaneDepth() const final override { return m_ZoomLevel; }
     NODISCARD FORCEINLINE const float GetZoom() const final override { return m_ZoomLevel; }

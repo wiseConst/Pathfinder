@@ -13,11 +13,11 @@
 namespace Pathfinder
 {
 
-class ThreadPool final : private Uncopyable, private Unmovable
+class ThreadPool final
 {
   public:
     template <typename Func, typename... Args>
-    NODISCARD FORCEINLINE static auto Submit(Func&& func, Args&&... args) -> std::shared_future<decltype(func(args...))>
+    NODISCARD FORCEINLINE static auto Submit(Func&& func, Args&&... args) noexcept -> std::shared_future<decltype(func(args...))>
     {
         using ReturnType = decltype(func(args...));
         std::packaged_task<ReturnType()> task(std::bind(std::forward<Func>(func), std::forward<Args>(args)...));
@@ -30,16 +30,16 @@ class ThreadPool final : private Uncopyable, private Unmovable
         return future;
     }
 
-    static void Init();
-    static void Shutdown();
+    static void Init() noexcept;
+    static void Shutdown() noexcept;
 
-    NODISCARD FORCEINLINE static uint32_t GetNumThreads()
+    NODISCARD FORCEINLINE static uint32_t GetNumThreads() noexcept
     {
         return std::clamp(std::thread::hardware_concurrency() - 1u, 1u, (uint32_t)s_WORKER_THREAD_COUNT);
     }
 
     // NOTE: Maps thread::id to actual worker index.
-    NODISCARD FORCEINLINE static uint8_t MapThreadID(const std::thread::id& threadID)
+    NODISCARD FORCEINLINE static uint8_t MapThreadID(const std::thread::id& threadID) noexcept
     {
         if (threadID == s_MainThreadID) return 0;
 
@@ -49,7 +49,7 @@ class ThreadPool final : private Uncopyable, private Unmovable
         return 0;
     }
 
-    NODISCARD FORCEINLINE static const auto GetMainThreadID() { return s_MainThreadID; }
+    NODISCARD FORCEINLINE static const auto GetMainThreadID() noexcept { return s_MainThreadID; }
 
   private:
     static inline std::condition_variable_any s_Cv;
@@ -59,7 +59,7 @@ class ThreadPool final : private Uncopyable, private Unmovable
     static inline std::thread::id s_MainThreadID = std::this_thread::get_id();
     static inline bool s_bShutdownRequested      = false;
 
-    ThreadPool()  = default;
+    ThreadPool()  = delete;
     ~ThreadPool() = default;
 };
 

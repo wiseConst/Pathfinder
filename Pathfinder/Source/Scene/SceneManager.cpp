@@ -19,8 +19,8 @@ static void to_json(nlohmann::ordered_json& j, const glm::vec2& P)
 
 static void from_json(const nlohmann::ordered_json& j, glm::vec2& P)
 {
-    P.x = j.at("x").get<float>();
-    P.y = j.at("y").get<float>();
+    P.x = j["x"].get<float>();
+    P.y = j["y"].get<float>();
 }
 
 static void to_json(nlohmann::ordered_json& j, const glm::vec3& P)
@@ -30,9 +30,9 @@ static void to_json(nlohmann::ordered_json& j, const glm::vec3& P)
 
 static void from_json(const nlohmann::ordered_json& j, glm::vec3& P)
 {
-    P.x = j.at("x").get<float>();
-    P.y = j.at("y").get<float>();
-    P.z = j.at("z").get<float>();
+    P.x = j["x"].get<float>();
+    P.y = j["y"].get<float>();
+    P.z = j["z"].get<float>();
 }
 
 static void to_json(nlohmann::ordered_json& j, const glm::vec4& P)
@@ -42,10 +42,10 @@ static void to_json(nlohmann::ordered_json& j, const glm::vec4& P)
 
 static void from_json(const nlohmann::ordered_json& j, glm::vec4& P)
 {
-    P.x = j.at("x").get<float>();
-    P.y = j.at("y").get<float>();
-    P.z = j.at("z").get<float>();
-    P.w = j.at("w").get<float>();
+    P.x = j["x"].get<float>();
+    P.y = j["y"].get<float>();
+    P.z = j["z"].get<float>();
+    P.w = j["w"].get<float>();
 }
 
 }  // namespace glm

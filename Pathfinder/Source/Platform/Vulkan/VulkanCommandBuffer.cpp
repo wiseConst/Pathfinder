@@ -4,7 +4,6 @@
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
 #include "VulkanPipeline.h"
-#include "VulkanImage.h"
 #include "VulkanTexture.h"
 #include "VulkanBuffer.h"
 
@@ -476,37 +475,37 @@ void VulkanCommandBuffer::BeginRendering(const std::vector<Shared<Texture>>& att
     // TODO: Stencil
     for (size_t i{}; i < attachments.size(); ++i)
     {
-        auto vulkanImage = std::static_pointer_cast<VulkanImage>(attachments.at(i)->GetImage());
-        PFR_ASSERT(vulkanImage, "Failed to cast Image to VulkanImage");
-        maxLayerCount = std::max(maxLayerCount, vulkanImage->GetSpecification().Layers);
+        maxLayerCount = std::max(maxLayerCount, attachments[i]->GetSpecification().Layers);
 
-        if (ImageUtils::IsDepthFormat(vulkanImage->GetSpecification().Format))
+        if (TextureUtils::IsDepthFormat(attachments[i]->GetSpecification().Format))
         {
-            const auto* color = std::get_if<DepthStencilClearValue>(&renderingInfos.at(i).ClearValue);
+            const auto* color = std::get_if<DepthStencilClearValue>(&renderingInfos[i].ClearValue);
             PFR_ASSERT(color, "DepthStencilClearValue is not valid!");
 
-            depthAttachment.imageView               = vulkanImage->GetView();
+            depthAttachment.imageView               = (VkImageView)attachments[i]->GetView();
             depthAttachment.imageLayout             = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-            depthAttachment.loadOp                  = CommandBufferUtils::PathfinderLoadOpToVulkan(renderingInfos.at(i).LoadOp);
-            depthAttachment.storeOp                 = CommandBufferUtils::PathfinderStoreOpToVulkan(renderingInfos.at(i).StoreOp);
-            depthAttachment.clearValue.depthStencil = {color->Depth, color->Stencil};
+            depthAttachment.loadOp                  = CommandBufferUtils::PathfinderLoadOpToVulkan(renderingInfos[i].LoadOp);
+            depthAttachment.storeOp                 = CommandBufferUtils::PathfinderStoreOpToVulkan(renderingInfos[i].StoreOp);
+            depthAttachment.clearValue.depthStencil = {.depth = color->Depth, .stencil = color->Stencil};
         }
         else
         {
-            const auto* color = std::get_if<ColorClearValue>(&renderingInfos.at(i).ClearValue);
+            const auto* color = std::get_if<ColorClearValue>(&renderingInfos[i].ClearValue);
             PFR_ASSERT(color, "ColorClearValue is not valid!");
 
             auto& attachment            = colorAttachments.emplace_back(VK_STRUCTURE_TYPE_RENDERING_ATTACHMENT_INFO);
-            attachment.imageView        = vulkanImage->GetView();
+            attachment.imageView        = (VkImageView)attachments[i]->GetView();
             attachment.imageLayout      = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-            attachment.loadOp           = CommandBufferUtils::PathfinderLoadOpToVulkan(renderingInfos.at(i).LoadOp);
-            attachment.storeOp          = CommandBufferUtils::PathfinderStoreOpToVulkan(renderingInfos.at(i).StoreOp);
+            attachment.loadOp           = CommandBufferUtils::PathfinderLoadOpToVulkan(renderingInfos[i].LoadOp);
+            attachment.storeOp          = CommandBufferUtils::PathfinderStoreOpToVulkan(renderingInfos[i].StoreOp);
             attachment.clearValue.color = {color->x, color->y, color->z, color->w};
         }
     }
 
     // NOTE: Assuming all attachments have the same dimensions.
-    renderingInfo.renderArea = {0, 0, attachments.at(0)->GetSpecification().Width, attachments.at(0)->GetSpecification().Height};
+    renderingInfo.renderArea = {
+        .offset{.x = 0, .y = 0},
+        .extent{.width = attachments[0]->GetSpecification().Dimensions.x, .height = attachments[0]->GetSpecification().Dimensions.y}};
     renderingInfo.layerCount = maxLayerCount;
 
     renderingInfo.colorAttachmentCount = static_cast<uint32_t>(colorAttachments.size());
@@ -575,10 +574,11 @@ void VulkanCommandBuffer::SetViewportAndScissor(const uint32_t width, const uint
 
 void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
 {
-    if (const auto* graphicsPipelineOptions = pipeline->GetPipelineOptions<GraphicsPipelineOptions>())
+    if (pipeline->GetSpecification().PipelineType == EPipelineType::PIPELINE_TYPE_GRAPHICS)
     {
-        if (graphicsPipelineOptions->bDynamicPolygonMode)
-            vkCmdSetPolygonModeEXT(m_Handle, VulkanUtils::PathfinderPolygonModeToVulkan(graphicsPipelineOptions->PolygonMode));
+        const auto& gpo = pipeline->GetPipelineOptions<GraphicsPipelineOptions>();
+
+        if (gpo.bDynamicPolygonMode) vkCmdSetPolygonModeEXT(m_Handle, VulkanUtils::PathfinderPolygonModeToVulkan(gpo.PolygonMode));
     }
 
     VkPipelineBindPoint pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
@@ -589,9 +589,12 @@ void VulkanCommandBuffer::BindPipeline(Shared<Pipeline>& pipeline) const
         case EPipelineType::PIPELINE_TYPE_RAY_TRACING: pipelineBindPoint = VK_PIPELINE_BIND_POINT_RAY_TRACING_KHR; break;
     }
 
-    if (const auto* graphicsPipelineOptions = pipeline->GetPipelineOptions<GraphicsPipelineOptions>();
-        graphicsPipelineOptions && graphicsPipelineOptions->LineWidth != 1.f)
-        vkCmdSetLineWidth(m_Handle, graphicsPipelineOptions->LineWidth);
+    if (pipeline->GetSpecification().PipelineType == EPipelineType::PIPELINE_TYPE_GRAPHICS)
+    {
+        const auto& gpo = pipeline->GetPipelineOptions<GraphicsPipelineOptions>();
+
+        if (gpo.LineWidth != 1.f) vkCmdSetLineWidth(m_Handle, gpo.LineWidth);
+    }
 
     vkCmdBindPipeline(m_Handle, pipelineBindPoint, (VkPipeline)pipeline->Get());
 }
@@ -664,19 +667,19 @@ void VulkanCommandBuffer::InsertBarriers(const std::vector<MemoryBarrier>& memor
     std::vector<VkMemoryBarrier2> memoryBarriersVK(memoryBarriers.size());
     for (uint32_t i{}; i < memoryBarriers.size(); ++i)
     {
-        auto& memoryBarrier    = memoryBarriers.at(i);
-        memoryBarriersVK.at(i) = {.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
-                                  .srcStageMask  = CommandBufferUtils::PathfinderPipelineStageToVulkan(memoryBarrier.srcStageMask),
-                                  .srcAccessMask = CommandBufferUtils::PathfinderAccessFlagsToVulkan(memoryBarrier.srcAccessMask),
-                                  .dstStageMask  = CommandBufferUtils::PathfinderPipelineStageToVulkan(memoryBarrier.dstStageMask),
-                                  .dstAccessMask = CommandBufferUtils::PathfinderAccessFlagsToVulkan(memoryBarrier.dstAccessMask)};
+        auto& memoryBarrier = memoryBarriers[i];
+        memoryBarriersVK[i] = {.sType         = VK_STRUCTURE_TYPE_MEMORY_BARRIER_2,
+                               .srcStageMask  = CommandBufferUtils::PathfinderPipelineStageToVulkan(memoryBarrier.srcStageMask),
+                               .srcAccessMask = CommandBufferUtils::PathfinderAccessFlagsToVulkan(memoryBarrier.srcAccessMask),
+                               .dstStageMask  = CommandBufferUtils::PathfinderPipelineStageToVulkan(memoryBarrier.dstStageMask),
+                               .dstAccessMask = CommandBufferUtils::PathfinderAccessFlagsToVulkan(memoryBarrier.dstAccessMask)};
     }
 
     std::vector<VkBufferMemoryBarrier2> bufferMemoryBarriersVK(bufferMemoryBarriers.size());
     for (uint32_t i{}; i < bufferMemoryBarriers.size(); ++i)
     {
-        auto& bufferMemoryBarrier    = bufferMemoryBarriers.at(i);
-        bufferMemoryBarriersVK.at(i) = {
+        auto& bufferMemoryBarrier = bufferMemoryBarriers[i];
+        bufferMemoryBarriersVK[i] = {
             .sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
             .srcStageMask        = CommandBufferUtils::PathfinderPipelineStageToVulkan(bufferMemoryBarrier.srcStageMask),
             .srcAccessMask       = CommandBufferUtils::PathfinderAccessFlagsToVulkan(bufferMemoryBarrier.srcAccessMask),
@@ -694,30 +697,31 @@ void VulkanCommandBuffer::InsertBarriers(const std::vector<MemoryBarrier>& memor
     std::vector<VkImageMemoryBarrier2> imageMemoryBarriersVK(imageMemoryBarriers.size());
     for (uint32_t i{}; i < imageMemoryBarriers.size(); ++i)
     {
-        auto& imageMemoryBarrier = imageMemoryBarriers.at(i);
+        auto& imageMemoryBarrier = imageMemoryBarriers[i];
 
         VkImageAspectFlags aspectMask = VK_IMAGE_ASPECT_NONE;
-        if (ImageUtils::IsDepthFormat(imageMemoryBarrier.image->GetSpecification().Format))
+        if (TextureUtils::IsDepthFormat(imageMemoryBarrier.texture->GetSpecification().Format))
         {
             aspectMask = VK_IMAGE_ASPECT_DEPTH_BIT;
-            if (ImageUtils::IsStencilFormat(imageMemoryBarrier.image->GetSpecification().Format)) aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+            if (TextureUtils::IsStencilFormat(imageMemoryBarrier.texture->GetSpecification().Format))
+                aspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
         }
         else
             aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
 
-        imageMemoryBarriersVK.at(i) = {
+        imageMemoryBarriersVK[i] = {
             .sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
             .srcStageMask        = CommandBufferUtils::PathfinderPipelineStageToVulkan(imageMemoryBarrier.srcStageMask),
             .srcAccessMask       = CommandBufferUtils::PathfinderAccessFlagsToVulkan(imageMemoryBarrier.srcAccessMask),
             .dstStageMask        = CommandBufferUtils::PathfinderPipelineStageToVulkan(imageMemoryBarrier.dstStageMask),
             .dstAccessMask       = CommandBufferUtils::PathfinderAccessFlagsToVulkan(imageMemoryBarrier.dstAccessMask),
-            .oldLayout           = ImageUtils::PathfinderImageLayoutToVulkan(imageMemoryBarrier.oldLayout),
-            .newLayout           = ImageUtils::PathfinderImageLayoutToVulkan(imageMemoryBarrier.newLayout),
+            .oldLayout           = TextureUtils::PathfinderImageLayoutToVulkan(imageMemoryBarrier.oldLayout),
+            .newLayout           = TextureUtils::PathfinderImageLayoutToVulkan(imageMemoryBarrier.newLayout),
             .srcQueueFamilyIndex = imageMemoryBarrier.srcQueueFamilyIndex.has_value() ? imageMemoryBarrier.srcQueueFamilyIndex.value()
                                                                                       : VK_QUEUE_FAMILY_IGNORED,
             .dstQueueFamilyIndex = imageMemoryBarrier.dstQueueFamilyIndex.has_value() ? imageMemoryBarrier.dstQueueFamilyIndex.value()
                                                                                       : VK_QUEUE_FAMILY_IGNORED,
-            .image               = (VkImage)imageMemoryBarrier.image->Get(),
+            .image               = (VkImage)imageMemoryBarrier.texture->Get(),
             .subresourceRange    = {.aspectMask     = aspectMask,
                                     .baseMipLevel   = imageMemoryBarrier.subresourceRange.baseMipLevel,
                                     .levelCount     = imageMemoryBarrier.subresourceRange.mipCount,
@@ -780,8 +784,8 @@ std::vector<std::pair<std::string, std::uint64_t>> VulkanCommandBuffer::Calculat
 
         for (size_t i = 0; i < pipelineStatistiscs.size(); ++i)
         {
-            results[i].first  = s_PipelineStatisticsNames.at(i);
-            results[i].second = pipelineStatistiscs.at(i);
+            results[i].first  = s_PipelineStatisticsNames[i];
+            results[i].second = pipelineStatistiscs[i];
         }
     }
 

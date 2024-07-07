@@ -60,7 +60,7 @@ void DebugRenderer::Init()
         .bDepthWrite       = false,
         .DepthCompareOp    = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL};
     PipelineSpecification spherePipelineSpec = {.DebugName       = "DebugSphere",
-                                                .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(sphereGPO),
+                                                .PipelineOptions = sphereGPO,
                                                 .Shader          = ShaderLibrary::Get("Debug/Sphere"),
                                                 .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
     s_DebugRendererData->SpherePipelineHash  = PipelineLibrary::Push(spherePipelineSpec);
@@ -79,7 +79,7 @@ void DebugRenderer::Init()
                                               .bDepthWrite       = false,
                                               .DepthCompareOp    = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL};
     PipelineSpecification linePipelineSpec = {.DebugName       = "DebugLine",
-                                              .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(lineGPO),
+                                              .PipelineOptions = lineGPO,
                                               .Shader          = ShaderLibrary::Get("Debug/Line"),
                                               .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
     s_DebugRendererData->LinePipelineHash  = PipelineLibrary::Push(linePipelineSpec);
@@ -88,8 +88,9 @@ void DebugRenderer::Init()
     s_DebugRendererData->DebugPass =
         DebugPass(windowSpec.Width, windowSpec.Height, s_DebugRendererData->SpherePipelineHash, s_DebugRendererData->LinePipelineHash);
 
-    Application::Get().GetWindow()->AddResizeCallback([](const WindowResizeData& resizeData)
-                                                      { s_DebugRendererData->DebugPass.OnResize(resizeData.Width, resizeData.Height); });
+    Application::Get().GetWindow()->AddResizeCallback(
+        [](const WindowResizeData& resizeData)
+        { s_DebugRendererData->DebugPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y); });
 
     PipelineLibrary::Compile();
     LOG_TRACE("{}", __FUNCTION__);

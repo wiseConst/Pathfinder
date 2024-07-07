@@ -27,9 +27,12 @@ class Camera : private Uncopyable, private Unmovable
     // for ortho I do inversion by hand
     NODISCARD FORCEINLINE const auto& GetView() const { return m_View; }
 
+    // NOTE: By default I have reversed Z!
+    virtual glm::mat4 GetUnreversedProjection() const = 0;
     NODISCARD FORCEINLINE auto GetViewProjection() const { return m_Projection * m_View; }
     NODISCARD FORCEINLINE const auto& GetProjection() const { return m_Projection; }
     NODISCARD FORCEINLINE auto GetInverseProjection() const { return glm::inverse(m_Projection); }
+    NODISCARD FORCEINLINE auto GetInverseView() const { return glm::inverse(m_View); }
     NODISCARD FORCEINLINE const auto& GetPosition() const { return m_Position; }
     NODISCARD FORCEINLINE const auto& GetForwardVector() const { return m_Forward; }
 

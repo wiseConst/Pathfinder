@@ -26,6 +26,7 @@ void GBufferPass::AddForwardPlusOpaquePass(Unique<RenderGraph>& rendergraph)
 {
     struct PassData
     {
+        RGBufferID CSMData;
         RGBufferID CameraData;
         RGBufferID LightData;
         RGBufferID MeshData;
@@ -45,20 +46,22 @@ void GBufferPass::AddForwardPlusOpaquePass(Unique<RenderGraph>& rendergraph)
 
             builder.DeclareTexture("AlbedoTexture_V0",
                                    {.DebugName  = "AlbedoTexture_V0",
-                                    .Width      = m_Width,
-                                    .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                    .Filter     = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                    .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                    .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                    .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
                                     .Format     = EImageFormat::FORMAT_RGBA16F,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteRenderTarget("AlbedoTexture_V0", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
 
             builder.DeclareTexture("HDRTexture_V0",
                                    {.DebugName  = "HDRTexture_V0",
-                                    .Width      = m_Width,
-                                    .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                    .Filter     = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                    .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                    .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                    .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
                                     .Format     = EImageFormat::FORMAT_RGBA16F,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteRenderTarget("HDRTexture_V0", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
@@ -77,6 +80,23 @@ void GBufferPass::AddForwardPlusOpaquePass(Unique<RenderGraph>& rendergraph)
             pd.SSSTexture    = builder.ReadTexture("SSSTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
+
+            const auto& rd = Renderer::GetRendererData();
+
+            pd.CSMData = builder.ReadBuffer("CSMData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            for (size_t dirLightIndex{}; dirLightIndex < rd->LightStruct->DirectionalLightCount; ++dirLightIndex)
+            {
+                if (!rd->LightStruct->DirectionalLights[dirLightIndex].bCastShadows) continue;
+
+                for (uint32_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
+                {
+                    const std::string passName =
+                        "DirLight[" + std::to_string(dirLightIndex) + "]_CSMPass[" + std::to_string(cascadeIndex) + "]";
+
+                    const std::string csmTextureName = "Cascade[" + std::to_string(cascadeIndex) + "]";
+                    builder.ReadTexture(csmTextureName, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+                }
+            }
         },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
         {
@@ -93,17 +113,19 @@ void GBufferPass::AddForwardPlusOpaquePass(Unique<RenderGraph>& rendergraph)
             auto& culledSpotLightIndicesBuffer  = context.GetBuffer(pd.CulledSpotLightIndices);
             auto& aoBlurTexture                 = context.GetTexture(pd.AOBlurTexture);
             auto& sssTexture                    = context.GetTexture(pd.SSSTexture);  // TODO: use it
+            auto& csmDataBuffer                 = context.GetBuffer(pd.CSMData);
 
             if (drawBufferOpaque->GetMapped()) rd->ObjectCullStats.DrawCountOpaque = *(uint32_t*)drawBufferOpaque->GetMapped();
             Renderer::GetStats().ObjectsDrawn += rd->ObjectCullStats.DrawCountOpaque;
 
             const PushConstantBlock pc = {.CameraDataBuffer                   = cameraDataBuffer->GetBDA(),
                                           .LightDataBuffer                    = lightDataBuffer->GetBDA(),
-                                          .StorageImageIndex                  = aoBlurTexture->GetBindlessIndex(),
+                                          .StorageImageIndex                  = aoBlurTexture->GetTextureBindlessIndex(),
                                           .VisiblePointLightIndicesDataBuffer = culledPointLightIndicesBuffer->GetBDA(),
                                           .VisibleSpotLightIndicesDataBuffer  = culledSpotLightIndicesBuffer->GetBDA(),
                                           .addr0                              = meshDataOpaqueBuffer->GetBDA(),
-                                          .addr1                              = culledMeshesBufferOpaque->GetBDA()};
+                                          .addr1                              = culledMeshesBufferOpaque->GetBDA(),
+                                          .addr2                              = csmDataBuffer->GetBDA()};
 
             const auto& pipeline = PipelineLibrary::Get(rd->ForwardPlusOpaquePipelineHash);
             Renderer::BindPipeline(cb, pipeline);
@@ -175,7 +197,7 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
 
             const PushConstantBlock pc = {.CameraDataBuffer                   = cameraDataBuffer->GetBDA(),
                                           .LightDataBuffer                    = lightDataBuffer->GetBDA(),
-                                          .StorageImageIndex                  = aoBlurTexture->GetBindlessIndex(),
+                                          .StorageImageIndex                  = aoBlurTexture->GetTextureBindlessIndex(),
                                           .VisiblePointLightIndicesDataBuffer = culledPointLightIndicesBuffer->GetBDA(),
                                           .VisibleSpotLightIndicesDataBuffer  = culledSpotLightIndicesBuffer->GetBDA(),
                                           .addr0                              = meshDataTransparentBuffer->GetBDA(),

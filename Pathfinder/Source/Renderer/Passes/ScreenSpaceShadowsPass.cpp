@@ -39,10 +39,11 @@ void ScreenSpaceShadowsPass::AddPass(Unique<RenderGraph>& rendergraph)
 
             builder.DeclareTexture("SSSTexture",
                                    {.DebugName  = "SSSTexture",
-                                    .Width      = m_Width,
-                                    .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                    .Filter     = ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                    .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                    .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .MinFilter  = ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                    .MagFilter  = ESamplerFilter::SAMPLER_FILTER_LINEAR,
                                     .Format     = EImageFormat::FORMAT_R16_UNORM,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_STORAGE_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                                                   EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT});
@@ -69,8 +70,8 @@ void ScreenSpaceShadowsPass::AddPass(Unique<RenderGraph>& rendergraph)
 
             const PushConstantBlock pc = {.CameraDataBuffer                   = cameraDataBuffer->GetBDA(),
                                           .LightDataBuffer                    = lightDataBuffer->GetBDA(),
-                                          .StorageImageIndex                  = sssTexture->GetImage()->GetBindlessIndex(),
-                                          .AlbedoTextureIndex                 = depthOpaqueTexture->GetBindlessIndex(),
+                                          .StorageImageIndex                  = sssTexture->GetStorageTextureBindlessIndex(),
+                                          .AlbedoTextureIndex                 = depthOpaqueTexture->GetTextureBindlessIndex(),
                                           .VisiblePointLightIndicesDataBuffer = culledPointLightIndicesBuffer->GetBDA(),
                                           .VisibleSpotLightIndicesDataBuffer  = culledSpotLightIndicesBuffer->GetBDA()};
 

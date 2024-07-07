@@ -32,7 +32,7 @@ class Material final : private Uncopyable, private Unmovable
     void SetMetallicRoughnessMap(const Shared<Texture>& metallicRoughness);
     void SetOcclusionMap(const Shared<Texture>& ao);
 
-  protected:
+  private:
     PBRData m_MaterialData              = {};
     Shared<Texture> m_Albedo            = nullptr;
     Shared<Texture> m_NormalMap         = nullptr;

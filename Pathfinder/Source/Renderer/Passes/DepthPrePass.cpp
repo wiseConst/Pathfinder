@@ -31,10 +31,11 @@ void DepthPrePass::AddPass(Unique<RenderGraph>& rendergraph)
         [=](PassData& pd, RenderGraphBuilder& builder)
         {
             builder.DeclareTexture("DepthOpaque", {.DebugName  = "DepthOpaque",
-                                                   .Width      = m_Width,
-                                                   .Height     = m_Height,
-                                                   .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                                   .Filter     = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                                   .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                                   .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                                   .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                                   .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                                   .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
                                                    .Format     = EImageFormat::FORMAT_D32F,
                                                    .UsageFlags = EImageUsage::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                                                                  EImageUsage::IMAGE_USAGE_SAMPLED_BIT});

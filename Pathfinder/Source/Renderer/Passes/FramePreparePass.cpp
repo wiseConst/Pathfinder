@@ -16,6 +16,8 @@ namespace Pathfinder
 
 void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
 {
+    PrepareCSMData();
+
     struct PassData
     {
         RGBufferID LightData;
@@ -26,6 +28,7 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
         RGBufferID DrawBufferTransparent;
         RGBufferID CulledMeshesOpaque;
         RGBufferID CulledMeshesTransparent;
+        RGBufferID CSMData;
     };
 
     rendergraph->AddPass<PassData>(
@@ -75,12 +78,20 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
             culledMeshesBS.DebugName = "CulledMeshesTransparent_V0";
             builder.DeclareBuffer("CulledMeshesTransparent_V0", culledMeshesBS);
             pd.CulledMeshesTransparent = builder.WriteBuffer("CulledMeshesTransparent_V0");
+
+            builder.DeclareBuffer("CSMData", {.DebugName  = "CSMData",
+                                              .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
+                                              .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE});
+            pd.CSMData = builder.WriteBuffer("CSMData");
         },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
         {
             //  if (Renderer::IsWorldEmpty()) return;
 
             const auto& rd = Renderer::GetRendererData();
+
+            auto& csmDataBuffer = context.GetBuffer(pd.CSMData);
+            csmDataBuffer->SetData(rd->ShadowMapData.data(), sizeof(rd->ShadowMapData));
 
             auto& lightDataBuffer = context.GetBuffer(pd.LightData);
             lightDataBuffer->SetData(rd->LightStruct.get(), sizeof(LightData));
@@ -160,12 +171,129 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
                 meshDataTransparentBuffer->SetData(transparentMeshesData.data(),
                                                    transparentMeshesData.size() * sizeof(transparentMeshesData[0]));
 
-
             cb->FillBuffer(drawBufferOpaque, 0);
             cb->FillBuffer(culledMeshesBufferOpaque, 0);
             cb->FillBuffer(drawBufferTransparent, 0);
             cb->FillBuffer(culledMeshesBufferTransparent, 0);
         });
+}
+
+glm::mat4 FramePreparePass::CalculateLightSpaceViewProjMatrix(const glm::vec3& lightDir, const float zNear, const float zFar)
+{
+    const auto& rd = Renderer::GetRendererData();
+
+    // Converting our i-th camera's view frustum to world space, so we can tightly fit ortho frustum in the whole camera frustum.
+    const glm::mat4 proj                    = glm::perspective(glm::radians(rd->CameraStruct.FOV),
+                                                               rd->CameraStruct.FullResolution.x / rd->CameraStruct.FullResolution.y, zNear, zFar);
+    std::vector<glm::vec4> frustumCornersWS = GetFrustumCornersWorldSpace(proj * rd->CameraStruct.View);
+
+    glm::vec3 frustumCenter{0.f};
+    for (const auto& frustumCorner : frustumCornersWS)
+        frustumCenter += glm::vec3(frustumCorner);
+
+    frustumCenter /= frustumCornersWS.size();
+    const glm::mat4 lightView = glm::lookAt(frustumCenter + lightDir, frustumCenter, glm::vec3{0.f, 1.0f, 0.f});
+
+    glm::vec3 minCoord{std::numeric_limits<float>::max()};
+    glm::vec3 maxCoord{std::numeric_limits<float>::min()};
+    for (const auto& frustumCorner : frustumCornersWS)
+    {
+        const auto cornerLightVS = glm::vec3(lightView * frustumCorner);
+        minCoord                 = glm::min(minCoord, cornerLightVS);
+        maxCoord                 = glm::max(maxCoord, cornerLightVS);
+    }
+
+#if 0
+    // Think about it : not only geometry which is in the frustum can cast shadows on a surface in the frustum !
+    // Pulling back and pushing away Z
+    // Tune this parameter according to the scene
+    constexpr float zMult = 10.0f;
+    if (minZ < 0)
+    {
+        minZ *= zMult;
+    }
+    else
+    {
+        minZ /= zMult;
+    }
+    if (maxZ < 0)
+    {
+        maxZ /= zMult;
+    }
+    else
+    {
+        maxZ *= zMult;
+    }
+#endif
+
+    return glm::ortho(minCoord.x, maxCoord.x, minCoord.y, maxCoord.y, 0.0f, maxCoord.z - minCoord.z) * lightView;
+}
+
+std::vector<glm::vec4> FramePreparePass::GetFrustumCornersWorldSpace(const glm::mat4& projView)
+{
+    const auto inverseProjView = glm::inverse(projView);
+    std::vector<glm::vec4> frustumCornersWS;
+    for (uint32_t x{}; x < 2; ++x)
+    {
+        for (uint32_t y{}; y < 2; ++y)
+        {
+            for (uint32_t z{}; z < 2; ++z)
+            {
+                const glm::vec4 pt = inverseProjView * glm::vec4(x * 2.f - 1.f, y * 2.f - 1.f, (float)z, 1.f);
+                frustumCornersWS.emplace_back(pt / pt.w);  // don't forget the perspective division
+            }
+        }
+    }
+
+    return frustumCornersWS;
+}
+
+void FramePreparePass::PrepareCSMData()
+{
+    const auto& rd = Renderer::GetRendererData();
+
+    // NOTE: CascadePlacement should be in FrameData, now it's duplicated.
+    for (size_t dirLightIndex{}; dirLightIndex < MAX_DIR_LIGHTS; ++dirLightIndex)
+    {
+        float divisor = 50.f;
+        for (size_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
+        {
+            rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex] = rd->CameraStruct.zFar / divisor;
+            divisor /= 2.f;
+        }
+    }
+
+    /*m_CascadePlacementZ.front() = rd->CameraStruct.zNear;
+    m_CascadePlacementZ.back()  = rd->CameraStruct.zFar;
+    for (size_t i{}; i < m_CascadePlacementZ.size(); ++i)
+    {
+        if (i == 0 || i + 1 == m_CascadePlacementZ.size()) continue;
+
+        m_CascadePlacementZ.at(i) = m_CascadePlacementZ.back() / (m_CascadePlacementZ.size() - i);
+    }*/
+
+    for (size_t dirLightIndex{}; dirLightIndex < MAX_DIR_LIGHTS; ++dirLightIndex)
+    {
+        if (!rd->LightStruct->DirectionalLights[dirLightIndex].bCastShadows) continue;
+
+        for (size_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
+        {
+            if (cascadeIndex + 1 == SHADOW_CASCADE_COUNT)
+            {
+                rd->ShadowMapData[dirLightIndex].ViewProj[cascadeIndex] =
+                    CalculateLightSpaceViewProjMatrix(rd->LightStruct->DirectionalLights[dirLightIndex].Direction,
+                                                      rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex - 1],
+                                                      rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex]);
+            }
+            else
+            {
+                rd->ShadowMapData[dirLightIndex].ViewProj[cascadeIndex] =
+                    CalculateLightSpaceViewProjMatrix(rd->LightStruct->DirectionalLights[dirLightIndex].Direction,
+                                                      rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex],
+                                                      rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex + 1]);
+            }
+        }
+    }
 }
 
 }  // namespace Pathfinder

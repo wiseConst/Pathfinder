@@ -80,8 +80,6 @@ class Renderer final
         return s_RendererData->CachedPipelineStats;
     }
 
-    static Shared<Image> GetFinalPassImage();
-
     NODISCARD FORCEINLINE static const auto& GetRendererData()
     {
         PFR_ASSERT(s_RendererData, "RendererData is not valid!");
@@ -159,9 +157,9 @@ class Renderer final
         Pathfinder::BloomPass BloomPass;
         std::array<uint64_t, 2> BloomPipelineHash;
 
-        uint32_t CurrentCascadeIndex                     = 0;
-        CSMData CascadeShadowsData[SHADOW_CASCADE_COUNT] = {0};
-        uint64_t CSMPipelineHash                         = 0;
+        // Cascaded Shadows
+        std::array<CSMData, MAX_DIR_LIGHTS> ShadowMapData = {0};
+        uint64_t CSMPipelineHash                          = 0;
         Pathfinder::CascadedShadowMapPass CascadedShadowMapPass;
 
         /*             SCREEN-SPACE SHADOWS                */
@@ -210,19 +208,30 @@ class Renderer final
 
     static inline RendererSettings s_RendererSettings;
 
-    // TODO: std::atomic<uint64_t>
     struct RendererStats
     {
-        uint32_t TriangleCount;
-        uint32_t DescriptorSetCount;
-        uint32_t DescriptorPoolCount;
-        uint32_t ObjectsDrawn;
-        uint32_t BarrierCount;
-        uint32_t BarrierBatchCount;
+        std::atomic<uint64_t> TriangleCount;
+        std::atomic<uint64_t> ObjectsDrawn;
+        std::atomic<uint64_t> BarrierCount;
+        std::atomic<uint64_t> BarrierBatchCount;
+        std::atomic<uint64_t> QuadCount;
         float GPUTime;
         float SwapchainPresentTime;
         uint32_t ImageViewCount;
         std::vector<MemoryBudget> MemoryBudgets;
+
+        void Reset()
+        {
+            TriangleCount.store(0);
+            ObjectsDrawn.store(0);
+            BarrierCount.store(0);
+            BarrierBatchCount.store(0);
+            QuadCount.store(0);
+            GPUTime              = 0.f;
+            SwapchainPresentTime = 0.f;
+            ImageViewCount       = 0;
+            MemoryBudgets.clear();
+        }
     };
 
     static inline RendererStats s_RendererStats = {};

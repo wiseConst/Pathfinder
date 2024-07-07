@@ -44,22 +44,24 @@ void LightCullingPass::AddLightCullingPass(Unique<RenderGraph>& rendergraph)
 
             // TODO: Move  FrustumDebugTexture to ComputeFrustums pass
             builder.DeclareTexture("FrustumDebugTexture",
-                                   {.DebugName  = "FrustumDebugTexture",
-                                    .Width      = m_Width,
-                                    .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                    .Filter     = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                   {.DebugName = "FrustumDebugTexture",
+                                    .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                    .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                    .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
                                     .Format     = EImageFormat::FORMAT_RGBA8_UNORM,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_STORAGE_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                                                   EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT});
             pd.FrustumDebugTexture = builder.WriteTexture("FrustumDebugTexture");
 
             builder.DeclareTexture("LightHeatMapTexture",
-                                   {.DebugName  = "LightHeatMapTexture",
-                                    .Width      = m_Width,
-                                    .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                    .Filter     = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                   {.DebugName = "LightHeatMapTexture",
+                                    .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                    .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+                                    .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
                                     .Format     = EImageFormat::FORMAT_RGBA8_UNORM,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_STORAGE_BIT | EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT |
                                                   EImageUsage::IMAGE_USAGE_SAMPLED_BIT | EImageUsage::IMAGE_USAGE_TRANSFER_DST_BIT});
@@ -100,12 +102,12 @@ void LightCullingPass::AddLightCullingPass(Unique<RenderGraph>& rendergraph)
 
             PushConstantBlock pc = {.CameraDataBuffer                   = cameraDataBuffer->GetBDA(),
                                     .LightDataBuffer                    = lightDataBuffer->GetBDA(),
-                                    .StorageImageIndex                  = lightHeatMapTexture->GetImage()->GetBindlessIndex(),
-                                    .AlbedoTextureIndex                 = depthOpaqueTexture->GetBindlessIndex(),
+                                    .StorageImageIndex                  = lightHeatMapTexture->GetStorageTextureBindlessIndex(),
+                                    .AlbedoTextureIndex                 = depthOpaqueTexture->GetTextureBindlessIndex(),
                                     .LightCullingFrustumDataBuffer      = lightCullFrustumsDataBuffer->GetBDA(),
                                     .VisiblePointLightIndicesDataBuffer = culledPointLightIndicesBuffer->GetBDA(),
                                     .VisibleSpotLightIndicesDataBuffer  = culledSpotLightIndicesBuffer->GetBDA()};
-            pc.data0.x           = frustumDebugTexture->GetImage()->GetBindlessIndex();
+            pc.data0.x           = frustumDebugTexture->GetStorageTextureBindlessIndex();
 
             const auto& pipeline = PipelineLibrary::Get(rd->LightCullingPipelineHash);
             Renderer::BindPipeline(cb, pipeline);

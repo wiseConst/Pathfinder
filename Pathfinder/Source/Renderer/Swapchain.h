@@ -3,7 +3,7 @@
 #include <Core/Core.h>
 #include <Core/Window.h>
 #include <Renderer/RendererCoreDefines.h>
-#include "Image.h"
+#include "Texture.h"
 
 namespace Pathfinder
 {
@@ -37,7 +37,7 @@ class Swapchain : private Uncopyable, private Unmovable
     NODISCARD FORCEINLINE virtual void* GetRenderSemaphore() const         = 0;
 
     virtual void Invalidate()                                       = 0;
-    virtual void CopyToSwapchain(const Shared<Image>& image)        = 0;
+    virtual void CopyToSwapchain(const Shared<Texture>& texture)        = 0;
     virtual void AddResizeCallback(ResizeCallback&& resizeCallback) = 0;
 
     static Unique<Swapchain> Create(void* windowHandle);

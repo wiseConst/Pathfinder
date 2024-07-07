@@ -85,29 +85,26 @@ std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const Pipelin
     {
         case EPipelineType::PIPELINE_TYPE_GRAPHICS:
         {
-            const auto* GPO = std::get_if<GraphicsPipelineOptions>(&pipelineSpec.PipelineOptions.value());
-            if (!GPO)
-            {
-                LOG_WARN("GraphicsPipelineOptions is not valid!");
-                break;
-            }
+            PFR_ASSERT(std::holds_alternative<GraphicsPipelineOptions>(pipelineSpec.PipelineOptions),
+                       "PipelineSpecification doesn't contain GraphicsPipelineOptions!");
 
-            for (const auto format : GPO->Formats)
+            const auto& gpo = std::get<GraphicsPipelineOptions>(pipelineSpec.PipelineOptions);
+            for (const auto format : gpo.Formats)
             {
                 hash_combine(hash, std::hash<std::uint8_t>{}(static_cast<std::uint8_t>(format)));
             }
-            hash_combine(hash, std::hash<ECullMode>{}(GPO->CullMode));
-            hash_combine(hash, std::hash<EFrontFace>{}(GPO->FrontFace));
-            hash_combine(hash, std::hash<EPrimitiveTopology>{}(GPO->PrimitiveTopology));
-            hash_combine(hash, std::hash<EBlendMode>{}(GPO->BlendMode));
-            hash_combine(hash, std::hash<EPolygonMode>{}(GPO->PolygonMode));
-            hash_combine(hash, std::hash<ECompareOp>{}(GPO->DepthCompareOp));
-            hash_combine(hash, std::hash<uint64_t>{}(GPO->bDepthTest + GPO->bDepthWrite + GPO->bDynamicPolygonMode + GPO->bMeshShading +
-                                                     GPO->LineWidth));
+            hash_combine(hash, std::hash<ECullMode>{}(gpo.CullMode));
+            hash_combine(hash, std::hash<EFrontFace>{}(gpo.FrontFace));
+            hash_combine(hash, std::hash<EPrimitiveTopology>{}(gpo.PrimitiveTopology));
+            hash_combine(hash, std::hash<EBlendMode>{}(gpo.BlendMode));
+            hash_combine(hash, std::hash<EPolygonMode>{}(gpo.PolygonMode));
+            hash_combine(hash, std::hash<ECompareOp>{}(gpo.DepthCompareOp));
+            hash_combine(
+                hash, std::hash<uint64_t>{}(gpo.bDepthTest + gpo.bDepthWrite + gpo.bDynamicPolygonMode + gpo.bMeshShading + gpo.LineWidth));
 
-            for (size_t i{}; i < GPO->VertexStreams.size(); ++i)
+            for (size_t i{}; i < gpo.VertexStreams.size(); ++i)
             {
-                const auto& bufferElements = GPO->VertexStreams[i].GetElements();
+                const auto& bufferElements = gpo.VertexStreams[i].GetElements();
 
                 for (size_t k{}; k < bufferElements.size(); ++k)
                 {
@@ -121,25 +118,21 @@ std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const Pipelin
         }
         case EPipelineType::PIPELINE_TYPE_COMPUTE:
         {
-            const auto* CPO = std::get_if<ComputePipelineOptions>(&pipelineSpec.PipelineOptions.value());
-            if (!CPO)
-            {
-                LOG_WARN("GraphicsPipelineOptions is not valid!");
-                break;
-            }
+            PFR_ASSERT(std::holds_alternative<ComputePipelineOptions>(pipelineSpec.PipelineOptions),
+                       "PipelineSpecification doesn't contain ComputePipelineOptions!");
+
+            const auto& cpo = std::get<ComputePipelineOptions>(pipelineSpec.PipelineOptions);
 
             break;
         }
         case EPipelineType::PIPELINE_TYPE_RAY_TRACING:
         {
-            const auto* RTPO = std::get_if<RayTracingPipelineOptions>(&pipelineSpec.PipelineOptions.value());
-            if (!RTPO)
-            {
-                LOG_WARN("GraphicsPipelineOptions is not valid!");
-                break;
-            }
 
-            hash_combine(hash, std::hash<size_t>{}(RTPO->MaxPipelineRayRecursionDepth));
+            PFR_ASSERT(std::holds_alternative<RayTracingPipelineOptions>(pipelineSpec.PipelineOptions),
+                       "PipelineSpecification doesn't contain RayTracingPipelineOptions!");
+
+            const auto& rtpo = std::get<RayTracingPipelineOptions>(pipelineSpec.PipelineOptions);
+            hash_combine(hash, std::hash<size_t>{}(rtpo.MaxPipelineRayRecursionDepth));
 
             break;
         }

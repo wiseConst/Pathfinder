@@ -236,7 +236,7 @@ void SandboxLayer::OnUIRender()
         for (const auto& task : cpuTimers)
         {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{task.Color.x, task.Color.y, task.Color.z, 1.f});
-            ImGui::Text("%s: %0.3f(ms)", task.Tag.data(), task.GetLength());
+            ImGui::Text("%s: %0.3lf(ms)", task.Tag.data(), task.GetLength());
             ImGui::PopStyleColor();
         }
 
@@ -245,7 +245,7 @@ void SandboxLayer::OnUIRender()
         for (const auto& task : gpuTimers)
         {
             ImGui::PushStyleColor(ImGuiCol_Text, ImVec4{task.Color.x, task.Color.y, task.Color.z, 1.f});
-            ImGui::Text("%s: %0.3f(ms)", task.Tag.data(), task.GetLength());
+            ImGui::Text("%s: %0.3lf(ms)", task.Tag.data(), task.GetLength());
             ImGui::PopStyleColor();
         }
 

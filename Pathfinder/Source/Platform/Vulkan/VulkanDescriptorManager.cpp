@@ -22,7 +22,7 @@ VulkanDescriptorManager::VulkanDescriptorManager()
 void VulkanDescriptorManager::Bind(const Shared<CommandBuffer>& commandBuffer, const RendererTypeFlags bindPoints)
 {
     const auto currentFrame    = Application::Get().GetWindow()->GetCurrentFrameIndex();
-    const auto& currentMegaSet = m_MegaSet.at(currentFrame);
+    const auto& currentMegaSet = m_MegaSet[currentFrame];
 
     // NOTE: If override bind points aren't specified we use bindpoint based on command buffer type, otherwise we handle override bind
     // points.
@@ -75,7 +75,7 @@ void VulkanDescriptorManager::LoadImage(const void* pImageInfo, Optional<uint32_
     for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
         const VkWriteDescriptorSet writeSet = {.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                                               .dstSet          = m_MegaSet.at(frame),
+                                               .dstSet          = m_MegaSet[frame],
                                                .dstBinding      = STORAGE_IMAGE_BINDING,
                                                .dstArrayElement = outIndex.value(),
                                                .descriptorCount = 1,
@@ -101,7 +101,7 @@ void VulkanDescriptorManager::LoadTexture(const void* pTextureInfo, Optional<uin
     for (uint32_t frame{}; frame < s_FRAMES_IN_FLIGHT; ++frame)
     {
         const VkWriteDescriptorSet writeSet = {.sType           = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET,
-                                               .dstSet          = m_MegaSet.at(frame),
+                                               .dstSet          = m_MegaSet[frame],
                                                .dstBinding      = TEXTURE_BINDING,
                                                .dstArrayElement = outIndex.value(),
                                                .descriptorCount = 1,
@@ -155,20 +155,17 @@ void VulkanDescriptorManager::CreateDescriptorPools()
             VulkanUtils::GetDescriptorPoolCreateInfo(static_cast<uint32_t>(megaDescriptorPoolSizes.size()), 1,
                                                      megaDescriptorPoolSizes.data(), VK_DESCRIPTOR_POOL_CREATE_UPDATE_AFTER_BIND_BIT);
 
-        VK_CHECK(vkCreateDescriptorPool(logicalDevice, &megaDescriptorPoolCI, nullptr, &m_MegaDescriptorPool.at(frame)),
+        VK_CHECK(vkCreateDescriptorPool(logicalDevice, &megaDescriptorPoolCI, nullptr, &m_MegaDescriptorPool[frame]),
                  "Failed to create bindless mega descriptor pool!");
         const std::string megaDescriptorPoolPoolDebugName = std::string("VK_BINDLESS_MEGA_DESCRIPTOR_POOL_") + std::to_string(frame);
-        VK_SetDebugName(logicalDevice, m_MegaDescriptorPool.at(frame), VK_OBJECT_TYPE_DESCRIPTOR_POOL,
+        VK_SetDebugName(logicalDevice, m_MegaDescriptorPool[frame], VK_OBJECT_TYPE_DESCRIPTOR_POOL,
                         megaDescriptorPoolPoolDebugName.data());
 
         const VkDescriptorSetAllocateInfo megaSetAI =
-            VulkanUtils::GetDescriptorSetAllocateInfo(m_MegaDescriptorPool.at(frame), 1, &m_MegaDescriptorSetLayout);
-        VK_CHECK(vkAllocateDescriptorSets(logicalDevice, &megaSetAI, &m_MegaSet.at(frame)), "Failed to allocate mega set!");
+            VulkanUtils::GetDescriptorSetAllocateInfo(m_MegaDescriptorPool[frame], 1, &m_MegaDescriptorSetLayout);
+        VK_CHECK(vkAllocateDescriptorSets(logicalDevice, &megaSetAI, &m_MegaSet[frame]), "Failed to allocate mega set!");
         const std::string megaSetDebugName = std::string("VK_BINDLESS_MEGA_SET_") + std::to_string(frame);
-        VK_SetDebugName(logicalDevice, m_MegaSet.at(frame), VK_OBJECT_TYPE_DESCRIPTOR_SET, megaSetDebugName.data());
-
-        Renderer::GetStats().DescriptorSetCount += 1;
-        Renderer::GetStats().DescriptorPoolCount += 1;
+        VK_SetDebugName(logicalDevice, m_MegaSet[frame], VK_OBJECT_TYPE_DESCRIPTOR_SET, megaSetDebugName.data());
     }
 
     m_PCBlock = VulkanUtils::GetPushConstantRange(VK_SHADER_STAGE_ALL, /* offset */ 0, sizeof(PushConstantBlock));
@@ -186,8 +183,6 @@ void VulkanDescriptorManager::CreateDescriptorPools()
 
 void VulkanDescriptorManager::Destroy()
 {
-    Renderer::GetStats().DescriptorSetCount -= s_FRAMES_IN_FLIGHT;
-    Renderer::GetStats().DescriptorPoolCount -= s_FRAMES_IN_FLIGHT;
     const auto& logicalDevice = VulkanContext::Get().GetDevice()->GetLogicalDevice();
 
     std::ranges::for_each(m_MegaDescriptorPool,

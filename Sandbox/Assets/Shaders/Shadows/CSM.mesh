@@ -9,6 +9,9 @@
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out;
 
+// NOTE:
+// StorageImageIndex - light index, AlbedoTextureIndex - cascade index
+
 void main()
 {
     uint32_t i = 0; // reusable var
@@ -31,7 +34,7 @@ void main()
         const uint32_t vi = MeshletVerticesBuffer(md.meshletVerticesBufferBDA).vertices[vertexOffset + i];
         const vec3 worldPos = RotateByQuat(VertexPosBuffer(md.vertexPosBufferBDA).positions[vi].Position * md.scale, md.orientation) + md.translation;
 
-        gl_MeshVerticesEXT[i].gl_Position = CameraData(u_PC.CameraDataBuffer).ViewProjection * vec4(worldPos, 1.0);
+        gl_MeshVerticesEXT[i].gl_Position = CSMDataBuffer(u_PC.addr2).ShadowMapData[u_PC.StorageImageIndex].ViewProj[u_PC.AlbedoTextureIndex] * vec4(worldPos, 1.0);
     }
 
     const uint32_t triangleOffset = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].triangleOffset;

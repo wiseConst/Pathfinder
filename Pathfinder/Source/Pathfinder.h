@@ -25,7 +25,6 @@
 #include <Renderer/Swapchain.h>
 #include <Renderer/RendererAPI.h>
 #include <Renderer/Texture.h>
-#include <Renderer/Image.h>
 #include <Renderer/Renderer.h>
 #include <Renderer/Camera/Camera.h>
 #include <Renderer/Camera/OrthographicCamera.h>

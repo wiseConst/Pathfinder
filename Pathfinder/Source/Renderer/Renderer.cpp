@@ -87,15 +87,15 @@ void Renderer::Init()
     Application::Get().GetWindow()->AddResizeCallback(
         [](const WindowResizeData& resizeData)
         {
-            s_RendererData->DepthPrePass.OnResize(resizeData.Width, resizeData.Height);
-            s_RendererData->CascadedShadowMapPass.OnResize(resizeData.Width, resizeData.Height);
-            s_RendererData->LightCullingPass.OnResize(resizeData.Width, resizeData.Height);
-            s_RendererData->SSSPass.OnResize(resizeData.Width, resizeData.Height);
-            s_RendererData->SSAOPass.OnResize(resizeData.Width, resizeData.Height);
-            s_RendererData->AOBlurPass.OnResize(resizeData.Width, resizeData.Height);
-            s_RendererData->GBufferPass.OnResize(resizeData.Width, resizeData.Height);
-            s_RendererData->BloomPass.OnResize(resizeData.Width, resizeData.Height);
-            s_RendererData->FinalCompositePass.OnResize(resizeData.Width, resizeData.Height);
+            s_RendererData->DepthPrePass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
+            s_RendererData->CascadedShadowMapPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
+            s_RendererData->LightCullingPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
+            s_RendererData->SSSPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
+            s_RendererData->SSAOPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
+            s_RendererData->AOBlurPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
+            s_RendererData->GBufferPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
+            s_RendererData->BloomPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
+            s_RendererData->FinalCompositePass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
         });
 
     // Noise texture for ambient occlusions
@@ -103,21 +103,22 @@ void Renderer::Init()
         const auto& appSpec       = Application::Get().GetSpecification();
         const auto rotTexturePath = std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / "Other/rot_texture.bmp";
         int32_t x = 0, y = 0, channels = 0;
-        uint8_t* rawImageData = reinterpret_cast<uint8_t*>(ImageUtils::LoadRawImage(rotTexturePath, false, &x, &y, &channels));
-        void* rgbaImageData   = ImageUtils::ConvertRgbToRgba(rawImageData, x, y);
+        uint8_t* rawImageData = reinterpret_cast<uint8_t*>(TextureUtils::LoadRawImage(rotTexturePath, false, &x, &y, &channels));
+        void* rgbaImageData   = TextureUtils::ConvertRgbToRgba(rawImageData, x, y);
 
         const TextureSpecification aoNoiseTS{
-            .DebugName = "Default_NoiseAO",
-            .Width     = static_cast<uint32_t>(x),
-            .Height    = static_cast<uint32_t>(y),
-            .Wrap      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-            .Filter    = ESamplerFilter::SAMPLER_FILTER_NEAREST,
-            .Format    = EImageFormat::FORMAT_RGBA32F,
+            .DebugName  = "Default_NoiseAO",
+            .Dimensions = glm::uvec3(x, y, 1),
+            .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+            .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+            .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+            .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
+            .Format     = EImageFormat::FORMAT_RGBA32F,
         };
         s_RendererData->AONoiseTexture = Texture::Create(aoNoiseTS, rgbaImageData, x * y * sizeof(glm::vec4));
 
         free(rgbaImageData);
-        ImageUtils::UnloadRawImage(rawImageData);
+        TextureUtils::UnloadRawImage(rawImageData);
     }
 
     PipelineLibrary::Compile();
@@ -175,7 +176,6 @@ void Renderer::Begin()
     s_RendererData->CameraStruct.FullResolution    = glm::vec2(window->GetSpecification().Width, window->GetSpecification().Height);
     s_RendererData->CameraStruct.InvFullResolution = 1.f / s_RendererData->CameraStruct.FullResolution;
 
-    s_RendererData->CurrentCascadeIndex  = 0;
     s_RendererData->bAnybodyCastsShadows = false;
     s_RendererData->LastBoundPipeline.reset();
 
@@ -200,13 +200,9 @@ void Renderer::Begin()
 
     s_RendererData->UploadHeap.at(s_RendererData->FrameIndex)->Resize(s_RendererData->s_MAX_UPLOAD_HEAP_CAPACITY);
 
-    uint32_t prevPoolCount              = s_RendererStats.DescriptorPoolCount;
-    uint32_t prevDescriptorSetCount     = s_RendererStats.DescriptorSetCount;
-    uint32_t prevImageViewCount         = s_RendererStats.ImageViewCount;
-    s_RendererStats                     = {};
-    s_RendererStats.DescriptorPoolCount = prevPoolCount;
-    s_RendererStats.DescriptorSetCount  = prevDescriptorSetCount;
-    s_RendererStats.ImageViewCount      = prevImageViewCount;
+    uint32_t prevImageViewCount = s_RendererStats.ImageViewCount;
+    s_RendererStats.Reset();
+    s_RendererStats.ImageViewCount = prevImageViewCount;
 
     s_RendererData->LightStruct->PointLightCount           = s_RendererData->LightStruct->SpotLightCount =
         s_RendererData->LightStruct->DirectionalLightCount = 0;
@@ -229,9 +225,9 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
 
     auto rg = MakeUnique<RenderGraph>(s_RendererData->FrameIndex, std::string(s_ENGINE_NAME), s_RendererData->ResourcePool);
 
-    s_RendererData->FramePreparePass.AddPass(rg);   // Set camera data, light data, etc..
-    s_RendererData->ObjectCullingPass.AddPass(rg);  // Cull objects in compute, fill indirect arg buffers.
-                                                    //  s_RendererData->CascadedShadowMapPass.AddPass(rg); // Cascaded Shadows
+    s_RendererData->FramePreparePass.AddPass(rg);       // Set camera data, light data, etc..
+    s_RendererData->ObjectCullingPass.AddPass(rg);      // Cull objects in compute, fill indirect arg buffers.
+    s_RendererData->CascadedShadowMapPass.AddPass(rg);  // Cascaded Directional Shadows
     s_RendererData->DepthPrePass.AddPass(rg);
     s_RendererData->LightCullingPass.AddPass(rg);  // Cull lights, fill buffers with culled indices.
     s_RendererData->SSSPass.AddPass(rg);           // ScreenSpace shadows
@@ -268,6 +264,8 @@ void Renderer::Flush(const Unique<UILayer>& uiLayer)
 
     s_RendererData->CPUProfiler.EndFrame();
     s_RendererData->CachedCPUTimers = s_RendererData->CPUProfiler.GetResults();
+    s_RendererStats.QuadCount += s_RendererData->R2D->GetStats().QuadCount;
+    s_RendererStats.TriangleCount += s_RendererData->R2D->GetStats().TriangleCount;
 }
 
 void Renderer::BeginScene(const Camera& camera)
@@ -353,25 +351,18 @@ void Renderer::AddSpotLight(const SpotLight& sl)
     s_RendererData->LightStruct->SpotLights[s_RendererData->LightStruct->SpotLightCount++] = sl;
 }
 
-Shared<Image> Renderer::GetFinalPassImage()
-{
-    PFR_ASSERT(false, "NOT IMPLEMENTED!");
-    PFR_ASSERT(s_RendererData, "RendererData is not valid!");
-    return nullptr;  // s_RendererData->CompositeFramebuffer->GetAttachments()[0].Attachment;
-}
-
 void Renderer::CreatePipelines()
 {
     // Compute Light-Culling Frustums && Light-Culling
     {
         PipelineSpecification computeFrustumsPS     = {.DebugName       = "ComputeFrustums",
-                                                       .PipelineOptions = MakeOptional<ComputePipelineOptions>(),
+                                                       .PipelineOptions = ComputePipelineOptions{},
                                                        .Shader          = ShaderLibrary::Get("Culling/ComputeFrustums"),
                                                        .PipelineType    = EPipelineType::PIPELINE_TYPE_COMPUTE};
         s_RendererData->ComputeFrustumsPipelineHash = PipelineLibrary::Push(computeFrustumsPS);
 
         PipelineSpecification lightCullingPS     = {.DebugName       = "LightCulling",
-                                                    .PipelineOptions = MakeOptional<ComputePipelineOptions>(),
+                                                    .PipelineOptions = ComputePipelineOptions{},
                                                     .Shader          = ShaderLibrary::Get({"Culling/LightCulling", {{"ADVANCED_CULLING", ""}}}),
                                                     .PipelineType    = EPipelineType::PIPELINE_TYPE_COMPUTE};
         s_RendererData->LightCullingPipelineHash = PipelineLibrary::Push(lightCullingPS);
@@ -380,7 +371,7 @@ void Renderer::CreatePipelines()
     // Object-Culling
     {
         PipelineSpecification objectCullingPS     = {.DebugName       = "ObjectCulling",
-                                                     .PipelineOptions = MakeOptional<ComputePipelineOptions>(),
+                                                     .PipelineOptions = ComputePipelineOptions{},
                                                      .Shader          = ShaderLibrary::Get("Culling/ObjectCulling"),
                                                      .PipelineType    = EPipelineType::PIPELINE_TYPE_COMPUTE};
         s_RendererData->ObjectCullingPipelineHash = PipelineLibrary::Push(objectCullingPS);
@@ -388,7 +379,7 @@ void Renderer::CreatePipelines()
 
     // Cascaded Shadow Maps
     {
-        const GraphicsPipelineOptions csmGPO = {.Formats        = {EImageFormat::FORMAT_R8_UNORM},
+        const GraphicsPipelineOptions csmGPO = {.Formats        = {EImageFormat::FORMAT_D16_UNORM},
                                                 .CullMode       = ECullMode::CULL_MODE_FRONT,
                                                 .bMeshShading   = true,
                                                 .bDepthTest     = true,
@@ -396,7 +387,7 @@ void Renderer::CreatePipelines()
                                                 .DepthCompareOp = ECompareOp::COMPARE_OP_LESS_OR_EQUAL};
 
         PipelineSpecification csmPS = {.DebugName       = "CSM",
-                                       .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(csmGPO),
+                                       .PipelineOptions = csmGPO,
                                        .Shader          = ShaderLibrary::Get("Shadows/CSM"),
                                        .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
 
@@ -416,7 +407,7 @@ void Renderer::CreatePipelines()
                                                   .DepthCompareOp = reversedDepthCompareOp};
 
         PipelineSpecification depthPrePassPS = {.DebugName       = "DepthPrePass",
-                                                .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(depthGPO),
+                                                .PipelineOptions = depthGPO,
                                                 .Shader          = ShaderLibrary::Get("DepthPrePass"),
                                                 .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
 
@@ -436,15 +427,15 @@ void Renderer::CreatePipelines()
             .DepthCompareOp = ECompareOp::COMPARE_OP_EQUAL};
 
         PipelineSpecification forwardPlusPS = {.DebugName       = "ForwardPlusOpaque",
-                                               .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(forwardPlusGPO),
+                                               .PipelineOptions = forwardPlusGPO,
                                                .Shader          = ShaderLibrary::Get("ForwardPlus"),
                                                .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
 
         s_RendererData->ForwardPlusOpaquePipelineHash = PipelineLibrary::Push(forwardPlusPS);
 
-        forwardPlusPS.DebugName                                                                 = "ForwardPlusTransparent";
-        std::get<GraphicsPipelineOptions>(forwardPlusPS.PipelineOptions.value()).DepthCompareOp = reversedDepthCompareOp;
-        s_RendererData->ForwardPlusTransparentPipelineHash                                      = PipelineLibrary::Push(forwardPlusPS);
+        forwardPlusPS.DebugName                                                         = "ForwardPlusTransparent";
+        std::get<GraphicsPipelineOptions>(forwardPlusPS.PipelineOptions).DepthCompareOp = reversedDepthCompareOp;
+        s_RendererData->ForwardPlusTransparentPipelineHash                              = PipelineLibrary::Push(forwardPlusPS);
     }
 
     // SSAO
@@ -454,7 +445,7 @@ void Renderer::CreatePipelines()
         const GraphicsPipelineOptions ssaoGPO = {.Formats = {EImageFormat::FORMAT_R8_UNORM}, .CullMode = ECullMode::CULL_MODE_BACK};
 
         PipelineSpecification ssaoPS = {.DebugName       = "SSAO",
-                                        .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(ssaoGPO),
+                                        .PipelineOptions = ssaoGPO,
                                         .Shader          = ShaderLibrary::Get("AO/SSAO"),
                                         .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
 
@@ -466,7 +457,7 @@ void Renderer::CreatePipelines()
         const GraphicsPipelineOptions boxBlurAOGPO = {.Formats = {EImageFormat::FORMAT_R8_UNORM}, .CullMode = ECullMode::CULL_MODE_BACK};
 
         PipelineSpecification boxBlurAOPS = {.DebugName       = "BoxBlurAO",
-                                             .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(boxBlurAOGPO),
+                                             .PipelineOptions = boxBlurAOGPO,
                                              .Shader          = ShaderLibrary::Get("Post/BoxBlur"),
                                              .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
 
@@ -476,7 +467,7 @@ void Renderer::CreatePipelines()
     // Screen Space Shadows
     {
         PipelineSpecification sssPS = {.DebugName       = "ScrenSpaceShadows",
-                                       .PipelineOptions = MakeOptional<ComputePipelineOptions>(),
+                                       .PipelineOptions = ComputePipelineOptions{},
                                        .Shader          = ShaderLibrary::Get("Shadows/SSShadows"),
                                        .PipelineType    = EPipelineType::PIPELINE_TYPE_COMPUTE};
 
@@ -491,7 +482,7 @@ void Renderer::CreatePipelines()
 
             const std::string blurTypeStr = (i == 0) ? "Horiz" : "Vert";
             PipelineSpecification bloomPS = {.DebugName       = "Bloom" + blurTypeStr,
-                                             .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(bloomGPO),
+                                             .PipelineOptions = bloomGPO,
                                              .Shader          = ShaderLibrary::Get("Post/GaussianBlur"),
                                              .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
             bloomPS.ShaderConstantsMap[EShaderStage::SHADER_STAGE_FRAGMENT].emplace_back(i);
@@ -506,7 +497,7 @@ void Renderer::CreatePipelines()
                                                       .CullMode = ECullMode::CULL_MODE_BACK};
 
         PipelineSpecification compositePipelineSpec = {.DebugName       = "Composite",
-                                                       .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(compositeGPO),
+                                                       .PipelineOptions = compositeGPO,
                                                        .Shader          = ShaderLibrary::Get("Composite"),
                                                        .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
 

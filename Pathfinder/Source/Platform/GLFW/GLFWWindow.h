@@ -27,7 +27,7 @@ class GLFWWindow final : public Window
     GLFWwindow* m_Handle = nullptr;
 
     void SetEventCallbacks() const;
-    void CopyToWindow(const Shared<Image>& image) final override;
+    void CopyToWindow(const Shared<Texture>& texture) final override;
 
     bool BeginFrame() final override;
     void SwapBuffers() final override;

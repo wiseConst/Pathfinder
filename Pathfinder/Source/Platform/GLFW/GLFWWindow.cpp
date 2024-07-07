@@ -3,7 +3,7 @@
 #include <GLFW/glfw3.h>
 
 #include "Renderer/Swapchain.h"
-#include "Renderer/Image.h"
+#include "Renderer/Texture.h"
 
 #include "Core/Application.h"
 #include "Events/WindowEvent.h"
@@ -136,11 +136,11 @@ void GLFWWindow::SetIconImage(const std::string_view& iconFilePath)
 
     GLFWimage image  = {};
     int32_t channels = 4;
-    image.pixels     = (uint8_t*)ImageUtils::LoadRawImage(iconFSPath, false, &image.width, &image.height, &channels);
+    image.pixels     = (uint8_t*)TextureUtils::LoadRawImage(iconFSPath, false, &image.width, &image.height, &channels);
 
     glfwSetWindowIcon(m_Handle, 1, &image);
 
-    ImageUtils::UnloadRawImage(image.pixels);
+    TextureUtils::UnloadRawImage(image.pixels);
 }
 
 void GLFWWindow::SetWindowTitle(const std::string_view& title)
@@ -303,10 +303,10 @@ void GLFWWindow::SetEventCallbacks() const
                        });
 }
 
-void GLFWWindow::CopyToWindow(const Shared<Image>& image)
+void GLFWWindow::CopyToWindow(const Shared<Texture>& texture)
 {
     PFR_ASSERT(m_Swapchain, "Swapchain is not valid!");
-    m_Swapchain->CopyToSwapchain(image);
+    m_Swapchain->CopyToSwapchain(texture);
 }
 
 void GLFWWindow::AddResizeCallback(ResizeCallback&& resizeCallback)

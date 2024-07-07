@@ -627,7 +627,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureRAWBarriers(const Uniqu
         }
 
         if (currentPass->m_Type != ERGPassType::RGPASS_TYPE_TRANSFER &&
-            texture->Handle->GetImage()->GetSpecification().Layout == EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+            texture->Handle->GetLayout() == EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
             continue;
 
         // TODO: Maybe insert AlreadySyncedWith in the end?
@@ -649,16 +649,16 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureRAWBarriers(const Uniqu
         // if Write->Write continue(will be synced later)
         if (currentPass->m_TextureWrites.contains(resourceID)) continue;
 
-        auto& imageBarrier = imageMemoryBarriers.emplace_back();
-        imageBarrier.image = texture->Handle->GetImage();
+        auto& imageBarrier   = imageMemoryBarriers.emplace_back();
+        imageBarrier.texture = texture->Handle;
 
-        const auto& imageSpec = imageBarrier.image->GetSpecification();
+        const auto& textureSpec = imageBarrier.texture->GetSpecification();
 
         imageBarrier.subresourceRange = {
             .baseMipLevel   = 0,
-            .mipCount       = imageSpec.Mips,
+            .mipCount       = imageBarrier.texture->GetMipCount(),
             .baseArrayLayer = 0,
-            .layerCount     = imageSpec.Layers,
+            .layerCount     = textureSpec.Layers,
         };
 
         const auto& prevPass = m_Passes.at(prevPassIdx.value());
@@ -710,7 +710,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureRAWBarriers(const Uniqu
         const auto currResourceState = currentPass->m_TextureStateMap[resourceID.m_ID.value()];
         PFR_ASSERT(currResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
 
-        imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
+        imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL);
         imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
         if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE))
         {
@@ -736,7 +736,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureRAWBarriers(const Uniqu
 
         if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL);
             imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
             imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
             imageBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_READ_BIT;  // Maybe RW?
@@ -783,15 +783,16 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWARBarriers(const Uniqu
 #if RG_LOG_DEBUG_INFO
         LOG_INFO("\t\t{}", texture->Handle->GetSpecification().DebugName);
 #endif
-        auto& imageBarrier = imageMemoryBarriers.emplace_back();
-        imageBarrier.image = texture->Handle->GetImage();
+        auto& imageBarrier   = imageMemoryBarriers.emplace_back();
+        imageBarrier.texture = texture->Handle;
 
-        const auto& imageSpec         = imageBarrier.image->GetSpecification();
+        const auto& textureSpec = imageBarrier.texture->GetSpecification();
+
         imageBarrier.subresourceRange = {
             .baseMipLevel   = 0,
-            .mipCount       = imageSpec.Mips,
+            .mipCount       = imageBarrier.texture->GetMipCount(),
             .baseArrayLayer = 0,
-            .layerCount     = imageSpec.Layers,
+            .layerCount     = textureSpec.Layers,
         };
 
         const auto& prevPass = m_Passes.at(prevPassIdx.value());
@@ -844,7 +845,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWARBarriers(const Uniqu
 
         if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET))
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
             imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
@@ -852,7 +853,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWARBarriers(const Uniqu
 
         if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET))
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
             imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             imageBarrier.dstStageMask |=
                 EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -863,7 +864,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWARBarriers(const Uniqu
         if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE) ||
             RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_STORAGE_IMAGE))
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
             imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_GENERAL;
             imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_WRITE_BIT;
@@ -871,7 +872,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWARBarriers(const Uniqu
 
         if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
             imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
             imageBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?
@@ -913,17 +914,18 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWAWBarriers(const Uniqu
         LOG_INFO("\t\t{}", texture->Handle->GetSpecification().DebugName);
 #endif
 
-        auto& imageBarrier = imageMemoryBarriers.emplace_back();
-        imageBarrier.image = texture->Handle->GetImage();
+        auto& imageBarrier   = imageMemoryBarriers.emplace_back();
+        imageBarrier.texture = texture->Handle;
 
-        const auto& imageSpec       = imageBarrier.image->GetSpecification();
+        const auto& textureSpec = imageBarrier.texture->GetSpecification();
+
         const bool bTextureCreation = currentPass->m_TextureCreates.contains(resourceID);
 
         imageBarrier.subresourceRange = {
             .baseMipLevel   = 0,
-            .mipCount       = imageSpec.Mips,
+            .mipCount       = imageBarrier.texture->GetMipCount(),
             .baseArrayLayer = 0,
-            .layerCount     = imageSpec.Layers,
+            .layerCount     = textureSpec.Layers,
         };
 
         const auto& prevPass = m_Passes.at(prevPassIdx.value());
@@ -967,13 +969,13 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWAWBarriers(const Uniqu
 
         if (bTextureCreation)
         {
-            imageBarrier.oldLayout     = bTextureCreation ? EImageLayout::IMAGE_LAYOUT_UNDEFINED : imageSpec.Layout;
+            imageBarrier.oldLayout     = bTextureCreation ? EImageLayout::IMAGE_LAYOUT_UNDEFINED : imageBarrier.texture->GetLayout();
             imageBarrier.srcStageMask  = EPipelineStage::PIPELINE_STAGE_TOP_OF_PIPE_BIT;
             imageBarrier.srcAccessMask = EAccessFlags::ACCESS_NONE;
         }
 
         // NOTE: Since I drop all the things from other Build*Barriers() here:
-        if (imageSpec.Layout == EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
+        if (imageBarrier.texture->GetLayout() == EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL)
         {
             imageBarrier.oldLayout = EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
             imageBarrier.srcStageMask |= EPipelineStage::PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
@@ -984,7 +986,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWAWBarriers(const Uniqu
         PFR_ASSERT(currResourceState != EResourceState::RESOURCE_STATE_UNDEFINED, "Resource state is undefined!");
         if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COLOR_RENDER_TARGET))
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL);
             imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
             imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
             imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_COLOR_ATTACHMENT_WRITE_BIT | EAccessFlags::ACCESS_COLOR_ATTACHMENT_READ_BIT;
@@ -992,7 +994,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWAWBarriers(const Uniqu
 
         if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_DEPTH_RENDER_TARGET))
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL);
             imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
             imageBarrier.dstStageMask |=
                 EPipelineStage::PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT | EPipelineStage::PIPELINE_STAGE_LATE_FRAGMENT_TESTS_BIT;
@@ -1003,7 +1005,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWAWBarriers(const Uniqu
         if (RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_COMPUTE_SHADER_RESOURCE) ||
             RGUtils::ResourceStateContains(currResourceState, EResourceState::RESOURCE_STATE_STORAGE_IMAGE))
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_GENERAL);
             imageBarrier.newLayout = EImageLayout::IMAGE_LAYOUT_GENERAL;
             imageBarrier.dstStageMask |= EPipelineStage::PIPELINE_STAGE_COMPUTE_SHADER_BIT;
             imageBarrier.dstAccessMask |= EAccessFlags::ACCESS_SHADER_READ_BIT | EAccessFlags::ACCESS_SHADER_WRITE_BIT;
@@ -1011,7 +1013,7 @@ std::vector<ImageMemoryBarrier> RenderGraph::BuildTextureWAWBarriers(const Uniqu
 
         if (currentPass->m_Type == ERGPassType::RGPASS_TYPE_TRANSFER)
         {
-            imageBarrier.image->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
+            imageBarrier.texture->SetLayout(EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL);
             imageBarrier.newLayout     = EImageLayout::IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
             imageBarrier.dstStageMask  = EPipelineStage::PIPELINE_STAGE_ALL_TRANSFER_BIT;
             imageBarrier.dstAccessMask = EAccessFlags::ACCESS_TRANSFER_WRITE_BIT;  // Maybe RW?

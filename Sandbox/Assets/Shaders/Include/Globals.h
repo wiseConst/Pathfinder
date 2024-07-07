@@ -38,6 +38,7 @@ struct CSMData
 {
     mat4 ViewProj[SHADOW_CASCADE_COUNT];
     uint32_t CascadeTextureIndices[SHADOW_CASCADE_COUNT];
+    float CascadePlacementZ[SHADOW_CASCADE_COUNT];
 };
 
 struct Sprite
@@ -58,7 +59,7 @@ struct MeshAttributeVertex
 {
     uint32_t Color;
     u8vec3 Normal;
-    u8vec3 Tangent;  // NOTE: TODO: Why would I use 4th component of Tangent? flipping the normals or what?
+    u8vec4 Tangent;
 #ifdef __cplusplus
     u16vec2 UV;
 #else

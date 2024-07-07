@@ -34,6 +34,10 @@ class PerspectiveCamera final : public Camera
 
     ~PerspectiveCamera() override = default;
 
+    glm::mat4 GetUnreversedProjection() const final override
+    {
+        return glm::perspective(glm::radians(m_FOV), m_AR, GetNearPlaneDepth(), GetFarPlaneDepth());
+    }
     NODISCARD FORCEINLINE const float GetNearPlaneDepth() const final override { return s_MIN_ZNEAR; }
     NODISCARD FORCEINLINE const float GetFarPlaneDepth() const final override { return s_MAX_ZFAR; }
 

@@ -10,8 +10,8 @@ namespace RGUtils
 {
 FORCEINLINE bool AreTextureSpecsCompatible(const TextureSpecification& lhs, const TextureSpecification& rhs)
 {
-    return std::tie(lhs.bGenerateMips, lhs.Wrap, lhs.Filter, lhs.Format, lhs.UsageFlags, lhs.Layers) ==
-           std::tie(rhs.bGenerateMips, rhs.Wrap, rhs.Filter, rhs.Format, rhs.UsageFlags, rhs.Layers);
+    return std::tie(lhs.bGenerateMips, lhs.WrapS, lhs.WrapT, lhs.MinFilter, lhs.MagFilter, lhs.Format, lhs.UsageFlags, lhs.Layers) ==
+           std::tie(rhs.bGenerateMips, rhs.WrapS, rhs.WrapT, rhs.MinFilter, rhs.MagFilter, rhs.Format, rhs.UsageFlags, rhs.Layers);
 }
 
 FORCEINLINE bool AreBufferSpecsCompatible(const BufferSpecification& lhs, const BufferSpecification& rhs)
@@ -84,11 +84,12 @@ void RenderGraphResourcePool::Tick()
 Shared<Texture> RenderGraphResourcePool::AllocateTexture(const RGTextureSpecification& spec)
 {
     const TextureSpecification textureSpec = {.DebugName     = spec.DebugName,
-                                              .Width         = spec.Width,
-                                              .Height        = spec.Height,
+                                              .Dimensions    = spec.Dimensions,
                                               .bGenerateMips = spec.bGenerateMips,
-                                              .Wrap          = spec.Wrap,
-                                              .Filter        = spec.Filter,
+                                              .WrapS         = spec.WrapS,
+                                              .WrapT         = spec.WrapT,
+                                              .MinFilter     = spec.MinFilter,
+                                              .MagFilter     = spec.MagFilter,
                                               .Format        = spec.Format,
                                               .UsageFlags    = spec.UsageFlags,
                                               .Layers        = spec.Layers};
@@ -106,8 +107,7 @@ Shared<Texture> RenderGraphResourcePool::AllocateTexture(const RGTextureSpecific
             {
                 bIsActive                 = true;
                 poolTexture.LastUsedFrame = m_FrameNumber;
-                if (currentTextureSpec.Width != textureSpec.Width || currentTextureSpec.Height != textureSpec.Height)
-                    poolTexture.Handle->Resize(textureSpec.Width, textureSpec.Height);
+                if (currentTextureSpec.Dimensions != textureSpec.Dimensions) poolTexture.Handle->Resize(textureSpec.Dimensions);
 
                 if (currentTextureSpec.DebugName != textureSpec.DebugName) poolTexture.Handle->SetDebugName(textureSpec.DebugName);
 
@@ -128,8 +128,7 @@ Shared<Texture> RenderGraphResourcePool::AllocateTexture(const RGTextureSpecific
         {
             bIsActive                 = true;
             poolTexture.LastUsedFrame = m_FrameNumber;
-            if (currentTextureSpec.Width != textureSpec.Width || currentTextureSpec.Height != textureSpec.Height)
-                poolTexture.Handle->Resize(textureSpec.Width, textureSpec.Height);
+            if (currentTextureSpec.Dimensions != textureSpec.Dimensions) poolTexture.Handle->Resize(textureSpec.Dimensions);
 
             if (currentTextureSpec.DebugName != textureSpec.DebugName) poolTexture.Handle->SetDebugName(textureSpec.DebugName);
 

@@ -367,23 +367,24 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
                                      }
                                  });
 
-    DrawComponent<SpriteComponent>("SpriteComponent", entity,
-                                   [](auto& sc)
-                                   {
-                                       ImGui::Separator();
-                                       ImGui::Text("Color");
-                                       ImGui::ColorPicker4("Color", (float*)&sc.Color);
+    DrawComponent<SpriteComponent>(
+        "SpriteComponent", entity,
+        [](auto& sc)
+        {
+            ImGui::Separator();
+            ImGui::Text("Color");
+            ImGui::ColorPicker4("Color", (float*)&sc.Color);
 
-                                       ImGui::Separator();
-                                       ImGui::SliderInt("Layer", (int32_t*)&sc.Layer, 0, 5);
+            ImGui::Separator();
+            ImGui::SliderInt("Layer", (int32_t*)&sc.Layer, 0, 5);
 
-                                       if (sc.Texture)
-                                       {
-                                           ImGui::Separator();
-                                           const auto& textureSpec = sc.Texture->GetSpecification();
-                                           UILayer::DrawTexture(sc.Texture, {textureSpec.Width, textureSpec.Height}, {0, 0}, {1, 1});
-                                       }
-                                   });
+            if (sc.Texture)
+            {
+                ImGui::Separator();
+                const auto& textureSpec = sc.Texture->GetSpecification();
+                UILayer::DrawTexture(sc.Texture, {textureSpec.Dimensions.x, textureSpec.Dimensions.y}, {0, 0}, {1, 1});
+            }
+        });
 }
 
 }  // namespace Pathfinder

@@ -18,7 +18,7 @@ namespace Pathfinder
 static constexpr uint32_t s_FRAMES_IN_FLIGHT = 2;
 static constexpr uint32_t s_MAX_QUADS        = 25000;
 
-class Image;
+class Texture;
 class Buffer;
 class CommandBuffer;
 
@@ -186,7 +186,7 @@ struct ImageMemoryBarrier
     EImageLayout newLayout                 = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
     Optional<uint32_t> srcQueueFamilyIndex = std::nullopt;
     Optional<uint32_t> dstQueueFamilyIndex = std::nullopt;
-    Shared<Image> image                    = nullptr;
+    Shared<Texture> texture                = nullptr;
     ImageSubresourceRange subresourceRange{};
 };
 

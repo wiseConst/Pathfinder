@@ -34,10 +34,11 @@ void BloomPass::AddHorizontalPass(Unique<RenderGraph>& rendergraph)
         {
             builder.DeclareTexture("BloomTextureHoriz",
                                    {.DebugName  = "BloomTextureHoriz",
-                                    .Width      = m_Width,
-                                    .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                    .Filter     = ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                    .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                    .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .MinFilter  = ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                    .MagFilter  = ESamplerFilter::SAMPLER_FILTER_LINEAR,
                                     .Format     = EImageFormat::FORMAT_RGBA16F,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteRenderTarget("BloomTextureHoriz", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
@@ -56,7 +57,7 @@ void BloomPass::AddHorizontalPass(Unique<RenderGraph>& rendergraph)
             auto& hdrTexture       = context.GetTexture(pd.HDRTexture);
 
             const PushConstantBlock pc = {.CameraDataBuffer   = cameraDataBuffer->GetBDA(),
-                                          .AlbedoTextureIndex = hdrTexture->GetBindlessIndex()};
+                                          .AlbedoTextureIndex = hdrTexture->GetTextureBindlessIndex()};
 
             Renderer::BindPipeline(cb, pipeline);
             cb->BindPushConstants(pipeline, 0, sizeof(pc), &pc);
@@ -78,10 +79,11 @@ void BloomPass::AddVerticalPass(Unique<RenderGraph>& rendergraph)
         {
             builder.DeclareTexture("BloomTexture",
                                    {.DebugName  = "BloomTexture",
-                                    .Width      = m_Width,
-                                    .Height     = m_Height,
-                                    .Wrap       = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                    .Filter     = ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                    .Dimensions = glm::uvec3(m_Width, m_Height, 1),
+                                    .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
+                                    .MinFilter  = ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                    .MagFilter  = ESamplerFilter::SAMPLER_FILTER_LINEAR,
                                     .Format     = EImageFormat::FORMAT_RGBA16F,
                                     .UsageFlags = EImageUsage::IMAGE_USAGE_COLOR_ATTACHMENT_BIT | EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
             builder.WriteRenderTarget("BloomTexture", glm::vec4{0.f}, EOp::CLEAR, EOp::STORE);
@@ -99,7 +101,7 @@ void BloomPass::AddVerticalPass(Unique<RenderGraph>& rendergraph)
             auto& cameraDataBuffer     = context.GetBuffer(pd.CameraData);
             auto& bloomTextureHoriz    = context.GetTexture(pd.BloomTextureHoriz);
             const PushConstantBlock pc = {.CameraDataBuffer   = cameraDataBuffer->GetBDA(),
-                                          .AlbedoTextureIndex = bloomTextureHoriz->GetBindlessIndex()};
+                                          .AlbedoTextureIndex = bloomTextureHoriz->GetTextureBindlessIndex()};
 
             Renderer::BindPipeline(cb, pipeline);
             cb->BindPushConstants(pipeline, 0, sizeof(pc), &pc);

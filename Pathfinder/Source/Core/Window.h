@@ -37,7 +37,7 @@ struct WindowSpecification final
     EWindowMode WindowMode = EWindowMode::WINDOW_MODE_WINDOWED;
 };
 
-class Image;
+class Texture;
 class Window : private Uncopyable, private Unmovable
 {
   public:
@@ -61,10 +61,10 @@ class Window : private Uncopyable, private Unmovable
 
     static std::vector<const char*> GetWSIExtensions();  // implemented in derived classes only
 
-    virtual bool BeginFrame()                             = 0;
-    virtual void SwapBuffers()                            = 0;
-    virtual void PollEvents()                             = 0;
-    virtual void CopyToWindow(const Shared<Image>& image) = 0;
+    virtual bool BeginFrame()                                 = 0;
+    virtual void SwapBuffers()                                = 0;
+    virtual void PollEvents()                                 = 0;
+    virtual void CopyToWindow(const Shared<Texture>& texture) = 0;
 
     virtual void AddResizeCallback(ResizeCallback&& resizeCallback) = 0;
 

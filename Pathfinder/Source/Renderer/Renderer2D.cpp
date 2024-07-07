@@ -37,7 +37,7 @@ void Renderer2D::Init()
         .DepthCompareOp    = ECompareOp::COMPARE_OP_GREATER_OR_EQUAL};
 
     PipelineSpecification quadPipelineSpec = {.DebugName       = "Quad2D",
-                                              .PipelineOptions = MakeOptional<GraphicsPipelineOptions>(quadGPO),
+                                              .PipelineOptions = quadGPO,
                                               .Shader          = ShaderLibrary::Get("Quad2D"),
                                               .PipelineType    = EPipelineType::PIPELINE_TYPE_GRAPHICS};
     m_RendererData2D->QuadPipelineHash     = PipelineLibrary::Push(quadPipelineSpec);
@@ -45,8 +45,9 @@ void Renderer2D::Init()
     const auto& windowSpec       = Application::Get().GetWindow()->GetSpecification();
     m_RendererData2D->Quad2DPass = Quad2DPass(windowSpec.Width, windowSpec.Height, m_RendererData2D->QuadPipelineHash);
 
-    Application::Get().GetWindow()->AddResizeCallback([&](const WindowResizeData& resizeData)
-                                                      { m_RendererData2D->Quad2DPass.OnResize(resizeData.Width, resizeData.Height); });
+    Application::Get().GetWindow()->AddResizeCallback(
+        [&](const WindowResizeData& resizeData)
+        { m_RendererData2D->Quad2DPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y); });
 
     PipelineLibrary::Compile();
     LOG_TRACE("{}", __FUNCTION__);
@@ -80,9 +81,10 @@ void Renderer2D::DrawQuad(const glm::vec3& translation, const glm::vec3& scale, 
         return;
     }
 
-    const uint32_t defaultBindlessTextureIndex                      = TextureManager::GetWhiteTexture()->GetBindlessIndex();
-    m_RendererData2D->Sprites[m_RendererData2D->CurrentSpriteCount] = Sprite(
-        translation, scale, orientation, glm::packUnorm4x8(color), texture ? texture->GetBindlessIndex() : defaultBindlessTextureIndex);
+    const uint32_t defaultBindlessTextureIndex = TextureManager::GetWhiteTexture()->GetTextureBindlessIndex();
+    m_RendererData2D->Sprites[m_RendererData2D->CurrentSpriteCount] =
+        Sprite(translation, scale, orientation, glm::packUnorm4x8(color),
+               texture ? texture->GetTextureBindlessIndex() : defaultBindlessTextureIndex);
 
     ++m_Renderer2DStats.QuadCount;
     m_Renderer2DStats.TriangleCount += 2;

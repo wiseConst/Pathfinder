@@ -4,7 +4,7 @@
 #include "VulkanContext.h"
 #include "VulkanDevice.h"
 #include "VulkanCommandBuffer.h"
-#include "VulkanImage.h"
+#include "VulkanTexture.h"
 
 #include <Core/Application.h>
 #include <Core/Window.h>
@@ -112,14 +112,12 @@ struct SwapchainSupportDetails final
 
     NODISCARD FORCEINLINE VkSurfaceFormatKHR ChooseBestSurfaceFormat() const
     {
-        if (ImageFormats.size() == 1 && ImageFormats.at(0).format == VK_FORMAT_UNDEFINED)
+        if (ImageFormats.size() == 1 && ImageFormats[0].format == VK_FORMAT_UNDEFINED)
             return {.format = VK_FORMAT_B8G8R8A8_UNORM, .colorSpace = VK_COLOR_SPACE_SRGB_NONLINEAR_KHR};
 
         for (const auto& imageFormat : ImageFormats)
         {
-            // ImGui uses VK_FORMAT_B8G8R8A8_UNORM
-            if (imageFormat.format == VK_FORMAT_B8G8R8A8_UNORM /*VK_FORMAT_B8G8R8A8_SRGB*/ &&
-                imageFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
+            if (imageFormat.format == VK_FORMAT_B8G8R8A8_UNORM && imageFormat.colorSpace == VK_COLOR_SPACE_SRGB_NONLINEAR_KHR)
             {
                 return imageFormat;
             }
@@ -183,7 +181,7 @@ void VulkanSwapchain::SetClearColor(const glm::vec3& clearColor)
 {
     const auto& rd = Renderer::GetRendererData();
     // TODO: Refactor with input as command buffer
-    const auto& commandBuffer = rd->RenderCommandBuffer.at(m_FrameIndex);
+    const auto& commandBuffer = rd->RenderCommandBuffer[m_FrameIndex];
     PFR_ASSERT(commandBuffer, "Failed to retrieve current render command buffer!");
 
     const auto vulkanCommandBuffer = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
@@ -264,7 +262,7 @@ void VulkanSwapchain::Invalidate()
     auto oldSwapchain = m_Handle;
     if (oldSwapchain)
     {
-        std::ranges::for_each(m_ImageViews, [&](auto& imageView) { ImageUtils::DestroyImageView(imageView); });
+        std::ranges::for_each(m_ImageViews, [&](auto& imageView) { TextureUtils::DestroyImageView(imageView); });
         std::ranges::for_each(m_RenderSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
         std::ranges::for_each(m_ImageAcquiredSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
         std::ranges::for_each(m_RenderFence, [&](auto& fence) { vkDestroyFence(logicalDevice, fence, nullptr); });
@@ -395,8 +393,8 @@ void VulkanSwapchain::Invalidate()
     m_ImageViews.resize(m_Images.size());
     for (uint32_t i = 0; i < m_ImageViews.size(); ++i)
     {
-        ImageUtils::CreateImageView(m_Images[i], m_ImageViews[i], m_ImageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D, 0,
-                                    1, 0, 1);
+        TextureUtils::CreateImageView(m_Images[i], m_ImageViews[i], m_ImageFormat.format, VK_IMAGE_ASPECT_COLOR_BIT, VK_IMAGE_VIEW_TYPE_2D,
+                                      0, 1, 0, 1);
 
         std::string debugName = "Swapchain image[" + std::to_string(i) + "]";
         VK_SetDebugName(logicalDevice, m_Images[i], VK_OBJECT_TYPE_IMAGE, debugName.data());
@@ -478,7 +476,7 @@ bool VulkanSwapchain::AcquireImage()
 void VulkanSwapchain::PresentImage()
 {
     bool bWasEverUsed = true;  // In case Renderer didn't use it, we should set waitSemaphore to imageAvaliable, otherwise renderSemaphore.
-    if (m_ImageLayouts.at(m_ImageIndex) != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
+    if (m_ImageLayouts[m_ImageIndex] != VK_IMAGE_LAYOUT_PRESENT_SRC_KHR)
     {
         const CommandBufferSpecification cbSpec = {.Type       = ECommandBufferType::COMMAND_BUFFER_TYPE_GENERAL,
                                                    .Level      = ECommandBufferLevel::COMMAND_BUFFER_LEVEL_PRIMARY,
@@ -488,7 +486,7 @@ void VulkanSwapchain::PresentImage()
         vulkanCommandBuffer->BeginRecording(true);
 
         const auto imageBarrier =
-            VulkanUtils::GetImageMemoryBarrier(m_Images.at(m_ImageIndex), VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts.at(m_ImageIndex),
+            VulkanUtils::GetImageMemoryBarrier(m_Images[m_ImageIndex], VK_IMAGE_ASPECT_COLOR_BIT, m_ImageLayouts[m_ImageIndex],
                                                VK_IMAGE_LAYOUT_PRESENT_SRC_KHR, VK_PIPELINE_STAGE_2_COLOR_ATTACHMENT_OUTPUT_BIT,
                                                VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, 1, 0, 1, 0);
 
@@ -504,7 +502,7 @@ void VulkanSwapchain::PresentImage()
     const VkPresentInfoKHR presentInfo = {
         .sType              = VK_STRUCTURE_TYPE_PRESENT_INFO_KHR,
         .waitSemaphoreCount = 1,
-        .pWaitSemaphores    = bWasEverUsed ? &m_RenderSemaphore.at(m_FrameIndex) : &m_ImageAcquiredSemaphore.at(m_FrameIndex),
+        .pWaitSemaphores    = bWasEverUsed ? &m_RenderSemaphore[m_FrameIndex] : &m_ImageAcquiredSemaphore[m_FrameIndex],
         .swapchainCount     = 1,
         .pSwapchains        = &m_Handle,
         .pImageIndices      = &m_ImageIndex,
@@ -601,7 +599,7 @@ void VulkanSwapchain::Recreate()
 #endif
 
     for (auto& resizeCallback : m_ResizeCallbacks)
-        resizeCallback({.Width = m_ImageExtent.width, .Height = m_ImageExtent.height});
+        resizeCallback({.Dimensions{m_ImageExtent.width, m_ImageExtent.height}});
 }
 
 void VulkanSwapchain::Destroy()
@@ -613,19 +611,19 @@ void VulkanSwapchain::Destroy()
     vkDestroySwapchainKHR(logicalDevice, m_Handle, nullptr);
     vkDestroySurfaceKHR(context.GetInstance(), m_Surface, nullptr);
 
-    std::ranges::for_each(m_ImageViews, [&](auto& imageView) { ImageUtils::DestroyImageView(imageView); });
+    std::ranges::for_each(m_ImageViews, [&](auto& imageView) { TextureUtils::DestroyImageView(imageView); });
     std::ranges::for_each(m_ImageAcquiredSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
     std::ranges::for_each(m_RenderSemaphore, [&](auto& semaphore) { vkDestroySemaphore(logicalDevice, semaphore, nullptr); });
     std::ranges::for_each(m_RenderFence, [&](auto& fence) { vkDestroyFence(logicalDevice, fence, nullptr); });
 }
 
-void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
+void VulkanSwapchain::CopyToSwapchain(const Shared<Texture>& texture)
 {
     Shared<VulkanCommandBuffer> vulkanCommandBuffer = nullptr;
 
     const auto& rd = Renderer::GetRendererData();
 
-    const auto& commandBuffer = rd->RenderCommandBuffer.at(m_FrameIndex);
+    const auto& commandBuffer = rd->RenderCommandBuffer[m_FrameIndex];
     vulkanCommandBuffer       = std::static_pointer_cast<VulkanCommandBuffer>(commandBuffer);
     PFR_ASSERT(vulkanCommandBuffer, "Failed to cast CommandBuffer to VulkanCommandBuffer!");
 
@@ -633,9 +631,9 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
 
     {
         const auto srcImageBarrier = VulkanUtils::GetImageMemoryBarrier(
-            (VkImage)image->Get(),
-            ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
-            ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+            (VkImage)texture->Get(),
+            TextureUtils::IsDepthFormat(texture->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
+            TextureUtils::PathfinderImageLayoutToVulkan(texture->GetLayout()), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
             VK_PIPELINE_STAGE_2_BOTTOM_OF_PIPE_BIT, VK_ACCESS_2_NONE, VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
             1, 0, 1, 0);
         const auto dstImageBarrier = VulkanUtils::GetImageMemoryBarrier(
@@ -652,15 +650,16 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
     VkImageBlit region               = {};
     region.srcSubresource.layerCount = 1;
     region.srcSubresource.aspectMask =
-        ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
-    region.srcOffsets[1] =
-        VkOffset3D{static_cast<int32_t>(image->GetSpecification().Width), static_cast<int32_t>(image->GetSpecification().Height), 1};
+        TextureUtils::IsDepthFormat(texture->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT;
+    region.srcOffsets[1] = VkOffset3D{static_cast<int32_t>(texture->GetSpecification().Dimensions.x),
+                                      static_cast<int32_t>(texture->GetSpecification().Dimensions.y),
+                                      static_cast<int32_t>(texture->GetSpecification().Dimensions.z)};
 
     region.dstSubresource.layerCount = 1;
     region.dstSubresource.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
     region.dstOffsets[1]             = VkOffset3D{static_cast<int32_t>(m_ImageExtent.width), static_cast<int32_t>(m_ImageExtent.height), 1};
 
-    vulkanCommandBuffer->BlitImage((VkImage)image->Get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_Images[m_ImageIndex],
+    vulkanCommandBuffer->BlitImage((VkImage)texture->Get(), VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, m_Images[m_ImageIndex],
                                    VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL, 1, &region, VK_FILTER_LINEAR);
 
     {
@@ -671,9 +670,9 @@ void VulkanSwapchain::CopyToSwapchain(const Shared<Image>& image)
         m_ImageLayouts[m_ImageIndex] = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
 
         const auto srcImageBarrier = VulkanUtils::GetImageMemoryBarrier(
-            (VkImage)image->Get(),
-            ImageUtils::IsDepthFormat(image->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
-            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, ImageUtils::PathfinderImageLayoutToVulkan(image->GetSpecification().Layout),
+            (VkImage)texture->Get(),
+            TextureUtils::IsDepthFormat(texture->GetSpecification().Format) ? VK_IMAGE_ASPECT_DEPTH_BIT : VK_IMAGE_ASPECT_COLOR_BIT,
+            VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL, TextureUtils::PathfinderImageLayoutToVulkan(texture->GetLayout()),
             VK_PIPELINE_STAGE_2_ALL_TRANSFER_BIT, VK_ACCESS_2_TRANSFER_READ_BIT,
             VK_PIPELINE_STAGE_2_FRAGMENT_SHADER_BIT | VK_PIPELINE_STAGE_2_COMPUTE_SHADER_BIT, VK_ACCESS_2_NONE, 1, 0, 1, 0);
 
