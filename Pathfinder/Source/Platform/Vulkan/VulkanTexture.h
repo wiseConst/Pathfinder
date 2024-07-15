@@ -32,7 +32,6 @@ VkFormat PathfinderImageFormatToVulkan(const EImageFormat imageFormat) noexcept;
 
 }  // namespace TextureUtils
 
-// TODO: Vector<ImageView> per mip level
 class VulkanTexture final : public Texture
 {
   public:
@@ -65,7 +64,10 @@ class VulkanTexture final : public Texture
     VkImage m_Image            = VK_NULL_HANDLE;
     VmaAllocation m_Allocation = VK_NULL_HANDLE;
     VkImageView m_ImageView    = VK_NULL_HANDLE;
-    //   std::vector<VkImageView> m_MipChain;  // TODO:
+
+    // TODO:
+    std::vector<VkImageView> m_TextureMipChain;
+    std::vector<VkImageView> m_StorageTextureMipChain;
 
     VulkanTexture() = delete;
     void Destroy() noexcept final override;

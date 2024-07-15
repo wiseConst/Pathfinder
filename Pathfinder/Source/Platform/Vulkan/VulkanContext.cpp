@@ -44,7 +44,7 @@ void VulkanContext::CreateInstance()
     VK_CHECK(vkEnumerateInstanceVersion(&supportedApiVersionFromDLL), "Failed to retrieve supported vulkan version!");
 
 #if VK_LOG_INFO
-    LOG_INFO("System supports vulkan version up to: %u.%u.%u.%u", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
+    LOG_INFO("System supports vulkan version up to: {}.{}.{}.{}", VK_API_VERSION_VARIANT(supportedApiVersionFromDLL),
              VK_API_VERSION_MAJOR(supportedApiVersionFromDLL), VK_API_VERSION_MINOR(supportedApiVersionFromDLL),
              VK_API_VERSION_PATCH(supportedApiVersionFromDLL));
 #endif
@@ -125,10 +125,10 @@ bool VulkanContext::CheckVulkanAPISupport() const
              "Can't retrieve supported vulkan instance extensions.");
 
 #if VK_LOG_INFO && PFR_DEBUG
-    LOG_INFO("List of supported vulkan INSTANCE extensions. (%u)", extensionCount);
+    LOG_INFO("List of supported vulkan INSTANCE extensions. [{}]", extensionCount);
     for (const auto& [extensionName, specVersion] : extensions)
     {
-        LOG_TRACE(" %s, version: %u.%u.%u", extensionName, VK_API_VERSION_MAJOR(specVersion), VK_API_VERSION_MINOR(specVersion),
+        LOG_TRACE(" {}, version: {}.{}.{}", extensionName, VK_API_VERSION_MAJOR(specVersion), VK_API_VERSION_MINOR(specVersion),
                   VK_API_VERSION_PATCH(specVersion));
     }
 #endif
@@ -136,10 +136,10 @@ bool VulkanContext::CheckVulkanAPISupport() const
     const auto wsiExtensions = Window::GetWSIExtensions();
 
 #if PFR_DEBUG && VK_LOG_INFO
-    LOG_INFO("List of extensions required by window (%zu):", wsiExtensions.size());
+    LOG_INFO("List of extensions required by window {}:", wsiExtensions.size());
 
     for (auto& ext : wsiExtensions)
-        LOG_TRACE(" %s", ext);
+        LOG_TRACE(" {}", ext);
 #endif
 
     // Check if current vulkan version supports required by window extensions
@@ -169,11 +169,11 @@ bool VulkanContext::CheckVulkanValidationSupport() const
     VK_CHECK(vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data()), "Can't retrieve supported vulkan instance layers.");
 
 #if VK_LOG_INFO && PFR_DEBUG
-    LOG_INFO("List of supported vulkan INSTANCE layers. (%u)", layerCount);
+    LOG_INFO("List of supported vulkan INSTANCE layers. [{}]", layerCount);
     for (const auto& [layerName, specVersion, implementationVersion, description] : availableLayers)
     {
-        LOG_TRACE("%s", description);
-        LOG_TRACE("\t%s, version: %u.%u.%u", layerName, VK_API_VERSION_MAJOR(specVersion), VK_API_VERSION_MINOR(specVersion),
+        LOG_TRACE("{}", description);
+        LOG_TRACE("\t{}, version: {}.{}.{}", layerName, VK_API_VERSION_MAJOR(specVersion), VK_API_VERSION_MINOR(specVersion),
                   VK_API_VERSION_PATCH(specVersion));
     }
 #endif

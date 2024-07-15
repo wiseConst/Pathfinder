@@ -1,8 +1,3 @@
-
-#ifdef __cplusplus
-#pragma once
-#endif
-
 const float PI = 3.14159265359;
 
 // Approximates the relative surface area of microfacets exactly aligned to the H vector.

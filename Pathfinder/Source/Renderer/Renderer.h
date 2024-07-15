@@ -33,7 +33,6 @@ class Buffer;
 class Texture;
 class Pipeline;
 class Camera;
-class Image;
 class Submesh;
 class Mesh;
 
@@ -60,7 +59,7 @@ class Renderer final
 
     static void BindPipeline(const Shared<CommandBuffer>& commandBuffer, Shared<Pipeline> pipeline);
 
-    static const std::map<std::string, Shared<Image>> GetRenderTargetList();
+    static const std::map<std::string, Shared<Texture>> GetRenderTargetList();
 
     static const auto& GetCPUProfilerResults()
     {
@@ -158,9 +157,11 @@ class Renderer final
         std::array<uint64_t, 2> BloomPipelineHash;
 
         // Cascaded Shadows
-        std::array<CSMData, MAX_DIR_LIGHTS> ShadowMapData = {0};
-        uint64_t CSMPipelineHash                          = 0;
+        CSMData ShadowMapData    = {0};
+        uint64_t CSMPipelineHash = 0;
         Pathfinder::CascadedShadowMapPass CascadedShadowMapPass;
+
+        std::array<Shared<Texture>, SHADOW_CASCADE_COUNT> CascadeRenderTargets;
 
         /*             SCREEN-SPACE SHADOWS                */
         bool bAnybodyCastsShadows      = false;
@@ -175,9 +176,6 @@ class Renderer final
         uint64_t ComputeFrustumsPipelineHash = 0;
         uint64_t LightCullingPipelineHash    = 0;
         Pathfinder::LightCullingPass LightCullingPass;
-
-        // AO
-        Shared<Texture> AONoiseTexture = nullptr;
 
         Pathfinder::SSAOPass SSAOPass;
         uint64_t SSAOPipelineHash = 0;
@@ -204,6 +202,8 @@ class Renderer final
         bool bVSync;
         bool bDrawColliders;
         bool bCollectGPUStats;
+        float CascadeSplitLambda;
+        glm::uvec2 ShadowMapDim{2048};
     };
 
     static inline RendererSettings s_RendererSettings;

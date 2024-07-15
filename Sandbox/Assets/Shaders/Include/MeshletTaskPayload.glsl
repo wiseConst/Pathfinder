@@ -1,9 +1,3 @@
-#ifdef __cplusplus
-#pragma once
-#endif
-
-#ifndef __cplusplus
-
 // NVidia advises to stay this struct below 108 bytes, or at least under 236 bytes. https://developer.nvidia.com/blog/advanced-api-performance-mesh-shaders/
 struct MeshletTaskData
 {
@@ -12,5 +6,3 @@ struct MeshletTaskData
 };
 
 taskPayloadSharedEXT MeshletTaskData tp_TaskData;
-
-#endif

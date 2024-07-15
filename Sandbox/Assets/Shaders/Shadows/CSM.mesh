@@ -4,7 +4,7 @@
 
 #extension GL_GOOGLE_include_directive : require
 #include "Include/Globals.h"
-#include "Include/MeshletTaskPayload.glslh"
+#include "Include/MeshletTaskPayload.glsl"
 
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
 layout(triangles, max_vertices = MAX_MESHLET_VERTEX_COUNT, max_primitives = MAX_MESHLET_TRIANGLE_COUNT) out;
@@ -18,9 +18,10 @@ void main()
     const uint32_t mi = tp_TaskData.baseMeshletID + uint32_t(tp_TaskData.meshlets[gl_WorkGroupID.x]);
     const uint32_t ti = gl_LocalInvocationID.x;
 
-    if(CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
-    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID]];
-    
+  //  if(CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+  //  const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID]];
+    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[gl_DrawID];
+
     const uint32_t primitiveCount = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].triangleCount;
     const uint32_t vertexCount = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].vertexCount;
     
@@ -34,7 +35,7 @@ void main()
         const uint32_t vi = MeshletVerticesBuffer(md.meshletVerticesBufferBDA).vertices[vertexOffset + i];
         const vec3 worldPos = RotateByQuat(VertexPosBuffer(md.vertexPosBufferBDA).positions[vi].Position * md.scale, md.orientation) + md.translation;
 
-        gl_MeshVerticesEXT[i].gl_Position = CSMDataBuffer(u_PC.addr2).ShadowMapData[u_PC.StorageImageIndex].ViewProj[u_PC.AlbedoTextureIndex] * vec4(worldPos, 1.0);
+        gl_MeshVerticesEXT[i].gl_Position = CSMDataBuffer(u_PC.addr2).ShadowMapData.CascadeData[u_PC.StorageImageIndex].ViewProj[u_PC.AlbedoTextureIndex] * vec4(worldPos, 1.0);
     }
 
     const uint32_t triangleOffset = MeshletBuffer(md.meshletBufferBDA).meshlets[mi].triangleOffset;

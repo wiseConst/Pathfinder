@@ -463,12 +463,7 @@ bool VulkanSwapchain::AcquireImage()
         return true;
     }
 
-    if (result != VK_SUBOPTIMAL_KHR && result != VK_ERROR_OUT_OF_DATE_KHR)
-    {
-        const auto ResultMessage = std::string("Failed to acquire image from the swapchain! Result is: ") + VK_GetResultString(result);
-        PFR_ASSERT(false, ResultMessage.data());
-    }
-
+    PFR_ASSERT(result == VK_SUBOPTIMAL_KHR || result == VK_ERROR_OUT_OF_DATE_KHR, "Failed to acquire image from the swapchain!");
     m_bNeedsRecreate = true;
     return false;
 }

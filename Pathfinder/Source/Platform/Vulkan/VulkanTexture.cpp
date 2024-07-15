@@ -254,7 +254,7 @@ void VulkanTexture::SetData(const void* data, size_t dataSize) noexcept
     copyRegion.imageSubresource.layerCount     = m_Specification.Layers;
 
     VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
-    if (TextureUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    // TODO:  if (TextureUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
     if (TextureUtils::IsDepthFormat(m_Specification.Format))
         imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
     else
@@ -341,7 +341,7 @@ void VulkanTexture::Invalidate(const void* data, const size_t dataSize) noexcept
                                               : (m_Specification.Layers == 6 ? VK_IMAGE_VIEW_TYPE_CUBE : VK_IMAGE_VIEW_TYPE_2D_ARRAY);
 
     VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
-    if (TextureUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    // TODO:  if (TextureUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
     if (TextureUtils::IsDepthFormat(m_Specification.Format))
         imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
     else
@@ -470,7 +470,7 @@ void VulkanTexture::SetLayout(const EImageLayout newLayout, const bool bImmediat
         vulkanCommandBuffer->BeginRecording(true);
 
         VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
-        if (TextureUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+        // TODO: if (TextureUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
         if (TextureUtils::IsDepthFormat(m_Specification.Format))
             imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
         else
@@ -497,7 +497,7 @@ void VulkanTexture::ClearColor(const Shared<CommandBuffer>& commandBuffer, const
     const auto vkNewLayout        = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 
     VkImageAspectFlags imageAspectMask = VK_IMAGE_ASPECT_NONE;
-    if (TextureUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
+    // TODO:  if (TextureUtils::IsStencilFormat(m_Specification.Format)) imageAspectMask |= VK_IMAGE_ASPECT_STENCIL_BIT;
     if (TextureUtils::IsDepthFormat(m_Specification.Format))
         imageAspectMask |= VK_IMAGE_ASPECT_DEPTH_BIT;
     else
@@ -541,7 +541,8 @@ void* VulkanSamplerStorage::CreateSamplerImpl(const SamplerSpecification& sample
         .compareOp        = VulkanUtils::PathfinderCompareOpToVulkan(samplerSpec.CompareOp),
         .minLod           = samplerSpec.MinLod,
         .maxLod           = IsNearlyEqual(samplerSpec.MaxLod, .0f) ? VK_LOD_CLAMP_NONE : samplerSpec.MaxLod,
-        .borderColor      = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK,  // VK_BORDER_COLOR_INT_OPAQUE_BLACK;  // TODO: configurable??
+        .borderColor      = VK_BORDER_COLOR_INT_OPAQUE_BLACK,
+        /*VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK, */  // TODO: configurable??
         .unnormalizedCoordinates = VK_FALSE,
     };
 

@@ -7,20 +7,19 @@ layout(location = 0) out float outFragColor;
 layout(location = 0) in vec2 inUV;
 
 layout(constant_id = 0) const bool bUseViewNormalMap = false;
-layout(constant_id = 1) const uint32_t occlusionPower = 3;
-layout(constant_id = 2) const float sampleRadius = .185f;
-layout(constant_id = 3) const float sampleBias = .035f;
-layout(constant_id = 4) const uint32_t SAMPLE_COUNT = 8;
+layout(constant_id = 1) const uint32_t occlusionPower = 1;
+layout(constant_id = 2) const float sampleRadius = .285f;
+layout(constant_id = 3) const float sampleBias = .025f;
+layout(constant_id = 4) const uint32_t SAMPLE_COUNT = 16;
 
 
 /* NOTE: 
     From PushConstantBlock:
-      uint32_t StorageImageIndex    - u_NoiseTex
+      uint32_t StorageImageIndex    - u_ViewNormalMap
       uint32_t AlbedoTextureIndex   - u_DepthTex
-      uint32_t data0.x - u_ViewNormalMap
 */
 
-// Precalculated hemisphere kernel(TBN space) (low discrepancy noiser). From: https://github.com/CptPotato/SSAO/blob/master/SSAO_Gen.hlsl
+// Precalculated hemisphere kernel(TBN space)
 const uint KERNEL_SIZE = 32;
 const vec3 g_Kernel[KERNEL_SIZE] = {
 		vec3(-0.668154f, -0.084296f, 0.219458f),
@@ -57,7 +56,28 @@ const vec3 g_Kernel[KERNEL_SIZE] = {
 		vec3(-0.077639f, -0.753205f, 0.070938f)
 };
 
-vec3 GetViewPositionFromDepth(vec2 coords) {
+// Samples from crysis's rotation texture
+const uint ROT_SIZE = 16;
+const vec3 g_RotationVectors[ROT_SIZE] = {
+    vec3(0.15332, 0.10449, 0.9375),
+    vec3(0.05762, 0.06494, 0.41797),
+    vec3(0.05615, 0.12207, 0.10205),
+    vec3(0.10205, 0.31836, 0.02625),
+    vec3(0.01099, 0.35156, 0.36719),
+    vec3(0.0481, 0.50781, 0.4082),
+    vec3(0.03076, 0.3418, 0.39063),
+    vec3(0.09766, 0.26172, 0.13281),
+    vec3(0.20508, 0.32227, 0.07227),
+    vec3(0.51953, 0.33203, 0.2832),
+    vec3(0.35156, 0.25391, 0.77734),
+    vec3(0.27539, 0.18164, 0.22656),
+    vec3(0.92188, 0.00519, 0.05957),
+    vec3(0.90625, 0.03564, 0.23438),
+    vec3(0.53516, 0.01099, 0.63672),
+    vec3(0.16797, 0.008, 0.10938)
+};
+
+vec3 GetViewPositionFromDepth(const vec2 coords) {
     // UV space -> ndc
     // NOTE: For OpenGL should be (fragmentDepth * 2.f - .1f)
     const vec4 ndc = vec4(coords * 2.f - 1.f, texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], coords).r, 1.f);
@@ -70,52 +90,39 @@ vec3 GetViewPositionFromDepth(vec2 coords) {
     return posVS.xyz / posVS.w;
 }
 
-// NOTE: John Chapman, learnopengl, https://betterprogramming.pub/depth-only-ssao-for-forward-renderers-1a3dcfa1873a
-vec3 ReconstructViewNormal(const vec3 viewPos)
-{
-    // The dFdy and dFdX are glsl functions used to calculate two vectors in view space 
-    // that lie on the plane of the surface being drawn. We pass the view space position to these functions.
-    // The cross product of these two vectors give us the normal in view space.
-    vec3 viewNormal = cross(dFdy(viewPos), dFdx(viewPos));
-       
-    // The normal is initilly away from the screen based on the order in which we calculate the cross products. 
-    // Here, we need to invert it to point towards the screen by multiplying by -1.
-    viewNormal = normalize(viewNormal * -1.0);
-    return viewNormal;
-}
-
 void main()
 {
     // Rotation vector for kernel samples current fragment will be used to create TBN -> View Space
-    const uvec2 noiseScale = uvec2(textureSize(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], 0)) / uvec2(textureSize(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], 0));
-    const vec3 randomVec = normalize(texture(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], inUV * noiseScale).xyz);
+    const uvec2 noiseScale = uvec2(textureSize(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], 0)) / 4;
+
+    const ivec2 rotationUV = ivec2(inUV * noiseScale) % 4;
+    const vec3 randomVec = normalize(g_RotationVectors[rotationUV.y * 4 + rotationUV.x]);
 
     const vec3 viewPos = GetViewPositionFromDepth(inUV);
 
     vec3 viewNormal = vec3(.0f);
     if (bUseViewNormalMap)
     {
-        viewNormal = texture(u_GlobalTextures[nonuniformEXT(uint32_t(u_PC.data0.x))], inUV).xyz;
+        viewNormal = texture(u_GlobalTextures[nonuniformEXT(u_PC.StorageImageIndex)], inUV).xyz;
     } else {
-        viewNormal = ReconstructViewNormal(viewPos);
+        viewNormal = normalize(cross(dFdx(viewPos), dFdy(viewPos)));
     }
 
     // NOTE: Construct tangent based on randomVec, Gramm-Schmidt reorthogonalization along viewNormal. It's gonna offset randomVec so it'll be orthogonal to viewNormal.
     const vec3 T = normalize(randomVec - viewNormal * dot(randomVec, viewNormal));
     const vec3 B = cross(viewNormal, T);
     const mat3 TBN = mat3(T, B, viewNormal); 
-    float occlusion = .0F;
-    for (int i = 0; i < SAMPLE_COUNT ; i++) {
+    float occlusion = 0.0f;
+    for (uint i = 0; i < SAMPLE_COUNT ; i++) {
         vec3 samplePos = TBN * g_Kernel[i];
         samplePos = viewPos + samplePos * sampleRadius;
 
-        const vec3 sampleDir = normalize(samplePos - viewPos); // view space sample direction
         vec4 offsetUV = vec4(samplePos, 1.0f);
         offsetUV = CameraData(u_PC.CameraDataBuffer).Projection * offsetUV; // view -> clip ([-w, w])
         offsetUV.xy = (offsetUV.xy / offsetUV.w) * .5f + .5f; // clip -> ndc [-1 ,1] -> UV space x, y:[0, 1]
         
-        const float sampledGeometryDepth = GetViewPositionFromDepth(offsetUV.xy).z;
-        const float rangeCheck = smoothstep(0.0F, 1.F, sampleRadius / abs(viewPos.z - sampledGeometryDepth)); // in case rendered fragment is further than generated sample, then sample is not occluded
+        const float sampledGeometryDepth = ScreenSpaceDepthToView(texture(u_GlobalTextures[nonuniformEXT(u_PC.AlbedoTextureIndex)], offsetUV.xy).r);
+        const float rangeCheck = smoothstep(0.0f, 1.0f, sampleRadius / abs(viewPos.z - sampledGeometryDepth)); // in case rendered fragment is further than generated sample, then sample is not occluded
         
         // NOTE: Working in view space(looking towards negative Z axis, so greater value means closer to the cam).
         occlusion += step(samplePos.z + sampleBias, sampledGeometryDepth) * rangeCheck;

@@ -92,7 +92,6 @@ void DebugRenderer::Init()
         [](const WindowResizeData& resizeData)
         { s_DebugRendererData->DebugPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y); });
 
-    PipelineLibrary::Compile();
     LOG_TRACE("{}", __FUNCTION__);
     s_bDebugRendererInit = true;
 }

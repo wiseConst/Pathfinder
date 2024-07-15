@@ -19,66 +19,19 @@ Shared<Pipeline> Pipeline::Create(const PipelineSpecification& pipelineSpec)
     return nullptr;
 }
 
-void PipelineBuilder::Init()
+void PipelineLibrary::Init() noexcept
 {
     LOG_TRACE("{}", __FUNCTION__);
 }
 
-void PipelineBuilder::Shutdown()
+void PipelineLibrary::Shutdown() noexcept
 {
-    std::scoped_lock lock(s_PipelineBuilderMutex);
-    s_PipelinesToBuild.clear();
-    LOG_TRACE("{}", __FUNCTION__);
-}
-
-void PipelineBuilder::Build()
-{
-    std::scoped_lock lock(s_PipelineBuilderMutex);
-    if (s_PipelinesToBuild.empty()) return;
-
-    // Submit to JobSystem and wait on futures.
-    std::vector<std::function<void()>> futures;
-    for (const auto& pipelineSpec : s_PipelinesToBuild)
-    {
-        auto future = ThreadPool::Submit(
-            [&]
-            {
-                auto pipeline = Pipeline::Create(pipelineSpec);
-                PipelineLibrary::Add(pipelineSpec, pipeline);
-            });
-
-        futures.emplace_back([future] { future.get(); });
-    }
-
-#if PFR_DEBUG
-    Timer t = {};
-#endif
-
-    for (auto& future : futures)
-        future();
-
-#if PFR_DEBUG
-    LOG_INFO("Time taken to create ({}) pipelines: {:.2f}ms", s_PipelinesToBuild.size(), t.GetElapsedMilliseconds());
-#endif
-    s_PipelinesToBuild.clear();
-}
-
-void PipelineLibrary::Init()
-{
-    PipelineBuilder::Init();
-    LOG_TRACE("{}", __FUNCTION__);
-}
-
-void PipelineLibrary::Shutdown()
-{
-    std::scoped_lock lock(s_PipelineLibraryMutex);
+    std::scoped_lock lock(s_QueueMutex);
     LOG_TRACE("{}", __FUNCTION__);
     s_PipelineStorage.clear();
-
-    PipelineBuilder::Shutdown();
 }
 
-std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const PipelineSpecification& pipelineSpec) const
+std::size_t PipelineLibrary::PipelineSpecificationHash::operator()(const PipelineSpecification& pipelineSpec) const noexcept
 {
     std::size_t hash = 0;
     switch (pipelineSpec.PipelineType)

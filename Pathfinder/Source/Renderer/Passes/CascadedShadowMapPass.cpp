@@ -13,10 +13,7 @@
 namespace Pathfinder
 {
 
-CascadedShadowMapPass::CascadedShadowMapPass(const uint32_t width, const uint32_t height)
-    : m_Width{std::max(width, height)}, m_Height{std::max(width, height)}
-{
-}
+CascadedShadowMapPass::CascadedShadowMapPass(const glm::uvec2& dimensions) : m_Dimensions(dimensions) {}
 
 void CascadedShadowMapPass::AddPass(Unique<RenderGraph>& rendergraph)
 {
@@ -37,24 +34,22 @@ void CascadedShadowMapPass::AddPass(Unique<RenderGraph>& rendergraph)
 
         for (uint32_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
         {
-            const std::string passName = "DirLight[" + std::to_string(dirLightIndex) + "]_CSMPass[" + std::to_string(cascadeIndex) + "]";
+            const std::string passName = "DirLight_" + std::to_string(dirLightIndex) + "_CSMPass_" + std::to_string(cascadeIndex);
 
             rendergraph->AddPass<PassData>(
                 passName, ERGPassType::RGPASS_TYPE_GRAPHICS,
                 [=](PassData& pd, RenderGraphBuilder& builder)
                 {
-                    const std::string csmTextureName = "Cascade[" + std::to_string(cascadeIndex) + "]";
-                    builder.DeclareTexture(csmTextureName, {.DebugName  = csmTextureName,
-                                                            .Dimensions = glm::uvec3(m_Width, m_Height, 1),
-                                                            .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                                            .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-                                                            .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
-                                                            .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
-                                                            .Format     = EImageFormat::FORMAT_D16_UNORM,
+                    builder.DeclareTexture(passName, {.DebugName  = passName,
+                                                            .Dimensions = glm::uvec3(m_Dimensions, 1),
+                                                            .WrapS      = ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE,
+                                                            .WrapT      = ESamplerWrap::SAMPLER_WRAP_CLAMP_TO_EDGE,
+                                                            .MinFilter  = ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                                            .MagFilter  = ESamplerFilter::SAMPLER_FILTER_LINEAR,
+                                                      .Format     = EImageFormat::FORMAT_D32F,
                                                             .UsageFlags = EImageUsage::IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT |
                                                                           EImageUsage::IMAGE_USAGE_SAMPLED_BIT});
-                    pd.ShadowMapTexture =
-                        builder.WriteDepthStencil(csmTextureName, DepthStencilClearValue{1.0f, 0}, EOp::CLEAR, EOp::STORE);
+                    pd.ShadowMapTexture = builder.WriteDepthStencil(passName, DepthStencilClearValue{1.0f, 0}, EOp::CLEAR, EOp::STORE);
 
                     pd.MeshDataOpaque = builder.ReadBuffer("MeshDataOpaque_V1", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
                     pd.CulledMeshesOpaque =
@@ -64,7 +59,7 @@ void CascadedShadowMapPass::AddPass(Unique<RenderGraph>& rendergraph)
 
                     pd.CSMData = builder.ReadBuffer("CSMData", EResourceState::RESOURCE_STATE_VERTEX_SHADER_RESOURCE);
 
-                    builder.SetViewportScissor(m_Width, m_Height);
+                    builder.SetViewportScissor(m_Dimensions.x, m_Dimensions.y);
                 },
                 [=, &rd](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
                 {
@@ -74,9 +69,9 @@ void CascadedShadowMapPass::AddPass(Unique<RenderGraph>& rendergraph)
                     auto& drawBufferOpaque         = context.GetBuffer(pd.DrawBufferOpaque);
                     auto& culledMeshesBufferOpaque = context.GetBuffer(pd.CulledMeshesOpaque);
 
-                    rd->ShadowMapData[dirLightIndex].CascadeTextureIndices[cascadeIndex] =
+                    rd->ShadowMapData.CascadeData[dirLightIndex].CascadeTextureIndices[cascadeIndex] =
                         context.GetTexture(pd.ShadowMapTexture)->GetTextureBindlessIndex();
-                    csmDataBuffer->SetData(rd->ShadowMapData.data(), sizeof(rd->ShadowMapData));
+                    csmDataBuffer->SetData(&rd->ShadowMapData, sizeof(rd->ShadowMapData));
 
                     const PushConstantBlock pc = {
                         .StorageImageIndex  = static_cast<const uint32_t>(dirLightIndex),

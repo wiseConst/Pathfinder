@@ -1,16 +1,37 @@
-// y = 0;
-//if (x == 0) {
-//  y += 5;
-//}
-
-// y += 5 * when_eq(x, 0)
+// NOTE: simple example
+//        y = 0;
+//        if (x == 0) {
+//          y += 5;
+//        }
+//        
+//        y += 5 * when_eq(x, 0)
 
 vec4 when_eq(vec4 x, vec4 y) {
-  return 1.0 - abs(sign(x - y));
+  return vec4(1.0) - abs(sign(x - y));
+}
+
+float when_eq(float x, float y)
+{
+    return 1.0f - abs(sign(x - y));
+}
+
+int when_eq(int x, int y)
+{
+    return 1 - abs(sign(x - y));
 }
 
 vec4 when_neq(vec4 x, vec4 y) {
   return abs(sign(x - y));
+}
+
+int when_neq(int x, int y)
+{
+    return abs(sign(x - y));
+}
+
+float when_gt(float x, float y)
+{
+    return max(sign(x - y), 0.0);
 }
 
 vec4 when_gt(vec4 x, vec4 y) {
@@ -22,11 +43,11 @@ vec4 when_lt(vec4 x, vec4 y) {
 }
 
 vec4 when_ge(vec4 x, vec4 y) {
-  return 1.0 - when_lt(x, y);
+  return vec4(1.0) - when_lt(x, y);
 }
 
 vec4 when_le(vec4 x, vec4 y) {
-  return 1.0 - when_gt(x, y);
+  return vec4(1.0) - when_gt(x, y);
 }
 
 vec4 and(vec4 a, vec4 b) {
@@ -42,5 +63,5 @@ vec4 or(vec4 a, vec4 b) {
 //}
 
 vec4 not(vec4 a) {
-  return 1.0 - a;
+  return vec4(1.0) - a;
 }

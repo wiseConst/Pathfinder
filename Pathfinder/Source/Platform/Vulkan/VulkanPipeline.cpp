@@ -17,7 +17,7 @@ namespace Pathfinder
 namespace PipelineUtils
 {
 
-NODISCARD FORCEINLINE static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage)
+NODISCARD FORCEINLINE static VkShaderStageFlagBits PathfinderShaderStageToVulkan(const EShaderStage shaderStage) noexcept
 {
     switch (shaderStage)
     {
@@ -43,7 +43,7 @@ NODISCARD FORCEINLINE static VkShaderStageFlagBits PathfinderShaderStageToVulkan
     return VK_SHADER_STAGE_VERTEX_BIT;
 }
 
-NODISCARD FORCEINLINE static VkFormat PathfinderShaderElementFormatToVulkan(const EShaderBufferElementType type)
+NODISCARD FORCEINLINE static VkFormat PathfinderShaderElementFormatToVulkan(const EShaderBufferElementType type) noexcept
 {
     switch (type)
     {
@@ -72,7 +72,7 @@ NODISCARD FORCEINLINE static VkFormat PathfinderShaderElementFormatToVulkan(cons
     return VK_FORMAT_UNDEFINED;
 }
 
-NODISCARD FORCEINLINE static VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace)
+NODISCARD FORCEINLINE static VkFrontFace PathfinderFrontFaceToVulkan(const EFrontFace frontFace) noexcept
 {
     switch (frontFace)
     {
@@ -83,7 +83,7 @@ NODISCARD FORCEINLINE static VkFrontFace PathfinderFrontFaceToVulkan(const EFron
     return VK_FRONT_FACE_CLOCKWISE;
 }
 
-NODISCARD FORCEINLINE static VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveTopology primitiveTopology)
+NODISCARD FORCEINLINE static VkPrimitiveTopology PathfinderPrimitiveTopologyToVulkan(const EPrimitiveTopology primitiveTopology) noexcept
 {
     switch (primitiveTopology)
     {
@@ -99,7 +99,7 @@ NODISCARD FORCEINLINE static VkPrimitiveTopology PathfinderPrimitiveTopologyToVu
     return VK_PRIMITIVE_TOPOLOGY_POINT_LIST;
 }
 
-NODISCARD FORCEINLINE static VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode)
+NODISCARD FORCEINLINE static VkCullModeFlags PathfinderCullModeToVulkan(const ECullMode cullMode) noexcept
 {
     switch (cullMode)
     {
@@ -120,7 +120,7 @@ struct ShaderConstantInfo
 };
 
 static void PopulateShaderConstantsSpecializationInfo(const std::vector<PipelineSpecification::ShaderConstantType>& shaderConstantsMap,
-                                                      ShaderConstantInfo& shaderConstantsInfo)
+                                                      ShaderConstantInfo& shaderConstantsInfo) noexcept
 {
     size_t constantsDataSize = 0;  // Used as offset for constants and final size of all constants.
     for (uint32_t constant_id = 0; constant_id < shaderConstantsMap.size(); ++constant_id)
@@ -351,7 +351,7 @@ void VulkanPipeline::Invalidate()
 
             const VkPipelineRasterizationStateCreateInfo rasterizationState = {
                 .sType                   = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO,
-                .depthClampEnable        = VK_FALSE,  // TODO: Make it configurable?
+                .depthClampEnable        = gpo.bDepthClamp ? VK_TRUE : VK_FALSE,
                 .rasterizerDiscardEnable = VK_FALSE,
                 .polygonMode             = VulkanUtils::PathfinderPolygonModeToVulkan(gpo.PolygonMode),
                 .cullMode                = PipelineUtils::PathfinderCullModeToVulkan(gpo.CullMode),
@@ -360,8 +360,7 @@ void VulkanPipeline::Invalidate()
                 .depthBiasConstantFactor = 0.0f,      // TODO: Make it configurable?
                 .depthBiasClamp          = 0.0f,      // TODO: Make it configurable?
                 .depthBiasSlopeFactor    = 0.0f,      // TODO: Make it configurable?
-                .lineWidth               = gpo.LineWidth,
-            };
+                .lineWidth               = gpo.LineWidth};
 
             // TODO: Make it configurable?
             const VkPipelineMultisampleStateCreateInfo multisampleState = {.sType =
@@ -426,13 +425,14 @@ void VulkanPipeline::Invalidate()
                                                                      .scissorCount  = 1,
                                                                      .pScissors     = &scissor};
 
+            // TODO: Stencil masks.
             const VkPipelineDepthStencilStateCreateInfo depthStencilState = {
                 .sType            = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO,
                 .depthTestEnable  = gpo.bDepthTest ? VK_TRUE : VK_FALSE,
                 .depthWriteEnable = gpo.bDepthWrite ? VK_TRUE : VK_FALSE,
                 .depthCompareOp   = gpo.bDepthTest ? VulkanUtils::PathfinderCompareOpToVulkan(gpo.DepthCompareOp) : VK_COMPARE_OP_ALWAYS,
                 .depthBoundsTestEnable = VK_FALSE,  // TODO: Make it configurable?
-                .stencilTestEnable     = VK_FALSE,  // TODO: Make it configurable?
+                .stencilTestEnable     = gpo.bStencilTest ? VK_TRUE : VK_FALSE,
                 .minDepthBounds        = 0.f,
                 .maxDepthBounds        = 1.f};
 
@@ -468,8 +468,9 @@ void VulkanPipeline::Invalidate()
             {
                 if (TextureUtils::IsDepthFormat(format))
                 {
-                    depthAttachmentFormat = depthAttachmentFormat == VK_FORMAT_UNDEFINED ? TextureUtils::PathfinderImageFormatToVulkan(format)
-                                                                                         : depthAttachmentFormat;
+                    depthAttachmentFormat = depthAttachmentFormat == VK_FORMAT_UNDEFINED
+                                                ? TextureUtils::PathfinderImageFormatToVulkan(format)
+                                                : depthAttachmentFormat;
                 }
                 else if (TextureUtils::IsStencilFormat(format))
                 {
@@ -561,14 +562,10 @@ void VulkanPipeline::Invalidate()
 
 void VulkanPipeline::Destroy()
 {
-    const auto& vulkanDevice = VulkanContext::Get().GetDevice();
-    vulkanDevice->WaitDeviceOnFinish();
-
     // Since I don't create useless pipeline layouts because of empty descriptor sets excluding bindless.
     m_Layout = VK_NULL_HANDLE;
 
-    const auto& logicalDevice = vulkanDevice->GetLogicalDevice();
-    vkDestroyPipeline(logicalDevice, m_Handle, nullptr);
+    vkDestroyPipeline(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, nullptr);
     m_Handle = VK_NULL_HANDLE;
 }
 

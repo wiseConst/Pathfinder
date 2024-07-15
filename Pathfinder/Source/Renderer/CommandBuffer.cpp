@@ -20,7 +20,7 @@ Shared<CommandBuffer> CommandBuffer::Create(const CommandBufferSpecification& co
     return nullptr;
 }
 
-Shared<SyncPoint> SyncPoint::Create(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages)
+Shared<SyncPoint> SyncPoint::Create(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages) noexcept
 {
     switch (RendererAPI::Get())
     {

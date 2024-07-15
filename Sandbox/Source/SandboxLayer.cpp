@@ -75,18 +75,28 @@ void SandboxLayer::OnUpdate(const float deltaTime)
 
     Renderer::BeginScene(*m_Camera);
 
-    const glm::vec3 minLightPos{-15, -5, -5};
-    const glm::vec3 maxLightPos{15, 20, 5};
-
     m_ActiveScene->ForEach<TransformComponent, PointLightComponent>(
         [&](TransformComponent& tc, PointLightComponent& plc)
         {
+            const glm::vec3 minLightPos{-15, -5, -5};
+            const glm::vec3 maxLightPos{15, 20, 5};
+
             tc.Translation += glm::vec3(0, 3.0f, 0) * deltaTime;
             if (tc.Translation.y > maxLightPos.y)
             {
                 tc.Translation.y -= (maxLightPos.y - minLightPos.y);
             }
         });
+
+    // m_ActiveScene->ForEach<TransformComponent, DirectionalLightComponent>(
+    //     [&](TransformComponent& tc, DirectionalLightComponent& dlc)
+    //     {
+    //         static float timer = 0.f;
+    //         timer += deltaTime * 0.25f;
+    //         const float angle      = glm::radians(timer * 360.0f);
+    //         constexpr float radius = 20.0f;
+    //         tc.Rotation            = glm::vec3(0.f /*glm::cos(angle) * radius*/, radius, glm::sin(angle) * radius);
+    //     });
 
     m_ActiveScene->OnUpdate(deltaTime);
 
@@ -122,7 +132,11 @@ void SandboxLayer::OnUIRender()
     {
         ImGui::Begin("Renderer Settings", &bShowRendererSettings);
 
-        auto& rs              = Renderer::GetRendererSettings();
+        auto& rs = Renderer::GetRendererSettings();
+
+        ImGui::SliderFloat("Cascade Split Lambda", &rs.CascadeSplitLambda, 0.05f, 1.f);
+        ImGui::Separator();
+
         const bool bIsChecked = ImGui::Checkbox("VSync", &rs.bVSync);
         ImGui::Separator();
 
@@ -169,20 +183,20 @@ void SandboxLayer::OnUIRender()
         ImGui::End();
     }
 
-#if 0
+#if 1
     static bool bShowRenderTargetList = true;
     if (bShowRenderTargetList)
     {
         ImGui::Begin("Renderer Target List", &bShowRenderTargetList);
 
-        for (const auto& [name, image] : Renderer::GetRenderTargetList())
+        for (const auto& [name, texture] : Renderer::GetRenderTargetList())
         {
             ImGui::Text("%s", name.data());
-            const uint32_t imageWidth =
-                image->GetSpecification().Width > 10 ? image->GetSpecification().Width / 4 : image->GetSpecification().Width * 100;
-            const uint32_t imageHeight =
-                image->GetSpecification().Height > 10 ? image->GetSpecification().Height / 4 : image->GetSpecification().Height * 100;
-            UILayer::DrawImage(image, {imageWidth, imageHeight}, {0, 0}, {1, 1});
+            const uint32_t imageWidth  = texture->GetSpecification().Dimensions.x > 10 ? texture->GetSpecification().Dimensions.x / 4
+                                                                                       : texture->GetSpecification().Dimensions.x * 100;
+            const uint32_t imageHeight = texture->GetSpecification().Dimensions.y > 10 ? texture->GetSpecification().Dimensions.x / 4
+                                                                                       : texture->GetSpecification().Dimensions.y * 100;
+            UILayer::DrawTexture(texture, {imageWidth, imageHeight}, {0, 0}, {1, 1});
             ImGui::Separator();
         }
 

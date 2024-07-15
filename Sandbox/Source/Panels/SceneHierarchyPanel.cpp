@@ -11,7 +11,7 @@
 namespace Pathfinder
 {
 static void DrawVec3Control(const std::string& label, glm::vec3& values, const glm::vec2& range = glm::vec2(0.f),
-                            const float resetValue = 0.0f, const float columnWidth = 100.0f)
+                            const float resetValue = 0.0f, const float columnWidth = 100.0f) noexcept
 {
     ImGui::PushID(label.data());
     ImGui::Columns(2);  // First for label, second for values
@@ -68,7 +68,8 @@ static void DrawVec3Control(const std::string& label, glm::vec3& values, const g
     ImGui::PopID();
 }
 
-template <typename T, typename UIFunction> static void DrawComponent(const std::string& label, Entity entity, UIFunction&& uiFunction)
+template <typename T, typename UIFunction>
+static void DrawComponent(const std::string& label, Entity entity, UIFunction&& uiFunction) noexcept
 {
     if (!entity.HasComponent<T>()) return;
 
@@ -238,17 +239,15 @@ void SceneHierarchyPanel::ShowComponents(Entity entity)
     DrawComponent<TransformComponent>("TransformComponent", entity,
                                       [&](auto& tc)
                                       {
-                                          // TODO: For DirectionalLights replace Translation(used as direction) for Rotation(better to
-                                          // understand).
+                                          DrawVec3Control("Translation", tc.Translation);
+
                                           if (entity.HasComponent<DirectionalLightComponent>())
                                           {
-                                              const glm::vec2 range{-1.0f, 1.0f};
-                                              DrawVec3Control("Translation", tc.Translation, range);
+                                              DrawVec3Control("Rotation", tc.Rotation, {-360.f, 360.f});
                                           }
                                           else
-                                              DrawVec3Control("Translation", tc.Translation);
+                                              DrawVec3Control("Rotation", tc.Rotation);
 
-                                          DrawVec3Control("Rotation", tc.Rotation);
                                           DrawVec3Control("Scale", tc.Scale);
                                       });
 

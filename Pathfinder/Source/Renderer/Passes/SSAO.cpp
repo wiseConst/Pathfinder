@@ -48,7 +48,7 @@ void SSAOPass::AddPass(Unique<RenderGraph>& rendergraph)
             auto& depthOpaqueTexture = context.GetTexture(pd.DepthOpaque);
 
             const PushConstantBlock pc = {.CameraDataBuffer   = cameraDataBuffer->GetBDA(),
-                                          .StorageImageIndex  = rd->AONoiseTexture->GetTextureBindlessIndex(),
+                                          /*.StorageImageIndex  = rd->AONoiseTexture->GetTextureBindlessIndex(),*/
                                           .AlbedoTextureIndex = depthOpaqueTexture->GetTextureBindlessIndex()};
 
             const auto& pipeline = PipelineLibrary::Get(rd->SSAOPipelineHash);

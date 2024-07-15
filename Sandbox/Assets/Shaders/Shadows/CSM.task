@@ -4,7 +4,7 @@
 
 #extension GL_GOOGLE_include_directive : require
 #include "Include/Globals.h"
-#include "Include/MeshletTaskPayload.glslh"
+#include "Include/MeshletTaskPayload.glsl"
 #include "Include/Culling.h"
 
 layout(local_size_x = MESHLET_LOCAL_GROUP_SIZE, local_size_y = 1, local_size_z = 1) in;
@@ -22,20 +22,21 @@ void main()
     }
 
     // Out-of-bounds #0
-    if(CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
-    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID]];
+    // if(CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID] == s_INVALID_CULLED_OBJECT_INDEX) return;
+    // const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[CulledMeshIDBuffer(u_PC.addr1).CulledMeshIDs[gl_DrawID]];
+    const MeshData md = MeshDataBuffer(u_PC.addr0).meshesData[gl_DrawID];
    
     // Out-of-bounds #1
     if(gid >= md.meshletCount) return;
 
     barrier();
 
-    const Meshlet meshlet = MeshletBuffer(md.meshletBufferBDA).meshlets[gid];
-    const vec3 coneAxis = RotateByQuat(DecodeConeAxis(meshlet.coneAxis), md.orientation);
+   // const Meshlet meshlet = MeshletBuffer(md.meshletBufferBDA).meshlets[gid];
+  //  const vec3 coneAxis = RotateByQuat(DecodeConeAxis(meshlet.coneAxis), md.orientation);
 
-    Sphere sphere;
-    sphere.Center = RotateByQuat(meshlet.center * md.scale, md.orientation) + md.translation;
-    sphere.Radius = meshlet.radius * max(max(md.scale.x, md.scale.y), md.scale.z);
+  //  Sphere sphere;
+  //   sphere.Center = RotateByQuat(meshlet.center * md.scale, md.orientation) + md.translation;
+  //   sphere.Radius = meshlet.radius * max(max(md.scale.x, md.scale.y), md.scale.z);
 
   //  if (!IsConeBackfacing(CameraData(u_PC.CameraDataBuffer).Position, coneAxis, DecodeConeCutoff(meshlet.coneCutoff), sphere.Center, sphere.Radius) && SphereInsideFrustum(sphere, CameraData(u_PC.CameraDataBuffer).ViewFrustum))
     {

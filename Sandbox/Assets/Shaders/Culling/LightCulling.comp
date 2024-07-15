@@ -39,10 +39,7 @@ shared uint32_t visiblePointLightCount;
 shared LIGHT_INDEX_TYPE visibleSpotLightIndices[MAX_SPOT_LIGHTS];
 shared uint32_t visibleSpotLightCount;
 
-#define FRUSTUM_IMAGE_DEBUG 1
-#define HEATMAP_IMAGE_DEBUG 1
-
-#if HEATMAP_IMAGE_DEBUG
+#ifdef HEATMAP_IMAGE_DEBUG
 vec4 Heatmap(uint lightCount)
 {
 	const vec3 mapTex[] = {
@@ -303,11 +300,11 @@ void main()
         }
     }
 
-#if HEATMAP_IMAGE_DEBUG
+#ifdef HEATMAP_IMAGE_DEBUG
     imageStore(u_GlobalImages_RGBA8[u_PC.StorageImageIndex], pixelCoords, Heatmap(visiblePointLightCount + visibleSpotLightCount));
 #endif
 
-#if FRUSTUM_IMAGE_DEBUG
+#ifdef FRUSTUM_IMAGE_DEBUG
     const uint half_tile = LIGHT_CULLING_TILE_SIZE / 2;
     vec3 frustumColor = abs(groupFrustum.Planes[1].Normal);
     const uint gridIndex = GetLinearGridIndex(pixelCoords, CameraData(u_PC.CameraDataBuffer).FullResolution.x);

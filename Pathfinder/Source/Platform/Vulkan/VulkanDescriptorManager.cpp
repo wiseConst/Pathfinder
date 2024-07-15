@@ -168,7 +168,7 @@ void VulkanDescriptorManager::CreateDescriptorPools()
         VK_SetDebugName(logicalDevice, m_MegaSet[frame], VK_OBJECT_TYPE_DESCRIPTOR_SET, megaSetDebugName.data());
     }
 
-    m_PCBlock = VulkanUtils::GetPushConstantRange(VK_SHADER_STAGE_ALL, /* offset */ 0, sizeof(PushConstantBlock));
+    m_PCBlock = VkPushConstantRange{.stageFlags = VK_SHADER_STAGE_ALL, .offset = 0, .size = sizeof(PushConstantBlock)};
     PFR_ASSERT(m_PCBlock.size == 128, "Exceeding minimum limit of push constant block!");
 
     const VkPipelineLayoutCreateInfo pipelineLayoutCI = {.sType                  = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO,

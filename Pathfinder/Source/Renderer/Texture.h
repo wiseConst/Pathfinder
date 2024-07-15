@@ -13,6 +13,7 @@ struct TextureSpecification
     std::string DebugName = s_DEFAULT_STRING;
     glm::uvec3 Dimensions{0};
     bool bGenerateMips         = false;
+    bool bExposeMips           = false;  // Provide exclusive access to each mip for shader through bindless index.
     ESamplerWrap WrapS         = ESamplerWrap::SAMPLER_WRAP_REPEAT;
     ESamplerWrap WrapT         = WrapS;
     ESamplerFilter MinFilter   = ESamplerFilter::SAMPLER_FILTER_LINEAR;
@@ -61,6 +62,10 @@ class Texture : private Uncopyable, private Unmovable
     Optional<uint32_t> m_TextureBindlessIndex        = std::nullopt;
     Optional<uint32_t> m_StorageTextureBindlessIndex = std::nullopt;
     UUID m_UUID                                      = {};  // NOTE: Used only for imgui purposes.
+
+    // TODO:
+    std::vector<uint32_t> m_TextureMipChainBindlessIndices;
+    std::vector<uint32_t> m_StorageTextureMipChainBindlessIndices;
 
     EImageLayout m_Layout = EImageLayout::IMAGE_LAYOUT_UNDEFINED;
     uint8_t m_Mips        = 1;

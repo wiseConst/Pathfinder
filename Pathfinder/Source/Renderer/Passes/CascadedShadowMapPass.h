@@ -11,19 +11,12 @@ class CascadedShadowMapPass final
 {
   public:
     CascadedShadowMapPass() = default;
-    CascadedShadowMapPass(const uint32_t width, const uint32_t height);
+    CascadedShadowMapPass(const glm::uvec2& dimensions);
 
     void AddPass(Unique<RenderGraph>& rendergraph);
-    FORCEINLINE void OnResize(const uint32_t width, const uint32_t height)
-    {
-        const auto maxDim = std::max(width, height);
-
-        // NOTE: To prevent jiggering near edges of shadows when rotating camera
-        // dimensions of shadow map should be the same.
-        m_Width = m_Height = maxDim;
-    }
+    void SetShadowMapDimensions(const glm::uvec2& dimensions) noexcept { m_Dimensions = dimensions; }
 
   private:
-    uint32_t m_Width{}, m_Height{};
+    glm::uvec2 m_Dimensions{1024};
 };
 }  // namespace Pathfinder

@@ -23,10 +23,10 @@ class VulkanQueryPool : public QueryPool
 class VulkanSyncPoint final : public SyncPoint
 {
   public:
-    VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages);
-    ~VulkanSyncPoint() override = default;
+    VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages) noexcept;
+    ~VulkanSyncPoint() noexcept override = default;
 
-    void Wait() const final override;
+    void Wait() const noexcept final override;
 
   private:
     VulkanSyncPoint() = delete;

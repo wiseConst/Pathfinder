@@ -36,6 +36,9 @@ void Renderer::Init()
     s_RendererData->LightStruct = MakeUnique<LightData>();
     s_DescriptorManager         = DescriptorManager::Create();
 
+    s_RendererSettings.CascadeSplitLambda     = .98f;
+    s_RendererData->ShadowMapData.SplitLambda = s_RendererSettings.CascadeSplitLambda;
+
     std::ranges::for_each(s_RendererData->UploadHeap,
                           [](auto& uploadHeap)
                           {
@@ -88,7 +91,6 @@ void Renderer::Init()
         [](const WindowResizeData& resizeData)
         {
             s_RendererData->DepthPrePass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
-            s_RendererData->CascadedShadowMapPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
             s_RendererData->LightCullingPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
             s_RendererData->SSSPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
             s_RendererData->SSAOPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
@@ -98,30 +100,6 @@ void Renderer::Init()
             s_RendererData->FinalCompositePass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y);
         });
 
-    // Noise texture for ambient occlusions
-    {
-        const auto& appSpec       = Application::Get().GetSpecification();
-        const auto rotTexturePath = std::filesystem::path(appSpec.WorkingDir) / appSpec.AssetsDir / "Other/rot_texture.bmp";
-        int32_t x = 0, y = 0, channels = 0;
-        uint8_t* rawImageData = reinterpret_cast<uint8_t*>(TextureUtils::LoadRawImage(rotTexturePath, false, &x, &y, &channels));
-        void* rgbaImageData   = TextureUtils::ConvertRgbToRgba(rawImageData, x, y);
-
-        const TextureSpecification aoNoiseTS{
-            .DebugName  = "Default_NoiseAO",
-            .Dimensions = glm::uvec3(x, y, 1),
-            .WrapS      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-            .WrapT      = ESamplerWrap::SAMPLER_WRAP_REPEAT,
-            .MinFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
-            .MagFilter  = ESamplerFilter::SAMPLER_FILTER_NEAREST,
-            .Format     = EImageFormat::FORMAT_RGBA32F,
-        };
-        s_RendererData->AONoiseTexture = Texture::Create(aoNoiseTS, rgbaImageData, x * y * sizeof(glm::vec4));
-
-        free(rgbaImageData);
-        TextureUtils::UnloadRawImage(rawImageData);
-    }
-
-    PipelineLibrary::Compile();
     LOG_TRACE("{}", __FUNCTION__);
 
     const auto& windowSpec = Application::Get().GetWindow()->GetSpecification();
@@ -129,7 +107,7 @@ void Renderer::Init()
     s_RendererData->FramePreparePass      = {};
     s_RendererData->ObjectCullingPass     = {};
     s_RendererData->DepthPrePass          = DepthPrePass(windowSpec.Width, windowSpec.Height);
-    s_RendererData->CascadedShadowMapPass = CascadedShadowMapPass(windowSpec.Width, windowSpec.Height);
+    s_RendererData->CascadedShadowMapPass = CascadedShadowMapPass(s_RendererSettings.ShadowMapDim);
     s_RendererData->LightCullingPass      = LightCullingPass(windowSpec.Width, windowSpec.Height);
     s_RendererData->SSSPass               = ScreenSpaceShadowsPass(windowSpec.Width, windowSpec.Height);
     s_RendererData->SSAOPass              = SSAOPass(windowSpec.Width, windowSpec.Height);
@@ -169,9 +147,13 @@ void Renderer::Begin()
     s_RendererData->bIsFrameBegin = true;
     ShaderLibrary::DestroyGarbageIfNeeded();
 
+    s_RendererData->CascadedShadowMapPass.SetShadowMapDimensions(s_RendererSettings.ShadowMapDim);
+
     // Update VSync state.
     auto& window = Application::Get().GetWindow();
     window->SetVSync(s_RendererSettings.bVSync);
+
+    s_RendererData->ShadowMapData.SplitLambda = s_RendererSettings.CascadeSplitLambda;
 
     s_RendererData->CameraStruct.FullResolution    = glm::vec2(window->GetSpecification().Width, window->GetSpecification().Height);
     s_RendererData->CameraStruct.InvFullResolution = 1.f / s_RendererData->CameraStruct.FullResolution;
@@ -379,12 +361,14 @@ void Renderer::CreatePipelines()
 
     // Cascaded Shadow Maps
     {
-        const GraphicsPipelineOptions csmGPO = {.Formats        = {EImageFormat::FORMAT_D16_UNORM},
-                                                .CullMode       = ECullMode::CULL_MODE_FRONT,
-                                                .bMeshShading   = true,
-                                                .bDepthTest     = true,
-                                                .bDepthWrite    = true,
-                                                .DepthCompareOp = ECompareOp::COMPARE_OP_LESS_OR_EQUAL};
+        const GraphicsPipelineOptions csmGPO = {
+            .Formats        = {EImageFormat::FORMAT_D32F},  // change back to d16_unorm and introduce reversed z
+            .CullMode       = ECullMode::CULL_MODE_FRONT,
+            .bMeshShading   = true,
+            .bDepthClamp    = true,
+            .bDepthTest     = true,
+            .bDepthWrite    = true,
+            .DepthCompareOp = ECompareOp::COMPARE_OP_LESS_OR_EQUAL};
 
         PipelineSpecification csmPS = {.DebugName       = "CSM",
                                        .PipelineOptions = csmGPO,
@@ -503,16 +487,20 @@ void Renderer::CreatePipelines()
 
         s_RendererData->CompositePipelineHash = PipelineLibrary::Push(compositePipelineSpec);
     }
-
-    PipelineLibrary::Compile();
 }
 
-const std::map<std::string, Shared<Image>> Renderer::GetRenderTargetList()
+const std::map<std::string, Shared<Texture>> Renderer::GetRenderTargetList()
 {
-    return {};
-    PFR_ASSERT(false, "NOT IMPLEMENTED!");
+    // return {};
+    // PFR_ASSERT(false, "NOT IMPLEMENTED!");
     PFR_ASSERT(s_RendererData, "RendererData is not valid!");
-    std::map<std::string, Shared<Image>> renderTargetList;
+    std::map<std::string, Shared<Texture>> renderTargetList;
+
+    for (auto& cascade : s_RendererData->CascadeRenderTargets)
+    {
+        cascade->SetLayout(EImageLayout::IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL, true);
+        renderTargetList[cascade->GetSpecification().DebugName] = cascade;
+    }
 
     // renderTargetList["GBuffer"]   = s_RendererData->GBuffer->GetAttachments()[0].Attachment;
     // renderTargetList["AO"]        = s_RendererData->AOFramebuffer->GetAttachments()[0].Attachment;

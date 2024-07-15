@@ -187,9 +187,12 @@ struct GraphicsPipelineOptions
     bool bDynamicPolygonMode = false;  // Allows to set pipeline states like PolygonMode
     EPolygonMode PolygonMode = EPolygonMode::POLYGON_MODE_FILL;
 
+    bool bDepthClamp          = false;
     bool bDepthTest           = false;  // If we should do any z-culling at all
     bool bDepthWrite          = false;  // Allows the depth to be written.
     ECompareOp DepthCompareOp = ECompareOp::COMPARE_OP_NEVER;
+
+    bool bStencilTest = false;  // Stencil testing.
 
     bool operator==(const GraphicsPipelineOptions& other) const
     {
@@ -318,48 +321,23 @@ class Pipeline : private Uncopyable, private Unmovable
     virtual void Destroy()    = 0;
 };
 
-class PipelineBuilder final : private Uncopyable, private Unmovable
-{
-  public:
-    static void Init();
-    static void Shutdown();
-
-  private:
-    PipelineBuilder()  = delete;
-    ~PipelineBuilder() = default;
-
-  private:
-    static inline std::mutex s_PipelineBuilderMutex;
-    static inline std::vector<PipelineSpecification> s_PipelinesToBuild;
-
-    friend class PipelineLibrary;
-
-    FORCEINLINE static void Push(const PipelineSpecification& pipelineSpec)
-    {
-        PFR_ASSERT(!std::holds_alternative<std::monostate>(pipelineSpec.PipelineOptions), "Pipeline specification hasn't options!");
-        std::scoped_lock lock(s_PipelineBuilderMutex);
-        s_PipelinesToBuild.emplace_back(pipelineSpec);
-    }
-    static void Build();
-};
-
+// Fix parallel pipeline construction.
 // TODO: Maybe add std::multimap<string, hash> name_to_hash to retrieve pipeline(s) by its name(s)
-class PipelineLibrary final : private Uncopyable, private Unmovable
+class PipelineLibrary final
 {
   public:
-    static void Init();
-    static void Shutdown();
+    static void Init() noexcept;
+    static void Shutdown() noexcept;
 
-    FORCEINLINE NODISCARD static const auto& GetStorage() { return s_PipelineStorage; }
-    FORCEINLINE NODISCARD static const auto& Get(const uint64_t& pipelineHash)
+    FORCEINLINE NODISCARD static const auto& GetStorage() noexcept { return s_PipelineStorage; }
+    FORCEINLINE NODISCARD static const auto& Get(const uint64_t& pipelineHash) noexcept
     {
-        std::scoped_lock lock(s_PipelineLibraryMutex);
+        std::scoped_lock lock(s_QueueMutex);
         PFR_ASSERT(s_PipelineStorage.contains(pipelineHash), "Pipeline with hash is not present!");
         return s_PipelineStorage.at(pipelineHash);
     }
 
-    FORCEINLINE static void Compile() { PipelineBuilder::Build(); }
-    FORCEINLINE static void Invalidate(const uint64_t& pipelineHash)
+    FORCEINLINE static void Invalidate(const uint64_t& pipelineHash) noexcept
     {
         PFR_ASSERT(s_PipelineStorage.contains(pipelineHash), "PipelineLibrary::Invalidate(). Pipeline Hash is not present!");
 
@@ -370,15 +348,17 @@ class PipelineLibrary final : private Uncopyable, private Unmovable
     }
 
     // Returns pipeline hash.
-    FORCEINLINE static const uint64_t Push(PipelineSpecification& pipelineSpec)
+    FORCEINLINE static const uint64_t Push(PipelineSpecification& pipelineSpec) noexcept
     {
-        PipelineSpecificationHash psHash{};
-        pipelineSpec.Hash = psHash(pipelineSpec);
+        {
+            std::scoped_lock lock(s_QueueMutex);
+            PipelineSpecificationHash psHash{};
+            pipelineSpec.Hash = psHash(pipelineSpec);
 
-        PFR_ASSERT(!s_PipelineStorage.contains(pipelineSpec.Hash), "Pipeline with hash is already present! Possibly hash-collision??");
+            PFR_ASSERT(!s_PipelineStorage.contains(pipelineSpec.Hash), "Pipeline with hash is already present! Possibly hash-collision??");
+        }
 
-        std::scoped_lock lock(s_PipelineLibraryMutex);
-        PipelineBuilder::Push(pipelineSpec);
+        Add(pipelineSpec, Pipeline::Create(pipelineSpec));
 
         return pipelineSpec.Hash;
     }
@@ -387,23 +367,23 @@ class PipelineLibrary final : private Uncopyable, private Unmovable
     struct PipelineSpecificationHash
     {
       public:
-        std::size_t operator()(const PipelineSpecification& pipelineSpec) const;
+        std::size_t operator()(const PipelineSpecification& pipelineSpec) const noexcept;
 
       private:
-        template <typename T> void hash_combine(std::size_t& seed, const T& v) const
+        template <typename T> void hash_combine(std::size_t& seed, const T& v) const noexcept
         {
             seed ^= std::hash<T>{}(v) + 0x9e3779b9 + (seed << 6) + (seed >> 2);
         }
     };
 
-    static inline std::mutex s_PipelineLibraryMutex;
+    static inline std::mutex s_QueueMutex;
     static inline UnorderedMap<uint64_t, Shared<Pipeline>> s_PipelineStorage;
 
     friend class PipelineBuilder;
 
-    FORCEINLINE static void Add(const PipelineSpecification& pipelineSpec, const Shared<Pipeline>& pipeline)
+    FORCEINLINE static void Add(const PipelineSpecification& pipelineSpec, const Shared<Pipeline>& pipeline) noexcept
     {
-        std::scoped_lock lock(s_PipelineLibraryMutex);
+        std::scoped_lock lock(s_QueueMutex);
         PFR_ASSERT(pipelineSpec.Hash, "Pipeline has no hash?!");
 
         if (s_PipelineStorage.contains(pipelineSpec.Hash))

@@ -6,7 +6,7 @@
       "TransformComponent": {
         "Translation": {
           "x": 0.0,
-          "y": -2.804729700088501,
+          "y": 19.273252487182617,
           "z": 0.0
         },
         "Rotation": {
@@ -33,6 +33,35 @@
         "bDrawBoundingSphere": false
       }
     },
+    "5017449571950922399": {
+      "TagComponent": "sprite0",
+      "TransformComponent": {
+        "Translation": {
+          "x": 0.0,
+          "y": 2.5,
+          "z": 0.0
+        },
+        "Rotation": {
+          "x": 45.0,
+          "y": 90.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 0.0
+        }
+      },
+      "SpriteComponent": {
+        "Color": {
+          "x": 0.3333333134651184,
+          "y": 0.18292681872844696,
+          "z": 0.29263511300086975,
+          "w": 0.15294118225574493
+        },
+        "Layer": 0
+      }
+    },
     "14459279328272821255": {
       "TagComponent": "gun",
       "TransformComponent": {
@@ -54,14 +83,14 @@
       },
       "MeshComponent": {
         "MeshSource": "flintlock_pistol/scene.gltf",
-        "bDrawBoundingSphere": false
+        "bDrawBoundingSphere": true
       }
     },
     "13884783760960104608": {
       "TagComponent": "icarus",
       "TransformComponent": {
         "Translation": {
-          "x": 0.4000000059604645,
+          "x": 0.699999988079071,
           "y": 0.3499999940395355,
           "z": -0.10000000149011612
         },
@@ -79,6 +108,35 @@
       "MeshComponent": {
         "MeshSource": "icarus/scene.gltf",
         "bDrawBoundingSphere": false
+      }
+    },
+    "13776731069991056743": {
+      "TagComponent": "sprite1",
+      "TransformComponent": {
+        "Translation": {
+          "x": 3.6500000953674316,
+          "y": 3.299999952316284,
+          "z": -0.550000011920929
+        },
+        "Rotation": {
+          "x": 0.0,
+          "y": -45.0,
+          "z": 0.0
+        },
+        "Scale": {
+          "x": 1.0,
+          "y": 1.0,
+          "z": 1.0
+        }
+      },
+      "SpriteComponent": {
+        "Color": {
+          "x": 0.8943089246749878,
+          "y": 0.518355131149292,
+          "z": 0.12360366433858871,
+          "w": 1.0
+        },
+        "Layer": 0
       }
     },
     "13184783760960274608": {
@@ -109,26 +167,26 @@
       "TagComponent": "sonne",
       "TransformComponent": {
         "Translation": {
+          "x": 0.4000000059604645,
+          "y": 0.30000001192092896,
+          "z": 0.30000001192092896
+        },
+        "Rotation": {
           "x": 0.0,
           "y": 0.0,
           "z": 0.0
         },
-        "Rotation": {
-          "x": 18.950000762939453,
-          "y": 30.0,
-          "z": 4.949999809265137
-        },
         "Scale": {
           "x": 1.0,
           "y": 1.0,
-          "z": 0.0
+          "z": 1.0
         }
       },
       "DirectionalLightComponent": {
         "Color": {
-          "x": 0.9519230723381042,
-          "y": 0.3707888126373291,
-          "z": 0.10068415850400925
+          "x": 1.0,
+          "y": 0.39718931913375854,
+          "z": 0.2163461446762085
         },
         "Intensity": 1.159999966621399,
         "bCastShadows": 1

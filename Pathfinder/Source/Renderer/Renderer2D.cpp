@@ -49,7 +49,6 @@ void Renderer2D::Init()
         [&](const WindowResizeData& resizeData)
         { m_RendererData2D->Quad2DPass.OnResize(resizeData.Dimensions.x, resizeData.Dimensions.y); });
 
-    PipelineLibrary::Compile();
     LOG_TRACE("{}", __FUNCTION__);
 }
 

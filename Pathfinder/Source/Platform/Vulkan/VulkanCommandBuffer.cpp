@@ -198,12 +198,12 @@ void VulkanQueryPool::Destroy()
     vkDestroyQueryPool(VulkanContext::Get().GetDevice()->GetLogicalDevice(), m_Handle, nullptr);
 }
 
-VulkanSyncPoint::VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages)
+VulkanSyncPoint::VulkanSyncPoint(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages) noexcept
     : SyncPoint(timelineSemaphoreHandle, value, pipelineStages)
 {
 }
 
-void VulkanSyncPoint::Wait() const
+void VulkanSyncPoint::Wait() const noexcept
 {
     const VkSemaphoreWaitInfo waitInfo = {.sType          = VK_STRUCTURE_TYPE_SEMAPHORE_WAIT_INFO,
                                           .flags          = VK_SEMAPHORE_WAIT_ANY_BIT,

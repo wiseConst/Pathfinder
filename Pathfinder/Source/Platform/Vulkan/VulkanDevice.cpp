@@ -196,7 +196,7 @@ static bool CheckDeviceExtensionSupport(GPUInfo& gpuInfo)
     return true;
 }
 
-static bool IsDeviceSuitable(GPUInfo& gpuInfo)
+static bool IsDeviceSuitable(GPUInfo& gpuInfo) noexcept
 {
     // Query GPU properties(device name, limits, etc..)
     vkGetPhysicalDeviceProperties(gpuInfo.PhysicalDevice, &gpuInfo.Properties);
@@ -328,7 +328,7 @@ static bool IsDeviceSuitable(GPUInfo& gpuInfo)
            gpuInfo.Features.geometryShader && gpuInfo.Features.tessellationShader && gpuInfo.Features.shaderInt16 &&               //
            gpuInfo.Features.multiDrawIndirect && gpuInfo.Features.wideLines && gpuInfo.Features.textureCompressionBC &&            //
            gpuInfo.Features.shaderSampledImageArrayDynamicIndexing && gpuInfo.Features.shaderStorageBufferArrayDynamicIndexing &&  //
-           gpuInfo.Features.shaderStorageImageArrayDynamicIndexing && gpuInfo.Features.shaderInt64;
+           gpuInfo.Features.shaderStorageImageArrayDynamicIndexing && gpuInfo.Features.shaderInt64 && gpuInfo.Features.depthClamp;
 }
 
 static uint32_t RateDeviceSuitability(GPUInfo& gpuInfo)
@@ -546,7 +546,7 @@ VulkanDevice::~VulkanDevice()
 
     for (uint8_t frameIndex{}; frameIndex < s_FRAMES_IN_FLIGHT; ++frameIndex)
     {
-        for (uint16_t threadIndex = 0; threadIndex < s_WORKER_THREAD_COUNT; ++threadIndex)
+        for (uint16_t threadIndex{}; threadIndex < s_WORKER_THREAD_COUNT; ++threadIndex)
         {
             vkDestroyCommandPool(m_LogicalDevice, m_GraphicsCommandPools[frameIndex][threadIndex], nullptr);
             vkDestroyCommandPool(m_LogicalDevice, m_ComputeCommandPools[frameIndex][threadIndex], nullptr);
@@ -630,56 +630,58 @@ void VulkanDevice::CreateLogicalDevice()
     m_QueueFamilyIndices.insert(m_QueueFamilyIndices.end(), uniqueQueueFamilies.begin(), uniqueQueueFamilies.end());
 
     // NOTE: This struct should contain only whatever I do check in IsDeviceSuitable()!!
-    constexpr VkPhysicalDeviceFeatures physicalDeviceFeatures = {.geometryShader                          = VK_TRUE,
-                                                                 .tessellationShader                      = VK_TRUE,
-                                                                 .multiDrawIndirect                       = VK_TRUE,
-                                                                 .fillModeNonSolid                        = VK_TRUE,
-                                                                 .wideLines                               = VK_TRUE,
-                                                                 .samplerAnisotropy                       = VK_TRUE,
-                                                                 .textureCompressionBC                    = VK_TRUE,
-                                                                 .pipelineStatisticsQuery                 = VK_TRUE,
-                                                                 .shaderSampledImageArrayDynamicIndexing  = VK_TRUE,
-                                                                 .shaderStorageBufferArrayDynamicIndexing = VK_TRUE,
-                                                                 .shaderStorageImageArrayDynamicIndexing  = VK_TRUE,
-                                                                 .shaderInt64                             = VK_TRUE,
-                                                                 .shaderInt16                             = VK_TRUE};
-    VkDeviceCreateInfo deviceCI                               = {.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
-                                                                 .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
-                                                                 .pQueueCreateInfos    = queueCreateInfos.data(),
-                                                                 .pEnabledFeatures     = &physicalDeviceFeatures};
+    constexpr VkPhysicalDeviceFeatures physicalDeviceFeatures = {
+        .geometryShader                          = VK_TRUE,
+        .tessellationShader                      = VK_TRUE,
+        .multiDrawIndirect                       = VK_TRUE,
+        .depthClamp                              = VK_TRUE,
+        .fillModeNonSolid                        = VK_TRUE,
+        .wideLines                               = VK_TRUE,
+        .samplerAnisotropy                       = VK_TRUE,
+        .textureCompressionBC                    = VK_TRUE,
+        .pipelineStatisticsQuery                 = VK_TRUE,
+        .shaderSampledImageArrayDynamicIndexing  = VK_TRUE,
+        .shaderStorageBufferArrayDynamicIndexing = VK_TRUE,
+        .shaderStorageImageArrayDynamicIndexing  = VK_TRUE,
+        .shaderInt64                             = VK_TRUE,
+        .shaderInt16                             = VK_TRUE,
+    };
+    VkDeviceCreateInfo deviceCI = {.sType                = VK_STRUCTURE_TYPE_DEVICE_CREATE_INFO,
+                                   .queueCreateInfoCount = static_cast<uint32_t>(queueCreateInfos.size()),
+                                   .pQueueCreateInfos    = queueCreateInfos.data(),
+                                   .pEnabledFeatures     = &physicalDeviceFeatures};
 
-    VkPhysicalDeviceVulkan13Features vulkan13Features = {.sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
-                                                         .synchronization2 = VK_TRUE,
-                                                         .dynamicRendering = VK_TRUE,
-                                                         .maintenance4     = VK_TRUE};
+    VkPhysicalDeviceVulkan13Features vulkan13Features = {
+        .sType            = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES,
+        .synchronization2 = VK_TRUE,  // Vk 1.3 core: Advanced synchronization types(64 bit flags)
+        .dynamicRendering = VK_TRUE,  // Vk 1.3 core: To neglect render-passes as my target is desktop only
+        .maintenance4     = VK_TRUE   // Vk 1.3 core: Shader SPIRV 1.6
+    };
 
     deviceCI.pNext = &vulkan13Features;
     void** ppNext  = &vulkan13Features.pNext;
 
-    VkPhysicalDeviceVulkan12Features vulkan12Features = {.sType = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
-    vulkan12Features.hostQueryReset                   = VK_TRUE;
-    // Async submits/waits feature, can be used instead of fence.
-    vulkan12Features.timelineSemaphore = VK_TRUE;
+    VkPhysicalDeviceVulkan12Features vulkan12Features = {
+        .sType                   = VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES,
+        .storageBuffer8BitAccess = VK_TRUE,
+        .shaderFloat16           = VK_TRUE,
+        .shaderInt8              = VK_TRUE,
 
-    vulkan12Features.shaderSampledImageArrayNonUniformIndexing  = VK_TRUE;  // AMD issues
-    vulkan12Features.shaderStorageImageArrayNonUniformIndexing  = VK_TRUE;
-    vulkan12Features.shaderStorageBufferArrayNonUniformIndexing = VK_TRUE;
-    vulkan12Features.storageBuffer8BitAccess                    = VK_TRUE;
-    vulkan12Features.shaderFloat16                              = VK_TRUE;
-    vulkan12Features.shaderInt8                                 = VK_TRUE;
+        // Bindless
+        .descriptorIndexing                           = VK_TRUE,  //
+        .shaderSampledImageArrayNonUniformIndexing    = VK_TRUE,  // To index into array of sampled textures
+        .shaderStorageImageArrayNonUniformIndexing    = VK_TRUE,  // To index into array of storage textures
+        .descriptorBindingSampledImageUpdateAfterBind = VK_TRUE,
+        .descriptorBindingStorageImageUpdateAfterBind = VK_TRUE,
+        .descriptorBindingVariableDescriptorCount     = VK_TRUE,  // to have no limits on array size of descriptor array
+        .runtimeDescriptorArray                       = VK_TRUE,  // to have descriptor array in e.g. (uniform sampler2D u_GlobalTextures[])
 
-    // Bindless
-    vulkan12Features.descriptorBindingVariableDescriptorCount = VK_TRUE;  // to have no limits on array size of descriptor array
-    vulkan12Features.runtimeDescriptorArray = VK_TRUE;  // to have descriptor array in e.g. (uniform sampler2D u_GlobalTextures[])
-    vulkan12Features.descriptorIndexing     = VK_TRUE;  //
-    vulkan12Features.descriptorBindingSampledImageUpdateAfterBind  = VK_TRUE;
-    vulkan12Features.descriptorBindingStorageBufferUpdateAfterBind = VK_TRUE;
-    vulkan12Features.descriptorBindingStorageImageUpdateAfterBind  = VK_TRUE;
-    vulkan12Features.descriptorBindingUniformBufferUpdateAfterBind = VK_TRUE;
+        .scalarBlockLayout = VK_TRUE,  // Shader type alignment
+        .hostQueryReset    = VK_TRUE,
 
-    // Shader type alignment
-    vulkan12Features.scalarBlockLayout   = VK_TRUE;
-    vulkan12Features.bufferDeviceAddress = VK_TRUE;
+        .timelineSemaphore   = VK_TRUE,  // Vk 1.3 core: To do async work with proper synchronization on device side, remove fences.
+        .bufferDeviceAddress = VK_TRUE,
+    };
 
     *ppNext = &vulkan12Features;
     ppNext  = &vulkan12Features.pNext;
@@ -756,7 +758,7 @@ void VulkanDevice::CreateLogicalDevice()
     for (const auto& ext : s_DeviceExtensions)
         LOG_TRACE("  {}", ext);
 #endif
-}
+}  // namespace Pathfinder
 
 void VulkanDevice::AllocateCommandBuffer(VkCommandBuffer& inOutCommandBuffer, const CommandBufferSpecification& commandBufferSpec)
 {

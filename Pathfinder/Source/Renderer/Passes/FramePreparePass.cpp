@@ -81,7 +81,8 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
 
             builder.DeclareBuffer("CSMData", {.DebugName  = "CSMData",
                                               .ExtraFlags = EBufferFlag::BUFFER_FLAG_DEVICE_LOCAL,
-                                              .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE});
+                                              .UsageFlags = EBufferUsage::BUFFER_USAGE_STORAGE,
+                                              .bPerFrame  = true});
             pd.CSMData = builder.WriteBuffer("CSMData");
         },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
@@ -91,7 +92,7 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
             const auto& rd = Renderer::GetRendererData();
 
             auto& csmDataBuffer = context.GetBuffer(pd.CSMData);
-            csmDataBuffer->SetData(rd->ShadowMapData.data(), sizeof(rd->ShadowMapData));
+            csmDataBuffer->SetData(&rd->ShadowMapData, sizeof(rd->ShadowMapData));
 
             auto& lightDataBuffer = context.GetBuffer(pd.LightData);
             lightDataBuffer->SetData(rd->LightStruct.get(), sizeof(LightData));
@@ -178,120 +179,131 @@ void FramePreparePass::AddPass(Unique<RenderGraph>& rendergraph)
         });
 }
 
-glm::mat4 FramePreparePass::CalculateLightSpaceViewProjMatrix(const glm::vec3& lightDir, const float zNear, const float zFar)
-{
-    const auto& rd = Renderer::GetRendererData();
-
-    // Converting our i-th camera's view frustum to world space, so we can tightly fit ortho frustum in the whole camera frustum.
-    const glm::mat4 proj                    = glm::perspective(glm::radians(rd->CameraStruct.FOV),
-                                                               rd->CameraStruct.FullResolution.x / rd->CameraStruct.FullResolution.y, zNear, zFar);
-    std::vector<glm::vec4> frustumCornersWS = GetFrustumCornersWorldSpace(proj * rd->CameraStruct.View);
-
-    glm::vec3 frustumCenter{0.f};
-    for (const auto& frustumCorner : frustumCornersWS)
-        frustumCenter += glm::vec3(frustumCorner);
-
-    frustumCenter /= frustumCornersWS.size();
-    const glm::mat4 lightView = glm::lookAt(frustumCenter + lightDir, frustumCenter, glm::vec3{0.f, 1.0f, 0.f});
-
-    glm::vec3 minCoord{std::numeric_limits<float>::max()};
-    glm::vec3 maxCoord{std::numeric_limits<float>::min()};
-    for (const auto& frustumCorner : frustumCornersWS)
-    {
-        const auto cornerLightVS = glm::vec3(lightView * frustumCorner);
-        minCoord                 = glm::min(minCoord, cornerLightVS);
-        maxCoord                 = glm::max(maxCoord, cornerLightVS);
-    }
-
-#if 0
-    // Think about it : not only geometry which is in the frustum can cast shadows on a surface in the frustum !
-    // Pulling back and pushing away Z
-    // Tune this parameter according to the scene
-    constexpr float zMult = 10.0f;
-    if (minZ < 0)
-    {
-        minZ *= zMult;
-    }
-    else
-    {
-        minZ /= zMult;
-    }
-    if (maxZ < 0)
-    {
-        maxZ /= zMult;
-    }
-    else
-    {
-        maxZ *= zMult;
-    }
-#endif
-
-    return glm::ortho(minCoord.x, maxCoord.x, minCoord.y, maxCoord.y, 0.0f, maxCoord.z - minCoord.z) * lightView;
-}
-
-std::vector<glm::vec4> FramePreparePass::GetFrustumCornersWorldSpace(const glm::mat4& projView)
-{
-    const auto inverseProjView = glm::inverse(projView);
-    std::vector<glm::vec4> frustumCornersWS;
-    for (uint32_t x{}; x < 2; ++x)
-    {
-        for (uint32_t y{}; y < 2; ++y)
-        {
-            for (uint32_t z{}; z < 2; ++z)
-            {
-                const glm::vec4 pt = inverseProjView * glm::vec4(x * 2.f - 1.f, y * 2.f - 1.f, (float)z, 1.f);
-                frustumCornersWS.emplace_back(pt / pt.w);  // don't forget the perspective division
-            }
-        }
-    }
-
-    return frustumCornersWS;
-}
-
 void FramePreparePass::PrepareCSMData()
 {
     const auto& rd = Renderer::GetRendererData();
 
-    // NOTE: CascadePlacement should be in FrameData, now it's duplicated.
-    for (size_t dirLightIndex{}; dirLightIndex < MAX_DIR_LIGHTS; ++dirLightIndex)
+    const float nearClip  = rd->CameraStruct.zNear;
+    const float farClip   = rd->CameraStruct.zFar;
+    const float clipRange = farClip - nearClip;
+
+    const float zMin = nearClip;
+    const float zMax = zMin + clipRange;
+
+    const float ratio = zMax / zMin;
+    const float range = zMax - zMin;
+
+    // Calculate split depths based on view camera frustum using NVidia's approach.
+    // https://developer.nvidia.com/gpugems/gpugems3/part-ii-light-and-shadows/chapter-10-parallel-split-shadow-maps-programmable-gpus
+    for (size_t i{}; i < SHADOW_CASCADE_COUNT; ++i)
     {
-        float divisor = 50.f;
-        for (size_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
-        {
-            rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex] = rd->CameraStruct.zFar / divisor;
-            divisor /= 2.f;
-        }
-    }
+        const float p           = (i + 1) / static_cast<float>(SHADOW_CASCADE_COUNT);  // i/m in nvidia formula
+        const float logPart     = zMin * glm::pow(ratio, p);
+        const float uniformPart = zMin + range * p;
 
-    /*m_CascadePlacementZ.front() = rd->CameraStruct.zNear;
-    m_CascadePlacementZ.back()  = rd->CameraStruct.zFar;
-    for (size_t i{}; i < m_CascadePlacementZ.size(); ++i)
-    {
-        if (i == 0 || i + 1 == m_CascadePlacementZ.size()) continue;
+        const float d = uniformPart + rd->ShadowMapData.SplitLambda * (logPart - uniformPart);
+        // rd->ShadowMapData.SplitLambda * logPart + (1.f - rd->ShadowMapData.SplitLambda) * uniformPart;
+        rd->ShadowMapData.CascadePlacementZ[i] = (d - nearClip) / clipRange;  // d;
+    };
 
-        m_CascadePlacementZ.at(i) = m_CascadePlacementZ.back() / (m_CascadePlacementZ.size() - i);
-    }*/
-
+    const auto invViewProj =
+        glm::inverse(glm::perspective(glm::radians(rd->CameraStruct.FOV),
+                                      rd->CameraStruct.FullResolution.x / rd->CameraStruct.FullResolution.y, nearClip, farClip) *
+                     rd->CameraStruct.View);
+    // Calculate orthographic projection matrix for each cascade
     for (size_t dirLightIndex{}; dirLightIndex < MAX_DIR_LIGHTS; ++dirLightIndex)
     {
         if (!rd->LightStruct->DirectionalLights[dirLightIndex].bCastShadows) continue;
 
+        float lastSplitDist{0.f};
+        const auto normalizedLightDir = glm::normalize(rd->LightStruct->DirectionalLights[dirLightIndex].Direction);
         for (size_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
         {
-            if (cascadeIndex + 1 == SHADOW_CASCADE_COUNT)
+            const float splitDist = rd->ShadowMapData.CascadePlacementZ[cascadeIndex];
+
+            // Initially frustums corners are in NDC, depth range [0, 1].
+            std::array<glm::vec3, 8> frustumCorners = {
+                glm::vec3(-1.0f, 1.0f, 0.0f),   // Near top left
+                glm::vec3(1.0f, 1.0f, 0.0f),    // Near top right
+                glm::vec3(1.0f, -1.0f, 0.0f),   // Near bottom right
+                glm::vec3(-1.0f, -1.0f, 0.0f),  // Near bottom left
+                glm::vec3(-1.0f, 1.0f, 1.0f),   // Far top left
+                glm::vec3(1.0f, 1.0f, 1.0f),    // Far top right
+                glm::vec3(1.0f, -1.0f, 1.0f),   // Far bottom right
+                glm::vec3(-1.0f, -1.0f, 1.0f)   // Far bottom left
+            };
+
+            // Transform frustum corners to world space.
+            for (auto& frustumCorner : frustumCorners)
             {
-                rd->ShadowMapData[dirLightIndex].ViewProj[cascadeIndex] =
-                    CalculateLightSpaceViewProjMatrix(rd->LightStruct->DirectionalLights[dirLightIndex].Direction,
-                                                      rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex - 1],
-                                                      rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex]);
+                const glm::vec4 invCorner = invViewProj * glm::vec4(frustumCorner, 1.0f);
+                frustumCorner             = invCorner / invCorner.w;
             }
-            else
+
+            // Adjusting frustum sides:
+            // Once we have our corners we can create a ray between the near and corresponding far corner,
+            // normalize it and then multiply it by the new length and then our previous length becomes
+            // the starting point for the next partition. Then we get the longest radius of this slice
+            // and use it as the basis for our AABB.
+            for (uint32_t i = 0; i < 4; ++i)
             {
-                rd->ShadowMapData[dirLightIndex].ViewProj[cascadeIndex] =
-                    CalculateLightSpaceViewProjMatrix(rd->LightStruct->DirectionalLights[dirLightIndex].Direction,
-                                                      rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex],
-                                                      rd->ShadowMapData[dirLightIndex].CascadePlacementZ[cascadeIndex + 1]);
+                const glm::vec3 cornerRay = frustumCorners[i + 4] - frustumCorners[i];
+
+                const glm::vec3 nearCornerRay = cornerRay * lastSplitDist;
+                frustumCorners[i]             = frustumCorners[i] + nearCornerRay;
+
+                const glm::vec3 farCornerRay = cornerRay * splitDist;
+                frustumCorners[i + 4]        = frustumCorners[i] + farCornerRay;
             }
+
+            // Get averaged frustum center
+            glm::vec3 frustumCenter{0.f};
+            for (auto& frustumCorner : frustumCorners)
+            {
+                frustumCenter += frustumCorner;
+            }
+            frustumCenter /= frustumCorners.size();
+
+            float radius{0.f};
+            for (auto& frustumCorner : frustumCorners)
+            {
+                const float distance = glm::length(frustumCorner - frustumCenter);
+                radius               = glm::max(radius, distance);
+            }
+            radius = std::ceil(radius * 16.0f) / 16.0f;
+
+            const glm::vec3 maxExtents{radius};
+            const glm::vec3 minExtents{-maxExtents};
+
+            const glm::mat4 lightView =
+                glm::lookAt(frustumCenter + normalizedLightDir * -minExtents.z, frustumCenter, glm::vec3{0.f, 1.f, 0.f});
+            const glm::mat4 lightOrthoProj =
+                glm::ortho(minExtents.x, maxExtents.x, minExtents.y, maxExtents.y, 0.f, maxExtents.z - minExtents.z);
+
+            // In order to avoid light shimmering we need to create a rounding matrix so we move in texel sized increments.
+            // You can think of it as finding out how much we need to move the orthographic matrix so it matches up with shadow map,
+            // it is done like this:
+            glm::mat4 shadowMatrix   = lightOrthoProj * lightView;
+            glm::vec4 shadowOrigin   = glm::vec4(0.0f, 0.0f, 0.0f, 1.0f);
+            shadowOrigin             = shadowMatrix * shadowOrigin;
+            const float shadowMapDim = static_cast<float>(Renderer::GetRendererSettings().ShadowMapDim.x);
+            shadowOrigin             = shadowOrigin * shadowMapDim / 2.0f;
+
+            glm::vec4 roundedOrigin = glm::round(shadowOrigin);
+            glm::vec4 roundOffset   = roundedOrigin - shadowOrigin;
+            roundOffset             = roundOffset * 2.0f / shadowMapDim;
+            roundOffset.z           = 0.0f;
+            roundOffset.w           = 0.0f;
+
+            glm::mat4 shadowProj = lightOrthoProj;
+            shadowProj[3] += roundOffset;
+            shadowMatrix = shadowProj * lightView;
+
+            rd->ShadowMapData.CascadeData[dirLightIndex].ViewProj[cascadeIndex] = shadowMatrix;
+
+            // Since in view space cam points towards -Z
+            rd->ShadowMapData.CascadePlacementZ[cascadeIndex] = -(nearClip + splitDist * clipRange);
+            lastSplitDist                                     = splitDist;
         }
     }
 }

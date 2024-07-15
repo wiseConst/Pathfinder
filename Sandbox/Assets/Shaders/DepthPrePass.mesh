@@ -4,7 +4,7 @@
 
 #extension GL_GOOGLE_include_directive : require
 #include "Include/Globals.h"
-#include "Include/MeshletTaskPayload.glslh"
+#include "Include/MeshletTaskPayload.glsl"
 
 // NOTE: 
 // This line guarantees that gl_Position is computed by the exact expression that was given in the shader without 

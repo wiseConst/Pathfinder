@@ -13,17 +13,17 @@
 namespace Pathfinder
 {
 FORCEINLINE static DirectionalLight DirectionalLightFromDirectionalLightComponent(const glm::vec3& direction,
-                                                                                  const DirectionalLightComponent& dlc)
+                                                                                  const DirectionalLightComponent& dlc) noexcept
 {
     return {direction, dlc.Intensity, dlc.Color, dlc.bCastShadows};
 }
 
-FORCEINLINE static PointLight PointLightFromPointLightComponent(const glm::vec3& position, const PointLightComponent& plc)
+FORCEINLINE static PointLight PointLightFromPointLightComponent(const glm::vec3& position, const PointLightComponent& plc) noexcept
 {
     return {position, plc.Intensity, plc.Color, plc.Radius, plc.MinRadius, plc.bCastShadows};
 }
 
-FORCEINLINE static SpotLight SpotLightFromSpotLightComponent(const glm::vec3& position, const SpotLightComponent& slc)
+FORCEINLINE static SpotLight SpotLightFromSpotLightComponent(const glm::vec3& position, const SpotLightComponent& slc) noexcept
 {
     return {position, slc.Intensity, slc.Direction, slc.Height, slc.Color, slc.Radius, slc.InnerCutOff, slc.OuterCutOff, slc.bCastShadows};
 }
@@ -56,8 +56,8 @@ void Scene::OnUpdate(const float deltaTime)
             const auto& sc = entity.GetComponent<SpriteComponent>();
 
             Renderer::DrawQuad(tc.Translation, tc.Scale,
-                                 {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w},
-                                 sc.Color, sc.Texture, sc.Layer);
+                               {quaternionOrientation.x, quaternionOrientation.y, quaternionOrientation.z, quaternionOrientation.w},
+                               sc.Color, sc.Texture, sc.Layer);
         }
 
         if (entity.HasComponent<MeshComponent>())
@@ -78,8 +78,9 @@ void Scene::OnUpdate(const float deltaTime)
 
         if (entity.HasComponent<DirectionalLightComponent>())
         {
-            const auto& dlc = entity.GetComponent<DirectionalLightComponent>();
-            Renderer::AddDirectionalLight(DirectionalLightFromDirectionalLightComponent(tc.Translation, dlc));
+            const auto& dlc     = entity.GetComponent<DirectionalLightComponent>();
+            const auto rotation = glm::vec3(glm::cos(tc.Rotation.x), tc.Rotation.y, glm::sin(tc.Rotation.z));
+            Renderer::AddDirectionalLight(DirectionalLightFromDirectionalLightComponent(tc.Rotation, dlc));
         }
 
         if (entity.HasComponent<PointLightComponent>())

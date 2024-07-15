@@ -1,8 +1,8 @@
 ﻿#pragma once
 
 #include <volk/volk.h>
-#include "Globals.h"
 #include <Renderer/RendererCoreDefines.h>
+#include "Globals.h"
 
 namespace Pathfinder
 {
@@ -42,11 +42,8 @@ static const std::vector<const char*> s_InstanceExtensions = {
 };
 
 static const std::vector<const char*> s_DeviceExtensions = {
+    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,             // Vk core 1.3, but imgui requires it :(
     VK_KHR_SWAPCHAIN_EXTENSION_NAME,                     // For rendering into OS-window
-    VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,             // To neglect render-passes as my target is desktop only
-    VK_KHR_TIMELINE_SEMAPHORE_EXTENSION_NAME,            // To do async work with proper synchronization on device side.
-    VK_KHR_MAINTENANCE_4_EXTENSION_NAME,                 // Shader SPIRV 1.6
-    VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,             // Advanced synchronization types
     VK_EXT_MEMORY_BUDGET_EXTENSION_NAME,                 // Provides query for current memory usage and budget.
     VK_EXT_PAGEABLE_DEVICE_LOCAL_MEMORY_EXTENSION_NAME,  // It will allow device-local memory allocations to be paged in and out by the
                                                          // operating system, and may not return VK_ERROR_OUT_OF_DEVICE_MEMORY even if
@@ -160,7 +157,7 @@ NODISCARD static std::string VK_GetResultString(const VkResult result)
 #endif
 
 static VkBool32 VK_DebugCallback(VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity, VkDebugUtilsMessageTypeFlagsEXT messageTypes,
-                                 const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, [[maybe_unused]] void* pUserData)
+                                 const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData, [[maybe_unused]] void* pUserData) noexcept
 {
     switch (messageSeverity)
     {
@@ -197,7 +194,7 @@ NODISCARD FORCEINLINE static VkImageMemoryBarrier2 GetImageMemoryBarrier(
     const VkPipelineStageFlags2 srcStageMask, const VkAccessFlags2 srcAccessMask, const VkPipelineStageFlags2 dstStageMask,
     const VkAccessFlags2 dstAccessMask, const uint32_t layerCount, const uint32_t baseArrayLayer, const uint32_t levelCount,
     const uint32_t baseMipLevel, const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-    const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, void* pNext = nullptr)
+    const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, void* pNext = nullptr) noexcept
 {
     return VkImageMemoryBarrier2{.sType               = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER_2,
                                  .pNext               = pNext,
@@ -221,7 +218,7 @@ NODISCARD FORCEINLINE static VkBufferMemoryBarrier2 GetBufferMemoryBarrier(
     const VkBuffer& buffer, const VkDeviceSize size, const VkDeviceSize offset, const VkPipelineStageFlags2 srcStageMask,
     const VkAccessFlags2 srcAccessMask, const VkPipelineStageFlags2 dstStageMask, const VkAccessFlags2 dstAccessMask,
     const uint32_t srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED, const uint32_t dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED,
-    void* pNext = nullptr)
+    void* pNext = nullptr) noexcept
 {
     return VkBufferMemoryBarrier2{.sType               = VK_STRUCTURE_TYPE_BUFFER_MEMORY_BARRIER_2,
                                   .pNext               = pNext,
@@ -239,7 +236,7 @@ NODISCARD FORCEINLINE static VkBufferMemoryBarrier2 GetBufferMemoryBarrier(
 NODISCARD FORCEINLINE static VkDescriptorSetAllocateInfo GetDescriptorSetAllocateInfo(const VkDescriptorPool& descriptorPool,
                                                                                       const uint32_t descriptorSetCount,
                                                                                       const VkDescriptorSetLayout* descriptorSetLayouts,
-                                                                                      void* pNext = nullptr)
+                                                                                      void* pNext = nullptr) noexcept
 {
     return VkDescriptorSetAllocateInfo{.sType              = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO,
                                        .pNext              = pNext,
@@ -250,7 +247,7 @@ NODISCARD FORCEINLINE static VkDescriptorSetAllocateInfo GetDescriptorSetAllocat
 
 NODISCARD FORCEINLINE static VkDescriptorPoolCreateInfo GetDescriptorPoolCreateInfo(
     const uint32_t poolSizeCount, const uint32_t maxSetCount, const VkDescriptorPoolSize* poolSizes,
-    const VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0, const void* pNext = nullptr)
+    const VkDescriptorPoolCreateFlags descriptorPoolCreateFlags = 0, const void* pNext = nullptr) noexcept
 {
     return VkDescriptorPoolCreateInfo{.sType         = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO,
                                       .pNext         = pNext,
@@ -260,13 +257,7 @@ NODISCARD FORCEINLINE static VkDescriptorPoolCreateInfo GetDescriptorPoolCreateI
                                       .pPoolSizes    = poolSizes};
 }
 
-NODISCARD FORCEINLINE static VkPushConstantRange GetPushConstantRange(const VkShaderStageFlags stageFlags, const uint32_t offset,
-                                                                      const uint32_t size)
-{
-    return VkPushConstantRange{.stageFlags = stageFlags, .offset = offset, .size = size};
-}
-
-NODISCARD FORCEINLINE static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode polygonMode)
+NODISCARD FORCEINLINE static VkPolygonMode PathfinderPolygonModeToVulkan(const EPolygonMode polygonMode) noexcept
 {
     switch (polygonMode)
     {
@@ -279,7 +270,7 @@ NODISCARD FORCEINLINE static VkPolygonMode PathfinderPolygonModeToVulkan(const E
     return VK_POLYGON_MODE_FILL;
 }
 
-NODISCARD FORCEINLINE static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp)
+NODISCARD FORCEINLINE static VkCompareOp PathfinderCompareOpToVulkan(const ECompareOp compareOp) noexcept
 {
     switch (compareOp)
     {

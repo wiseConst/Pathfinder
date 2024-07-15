@@ -90,11 +90,8 @@ void GBufferPass::AddForwardPlusOpaquePass(Unique<RenderGraph>& rendergraph)
 
                 for (uint32_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
                 {
-                    const std::string passName =
-                        "DirLight[" + std::to_string(dirLightIndex) + "]_CSMPass[" + std::to_string(cascadeIndex) + "]";
-
-                    const std::string csmTextureName = "Cascade[" + std::to_string(cascadeIndex) + "]";
-                    builder.ReadTexture(csmTextureName, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+                    const std::string passName = "DirLight_" + std::to_string(dirLightIndex) + "_CSMPass_" + std::to_string(cascadeIndex);
+                    builder.ReadTexture(passName, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
                 }
             }
         },
@@ -141,6 +138,7 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
 {
     struct PassData
     {
+        RGBufferID CSMData;
         RGBufferID CameraData;
         RGBufferID LightData;
         RGBufferID MeshData;
@@ -150,6 +148,7 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
         RGBufferID CulledSpotLightIndices;
         RGTextureID AOBlurTexture;
         RGTextureID SSSTexture;
+        RGTextureID Cascades[SHADOW_CASCADE_COUNT];
     };
 
     rendergraph->AddPass<PassData>(
@@ -174,6 +173,20 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
             pd.SSSTexture    = builder.ReadTexture("SSSTexture", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
 
             builder.SetViewportScissor(m_Width, m_Height);
+
+            const auto& rd = Renderer::GetRendererData();
+
+            pd.CSMData = builder.ReadBuffer("CSMData", EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+            for (size_t dirLightIndex{}; dirLightIndex < rd->LightStruct->DirectionalLightCount; ++dirLightIndex)
+            {
+                if (!rd->LightStruct->DirectionalLights[dirLightIndex].bCastShadows) continue;
+
+                for (uint32_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
+                {
+                    const std::string passName = "DirLight_" + std::to_string(dirLightIndex) + "_CSMPass_" + std::to_string(cascadeIndex);
+                    pd.Cascades[cascadeIndex]  = builder.ReadTexture(passName, EResourceState::RESOURCE_STATE_FRAGMENT_SHADER_RESOURCE);
+                }
+            }
         },
         [=](const PassData& pd, RenderGraphContext& context, Shared<CommandBuffer>& cb)
         {
@@ -190,6 +203,12 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
             auto& culledSpotLightIndicesBuffer  = context.GetBuffer(pd.CulledSpotLightIndices);
             auto& aoBlurTexture                 = context.GetTexture(pd.AOBlurTexture);
             auto& sssTexture                    = context.GetTexture(pd.SSSTexture);  // TODO: use it
+            auto& csmDataBuffer                 = context.GetBuffer(pd.CSMData);
+
+            for (uint32_t cascadeIndex{}; cascadeIndex < SHADOW_CASCADE_COUNT; ++cascadeIndex)
+            {
+                rd->CascadeRenderTargets[cascadeIndex] = context.GetTexture(pd.Cascades[cascadeIndex]);
+            }
 
             if (drawBufferTransparent->GetMapped())
                 rd->ObjectCullStats.DrawCountTransparent = *(uint32_t*)drawBufferTransparent->GetMapped();
@@ -201,7 +220,8 @@ void GBufferPass::AddForwardPlusTransparentPass(Unique<RenderGraph>& rendergraph
                                           .VisiblePointLightIndicesDataBuffer = culledPointLightIndicesBuffer->GetBDA(),
                                           .VisibleSpotLightIndicesDataBuffer  = culledSpotLightIndicesBuffer->GetBDA(),
                                           .addr0                              = meshDataTransparentBuffer->GetBDA(),
-                                          .addr1                              = culledMeshesBufferTransparent->GetBDA()};
+                                          .addr1                              = culledMeshesBufferTransparent->GetBDA(),
+                                          .addr2                              = csmDataBuffer->GetBDA()};
 
             const auto& pipeline = PipelineLibrary::Get(rd->ForwardPlusTransparentPipelineHash);
             Renderer::BindPipeline(cb, pipeline);

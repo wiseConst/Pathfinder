@@ -3,13 +3,13 @@
 #extension GL_EXT_mesh_shader : require
 #extension GL_GOOGLE_include_directive : require
 #include "Include/Globals.h"
-#include "Include/MeshletTaskPayload.glslh"
+#include "Include/MeshletTaskPayload.glsl"
 
 // NOTE: 
 // This line guarantees that gl_Position is computed by the exact expression that was given in the shader without 
 // any optimization as this would change the operations and therefore quite likely change the result in some minor way.
 // Since I'm using DepthPrePass, I have to manually assure that gl_Position will be the same, 
-// in both Forward+ and PrePassZ mesh shaders.
+// in both Forward+ and DepthPrePass mesh shaders.
 out invariant uvec3 gl_PrimitiveTriangleIndicesEXT[];
 
 out gl_MeshPerVertexEXT {

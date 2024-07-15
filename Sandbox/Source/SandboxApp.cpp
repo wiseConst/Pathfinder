@@ -18,8 +18,8 @@ Unique<Application> Create()
     ApplicationSpecification appSpec = {};
     appSpec.Title                    = "PATHFINDER";
     appSpec.RendererAPI              = ERendererAPI::RENDERER_API_VULKAN;
-    appSpec.Width                    = 960;
-    appSpec.Height                   = 640;
+    appSpec.Width                    = 1280;
+    appSpec.Height                   = 720;
     appSpec.AssetsDir                = "Assets";
     appSpec.CacheDir                 = "Cached";
     appSpec.MeshDir                  = "Meshes";

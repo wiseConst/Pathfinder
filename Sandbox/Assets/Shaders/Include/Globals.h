@@ -32,13 +32,26 @@ static constexpr uint32_t s_MAX_IMAGES   = BIT(20);
 #endif
 
 #define SSS_LOCAL_GROUP_SIZE 16u
-#define SHADOW_CASCADE_COUNT 4
+#define SHADOW_CASCADE_COUNT 3
 
-struct CSMData
+struct ShadowCascadeData
 {
     mat4 ViewProj[SHADOW_CASCADE_COUNT];
     uint32_t CascadeTextureIndices[SHADOW_CASCADE_COUNT];
+};
+
+// Min/Max Z reductioned through CS for sample distribution shadow maps
+struct SDSMData
+{
+    float MinDepth;
+    float MaxDepth;
+};
+
+struct CSMData
+{
+    float SplitLambda;
     float CascadePlacementZ[SHADOW_CASCADE_COUNT];
+    ShadowCascadeData CascadeData[MAX_DIR_LIGHTS];
 };
 
 struct Sprite
@@ -118,50 +131,42 @@ layout(set = BINDLESS_MEGA_SET, binding = STORAGE_IMAGE_BINDING, r32f) uniform i
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer VertexPosBuffer
 {
     MeshPositionVertex positions[];
-}
-s_VertexPosBuffersBDA;
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer VertexAttribBuffer
 {
     MeshAttributeVertex attributes[];
-}
-s_VertexAttribBuffersBDA;
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshIndexBuffer
 {
     uint32_t indices[];
-}
-s_IndexBuffersBDA;
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshletBuffer
 {
     Meshlet meshlets[];
-}
-s_MeshletBuffersBDA;
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshletVerticesBuffer
 {
     uint32_t vertices[];
-}
-s_MeshletVerticesBuffersBDA;
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshletTrianglesBuffer
 {
     uint8_t triangles[];
-}
-s_MeshletTrianglesBuffersBDA;
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MaterialBuffer
 {
     PBRData mat;
-}
-s_MaterialBuffersBDA;
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer MeshDataBuffer
 {
     MeshData meshesData[];
-}
-s_MeshDataBufferBDA;
+};
 
 #endif
 
@@ -182,12 +187,7 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Cam
     float FOV;
     vec2 FullResolution;
     vec2 InvFullResolution;
-}
-#ifdef __cplusplus
-;
-#else
-s_CameraDataBDA;  // Name unused, check u_PC
-#endif
+};
 
 #ifdef __cplusplus
 
@@ -202,44 +202,34 @@ layout(buffer_reference, buffer_reference_align = 4, scalar) readonly buffer Lig
     uint32_t PointLightCount;
     uint32_t SpotLightCount;
     uint32_t DirectionalLightCount;
-}
-#ifdef __cplusplus
-;
-#else
-s_LightsBDA;  // Name unused, check u_PC
-#endif
+};
 
 #ifndef __cplusplus
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) buffer LightCullingFrustum
 {
     TileFrustum frustums[];
-}
-s_GridFrustumsBufferBDA;  // Name unused, check u_PC
+};
 
 layout(buffer_reference, buffer_reference_align = 1, scalar) buffer VisiblePointLightIndicesBuffer
 {
     LIGHT_INDEX_TYPE indices[];
-}
-s_VisiblePointLightIndicesBufferBDA;  // Name unused, check u_PC
+};
 
 layout(buffer_reference, buffer_reference_align = 1, scalar) buffer VisibleSpotLightIndicesBuffer
 {
     LIGHT_INDEX_TYPE indices[];
-}
-s_VisibleSpotLightIndicesBufferBDA;  // Name unused, check u_PC
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CulledMeshIDBuffer
 {
     uint32_t CulledMeshIDs[];
-}
-s_CulledMeshIDBufferBDA;  // Name unused, check u_PC
+};
 
 layout(buffer_reference, buffer_reference_align = 4, scalar) buffer CSMDataBuffer
 {
-    CSMData ShadowMapData[MAX_DIR_LIGHTS];
-}
-s_CSMDataBufferBDA;  // Name unused, check u_PC
+    CSMData ShadowMapData;
+};
 
 #endif
 
@@ -330,6 +320,40 @@ vec4 ViewToScreenSpace(const vec4 viewPos)
 float ScreenSpaceDepthToView(const float fScreenDepth)
 {
     return -CameraData(u_PC.CameraDataBuffer).Projection[3][2] / (fScreenDepth + CameraData(u_PC.CameraDataBuffer).Projection[2][2]);
+}
+
+const uint g_POISSON_DISK_SIZE                         = 64;
+const vec2 g_POISSON_DISK_SAMPLES[g_POISSON_DISK_SIZE] = {
+    vec2(-0.5119625f, -0.4827938f),  vec2(-0.2171264f, -0.4768726f),   vec2(-0.7552931f, -0.2426507f),  vec2(-0.7136765f, -0.4496614f),
+    vec2(-0.5938849f, -0.6895654f),  vec2(-0.3148003f, -0.7047654f),   vec2(-0.42215f, -0.2024607f),    vec2(-0.9466816f, -0.2014508f),
+    vec2(-0.8409063f, -0.03465778f), vec2(-0.6517572f, -0.07476326f),  vec2(-0.1041822f, -0.02521214f), vec2(-0.3042712f, -0.02195431f),
+    vec2(-0.5082307f, 0.1079806f),   vec2(-0.08429877f, -0.2316298f),  vec2(-0.9879128f, 0.1113683f),   vec2(-0.3859636f, 0.3363545f),
+    vec2(-0.1925334f, 0.1787288f),   vec2(0.003256182f, 0.138135f),    vec2(-0.8706837f, 0.3010679f),   vec2(-0.6982038f, 0.1904326f),
+    vec2(0.1975043f, 0.2221317f),    vec2(0.1507788f, 0.4204168f),     vec2(0.3514056f, 0.09865579f),   vec2(0.1558783f, -0.08460935f),
+    vec2(-0.0684978f, 0.4461993f),   vec2(0.3780522f, 0.3478679f),     vec2(0.3956799f, -0.1469177f),   vec2(0.5838975f, 0.1054943f),
+    vec2(0.6155105f, 0.3245716f),    vec2(0.3928624f, -0.4417621f),    vec2(0.1749884f, -0.4202175f),   vec2(0.6813727f, -0.2424808f),
+    vec2(-0.6707711f, 0.4912741f),   vec2(0.0005130528f, -0.8058334f), vec2(0.02703013f, -0.6010728f),  vec2(-0.1658188f, -0.9695674f),
+    vec2(0.4060591f, -0.7100726f),   vec2(0.7713396f, -0.4713659f),    vec2(0.573212f, -0.51544f),      vec2(-0.3448896f, -0.9046497f),
+    vec2(0.1268544f, -0.9874692f),   vec2(0.7418533f, -0.6667366f),    vec2(0.3492522f, 0.5924662f),    vec2(0.5679897f, 0.5343465f),
+    vec2(0.5663417f, 0.7708698f),    vec2(0.7375497f, 0.6691415f),     vec2(0.2271994f, -0.6163502f),   vec2(0.2312844f, 0.8725659f),
+    vec2(0.4216993f, 0.9002838f),    vec2(0.4262091f, -0.9013284f),    vec2(0.2001408f, -0.808381f),    vec2(0.149394f, 0.6650763f),
+    vec2(-0.09640376f, 0.9843736f),  vec2(0.7682328f, -0.07273844f),   vec2(0.04146584f, 0.8313184f),   vec2(0.9705266f, -0.1143304f),
+    vec2(0.9670017f, 0.1293385f),    vec2(0.9015037f, -0.3306949f),    vec2(-0.5085648f, 0.7534177f),   vec2(0.9055501f, 0.3758393f),
+    vec2(0.7599946f, 0.1809109f),    vec2(-0.2483695f, 0.7942952f),    vec2(-0.4241052f, 0.5581087f),   vec2(-0.1020106f, 0.6724468f),
+};
+
+vec2 SamplePoissonDisk(const uint32_t index)
+{
+    return g_POISSON_DISK_SAMPLES[index % g_POISSON_DISK_SIZE];
+}
+
+// NOTE: Hash func from Meshlets.h
+uint32_t GetUint32PRNG(const vec3 seed, uint32_t state)
+{
+    state ^= hash(uint32_t(seed.x));
+    state ^= hash(uint32_t(seed.y));
+    state ^= hash(uint32_t(seed.z));
+    return hash(state);
 }
 
 #endif

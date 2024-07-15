@@ -59,19 +59,19 @@ class SyncPoint : private Uncopyable, private Unmovable
         : m_TimelineSemaphoreHandle(timelineSemaphoreHandle), m_Value(value), m_PipelineStages(pipelineStages)
     {
     }
-    virtual ~SyncPoint() = default;
+    virtual ~SyncPoint() noexcept = default;
 
-    NODISCARD FORCEINLINE const auto& GetValue() const { return m_Value; }
-    NODISCARD FORCEINLINE const auto& GetTimelineSemaphore() const { return m_TimelineSemaphoreHandle; }
-    NODISCARD FORCEINLINE const auto& GetPipelineStages() const { return m_PipelineStages; }
+    NODISCARD FORCEINLINE const auto& GetValue() const noexcept { return m_Value; }
+    NODISCARD FORCEINLINE const auto& GetTimelineSemaphore() const noexcept { return m_TimelineSemaphoreHandle; }
+    NODISCARD FORCEINLINE const auto& GetPipelineStages() const noexcept { return m_PipelineStages; }
 
-    virtual void Wait() const = 0;  // Waits for the semaphore to reach 'value'
-    static Shared<SyncPoint> Create(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages);
+    virtual void Wait() const noexcept = 0;  // Waits for the semaphore to reach 'value'
+    static Shared<SyncPoint> Create(void* timelineSemaphoreHandle, const uint64_t value, const RendererTypeFlags pipelineStages) noexcept;
 
   protected:
-    void* m_TimelineSemaphoreHandle    = nullptr;
-    uint64_t m_Value                   = 0;
-    RendererTypeFlags m_PipelineStages = EPipelineStage::PIPELINE_STAGE_NONE;
+    void* m_TimelineSemaphoreHandle{nullptr};
+    uint64_t m_Value{0};
+    RendererTypeFlags m_PipelineStages{EPipelineStage::PIPELINE_STAGE_NONE};
 
   private:
     SyncPoint() = delete;
@@ -101,6 +101,10 @@ class CommandBuffer : private Uncopyable, private Unmovable
 
     virtual void BeginPipelineStatisticsQuery(Shared<QueryPool>& queryPool) = 0;
     virtual void EndPipelineStatisticsQuery(Shared<QueryPool>& queryPool)   = 0;
+
+    // NOTE: WriteResource<T>??
+    //  virtual void WriteBuffer(Shared<Buffer>& buffer, const void* data, const size_t dataSize) noexcept    = 0;
+    //  virtual void WriteTexture(Shared<Texture>& texture, const void* data, const size_t dataSize) noexcept = 0;
 
     virtual std::vector<std::pair<std::string, std::uint64_t>> CalculateQueryPoolStatisticsResults(Shared<QueryPool>& queryPool) = 0;
     virtual std::vector<uint64_t> CalculateQueryPoolProfilerResults(Shared<QueryPool>& queryPool, const size_t timestampCount)   = 0;
